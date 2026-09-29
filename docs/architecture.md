@@ -79,8 +79,8 @@ A runtime install answers `runtimes.install` at once with the build it will inst
 
 ## What comes next
 
-1. Runtime manager: uv environments per node family from lock files, torch chosen by compute
-   capability and driver.
+1. Attempt ladder: each node's arrangements of device, precision and settings, tried best first
+   under an allocator ceiling.
 2. Model store: Download for a node's weights, into the data root.
 3. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
    and a reconstructor, enough for both loops.

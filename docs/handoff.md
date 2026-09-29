@@ -40,6 +40,18 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - the content-addressed cache and the scheduler, with trust carried through;
     - engine and runtime-child executors, and the child protocol;
     - the NDJSON stdio server.
+- **Runtime manager** (spec 001, on `claude/sweet-davinci-ko7mlh` until its PR merges):
+    - runtime definitions in `runtimes/`, found by looking ([runtimes.md](runtimes.md));
+    - the machine profile from nvidia-smi, and the plan that picks a build by capability and
+      driver, never by a card's name;
+    - install with uv from the committed lock, resumable, with the marker written last;
+      out-of-date detection; remove;
+    - the `runtimes.*` engine methods and `runtime.*` events;
+    - `npm run bench:runtime`, the report a hardware claim needs.
+
+    Tested in CI with a small test runtime (`engine/tests/runtimes/tiny/`). Still to come: the
+    torch runtime, which needs `download.pytorch.org` to lock, and the owner's report from the
+    GTX 1070 (AC9).
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
     - a sandboxed page that reaches the engine through one IPC door with a method allowlist;
@@ -61,7 +73,10 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - `scripts/check-docs.js` catches docs that name missing files;
     - the PR template checks the acceptance criteria.
 
-Not started: runtime manager, model store, any model node, workspace UI, viewer, installer.
+Not started: model store, any model node, workspace UI, viewer, installer.
+
+Follow-up: `npm run versions` does not read runtime locks yet, so a runtime's torch pin is checked by
+hand.
 
 ## Next, in order
 
@@ -71,7 +86,7 @@ hold the detail.
 
 | Spec | Status |
 | --- | --- |
-| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; in progress on `claude/sweet-davinci-ko7mlh`, following its `tasks.md` |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; tasks 1 to 8 done on `claude/sweet-davinci-ko7mlh`; task 9 (the torch runtime) waits for `download.pytorch.org`; AC9 waits for the owner's report |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
