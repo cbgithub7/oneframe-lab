@@ -153,9 +153,9 @@ def write_runtime(
         + f"[tool.uv]\npackage = {'true' if package else 'false'}\n"
         + (f"conflicts = [[{conflicts}]]\n" if len(names) > 1 else "")
     )
-    (folder / "pyproject.toml").write_text(pyproject, encoding="utf-8")
-    (folder / "uv.lock").write_text(lock, encoding="utf-8")
-    (folder / "runtime.json").write_text(json.dumps(definition, indent=2), encoding="utf-8")
+    (folder / "pyproject.toml").write_text(pyproject, encoding="utf-8", newline="\n")
+    (folder / "uv.lock").write_text(lock, encoding="utf-8", newline="\n")
+    (folder / "runtime.json").write_text(json.dumps(definition, indent=2), encoding="utf-8", newline="\n")
     return folder
 
 

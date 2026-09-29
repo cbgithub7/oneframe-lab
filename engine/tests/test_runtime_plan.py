@@ -183,7 +183,9 @@ def test_the_hashes_do_not_change_with_line_endings(make_runtime: MakeRuntime) -
     runtime = runtimes.load(folder / "runtime.json")
     before = runtime.hashes()
     lock = folder / "uv.lock"
-    lock.write_bytes(lock.read_bytes().replace(b"\n", b"\r\n"))
+    lf = lock.read_bytes()
+    assert b"\r" not in lf
+    lock.write_bytes(lf.replace(b"\n", b"\r\n"))
     assert runtime.hashes() == before
     lock.write_bytes(lock.read_bytes() + b"# changed\n")
     assert runtime.hashes()["lock_sha256"] != before["lock_sha256"]
