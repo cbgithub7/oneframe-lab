@@ -24,7 +24,7 @@ design each task follows is in [plan.md](plan.md).
     - `test_runtime_plan.py`: the five AC1 cases, the blocked reason naming the driver, "12.10"
       above "12.9", per-OS driver floors, a required extension blocks, an optional one is noted, disk
       blocks, no GPU name in any plan. (AC1, and the rest of AC2.)
-- [ ] 4. **Archives.**
+- [x] 4. **Archives.**
     - `oneframe/archives.py`: a download to `.part`, checked by sha256, then renamed; extraction that
       refuses members escaping by path, absolute path, symlink, hard link or drive letter.
     - `test_archives.py`. (AC8)
