@@ -10,7 +10,7 @@ design each task follows is in [plan.md](plan.md).
     - Fixtures in `engine/tests/fixtures/nvidia-smi/`.
     - `test_hardware.py`: one GPU, two GPUs, a driver without `compute_cap`, a driver not loaded,
       the command not found, a timeout. (AC2, except the name check, which needs task 3.)
-- [ ] 2. **Runtime definitions.**
+- [x] 2. **Runtime definitions.**
     - `RUNTIMES_DIR` in `oneframe/__init__.py`.
     - In `oneframe/runtimes.py`: read, check and discover `runtime.json` with its `pyproject.toml`
       and `uv.lock`. A broken one is a problem that does not hide the others.

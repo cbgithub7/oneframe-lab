@@ -117,6 +117,51 @@ def scheduler_for(tmp_path: Path, node_root: Path) -> Callable[..., Scheduler]:
     return make
 
 
+TINY_RUNTIME = Path(__file__).parent / "runtimes" / "tiny"
+MakeRuntime = Callable[..., Path]
+
+
+def write_runtime(
+    root: Path,
+    definition: dict[str, Any],
+    lock: str = 'version = 1\nrequires-python = "==3.11.*"\n',
+    extras: list[str] | None = None,
+    package: bool = False,
+) -> Path:
+    """A runtime folder for tests that plan or check definitions: runtime.json as given, a
+    pyproject with an extra per build (all in one conflict set) and the lock text as given."""
+    folder = root / definition["id"]
+    folder.mkdir(parents=True, exist_ok=True)
+    names = extras if extras is not None else [b["name"] for b in definition.get("builds") or []]
+    conflicts = ", ".join(f'{{ extra = "{n}" }}' for n in names)
+    pyproject = (
+        f'[project]\nname = "rt-{definition["id"]}"\nversion = "1"\nrequires-python = ">=3.11"\n'
+        "[project.optional-dependencies]\n"
+        + "".join(f"{n} = []\n" for n in names)
+        + f"[tool.uv]\npackage = {'true' if package else 'false'}\n"
+        + (f"conflicts = [[{conflicts}]]\n" if len(names) > 1 else "")
+    )
+    (folder / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+    (folder / "uv.lock").write_text(lock, encoding="utf-8")
+    (folder / "runtime.json").write_text(json.dumps(definition, indent=2), encoding="utf-8")
+    return folder
+
+
+@pytest.fixture
+def runtime_root(tmp_path: Path) -> Path:
+    root = tmp_path / "runtimes"
+    root.mkdir()
+    return root
+
+
+@pytest.fixture
+def make_runtime(runtime_root: Path) -> MakeRuntime:
+    def make(definition: dict[str, Any], **kw: Any) -> Path:
+        return write_runtime(runtime_root, definition, **kw)
+
+    return make
+
+
 class Events(list[dict[str, Any]]):
     def kinds(self) -> list[str]:
         return [e["event"] for e in self]
