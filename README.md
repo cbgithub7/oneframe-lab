@@ -55,6 +55,8 @@ npm run versions       # every pin against its latest release
 
 ## Documents
 
+- [AGENTS.md](AGENTS.md): the rules and the way work is done, for people and agents
+- [specs/README.md](specs/README.md): how a change goes from spec to merged PR
 - [docs/handoff.md](docs/handoff.md): what is done, what was decided, what comes next
 - [docs/architecture.md](docs/architecture.md): how the parts fit, and the rules that keep them apart
 - [docs/nodes.md](docs/nodes.md): writing a node

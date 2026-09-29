@@ -52,13 +52,25 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - Dependabot, and the weekly version check.
 - **Session setup:** `.claude/hooks/session-start.sh` installs the Node and uv the repo pins, the
   engine environment and the npm packages.
+- **Process guardrails:**
+    - `AGENTS.md` holds the rules for any agent, and `CLAUDE.md` imports it;
+    - the spec workflow is in `specs/`;
+    - hooks format after every edit and run the checks before a turn ends;
+    - `scripts/test-guard.js` blocks removing a test without a reason;
+    - `scripts/check-docs.js` catches docs that name missing files;
+    - the PR template checks the acceptance criteria.
 
 Not started: runtime manager, model store, any model node, workspace UI, viewer, installer.
 
 ## Next, in order
 
-Each step is its own commit or PR, with tests. Where code is ported, the paths are on
-depth-pro-gui's `main`.
+Each step becomes a spec in `specs/` ([specs/README.md](../specs/README.md)): spec, owner
+approval, plan, owner approval, tasks, implementation, PR. The list below is the order; the specs
+hold the detail. Where code is ported, the paths are on depth-pro-gui's `main`.
+
+| Spec | Status |
+| --- | --- |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | draft, waiting for the owner's answers to its open questions and approval |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
@@ -111,4 +123,4 @@ depth-pro-gui's `main`.
 | `electron/modelstore.js`, `electron/hwstore.js` | Resumable downloads, snapshot layout, fingerprinted observations | The painter and product specifics |
 | `python/detach/{find,place,glb,sam}.py` | Object finding, placement maths, GLB reading | The Fast-render callback shape; these become nodes |
 | `python/layered3d.py`, `python/bilateral.py` | The layered-mesh and bilateral-filter maths, for a 2.5D scene node | The dependency on 3d-photo-inpainting |
-| `docs/object-generators.md` | The requirements research per model | |
+| `depth-pro-gui/docs/object-generators.md` | The requirements research per model | |
