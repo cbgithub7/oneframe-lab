@@ -1,0 +1,29 @@
+{
+  "name": "oneframe-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local playground for making 3D content from a single photo, from plug-and-play model nodes.",
+  "type": "module",
+  "main": "app/main/main.js",
+  "engines": {
+    "node": ">=24.21.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"tests/app/**/*.test.js\"",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "engine:sync": "uv sync --project engine --frozen",
+    "engine:check": "uv run --project engine --frozen ruff check && uv run --project engine --frozen ruff format --check && uv run --project engine --frozen pyright && uv run --project engine --frozen pytest engine",
+    "versions": "node scripts/check-versions.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.0",
+    "electron": "44.4.5",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "typescript": "7.0.2"
+  }
+}

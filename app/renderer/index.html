@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; font-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oneframe Lab</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <header class="bar">
+      <h1>Oneframe Lab</h1>
+      <span id="engine-status" class="status" data-state="starting">Starting the engine…</span>
+    </header>
+    <main class="layout">
+      <section class="panel" aria-labelledby="nodes-title">
+        <h2 id="nodes-title">Nodes</h2>
+        <div id="nodes"></div>
+        <div id="node-problems"></div>
+      </section>
+      <section class="panel stage" aria-label="Workspace">
+        <p class="empty">The workspace arrives with the first recipes. For now this page shows what the engine can run.</p>
+      </section>
+    </main>
+  </body>
+</html>
