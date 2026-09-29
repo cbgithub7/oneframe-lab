@@ -27,6 +27,9 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params and input keys; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; checks every value at every port; carries trust |
 | Executors | `oneframe/executors.py`, `oneframe/child.py` | In-process or child-process runs; one `NodeContext` either way |
+| Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
+| Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, free disk |
+| Archives | `oneframe/archives.py` | Pinned downloads kept only when their sha256 matches; unpacking that stays inside its folder |
 | Server | `oneframe/server.py` | The engine's NDJSON protocol |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
 | Main | `app/main/main.js` | The window, the engine process, and the one IPC door |

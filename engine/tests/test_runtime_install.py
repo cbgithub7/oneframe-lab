@@ -10,9 +10,22 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import AMPERE, NO_GPU, TINY_RUNTIME, Events, SourceServer, add_source, upstream_archive
+from conftest import (
+    AMPERE,
+    NO_GPU,
+    TINY_RUNTIME,
+    Events,
+    MakeNode,
+    SourceServer,
+    add_source,
+    upstream_archive,
+)
 
 from oneframe import runtime_install, runtimes
+from oneframe.cache import Cache
+from oneframe.graph import Graph
+from oneframe.registry import discover
+from oneframe.scheduler import Scheduler
 
 
 def _manager(
@@ -234,3 +247,97 @@ def test_without_uv_an_install_is_refused_and_listing_still_works(tmp_path: Path
     with pytest.raises(runtimes.InstallRefused, match="uv was not found"):
         manager.begin_install("tiny")
     assert manager.list()["runtimes"][0]["status"] == "not installed"
+
+
+# A node that runs in the tiny runtime and reports where it is: which Python, which packages, its
+# runtime's variable, and what happens when it tries to reach the network.
+TINY_NODE = """
+import json, os, socket, sys
+import idna, tinyext, upstream_pkg
+
+def run(ctx):
+    try:
+        socket.create_connection(("203.0.113.7", 443), timeout=2)
+        network = "open"
+    except Exception as exc:
+        network = type(exc).__name__
+    path = ctx.path("where.json")
+    path.write_text(json.dumps({
+        "python": list(sys.version_info[:2]), "prefix": sys.prefix, "idna": idna.__version__,
+        "tinyext": tinyext.KIND, "upstream": upstream_pkg.WHERE, "env": os.environ.get("ONEFRAME_TINY"),
+        "network": network,
+    }))
+    ctx.output("text", path)
+"""
+
+
+def _tiny_node(make_node: MakeNode) -> Graph:
+    make_node(
+        {
+            "id": "test.in_tiny",
+            "version": "1",
+            "title": "Runs in the tiny runtime",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
+        },
+        TINY_NODE,
+    )
+    return Graph.from_json({"version": 1, "nodes": {"n": {"node": "test.in_tiny"}}, "edges": []})
+
+
+def test_a_runtime_installs_from_its_lock_and_runs_a_node(
+    tmp_path: Path,
+    tiny: Path,
+    uv_exe: str,
+    uv_home: Path,
+    source_server: SourceServer,
+    make_node: MakeNode,
+    node_root: Path,
+) -> None:
+    archive = upstream_archive("from the pinned source")
+    source_server.files["/up.tar.gz"] = archive
+    add_source(tiny, source_server.url("/up.tar.gz"), archive)
+    data = tmp_path / "data"
+    manager = _manager(data, tiny, uv_exe, uv_home)
+    assert manager.install("tiny") is not None
+    assert (data / "runtimes" / "tiny" / "cpu" / runtime_install.MARKER).is_file()
+
+    graph = _tiny_node(make_node)
+    scheduler = Scheduler(
+        discover([node_root]),
+        Cache(data / "cache"),
+        runtime_python=manager.python_for,
+        runtime_env=manager.env_for,
+        log_dir=data / "logs",
+    )
+    events = Events()
+    result = scheduler.run(graph, events.append)
+
+    assert result.status == "done", result.error
+    seen = json.loads(result.outputs["n"]["text"].path.read_text(encoding="utf-8"))
+    assert seen["python"] == [3, 11]  # the runtime's own Python, not the engine's 3.14
+    assert Path(seen["prefix"]).resolve() == (data / "runtimes" / "tiny" / "cpu").resolve()
+    assert (seen["idna"], seen["tinyext"], seen["upstream"]) == ("3.20", "stand-in", "from the pinned source")
+    assert seen["env"] == "on"
+    assert seen["network"] == "NetworkForbidden"
+
+
+def test_a_node_whose_runtime_is_not_installed_fails_with_the_reason(
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, make_node: MakeNode, node_root: Path
+) -> None:
+    graph = _tiny_node(make_node)
+    manager = _manager(tmp_path / "data", tiny, uv_exe, uv_home)
+    scheduler = Scheduler(
+        discover([node_root]),
+        Cache(tmp_path / "cache"),
+        runtime_python=manager.python_for,
+        runtime_env=manager.env_for,
+    )
+    events = Events()
+    result = scheduler.run(graph, events.append)
+    assert result.status == "failed" and result.error is not None
+    assert (result.error["kind"], result.error["reason"]) == ("runtime", "not installed")
+    [failed] = events.of("node.failed")
+    assert failed["reason"] == "not installed"
+    assert "install its cpu build first" in failed["message"]

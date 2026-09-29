@@ -40,7 +40,7 @@ design each task follows is in [plan.md](plan.md).
         - out of date after the lock or `runtime.json` changes (AC5);
         - remove deletes only that folder (AC7).
     - `docs/runtimes.md`: builds as uv extras, extension classes, locking, sizes and hard links.
-- [ ] 6. **The scheduler.**
+- [x] 6. **The scheduler.**
     - `RuntimeMissing` moves to `runtimes.py` with its `reason`, and is re-exported from
       `scheduler.py`.
     - The `runtime_env` hook, passed on to `ProcessExecutor`; `node.failed` carries the reason.
