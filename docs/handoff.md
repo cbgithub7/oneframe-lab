@@ -71,7 +71,7 @@ hold the detail.
 
 | Spec | Status |
 | --- | --- |
-| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | approved 2026-09-29; plan and tasks drafted 2026-09-29; next: the owner approves the plan |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; in progress on `claude/sweet-davinci-ko7mlh`, following its `tasks.md` |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.

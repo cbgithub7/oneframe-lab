@@ -1,7 +1,7 @@
 # 001: Runtime manager
 
-Status: approved
-Owner approval: 2026-09-29
+Status: in progress
+Owner approval: 2026-09-29 (spec and plan)
 
 ## Problem
 

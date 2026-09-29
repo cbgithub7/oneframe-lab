@@ -1,6 +1,6 @@
 # 001: Plan
 
-Status: draft, for the owner's approval (written 2026-09-29)
+Status: approved by the owner on 2026-09-29, with the six decisions below as written
 
 The spec is [spec.md](spec.md). depth-pro-gui was read as a reference while planning; nothing in
 this plan is ported or copied from it.

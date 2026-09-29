@@ -1,6 +1,6 @@
 # 001: Tasks
 
-Status: draft, with the plan (written 2026-09-29)
+Status: in progress (plan approved 2026-09-29)
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick each one as it lands. The
 design each task follows is in [plan.md](plan.md).
