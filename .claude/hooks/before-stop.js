@@ -14,12 +14,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-const shell = process.platform === "win32";
 const MAX_BLOCKS = 3;
 
-/** @param {string} command @param {string[]} args */
+/**
+ * Run a command. On Windows only npm and .cmd shims need a shell; everything else runs directly,
+ * so a project path with spaces in it works.
+ * @param {string} command @param {string[]} args
+ */
 function run(command, args) {
-  const r = spawnSync(command, args, { cwd: ROOT, encoding: "utf8", shell, maxBuffer: 64 * 1024 * 1024 });
+  const shell = process.platform === "win32" && (command === "npm" || command.endsWith(".cmd"));
+  const quote = (/** @type {string} */ s) => (shell && /\s/.test(s) ? `"${s}"` : s);
+  const r = spawnSync(quote(command), args.map(quote), { cwd: ROOT, encoding: "utf8", shell, maxBuffer: 64 * 1024 * 1024 });
   return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

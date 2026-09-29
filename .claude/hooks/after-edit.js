@@ -10,11 +10,16 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-const shell = process.platform === "win32";
 
-/** @param {string} command @param {string[]} args */
+/**
+ * Run a command. On Windows only npm and .cmd shims need a shell; everything else runs directly,
+ * so a project path with spaces in it works.
+ * @param {string} command @param {string[]} args
+ */
 function run(command, args) {
-  const r = spawnSync(command, args, { cwd: ROOT, encoding: "utf8", shell });
+  const shell = process.platform === "win32" && (command === "npm" || command.endsWith(".cmd"));
+  const quote = (/** @type {string} */ s) => (shell && /\s/.test(s) ? `"${s}"` : s);
+  const r = spawnSync(quote(command), args.map(quote), { cwd: ROOT, encoding: "utf8", shell, maxBuffer: 64 * 1024 * 1024 });
   return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim() };
 }
 
@@ -35,7 +40,7 @@ if (rel.endsWith(".py")) {
   const check = run("uv", ["run", "--project", "engine", "--frozen", "ruff", "check", "--fix", rel]);
   if (!check.ok) problems.push(check.out);
 } else if (/\.(c|m)?js$/.test(rel)) {
-  const eslint = path.join(ROOT, "node_modules", ".bin", shell ? "eslint.cmd" : "eslint");
+  const eslint = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint");
   if (existsSync(eslint)) {
     const check = run(eslint, ["--fix", rel]);
     if (!check.ok) problems.push(check.out);
