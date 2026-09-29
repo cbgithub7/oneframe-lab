@@ -63,7 +63,7 @@ design each task follows is in [plan.md](plan.md).
     - A test that runs the bench against the tiny runtime and finds the probe's answer in the
       report.
     - The command in `AGENTS.md` and `README.md`.
-- [ ] 9. **The torch runtime.**
+- [x] 9. **The torch runtime.**
     - `runtimes/torch/`: Python 3.14, torch 2.14.0, builds `cu130`, `cu126` and `cpu`, and
       `probe.py`.
     - Driver floors from NVIDIA's CUDA release notes, with the source recorded in `runtime.json`.

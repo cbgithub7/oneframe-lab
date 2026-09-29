@@ -1,0 +1,44 @@
+# PyTorch alone, no model code: the runtime the spec 001 hardware report runs in.
+# Lock with `uv lock --project runtimes/torch` (needs download.pytorch.org and pypi.org).
+[project]
+name = "oneframe-runtime-torch"
+version = "1"
+description = "Oneframe Lab runtime: PyTorch, for the hardware report."
+requires-python = "==3.14.*"
+dependencies = []
+
+[project.optional-dependencies]
+cu130 = ["torch==2.14.0"]
+cu126 = ["torch==2.14.0"]
+cpu = ["torch==2.14.0"]
+
+[tool.uv]
+package = false
+conflicts = [[{ extra = "cu130" }, { extra = "cu126" }, { extra = "cpu" }]]
+# The app runs on Windows; Linux is CI's second system.
+environments = [
+  "sys_platform == 'win32' and platform_machine == 'AMD64'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", extra = "cu130" },
+  { index = "pytorch-cu126", extra = "cu126" },
+  { index = "pytorch-cpu", extra = "cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

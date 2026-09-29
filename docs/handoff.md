@@ -49,9 +49,10 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - the `runtimes.*` engine methods and `runtime.*` events;
     - `npm run bench:runtime`, the report a hardware claim needs.
 
-    Tested in CI with a small test runtime (`engine/tests/runtimes/tiny/`). Still to come: the
-    torch runtime, which needs `download.pytorch.org` to lock, and the owner's report from the
-    GTX 1070 (AC9).
+    Tested in CI with a small test runtime (`engine/tests/runtimes/tiny/`). The first real
+    runtime is `runtimes/torch/` (torch 2.14.0; cpu, cu126, cu130); its cpu build installed and
+    ran its probe in a cloud session. Still to come: the owner's report from the GTX 1070 (AC9).
+    Locking a runtime needs `download.pytorch.org` and `download-r2.pytorch.org` reachable.
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
     - a sandboxed page that reaches the engine through one IPC door with a method allowlist;
@@ -86,7 +87,7 @@ hold the detail.
 
 | Spec | Status |
 | --- | --- |
-| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; tasks 1 to 8 done on `claude/sweet-davinci-ko7mlh`; task 9 (the torch runtime) waits for `download.pytorch.org`; AC9 waits for the owner's report |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; tasks 1 to 9 done on `claude/sweet-davinci-ko7mlh`; AC9 waits for the owner's report from the GTX 1070 |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.

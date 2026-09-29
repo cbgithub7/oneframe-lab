@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -405,3 +406,27 @@ def test_a_definition_is_read_again_only_when_its_files_change(make_runtime: Mak
         'version = 1\nrequires-python = ">=3.12"\n', encoding="utf-8", newline="\n"
     )
     assert runtimes.load(folder / "runtime.json") is not first
+
+
+@pytest.mark.parametrize(
+    ("capability", "driver", "build"),
+    [
+        ("6.1", "560.94", "cu126"),  # the owner's GTX 1070
+        ("6.1", "582.66", "cu126"),  # a Pascal card on a new driver: CUDA 13 has no kernels for it
+        ("8.6", "560.94", "cu126"),  # a new card on a driver older than 580
+        ("8.6", "580.88", "cu130"),
+        ("12.0", "580.88", "cu130"),  # Blackwell: only the CUDA 13 build has its kernels
+        ("12.0", "560.94", "cpu"),  # ... so on an old driver it gets no GPU build, and says why
+        (None, None, "cpu"),
+    ],
+)
+def test_the_torch_runtime_follows_the_owners_rule(
+    capability: str | None, driver: str | None, build: str
+) -> None:
+    """Spec 001: cu126 below compute 7.5 or on a driver older than 580, otherwise cu130. The floor
+    is torch 2.6, and every build is locked at the same torch."""
+    torch = runtimes.discover([RUNTIMES_DIR]).runtimes["torch"]
+    assert runtimes.plan(torch, _machine(capability, driver)).build == build
+    lock = tomllib.loads(torch.lock_path.read_text(encoding="utf-8"))
+    versions = {p["version"] for p in lock["package"] if p["name"] == "torch"}
+    assert versions == {"2.14.0+cpu", "2.14.0+cu126", "2.14.0+cu130"}

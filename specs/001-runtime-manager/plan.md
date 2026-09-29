@@ -17,14 +17,19 @@ these answers; say if one should change.
    install but names no method. `run.stop` stays for graph runs.
 3. **Several GPUs.** The plan is made for the card with the most VRAM (the lowest index on a tie),
    and its reason says so. Choosing a card per node belongs to spec 002.
-    - Added while implementing, after review, for the owner to confirm: a node's child then sees
-      only that card (`CUDA_VISIBLE_DEVICES`, in PCI order), because CUDA's own first card could
-      be one the chosen build has no kernels for.
+    - Added while implementing, after review, and confirmed by the owner on 2026-09-29: a node's
+      child then sees only that card (`CUDA_VISIBLE_DEVICES`, in PCI order), because CUDA's own
+      first card could be one the chosen build has no kernels for. Spec 002, which chooses a card
+      per node, is where this pin can be lifted.
 4. **Free disk can block.** A build may state `disk_mb`. If the planned build is not installed and
    the data root has less free space than that, the plan is blocked, naming both numbers.
 5. **The AC9 runtime is `runtimes/torch/`:** Python 3.14 and torch only, with builds `cpu`,
    `cu126` and `cu130`. The latest torch is 2.14.0, released 2026-09-02, with cp314 wheels for
    Windows on PyPI.
+    - As built: torch 2.14.0 has cp314 wheels for Windows and Linux on all three indexes, so no
+      build is held back. Driver floors (580 for cu130, 525 for cu126) and capability ranges
+      (7.5 to 12.x, 5.0 to 9.x) are from NVIDIA's and PyTorch's own sources, cited in its
+      `runtime.json`. Locking also needs `download-r2.pytorch.org`, where the index's files are.
     - Locking it needs `download.pytorch.org`. This cloud environment's network policy refuses that
       host (the proxy answers 403). Either add it to the environment's allowed domains, or run
       `uv lock --project runtimes/torch` on your PC and push the lock (task 9).
