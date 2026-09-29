@@ -26,15 +26,17 @@ these answers; say if one should change.
 5. **The AC9 runtime is `runtimes/torch/`:** Python 3.14 and torch only, with builds `cpu`,
    `cu126` and `cu130`. The latest torch is 2.14.0, released 2026-09-02, with cp314 wheels for
    Windows on PyPI.
-    - As built: torch 2.14.0 has cp314 wheels for Windows and Linux on all three indexes, so no
-      build is held back. Driver floors (580 for cu130, 525 for cu126) and capability ranges
-      (7.5 to 12.x, 5.0 to 9.x) are from NVIDIA's and PyTorch's own sources, cited in its
-      `runtime.json`. Locking also needs `download-r2.pytorch.org`, where the index's files are.
     - Locking it needs `download.pytorch.org`. This cloud environment's network policy refuses that
       host (the proxy answers 403). Either add it to the environment's allowed domains, or run
       `uv lock --project runtimes/torch` on your PC and push the lock (task 9).
+      **Resolved 2026-09-29:** the owner allowed `download.pytorch.org` and
+      `download-r2.pytorch.org` (where the index's files are), and the runtime was locked here.
     - If torch 2.14.0 has no cu126 wheel for cp314 on Windows, the `cu126` extra pins the newest
       torch that has one. That exception goes in `versions.json` with the reason.
+      **Resolved:** torch 2.14.0 has cp314 wheels for Windows and Linux on all three indexes, so
+      no build is held back and there is no exception.
+    - As built: driver floors (580 for cu130, 525 for cu126) and capability ranges (7.5 to 12.x,
+      5.0 to 9.x) are from NVIDIA's and PyTorch's own sources, cited in its `runtime.json`.
 6. **The test runtime lives with the tests,** in `engine/tests/runtimes/tiny/` rather than
    `runtimes/`, so the app never lists it. It uses Python 3.11, not the engine's 3.14. That proves
    each runtime brings its own Python, and that `child.py` runs on the oldest Python a runtime is
