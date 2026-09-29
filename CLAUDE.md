@@ -7,7 +7,9 @@
       JavaScript), and remaining lint errors are reported back;
     - before a turn ends, if anything changed, `npm run check`, `npm run engine:check` and the test
       guard run, and a failure sends you back to fix it;
-    - in web sessions, the start hook installs the pinned Node, uv, engine and npm packages.
+    - in web sessions, the start hook installs the pinned Node, uv, engine and npm packages, and
+      the other two hooks put those tools first on their PATH (`.claude/hooks/pinned-tools.js`),
+      because a hook does not see the PATH the start hook set.
 - **Plan mode** for anything with a spec: explore, then present the plan, then wait.
 - **Subagents** for wide searches and research, so their reading does not fill this context.
 - **Before opening a PR,** run `/code-review` on the branch and fix what it finds.
