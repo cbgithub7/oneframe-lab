@@ -1,0 +1,17 @@
+{
+  "id": "source.image",
+  "version": "1",
+  "title": "Photo",
+  "category": "source",
+  "summary": "Brings a photo into the graph. The copy handed on is an sRGB PNG with its orientation applied; the EXIF focal length, when the camera recorded one, rides along as metadata.",
+  "inputs": {},
+  "outputs": {
+    "image": { "type": "Image[alpha=none|straight]", "trust": "measured", "doc": "The photo, upright, as PNG." }
+  },
+  "params": {
+    "path": { "type": "file", "label": "Photo", "doc": "An image file on this PC." }
+  },
+  "run": { "where": "engine", "entry": "node.py:run" },
+  "devices": ["cpu"],
+  "licence": { "code": "MIT" }
+}

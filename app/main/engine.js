@@ -1,0 +1,166 @@
+// @ts-check
+// The app's side of the engine: one long-lived Python process, NDJSON both ways.
+//
+// A request is written as one line with an id and answered by one line with the same id.
+// Everything else the engine writes is an event (run progress, node output) and is emitted as
+// `event`. Nothing here imports Electron, so it runs under plain Node in the tests.
+
+import { spawn as nodeSpawn } from "node:child_process";
+import { EventEmitter } from "node:events";
+
+/**
+ * @typedef {{ command: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv,
+ *   spawn?: typeof nodeSpawn, requestTimeoutMs?: number }} EngineOptions
+ * @typedef {{ resolve: (value: any) => void, reject: (reason: Error) => void,
+ *   timer: NodeJS.Timeout | undefined, method: string }} Pending
+ */
+
+export class EngineError extends Error {
+  /**
+   * @param {string} message
+   * @param {{ problems?: Array<{node?: string, port?: string, message: string}> }} [detail]
+   */
+  constructor(message, detail = {}) {
+    super(message);
+    this.name = "EngineError";
+    this.problems = detail.problems ?? [];
+  }
+}
+
+/** Splits a byte stream into lines, however the chunks happen to be cut. */
+export class LineSplitter {
+  constructor() {
+    this.buffer = "";
+  }
+
+  /** @param {string} chunk @returns {string[]} */
+  push(chunk) {
+    this.buffer += chunk;
+    const lines = this.buffer.split("\n");
+    this.buffer = lines.pop() ?? "";
+    return lines.map((line) => line.replace(/\r$/, "")).filter((line) => line.length > 0);
+  }
+}
+
+export class EngineClient extends EventEmitter {
+  /** @param {EngineOptions} options */
+  constructor(options) {
+    super();
+    this.options = options;
+    /** @type {import("node:child_process").ChildProcessWithoutNullStreams | null} */
+    this.child = null;
+    /** @type {Map<number, Pending>} */
+    this.pending = new Map();
+    this.nextId = 1;
+    this.ready = false;
+  }
+
+  /** Start the process. Resolves with the engine's `engine.ready` event. */
+  start() {
+    if (this.child) throw new Error("The engine is already running.");
+    const spawn = this.options.spawn ?? nodeSpawn;
+    const child = spawn(this.options.command, this.options.args, {
+      cwd: this.options.cwd,
+      env: { ...(this.options.env ?? process.env), PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    this.child = child;
+    const out = new LineSplitter();
+    const err = new LineSplitter();
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      for (const line of out.push(chunk)) this.#onLine(line);
+    });
+    child.stderr.on("data", (chunk) => {
+      for (const line of err.push(chunk)) this.emit("log", line);
+    });
+    child.on("exit", (code, signal) => this.#onExit(code, signal));
+    child.on("error", (error) => this.#onExit(null, null, error));
+    return new Promise((resolve, reject) => {
+      /** @param {any} event */
+      const onEvent = (event) => {
+        if (event.event !== "engine.ready") return;
+        this.off("event", onEvent);
+        this.off("exit", onExit);
+        this.ready = true;
+        resolve(event);
+      };
+      /** @param {{ code: number | null, error?: Error }} info */
+      const onExit = (info) => {
+        this.off("event", onEvent);
+        reject(info.error ?? new Error(`The engine exited before it was ready (code ${info.code}).`));
+      };
+      this.on("event", onEvent);
+      this.once("exit", onExit);
+    });
+  }
+
+  /**
+   * Ask the engine something. Resolves with its result or rejects with an EngineError.
+   * @param {string} method
+   * @param {Record<string, unknown>} [params]
+   * @returns {Promise<any>}
+   */
+  request(method, params = {}) {
+    const child = this.child;
+    if (!child || !this.ready) return Promise.reject(new Error("The engine is not running."));
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      const timeoutMs = this.options.requestTimeoutMs ?? 30_000;
+      const timer = timeoutMs > 0
+        ? setTimeout(() => {
+          this.pending.delete(id);
+          reject(new Error(`The engine did not answer ${method} within ${timeoutMs} ms.`));
+        }, timeoutMs)
+        : undefined;
+      this.pending.set(id, { resolve, reject, timer, method });
+      child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
+    });
+  }
+
+  /** Close stdin (the engine exits when it ends) and kill it if it has not gone in time. */
+  async stop(graceMs = 3000) {
+    const child = this.child;
+    if (!child) return;
+    const gone = new Promise((resolve) => child.once("exit", resolve));
+    child.stdin.end();
+    const timer = setTimeout(() => child.kill(), graceMs);
+    await gone;
+    clearTimeout(timer);
+  }
+
+  /** @param {string} line */
+  #onLine(line) {
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      this.emit("log", `engine wrote a line that is not JSON: ${line.slice(0, 200)}`);
+      return;
+    }
+    if (typeof message.id === "number" && this.pending.has(message.id)) {
+      const pending = /** @type {Pending} */ (this.pending.get(message.id));
+      this.pending.delete(message.id);
+      clearTimeout(pending.timer);
+      if (message.error) pending.reject(new EngineError(message.error.message, message.error));
+      else pending.resolve(message.result);
+      return;
+    }
+    this.emit("event", message);
+  }
+
+  /** @param {number | null} code @param {NodeJS.Signals | null} signal @param {Error} [error] */
+  #onExit(code, signal, error) {
+    if (!this.child) return;
+    this.child = null;
+    this.ready = false;
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(`The engine stopped while answering ${pending.method}.`));
+    }
+    this.pending.clear();
+    this.emit("exit", { code, signal, error });
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "_comment": "Pins that are deliberately not the latest release. Each needs a reason and a review_by date; an expired one fails `npm run versions`. See docs/versions.md.",
+  "exceptions": []
+}

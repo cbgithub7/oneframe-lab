@@ -1,0 +1,11 @@
+# One style for the engine and every node.
+target-version = "py314"
+line-length = 110
+extend-exclude = ["node_modules"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PTH"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[lint.isort]
+known-first-party = ["oneframe"]
