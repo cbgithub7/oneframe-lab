@@ -1,0 +1,27 @@
+# Proposes an update the week a release lands. `npm run versions` fails once a release has waited
+# 14 days without either an update or a written exception, so these pull requests get merged or
+# answered rather than left.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: uv
+    directory: "/engine"
+    schedule:
+      interval: weekly
+    groups:
+      engine:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
