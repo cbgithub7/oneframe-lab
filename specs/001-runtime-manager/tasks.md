@@ -5,7 +5,7 @@ Status: in progress (plan approved 2026-09-29)
 Each task leaves `npm run check` and `npm run engine:check` green. Tick each one as it lands. The
 design each task follows is in [plan.md](plan.md).
 
-- [ ] 1. **Machine profile.**
+- [x] 1. **Machine profile.**
     - `oneframe/hardware.py`: `profile()`, and pure parsers for nvidia-smi's CSV.
     - Fixtures in `engine/tests/fixtures/nvidia-smi/`.
     - `test_hardware.py`: one GPU, two GPUs, a driver without `compute_cap`, a driver not loaded,
