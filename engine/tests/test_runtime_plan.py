@@ -376,7 +376,5 @@ def test_too_little_free_disk_blocks_a_build_that_is_not_installed(tmp_path: Pat
     runtime = _runtime(tmp_path, builds=builds)
     short = runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000))
     assert short.blocked == "cu126 needs about 6000 MB, and the data root has 3000 MB free."
-    assert (
-        runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000), installed_build="cu126").build == "cu126"
-    )
+    assert runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000), installed={"cu126"}).build == "cu126"
     assert runtimes.plan(runtime, _machine("6.1", "560.94", disk=7000)).build == "cu126"

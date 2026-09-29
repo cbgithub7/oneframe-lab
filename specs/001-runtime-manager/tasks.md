@@ -28,7 +28,7 @@ design each task follows is in [plan.md](plan.md).
     - `oneframe/archives.py`: a download to `.part`, checked by sha256, then renamed; extraction that
       refuses members escaping by path, absolute path, symlink, hard link or drive letter.
     - `test_archives.py`. (AC8)
-- [ ] 5. **Install, status and remove.**
+- [x] 5. **Install, status and remove.**
     - `oneframe/runtime_install.py`: the eight steps and their events, and Stop killing the step's
       process tree.
     - `Runtimes` in `runtimes.py`: status from the marker, `python_for`, `env_for`, `remove`.

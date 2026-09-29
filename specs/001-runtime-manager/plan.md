@@ -187,7 +187,7 @@ nvidia-smi --query-gpu=index,name,compute_cap,memory.total,memory.free,driver_ve
 
 ### Plan
 
-`plan(runtime, profile, installed_build=None)` is pure: it reads no files and starts no processes.
+`plan(runtime, profile, installed=())` is pure: it reads no files and starts no processes.
 It works through these steps:
 
 1. **The card:** the NVIDIA GPU with the most VRAM, or none.
@@ -231,11 +231,11 @@ The steps, each announced as `runtime.step` with `index` and `total`:
 3. **`uv sync`:**
 
    ```
-   uv sync --frozen --no-config --no-dev --extra <build> --compile-bytecode --python <python> --project <definition>
+   uv sync --frozen --no-config --no-dev --managed-python --compile-bytecode --extra <build> --python <python> --project <definition>
    ```
 
-    - Environment: `UV_PROJECT_ENVIRONMENT`, `UV_CACHE_DIR` and `UV_PYTHON_INSTALL_DIR`, plus
-      `UV_PYTHON_PREFERENCE=only-managed`, so a system Python is never used.
+    - Environment: `UV_PROJECT_ENVIRONMENT`, `UV_CACHE_DIR` and `UV_PYTHON_INSTALL_DIR`; with
+      `--managed-python`, a system Python is never used.
     - uv's stderr lines are forwarded as `runtime.log` events.
     - `--no-config` keeps a person's own `uv.toml` out of the build.
     - `--compile-bytecode`: the install compiles every module once, so a node's first run does not

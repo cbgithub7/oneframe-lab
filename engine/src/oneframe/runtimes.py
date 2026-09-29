@@ -20,14 +20,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import shutil
+import threading
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from oneframe import RUNTIMES_DIR
+from oneframe import RUNTIMES_DIR, hardware, runtime_install
 
 DEFINITION = "runtime.json"
 PYPROJECT = "pyproject.toml"
@@ -508,12 +511,12 @@ def _refusal(build: Build, card: dict[str, Any] | None, profile: dict[str, Any])
     return None
 
 
-def plan(runtime: RuntimeDef, profile: dict[str, Any], installed_build: str | None = None) -> Plan:
+def plan(runtime: RuntimeDef, profile: dict[str, Any], installed: Collection[str] = ()) -> Plan:
     """The build this machine should use, or why it cannot run the runtime at all.
 
     Pure: it reads the profile and the definition, nothing else. The fastest build the machine
     supports is chosen; then the processor build, if there is one; otherwise the runtime is
-    blocked, with every build's reason. `installed_build` is the build already on disk, which needs
+    blocked, with every build's reason. `installed` are the builds already on disk, which need
     no more disk space. No card's name is read here: only its capability, memory and driver."""
     card = _card(profile)
     result = Plan(runtime=runtime.id, build=None, why="")
@@ -577,7 +580,7 @@ def plan(runtime: RuntimeDef, profile: dict[str, Any], installed_build: str | No
     free = profile.get("disk_free_mb")
     if (
         not blocker
-        and chosen.name != installed_build
+        and chosen.name not in installed
         and chosen.disk_mb
         and free is not None
         and free < chosen.disk_mb
@@ -592,3 +595,283 @@ def plan(runtime: RuntimeDef, profile: dict[str, Any], installed_build: str | No
         return result
     result.build = chosen.name
     return result
+
+
+# -- the manager: status, install, remove, and what the scheduler asks --------------------------
+
+
+class RuntimeMissing(RuntimeError):
+    """A node's runtime cannot run yet. `reason` is one of unknown, blocked, installing,
+    not installed or out of date; the message says what to do about it."""
+
+    def __init__(self, message: str, reason: str = "not installed"):
+        super().__init__(message)
+        self.reason = reason
+
+
+class InstallRefused(ValueError):
+    """An install or remove that cannot start, with the reason a person reads."""
+
+
+def find_uv(explicit: str | None = None, env: dict[str, str] | None = None) -> str | None:
+    """uv: as given, else the UV variable `uv run` sets for the engine, else ONEFRAME_UV, else PATH."""
+    source = os.environ if env is None else env
+    return explicit or source.get("UV") or source.get("ONEFRAME_UV") or shutil.which("uv")
+
+
+Emit = Callable[[dict[str, Any]], None]
+
+
+class Runtimes:
+    """Every runtime this engine knows, and its state on this machine.
+
+    Definitions are read again on every call, so a lock changed under a running engine counts at
+    once. The machine profile is read on first use and when asked to refresh. Listing and planning
+    start no process but nvidia-smi and open no connection; only install fetches anything."""
+
+    def __init__(
+        self,
+        data: Path,
+        roots: list[Path] | None = None,
+        uv: str | None = None,
+        profile: Callable[[], dict[str, Any]] | None = None,
+        uv_home: Path | None = None,
+    ):
+        self.data = data
+        self.roots = list(roots) if roots is not None else [RUNTIMES_DIR]
+        self.uv = uv
+        self.uv_home = uv_home
+        self._read_profile = profile or (lambda: hardware.profile(data))
+        self._profile: dict[str, Any] | None = None
+        self._lock = threading.Lock()
+        self._busy: tuple[str, threading.Event] | None = None
+
+    # reading
+
+    def definitions(self) -> RuntimeSet:
+        return discover(self.roots)
+
+    def profile(self, refresh: bool = False) -> dict[str, Any]:
+        if self._profile is None or refresh:
+            self._profile = self._read_profile()
+        return self._profile
+
+    def _get(self, runtime_id: str) -> RuntimeDef:
+        found = self.definitions()
+        if runtime_id not in found.runtimes:
+            problems = next(
+                (p for path, p in found.problems.items() if Path(path).parent.name == runtime_id), None
+            )
+            detail = f": {'; '.join(problems)}" if problems else ""
+            raise RuntimeMissing(f"No runtime called {runtime_id!r} is defined{detail}.", reason="unknown")
+        return found.runtimes[runtime_id]
+
+    def _markers(self, runtime: RuntimeDef) -> dict[str, dict[str, Any]]:
+        out = {}
+        for build in runtime.builds:
+            marker = runtime_install.read_marker(runtime_install.env_dir(self.data, runtime.id, build.name))
+            if marker is not None:
+                out[build.name] = marker
+        return out
+
+    def plan_for(self, runtime: RuntimeDef, refresh: bool = False) -> Plan:
+        return plan(runtime, self.profile(refresh), installed=set(self._markers(runtime)))
+
+    def installing(self) -> str | None:
+        busy = self._busy
+        return busy[0] if busy else None
+
+    def status(self, runtime: RuntimeDef, the_plan: Plan | None = None) -> dict[str, Any]:
+        """installing, installed, out of date or not installed, for the build the plan picks."""
+        the_plan = the_plan or self.plan_for(runtime)
+        markers = self._markers(runtime)
+        build = the_plan.build
+        on_disk = [
+            b.name for b in runtime.builds if runtime_install.env_dir(self.data, runtime.id, b.name).is_dir()
+        ]
+        marker = markers.get(build) if build else None
+        if self.installing() == runtime.id:
+            state = "installing"
+        elif marker is None:
+            state = "not installed"
+        elif {k: marker.get(k) for k in ("lock_sha256", "definition_sha256")} != runtime.hashes():
+            state = "out of date"
+        elif not runtime_install.interpreter(
+            runtime_install.env_dir(self.data, runtime.id, str(build))
+        ).exists():
+            state = "not installed"
+        else:
+            state = "installed"
+        return {
+            "status": state,
+            "build": build or next(iter(markers), None),
+            "size_bytes": marker.get("size_bytes") if marker else None,
+            "on_disk": on_disk,
+            "installed": {
+                name: {"python": m.get("python"), "installed_at": m.get("installed_at")}
+                for name, m in markers.items()
+            },
+        }
+
+    def list(self) -> dict[str, Any]:
+        found = self.definitions()
+        rows = []
+        for runtime in found.runtimes.values():
+            the_plan = self.plan_for(runtime)
+            rows.append(
+                {
+                    "id": runtime.id,
+                    "title": runtime.title,
+                    "summary": runtime.summary,
+                    "python": runtime.python,
+                    **self.status(runtime, the_plan),
+                    "plan": the_plan.to_json(),
+                }
+            )
+        return {"runtimes": rows, "problems": found.problems, "profile": self.profile_summary()}
+
+    def profile_summary(self) -> dict[str, Any]:
+        return {k: v for k, v in self.profile().items() if k != "raw"}
+
+    def plans(self, runtime_id: str | None = None, refresh: bool = False) -> dict[str, Any]:
+        self.profile(refresh)
+        found = self.definitions()
+        chosen = [self._get(runtime_id)] if runtime_id else list(found.runtimes.values())
+        return {"plans": [self.plan_for(r).to_json() for r in chosen], "profile": self.profile_summary()}
+
+    # what the scheduler asks
+
+    def python_for(self, runtime_id: str) -> Path:
+        """The interpreter of the build this machine runs, or RuntimeMissing saying why not."""
+        runtime = self._get(runtime_id)
+        the_plan = self.plan_for(runtime)
+        if the_plan.blocked:
+            raise RuntimeMissing(
+                f"The runtime {runtime_id!r} cannot run here: {the_plan.blocked}", reason="blocked"
+            )
+        state = self.status(runtime, the_plan)["status"]
+        if state == "installing":
+            raise RuntimeMissing(
+                f"The runtime {runtime_id!r} is being installed; run again when it is done.", "installing"
+            )
+        if state == "out of date":
+            raise RuntimeMissing(
+                f"The runtime {runtime_id!r} is out of date: its lock or definition changed since it "
+                "was installed. Install it again to rebuild it.",
+                reason="out of date",
+            )
+        if state != "installed":
+            raise RuntimeMissing(
+                f"The runtime {runtime_id!r} is not installed; install its {the_plan.build} build first.",
+                reason="not installed",
+            )
+        return runtime_install.interpreter(
+            runtime_install.env_dir(self.data, runtime.id, str(the_plan.build))
+        )
+
+    def env_for(self, runtime_id: str) -> dict[str, str]:
+        return dict(self._get(runtime_id).env)
+
+    # changing
+
+    def begin_install(
+        self, runtime_id: str, build: str | None = None
+    ) -> tuple[RuntimeDef, str, threading.Event] | None:
+        """Check an install can start and claim the one install slot. None: already installed."""
+        runtime = self._get(runtime_id)
+        the_plan = self.plan_for(runtime)
+        if the_plan.blocked:
+            raise InstallRefused(the_plan.blocked)
+        planned = str(the_plan.build)
+        if build is not None and build != planned:
+            if runtime.build(build) is None:
+                raise InstallRefused(f"The runtime {runtime_id!r} has no build called {build!r}.")
+            why = next((r["why"] for r in the_plan.considered if r["build"] == build), "")
+            raise InstallRefused(
+                f"This machine runs the {planned} build of {runtime_id!r}; "
+                f"only the planned build is installed. {why}".strip()
+            )
+        if not uv_available(self.uv):
+            raise InstallRefused("uv was not found. Install uv, or set ONEFRAME_UV to its path.")
+        with self._lock:
+            if self._busy is not None:
+                raise InstallRefused(
+                    f"{self._busy[0]} is being installed; runtimes are installed one at a time."
+                )
+            if self.status(runtime, the_plan)["status"] == "installed":
+                return None
+            stop = threading.Event()
+            self._busy = (runtime_id, stop)
+        return runtime, planned, stop
+
+    def run_install(
+        self,
+        runtime: RuntimeDef,
+        build: str,
+        stop: threading.Event,
+        emit: Emit,
+        opener: Callable[..., Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Carry out a claimed install, reporting it as runtime.* events. Returns the result, or
+        None when it stopped or failed (the events say which)."""
+        base = {"runtime": runtime.id, "build": build}
+        emit({**base, "event": "runtime.start"})
+        extra: dict[str, Any] = {"opener": opener} if opener is not None else {}
+        try:
+            done = runtime_install.install(
+                runtime, build, self.data, str(self.uv), emit, stop.is_set, self.uv_home, **extra
+            )
+        except runtime_install.InstallStopped:
+            emit(
+                {
+                    **base,
+                    "event": "runtime.stopped",
+                    "message": "Install stopped. Installing again picks up where it was.",
+                }
+            )
+            return None
+        except runtime_install.InstallFailed as exc:
+            emit({**base, "event": "runtime.failed", "message": str(exc), "detail": exc.detail})
+            return None
+        except Exception as exc:
+            emit({**base, "event": "runtime.failed", "message": f"{type(exc).__name__}: {exc}", "detail": ""})
+            raise
+        finally:
+            with self._lock:
+                self._busy = None
+        emit({**base, "event": "runtime.done", **done})
+        return done
+
+    def install(
+        self, runtime_id: str, build: str | None = None, emit: Emit = lambda _e: None
+    ) -> dict[str, Any] | None:
+        """Install and wait: begin_install, then run_install on this thread."""
+        claimed = self.begin_install(runtime_id, build)
+        if claimed is None:
+            return {"runtime": runtime_id, "already": True}
+        return self.run_install(*claimed, emit=emit)
+
+    def stop(self, runtime_id: str) -> bool:
+        busy = self._busy
+        if busy is None or busy[0] != runtime_id:
+            return False
+        busy[1].set()
+        return True
+
+    def remove(self, runtime_id: str) -> dict[str, Any]:
+        """Delete `<data>/runtimes/<id>/`, and nothing else."""
+        self._get(runtime_id)
+        if self.installing() == runtime_id:
+            raise InstallRefused(f"{runtime_id} is being installed; stop the install before removing it.")
+        root = (self.data / "runtimes").resolve()
+        target = runtime_install.runtime_dir(self.data, runtime_id)
+        if not target.exists():
+            return {"runtime": runtime_id, "removed": None}
+        if target.is_symlink() or target.resolve().parent != root or target.name != runtime_id:
+            raise InstallRefused(f"Refusing to delete {target}: it is not a runtime folder in {root}.")
+        runtime_install.remove_tree(target)
+        return {"runtime": runtime_id, "removed": str(target)}
+
+
+def uv_available(uv: str | None) -> bool:
+    return bool(uv) and (Path(str(uv)).is_file() or shutil.which(str(uv)) is not None)

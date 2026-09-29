@@ -109,6 +109,39 @@ runtimes that are fine:
   (CVE-2025-32434), so a lock that holds one is refused;
 - each extension, source and variable is well formed.
 
+## Locking
+
+```
+uv lock --project runtimes/<id>
+```
+
+Commit `uv.lock` with the change that needed it. A GPU build's index must be reachable when
+locking; installing needs only what the lock names.
+
+## On this machine
+
+Nothing is installed until a person asks. The engine picks the build this machine runs (see
+[architecture.md](architecture.md)); installing it builds, under the data root:
+
+```
+<data>/runtimes/<id>/<build>/                         the environment
+<data>/runtimes/<id>/<build>/src/<name>/              the pinned sources
+<data>/runtimes/<id>/<build>/stand-ins/               the stand-ins
+<data>/runtimes/<id>/<build>/oneframe-runtime.json    the marker, written last
+<data>/runtimes/<id>/downloads/                       source archives, by sha256
+<data>/uv/cache/, <data>/uv/python/                   uv's cache and the Pythons it fetched
+```
+
+- **The marker** holds the hashes of `uv.lock` and `runtime.json` the environment was built from,
+  and a freeze of what arrived. Until it is written, the runtime is not installed: an install that
+  stopped, failed or was killed is resumed by installing again.
+- **Out of date:** when `uv.lock` or `runtime.json` changes, the runtime is out of date. Nodes
+  refuse to run in it, and installing again rebuilds it; nothing rebuilds on its own.
+- **Removing** a runtime deletes `<data>/runtimes/<id>/` and nothing else.
+- **Sizes:** uv links files from its cache into environments on the same volume instead of copying
+  them, which is why the cache lives under the data root too. A runtime's size is the size of its
+  folder, so files it shares with the cache are counted there and in the cache.
+
 ## Versions
 
 A runtime uses the newest Python and torch its packages support ([versions.md](versions.md)). A
