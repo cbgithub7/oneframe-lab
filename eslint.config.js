@@ -13,7 +13,7 @@ export default [
       "prefer-const": "error",
     },
   },
-  { files: ["app/main/**/*.js", "scripts/**/*.js", "tests/**/*.js", "eslint.config.js"], languageOptions: { globals: globals.node } },
+  { files: ["app/main/**/*.js", "scripts/**/*.js", "tests/**/*.js", ".claude/hooks/**/*.js", "eslint.config.js"], languageOptions: { globals: globals.node } },
   { files: ["app/preload/**/*.cjs"], languageOptions: { sourceType: "commonjs", globals: globals.node } },
   { files: ["app/renderer/**/*.js"], languageOptions: { globals: globals.browser } },
 ];

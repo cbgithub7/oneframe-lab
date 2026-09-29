@@ -19,6 +19,8 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the test guard compares with the base branch
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
@@ -32,8 +34,10 @@ jobs:
         run: npm run engine:check
       - name: App dependencies (exactly package-lock.json)
         run: npm ci
-      - name: App checks (eslint, tsc, node --test)
+      - name: App checks (eslint, tsc, node --test, docs)
         run: npm run check
+      - name: No test removed without a reason in a spec
+        run: node scripts/test-guard.js --base origin/${{ github.base_ref || 'main' }}
 
   versions:
     name: versions are current

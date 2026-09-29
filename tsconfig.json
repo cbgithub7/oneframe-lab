@@ -3,8 +3,14 @@
     "target": "ES2024",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "types": ["node"],
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
@@ -13,5 +19,13 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true
   },
-  "include": ["app/**/*.js", "app/**/*.cjs", "app/**/*.d.ts", "scripts/**/*.js", "tests/app/**/*.js", "eslint.config.js"]
+  "include": [
+    "app/**/*.js",
+    "app/**/*.cjs",
+    "app/**/*.d.ts",
+    "scripts/**/*.js",
+    "tests/app/**/*.js",
+    "eslint.config.js",
+    ".claude/hooks/**/*.js"
+  ]
 }
