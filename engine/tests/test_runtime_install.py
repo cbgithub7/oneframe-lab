@@ -90,7 +90,7 @@ def test_a_runtime_installs_under_the_data_root_from_its_lock(
     assert marker["build"] == "cpu" and marker["python"].startswith("3.11.")
     assert "idna==3.20" in marker["freeze"]
     assert marker["stand_ins"] == ["tinyext"] and marker["left_out"] == ["fastpath"]
-    assert {k: marker[k] for k in ("lock_sha256", "definition_sha256")} == manager._get("tiny").hashes()
+    assert {k: marker[k] for k in ("lock_sha256", "definition_sha256")} == manager.get("tiny").hashes()
 
     # nothing is written into the definition, and everything else stays under the data root
     assert sorted(p.name for p in tiny.iterdir()) == sorted(p.name for p in TINY_RUNTIME.iterdir())

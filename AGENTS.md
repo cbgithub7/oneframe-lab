@@ -53,5 +53,7 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   the docs check (every repo path the docs name exists)
 - `npm run engine:check`: ruff, ruff format, pyright, pytest
 - `npm run versions`: version policy
+- `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
+  did (the numbers a hardware claim needs)
 - `node scripts/test-guard.js`: no test removed without a listed reason
 - `npm start`: the app (needs `npm run engine:sync` once)

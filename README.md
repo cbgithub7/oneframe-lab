@@ -54,6 +54,9 @@ npm run engine:check   # ruff, pyright, pytest
 npm run versions       # every pin against its latest release
 ```
 
+A hardware claim needs numbers: `npm run bench:runtime -- <id>` installs a runtime on this machine
+and writes a report of what it did.
+
 ## Documents
 
 - [AGENTS.md](AGENTS.md): the rules and the way work is done, for people and agents

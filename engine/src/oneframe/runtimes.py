@@ -637,8 +637,10 @@ class Runtimes:
         profile: Callable[[], dict[str, Any]] | None = None,
         uv_home: Path | None = None,
     ):
-        self.data = data
-        self.roots = list(roots) if roots is not None else [RUNTIMES_DIR]
+        # Absolute, because a runtime's child runs in a folder of its own: a relative path to the
+        # probe or the interpreter would point somewhere else from there.
+        self.data = Path(data).resolve()
+        self.roots = [Path(r).resolve() for r in roots] if roots is not None else [RUNTIMES_DIR]
         self.uv = uv
         self.uv_home = uv_home
         self._read_profile = profile or (lambda: hardware.profile(data))
@@ -656,7 +658,7 @@ class Runtimes:
             self._profile = self._read_profile()
         return self._profile
 
-    def _get(self, runtime_id: str) -> RuntimeDef:
+    def get(self, runtime_id: str) -> RuntimeDef:
         found = self.definitions()
         if runtime_id not in found.runtimes:
             problems = next(
@@ -736,14 +738,14 @@ class Runtimes:
     def plans(self, runtime_id: str | None = None, refresh: bool = False) -> dict[str, Any]:
         self.profile(refresh)
         found = self.definitions()
-        chosen = [self._get(runtime_id)] if runtime_id else list(found.runtimes.values())
+        chosen = [self.get(runtime_id)] if runtime_id else list(found.runtimes.values())
         return {"plans": [self.plan_for(r).to_json() for r in chosen], "profile": self.profile_summary()}
 
     # what the scheduler asks
 
     def python_for(self, runtime_id: str) -> Path:
         """The interpreter of the build this machine runs, or RuntimeMissing saying why not."""
-        runtime = self._get(runtime_id)
+        runtime = self.get(runtime_id)
         the_plan = self.plan_for(runtime)
         if the_plan.blocked:
             raise RuntimeMissing(
@@ -770,7 +772,7 @@ class Runtimes:
         )
 
     def env_for(self, runtime_id: str) -> dict[str, str]:
-        return dict(self._get(runtime_id).env)
+        return dict(self.get(runtime_id).env)
 
     # changing
 
@@ -778,7 +780,7 @@ class Runtimes:
         self, runtime_id: str, build: str | None = None
     ) -> tuple[RuntimeDef, str, threading.Event] | None:
         """Check an install can start and claim the one install slot. None: already installed."""
-        runtime = self._get(runtime_id)
+        runtime = self.get(runtime_id)
         the_plan = self.plan_for(runtime)
         if the_plan.blocked:
             raise InstallRefused(the_plan.blocked)
@@ -860,7 +862,7 @@ class Runtimes:
 
     def remove(self, runtime_id: str) -> dict[str, Any]:
         """Delete `<data>/runtimes/<id>/`, and nothing else."""
-        self._get(runtime_id)
+        self.get(runtime_id)
         if self.installing() == runtime_id:
             raise InstallRefused(f"{runtime_id} is being installed; stop the install before removing it.")
         root = (self.data / "runtimes").resolve()

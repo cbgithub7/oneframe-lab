@@ -57,7 +57,7 @@ design each task follows is in [plan.md](plan.md).
         - Stop, and a second install refused while one runs;
         - list and plan with sockets blocked and process starts watched (AC6).
     - The `runtime.*` events in `docs/architecture.md`.
-- [ ] 8. **The report.**
+- [x] 8. **The report.**
     - `oneframe/bench_runtime.py` and the `bench:runtime` script in `package.json`.
     - The tiny runtime's `probe.py`.
     - A test that runs the bench against the tiny runtime and finds the probe's answer in the
