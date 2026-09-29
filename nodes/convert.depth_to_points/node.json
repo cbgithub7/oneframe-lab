@@ -1,0 +1,18 @@
+{
+  "id": "convert.depth_to_points",
+  "version": "1",
+  "title": "Depth to point map",
+  "category": "convert",
+  "summary": "Unprojects metric z-depth through a pinhole camera into a camera-frame point map (OpenCV axes).",
+  "inputs": {
+    "depth": "Depth[kind=metric, measure=z]",
+    "camera": "Camera[model=pinhole]"
+  },
+  "outputs": {
+    "points": "PointMap[frame=camera, scale=metric]"
+  },
+  "params": {},
+  "run": { "where": "engine", "entry": "node.py:run" },
+  "devices": ["cpu"],
+  "licence": { "code": "MIT" }
+}

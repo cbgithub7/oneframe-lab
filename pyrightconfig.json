@@ -1,0 +1,12 @@
+{
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "standard",
+  "venvPath": "engine",
+  "venv": ".venv",
+  "include": ["engine/src", "engine/tests", "nodes"],
+  "executionEnvironments": [
+    { "root": "engine/tests", "extraPaths": ["engine/tests", "engine/src"] },
+    { "root": "engine/src" },
+    { "root": "nodes" }
+  ]
+}

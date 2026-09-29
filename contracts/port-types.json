@@ -1,0 +1,92 @@
+{
+  "_comment": "The kinds of data that flow between nodes. A port is a type plus facets; an edge is legal when the producer's facets satisfy every facet the consumer names. Facets are what make two outputs that look alike (a depth map is a depth map) actually interchangeable -- or not: disparity never flows silently into a metric port. Every value also carries its source image id, so outputs from the same photo can be aligned. Engine and app both read this file; nothing retypes it.",
+  "version": 1,
+  "types": {
+    "Image": {
+      "doc": "A photo or a rendered or synthesised picture. sRGB, 8-bit.",
+      "carrier": "png",
+      "facets": { "alpha": ["none", "straight"] }
+    },
+    "Mask": {
+      "doc": "Per-pixel selection, aligned to a source image.",
+      "carrier": "png",
+      "facets": { "kind": ["binary", "soft"], "marks": ["object", "valid", "sky", "any"] }
+    },
+    "Depth": {
+      "doc": "Per-pixel depth. kind says what the numbers mean; measure says along which direction.",
+      "carrier": "npz",
+      "facets": {
+        "kind": ["metric", "scale_invariant", "affine_invariant", "affine_invariant_disparity"],
+        "measure": ["z", "range"]
+      }
+    },
+    "PointMap": {
+      "doc": "Per-pixel 3D points, H x W x 3, in OpenCV axes (x right, y down, z forward) for the camera frame.",
+      "carrier": "npz",
+      "facets": { "frame": ["camera", "world"], "scale": ["metric", "up_to_scale"] }
+    },
+    "Camera": {
+      "doc": "Intrinsics for one image, and optionally a pose (world_from_camera, OpenCV axes).",
+      "carrier": "json",
+      "facets": {
+        "model": ["pinhole", "fisheye624", "opencv_fisheye", "mei", "equirect"],
+        "source": ["given", "exif", "estimated"]
+      }
+    },
+    "Normals": {
+      "doc": "Per-pixel unit normals. The frame is never implicit.",
+      "carrier": "npz",
+      "facets": { "frame": ["camera_opencv", "camera_opengl", "world"] }
+    },
+    "Confidence": {
+      "doc": "Per-pixel confidence. What the numbers mean differs by model, so it is stated.",
+      "carrier": "npz",
+      "facets": { "semantics": ["prob01", "logit", "inv_variance", "unbounded"] }
+    },
+    "Mesh": {
+      "doc": "A triangle or quad mesh, GLB on disk.",
+      "carrier": "glb",
+      "facets": { "pose": ["canonical", "posed"], "appearance": ["textured", "vertex_color", "none"] }
+    },
+    "GaussianSplat": {
+      "doc": "3D Gaussians, Inria-layout float32 PLY on disk (raw values: log scales, logit opacity, wxyz rotations).",
+      "carrier": "ply",
+      "facets": { "pose": ["canonical", "posed"] }
+    },
+    "Pose": {
+      "doc": "Rotation, translation and scale placing one asset in a scene frame.",
+      "carrier": "json",
+      "facets": {}
+    },
+    "CameraPath": {
+      "doc": "Cameras over time, for rendering and view synthesis.",
+      "carrier": "json",
+      "facets": {}
+    },
+    "ViewSet": {
+      "doc": "Several views of one subject, each with a Camera and provenance (which model made it, with what seed).",
+      "carrier": "folder",
+      "facets": { "origin": ["captured", "rendered", "synthetic"], "posed": ["yes", "no"] }
+    },
+    "Clicks": {
+      "doc": "Points and boxes a person placed on an image, in pixels, with positive or negative labels.",
+      "carrier": "json",
+      "facets": {}
+    },
+    "Text": {
+      "doc": "A text prompt.",
+      "carrier": "json",
+      "facets": {}
+    },
+    "Scene": {
+      "doc": "A set of posed assets and a background, from one source photo.",
+      "carrier": "json",
+      "facets": {}
+    },
+    "Metric": {
+      "doc": "Numbers an evaluation node measured, with their names and units.",
+      "carrier": "json",
+      "facets": {}
+    }
+  }
+}
