@@ -2,15 +2,8 @@
 
 Status: draft, for the owner's approval (written 2026-09-29)
 
-The spec is [spec.md](spec.md). Ported from depth-pro-gui's `python/objects/runtime.py`:
-
-- choosing a build by compute capability, never by GPU name;
-- the step runner that Stop can kill;
-- the sha256-checked fetch;
-- the freeze recorded in the marker.
-
-From its `manage.py`: one install at a time, and the path checks before a folder is deleted. WSL,
-the "backend" naming and `generators.json`'s schema stay behind.
+The spec is [spec.md](spec.md). depth-pro-gui was read as a reference while planning; nothing in
+this plan is ported or copied from it.
 
 ## Decisions for the owner
 
@@ -245,8 +238,8 @@ The steps, each announced as `runtime.step` with `index` and `total`:
       `UV_PYTHON_PREFERENCE=only-managed`, so a system Python is never used.
     - uv's stderr lines are forwarded as `runtime.log` events.
     - `--no-config` keeps a person's own `uv.toml` out of the build.
-    - `--compile-bytecode`: in depth-pro-gui, the first render after a plain install took 101.6 s,
-      against 24 s warm.
+    - `--compile-bytecode`: the install compiles every module once, so a node's first run does not
+      pay for it.
     - Resuming: `uv sync` over a half-built folder finishes it, which is what makes an install
       resumable. A folder uv cannot use is started again.
 4. **Sources.**
@@ -275,7 +268,7 @@ The steps, each announced as `runtime.step` with `index` and `total`:
 - The download loop checks the flag between chunks.
 - The marker is never written.
 
-**Limits.** One install runs at a time, engine-wide, like depth-pro-gui's store. These are refused:
+**Limits.** One install runs at a time, engine-wide. These are refused:
 
 - installing or removing a runtime that the running graph uses;
 - removing the runtime that is being installed.
@@ -370,8 +363,8 @@ Nothing in the engine imports torch. The probe runs only inside the runtime. The
 - **The integration tests need the network:** PyPI, and GitHub for uv's Python 3.11 download. CI
   has both. Offline, these tests fail with the download error rather than skipping, so a skipped
   test never passes for a real one.
-- **PyTorch stops publishing cu126.** depth-pro-gui's notes say this happens from 2.15. The `cu126`
-  extra has its own torch pin in the same lock, so it can stay behind while `cu130` moves on.
+- **PyTorch stops publishing cu126** for a later release. The `cu126` extra has its own torch pin
+  in the same lock, so it can stay behind while `cu130` moves on.
   `npm run versions` does not read runtime locks yet (see below).
 - **GitHub's archive downloads are not promised to be byte-stable.** A changed archive fails its
   sha256 check, and the install is refused with both hashes named (AC8). The fix is a new pin in

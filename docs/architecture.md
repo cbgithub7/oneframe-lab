@@ -69,7 +69,7 @@ installed), `contract` (a node broke its manifest), `node` (the node explained),
 ## What comes next
 
 1. Runtime manager: uv environments per node family from lock files, torch chosen by compute
-   capability and driver (carried over from depth-pro-gui's `objects/runtime.py`).
+   capability and driver.
 2. Model store: Download for a node's weights, into the data root.
 3. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
    and a reconstructor, enough for both loops.

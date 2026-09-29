@@ -21,8 +21,9 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
 - **Versions.** The latest stable release everywhere, with exact pins. An exception goes in
   `versions.json` with a reason and a review date ([versions.md](versions.md)). Check the
   latest release before adding any dependency.
-- **The old app is a pathfinder, not a baseline.** `cbgithub7/depth-pro-gui` is where proven
-  code comes from; nothing has to match its outputs. Attach it read-only when porting.
+- **A separate project.** `cbgithub7/depth-pro-gui`, the owner's earlier app, may be read as a
+  reference for what it learned. Nothing is ported or copied from it, and nothing here has to
+  match it.
 - **Honesty.** Nothing is called tested or working without numbers from a real run. The cloud
   container has no GPU and cannot reach Hugging Face; real model runs happen on the owner's PC.
   The owner's test machine is a GTX 1070 (8 GB, compute 6.1). It is one test machine, not the
@@ -37,7 +38,7 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - port types with facets, manifests and the registry;
     - graph planning with automatic converters;
     - the content-addressed cache and the scheduler, with trust carried through;
-    - engine and runtime-child executors; the child protocol is ported from depth-pro-gui;
+    - engine and runtime-child executors, and the child protocol;
     - the NDJSON stdio server.
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
@@ -66,7 +67,7 @@ Not started: runtime manager, model store, any model node, workspace UI, viewer,
 
 Each step becomes a spec in `specs/` ([specs/README.md](../specs/README.md)): spec, owner
 approval, plan, owner approval, tasks, implementation, PR. The list below is the order; the specs
-hold the detail. Where code is ported, the paths are on depth-pro-gui's `main`.
+hold the detail.
 
 | Spec | Status |
 | --- | --- |
@@ -79,19 +80,15 @@ hold the detail. Where code is ported, the paths are on depth-pro-gui's `main`.
     - Compiled extensions are classed as stand-in, optional or required.
     - The environment is rebuilt only when its lock file changes.
 
-    Port from `python/objects/runtime.py`, `manage.py` and `wsl.py`, and the backend data in
-    `shared/contracts/generators.json`. The scheduler's `runtime_python` hook is where it plugs
-    in.
+    The scheduler's `runtime_python` hook is where it plugs in.
 2. **Attempt ladder.**
     - Manifests gain `arrangements`: device, precision and settings, each with a published VRAM
       figure and its source, best quality first.
     - The scheduler walks them on `oom` under an allocator ceiling.
     - Observations per machine re-order them.
-
-    Port `plan()`, `ceiling_mb` and `run_plan` from `python/objects/__init__.py` and `runner.py`.
 3. **Model store.** Download for a node's weights and companion files, into
-   `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Port from
-   `electron/modelstore.js`. Pin every repository revision.
+   `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Pin every
+   repository revision.
 4. **First model nodes,** enough for both loops:
     - depth: Depth Pro and MoGe-2;
     - segmentation: SAM 2.1;
@@ -111,16 +108,3 @@ hold the detail. Where code is ported, the paths are on depth-pro-gui's `main`.
     - a first-run wizard with preflight checks;
     - a two-tier uninstaller;
     - signing, electron-updater, and a diagnostics bundle.
-
-## Porting notes from depth-pro-gui
-
-| Old path | What to take | What to leave |
-| --- | --- | --- |
-| `python/objects/runtime.py`, `manage.py`, `wsl.py` | uv venv building, torch choice, prebuilt wheels with sha256, resumable install steps, WSL placement | "backend" naming; `.pth` source injection unless a family needs it |
-| `python/objects/__init__.py` (`plan`), `runner.py` (`run_plan`) | The attempt ladder, the ceiling, and skipping rungs that failed before | The generator-only job shape (`image`, `output`, `weights`) |
-| `python/objects/adapters/*.py` | Model loading details per family (TripoSR, SF3D, SPAR3D, Hunyuan3D, TripoSG, TRELLIS) | The Context API; rewrite them against `NodeContext` |
-| `shared/contracts/generators.json` | Pinned commits, requirements, companions, published VRAM figures and sources | The schema; move the data into node manifests and runtime lock files |
-| `electron/modelstore.js`, `electron/hwstore.js` | Resumable downloads, snapshot layout, fingerprinted observations | The painter and product specifics |
-| `python/detach/{find,place,glb,sam}.py` | Object finding, placement maths, GLB reading | The Fast-render callback shape; these become nodes |
-| `python/layered3d.py`, `python/bilateral.py` | The layered-mesh and bilateral-filter maths, for a 2.5D scene node | The dependency on 3d-photo-inpainting |
-| `depth-pro-gui/docs/object-generators.md` | The requirements research per model | |

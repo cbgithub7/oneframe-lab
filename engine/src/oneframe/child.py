@@ -7,8 +7,8 @@ nothing of the engine is installed. This file is therefore standard library only
 by path. The engine imports the same file for nodes it runs in its own process, so a node's code
 sees one `NodeContext` wherever it runs.
 
-Carried over from the depth-pro-gui object generators, where each of these was learned the hard
-way. Before any node code is imported:
+Each of these guards against something model code does. All of them are in place before any node
+code is imported:
 
 - **The protocol gets its own descriptor.** Model code prints freely -- timers, tqdm, C extensions
   writing straight to fd 1. The NDJSON channel is a duplicate of stdout taken first; fd 1 itself
