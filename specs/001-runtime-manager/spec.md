@@ -1,7 +1,7 @@
 # 001: Runtime manager
 
-Status: draft
-Owner approval: (pending)
+Status: approved
+Owner approval: 2026-09-29
 
 ## Problem
 
@@ -94,14 +94,13 @@ records or removes these environments. Until something does, no model node can r
 - AMD and Intel builds: the plan format allows them, but none ships now.
 - Bundling uv with an installer (the packaging spec).
 
-## Open questions
+## Decisions
 
-1. **One lock with build extras, or one lock per build?** Recommended: one lock with extras.
-   uv's documented way to offer several PyTorch builds keeps one resolution for everything
-   except torch.
-2. **Where runtime definitions live:** a top-level `runtimes/` folder shared by node families,
-   or inside each node's folder? Recommended: top-level. Several nodes (Depth Pro, MoGe,
-   UniDepth) can share one torch runtime.
-3. **Compiled extensions that need a compiler (Visual Studio Build Tools):** block the runtime
-   with the reason, or offer to build when the tools are present? Recommended: block with the
-   reason now, and add prebuilt wheels per runtime when a chosen node needs one.
+Answered by the owner on 2026-09-29, when the spec was approved:
+
+1. **Locks:** one `uv.lock` per runtime, with one build option (uv extra) per torch build:
+   `cpu`, `cu126` and `cu130`.
+2. **Where runtimes live:** a top-level `runtimes/` folder, shared by node families.
+3. **Extensions that need a compiler:** the runtime is blocked on this machine, with a reason that
+   names the extension and what it needs. Prebuilt wheels are added per runtime later, when a
+   chosen node needs one.
