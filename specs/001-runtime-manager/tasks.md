@@ -76,7 +76,7 @@ design each task follows is in [plan.md](plan.md).
 
     Lands only with its lock, because the definition check needs it. Tasks 8 and 10 do not wait
     for it.
-- [ ] 10. **Wrap-up.**
+- [x] 10. **Wrap-up.**
     - `docs/handoff.md`: the state, the spec's status, and the follow-up to make `npm run versions`
       read runtime locks.
     - Run `/code-review` on the branch and fix what it finds.

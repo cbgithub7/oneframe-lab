@@ -87,7 +87,7 @@ hold the detail.
 
 | Spec | Status |
 | --- | --- |
-| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; tasks 1 to 9 done on `claude/sweet-davinci-ko7mlh`; AC9 waits for the owner's report from the GTX 1070 |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; tasks 1 to 10 done, in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3); AC9 waits for the owner's report from the GTX 1070 |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
