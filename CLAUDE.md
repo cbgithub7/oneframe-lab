@@ -1,8 +1,11 @@
 # Oneframe Lab
 
 A local, single-photo 3D playground: Electron shell, a Python 3.14 engine run by uv, and nodes
-(model adapters) declared by manifests. Read [docs/architecture.md](docs/architecture.md) before
-changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a node.
+(model adapters) declared by manifests.
+
+**Start here:** [docs/handoff.md](docs/handoff.md) says what is done, what was decided, and what
+comes next. Read [docs/architecture.md](docs/architecture.md) before changing anything
+structural, and [docs/nodes.md](docs/nodes.md) before adding a node.
 
 ## Rules
 

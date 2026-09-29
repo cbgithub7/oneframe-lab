@@ -55,6 +55,7 @@ npm run versions       # every pin against its latest release
 
 ## Documents
 
+- [docs/handoff.md](docs/handoff.md): what is done, what was decided, what comes next
 - [docs/architecture.md](docs/architecture.md): how the parts fit, and the rules that keep them apart
 - [docs/nodes.md](docs/nodes.md): writing a node
 - [docs/versions.md](docs/versions.md): the version policy
