@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@types/node": "24.19.0",
+    "@types/node": "26.6.3",
     "electron": "44.4.5",
     "eslint": "10.11.0",
     "globals": "17.12.0",
