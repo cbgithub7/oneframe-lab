@@ -70,7 +70,7 @@ hold the detail. Where code is ported, the paths are on depth-pro-gui's `main`.
 
 | Spec | Status |
 | --- | --- |
-| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | approved 2026-09-29; next: plan.md for the owner to approve |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | approved 2026-09-29; plan and tasks drafted 2026-09-29; next: the owner approves the plan |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
