@@ -135,8 +135,11 @@ Nothing is installed until a person asks. The engine picks the build this machin
 - **The marker** holds the hashes of `uv.lock` and `runtime.json` the environment was built from,
   and a freeze of what arrived. Until it is written, the runtime is not installed: an install that
   stopped, failed or was killed is resumed by installing again.
-- **Out of date:** when `uv.lock` or `runtime.json` changes, the runtime is out of date. Nodes
-  refuse to run in it, and installing again rebuilds it; nothing rebuilds on its own.
+- **Out of date:** when `uv.lock`, `runtime.json` or a stand-in changes, the runtime is out of
+  date. Nodes refuse to run in it, and installing again rebuilds it; nothing rebuilds on its own.
+- **Several cards:** the build is planned for the NVIDIA card with the most memory, and a node's
+  child sees only that card (`CUDA_DEVICE_ORDER=PCI_BUS_ID`, `CUDA_VISIBLE_DEVICES`), so its
+  `cuda` is the card the build was chosen for.
 - **Removing** a runtime deletes `<data>/runtimes/<id>/` and nothing else.
 - **Sizes:** uv links files from its cache into environments on the same volume instead of copying
   them, which is why the cache lives under the data root too. A runtime's size is the size of its

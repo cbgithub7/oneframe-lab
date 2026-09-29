@@ -46,7 +46,7 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
             "out_dir": out,
             "device": "cuda" if build is not None and build.vendor == "nvidia" else "cpu",
         }
-        executor = ProcessExecutor(python, env=dict(runtime.env), log_dir=manager.data / "logs")
+        executor = ProcessExecutor(python, env=manager.env_for(runtime_id), log_dir=manager.data / "logs")
         try:
             done = executor.execute(job, lambda _e: None, lambda: False)
         except NodeError as exc:
@@ -107,7 +107,14 @@ def bench(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
 
 
 def _mb(size: Any) -> str:
-    return f"{size / 1e6:,.0f} MB" if isinstance(size, int | float) else "unknown"
+    """Bytes as MB, or "unknown": a report never turns a missing number into zero."""
+    return (
+        f"{size / 1e6:,.0f} MB" if isinstance(size, int | float) and not isinstance(size, bool) else "unknown"
+    )
+
+
+def _from_mb(size: Any) -> str:
+    return _mb(size * 1e6) if isinstance(size, int | float) and not isinstance(size, bool) else "unknown"
 
 
 def render(record: dict[str, Any]) -> str:
@@ -125,13 +132,13 @@ def render(record: dict[str, Any]) -> str:
     for gpu in profile.get("gpus") or []:
         out.append(
             f"- Card {gpu['index']}: {gpu['name']}, compute capability {gpu['capability'] or 'unknown'}, "
-            f"{_mb((gpu.get('vram_total_mb') or 0) * 1e6)} total"
+            f"{_from_mb(gpu.get('vram_total_mb'))} total"
         )
     if not profile.get("gpus"):
         out.append(f"- No NVIDIA card: {profile.get('nvidia', {}).get('why')}")
     out += [
         f"- Driver: {profile.get('driver') or 'none'}",
-        f"- Free disk on the data root: {_mb((profile.get('disk_free_mb') or 0) * 1e6)}",
+        f"- Free disk on the data root: {_from_mb(profile.get('disk_free_mb'))}",
         "",
         "nvidia-smi said:",
         "",

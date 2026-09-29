@@ -36,7 +36,9 @@ def _manager(
 
 def _run(python: Path, code: str) -> dict[str, Any]:
     env = {k: v for k, v in os.environ.items() if k not in ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME")}
-    out = subprocess.run([str(python), "-c", code], capture_output=True, text=True, env=env, check=True)
+    out = subprocess.run(
+        [str(python), "-c", code], capture_output=True, text=True, encoding="utf-8", env=env, check=True
+    )
     return json.loads(out.stdout)
 
 
@@ -90,7 +92,12 @@ def test_a_runtime_installs_under_the_data_root_from_its_lock(
     assert marker["build"] == "cpu" and marker["python"].startswith("3.11.")
     assert "idna==3.20" in marker["freeze"]
     assert marker["stand_ins"] == ["tinyext"] and marker["left_out"] == ["fastpath"]
-    assert {k: marker[k] for k in ("lock_sha256", "definition_sha256")} == manager.get("tiny").hashes()
+    hashes = manager.get("tiny").hashes()
+    assert {k: marker[k] for k in hashes} == hashes and set(hashes) == {
+        "lock_sha256",
+        "definition_sha256",
+        "stand_ins_sha256",
+    }
 
     # nothing is written into the definition, and everything else stays under the data root
     assert sorted(p.name for p in tiny.iterdir()) == sorted(p.name for p in TINY_RUNTIME.iterdir())
@@ -139,6 +146,10 @@ def test_a_changed_lock_makes_a_runtime_out_of_date(
 
     done = manager.install("tiny")  # asked: rebuilt
     assert done is not None and manager.list()["runtimes"][0]["status"] == "installed"
+
+    stand_in = tiny / "stand-ins" / "tinyext" / "__init__.py"
+    stand_in.write_text(stand_in.read_text(encoding="utf-8") + "FIXED = True\n", encoding="utf-8")
+    assert manager.list()["runtimes"][0]["status"] == "out of date"
 
 
 def test_remove_deletes_only_that_runtime(tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path) -> None:
@@ -266,7 +277,7 @@ def run(ctx):
         "python": list(sys.version_info[:2]), "prefix": sys.prefix, "idna": idna.__version__,
         "tinyext": tinyext.KIND, "upstream": upstream_pkg.WHERE, "env": os.environ.get("ONEFRAME_TINY"),
         "network": network,
-    }))
+    }), encoding="utf-8")
     ctx.output("text", path)
 """
 
@@ -341,3 +352,82 @@ def test_a_node_whose_runtime_is_not_installed_fails_with_the_reason(
     [failed] = events.of("node.failed")
     assert failed["reason"] == "not installed"
     assert "install its cpu build first" in failed["message"]
+
+
+def test_a_failed_sync_keeps_what_was_installed(
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rebuilding an out-of-date runtime offline must not cost the environment already there."""
+    manager = _manager(tmp_path / "data", tiny, uv_exe, uv_home)
+    manager.install("tiny")
+    env = tmp_path / "data" / "runtimes" / "tiny" / "cpu"
+    (tiny / "uv.lock").write_bytes((tiny / "uv.lock").read_bytes() + b"# changed\n")
+    real = runtime_install.run_step
+
+    def offline(argv: list[str], *rest: Any) -> tuple[int, list[str]]:
+        if argv[1] == "sync":
+            return 2, ["error: Failed to fetch: network unreachable"]
+        return real(argv, *rest)
+
+    monkeypatch.setattr(runtime_install, "run_step", offline)
+    events = Events()
+    assert manager.install("tiny", emit=events.append) is None
+    assert events.of("runtime.failed")[0]["detail"] == "error: Failed to fetch: network unreachable"
+    assert (env / "pyvenv.cfg").is_file()
+    assert (
+        _run(runtime_install.interpreter(env), "import json, idna; print(json.dumps(idna.__version__))")
+        == "3.20"
+    )
+
+
+def test_a_source_file_that_does_not_compile_does_not_fail_the_install(
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, source_server: SourceServer
+) -> None:
+    import io
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for name, text in (
+            ("up-1/upstream_pkg/__init__.py", "WHERE = 'ok'\n"),
+            ("up-1/tools/py2.py", "print 'old'\n"),
+        ):
+            data = text.encode()
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive = buffer.getvalue()
+    source_server.files["/up.tar.gz"] = archive
+    add_source(tiny, source_server.url("/up.tar.gz"), archive)
+    manager = _manager(tmp_path / "data", tiny, uv_exe, uv_home)
+    events = Events()
+    assert manager.install("tiny", emit=events.append) is not None
+    assert any("did not compile" in e["line"] for e in events.of("runtime.log"))
+    env = tmp_path / "data" / "runtimes" / "tiny" / "cpu"
+    assert (
+        _run(
+            runtime_install.interpreter(env),
+            "import json, upstream_pkg; print(json.dumps(upstream_pkg.WHERE))",
+        )
+        == "ok"
+    )
+
+
+def test_with_several_cards_a_node_runs_on_the_card_the_plan_was_made_for(tmp_path: Path, tiny: Path) -> None:
+    two = {
+        **AMPERE,
+        "gpus": [
+            {"index": 0, "vendor": "nvidia", "name": "a", "capability": "8.6", "vram_total_mb": 8000},
+            {"index": 1, "vendor": "nvidia", "name": "b", "capability": "8.9", "vram_total_mb": 24000},
+        ],
+    }
+    several = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: two)
+    assert several.env_for("tiny") == {
+        "ONEFRAME_TINY": "on",
+        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+        "CUDA_VISIBLE_DEVICES": "1",
+    }
+    one = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE)
+    assert one.env_for("tiny") == {"ONEFRAME_TINY": "on"}
+    none = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU)
+    assert none.env_for("tiny") == {"ONEFRAME_TINY": "on"}

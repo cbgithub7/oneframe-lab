@@ -66,6 +66,7 @@ class Engine:
             models_dir=data / "models",
             log_dir=data / "logs",
         )
+        self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
         self._run: tuple[str, threading.Event, set[str]] | None = None
         self._lock = threading.Lock()
@@ -181,7 +182,8 @@ class Engine:
             except Exception:  # already reported as runtime.failed; keep the engine up
                 LOGGER.exception("installing %s crashed", runtime_id)
 
-        threading.Thread(target=work, name=f"install-{runtime_id}", daemon=True).start()
+        self._install = threading.Thread(target=work, name=f"install-{runtime_id}", daemon=True)
+        self._install.start()
         return {"runtime": runtime_id, "build": build}
 
     def runtimes_stop(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -191,6 +193,14 @@ class Engine:
         runtime_id = str(params["runtime"])
         self._refuse_if_running(runtime_id, "removing")
         return self.runtimes.remove(runtime_id)
+
+    def shutdown(self, timeout: float = 30) -> None:
+        """Stop an install that is still going, so that its uv does not outlive the engine."""
+        installing = self.runtimes.installing()
+        if installing is not None:
+            self.runtimes.stop(installing)
+        if self._install is not None:
+            self._install.join(timeout)
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         req_id = message.get("id")
@@ -276,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         reply = engine.handle(message)
         if reply is not None:
             say(reply)
+    engine.shutdown()  # stdin closed: the app is quitting
     return 0
 
 

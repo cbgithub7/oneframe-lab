@@ -130,3 +130,8 @@ def test_the_legacy_windows_folder_is_searched(tmp_path: Path) -> None:
     env = {"ProgramFiles": str(tmp_path)}
     assert hardware.find_nvidia_smi("win32", lambda _name: None, env) == str(exe)
     assert hardware.find_nvidia_smi("linux", lambda _name: None, env) is None
+
+
+def test_a_driver_version_that_is_not_a_number_is_none() -> None:
+    _gpus, driver = hardware.parse_gpus("0, Card, 8.6, 8192, 8000, [N/A]\n")
+    assert driver is None

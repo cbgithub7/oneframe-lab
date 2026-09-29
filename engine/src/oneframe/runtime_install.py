@@ -276,11 +276,9 @@ def install(
         "--project",
         str(runtime.folder),
     ]
+    # A failure leaves the folder as it is: uv recreates an environment it cannot use, and a
+    # failure for any other reason (the network, a registry) must not cost what is already there.
     code, tail = run_step(sync, uv_environment(uv_home, env), log, should_stop)
-    if code != 0 and env.exists():
-        log("uv sync failed over the existing environment; starting it again.")
-        remove_tree(env)
-        code, tail = run_step(sync, uv_environment(uv_home, env), log, should_stop)
     if code != 0:
         raise InstallFailed(f"uv sync failed (exit {code}).", "\n".join(tail))
 
@@ -341,9 +339,14 @@ def install(
         lines.append(str((env / "stand-ins").resolve()))
     if lines:
         (site / PTH).write_text("\n".join(lines) + "\n", encoding="utf-8")
-        # Compiled now, as uv compiled the packages: a run then writes nothing into the runtime.
+        # Compiled now, as uv compiled the packages, so a run writes nothing into the runtime. Only
+        # a best effort: an upstream archive may hold files that are not this Python's code.
         folders = [str(p) for p in (env / "src", env / "stand-ins") if p.is_dir()]
-        _output([str(python), "-m", "compileall", "-q", *folders], uv_environment(uv_home))
+        compiled, _tail = run_step(
+            [str(python), "-m", "compileall", "-q", *folders], uv_environment(uv_home), log, should_stop
+        )
+        if compiled != 0:
+            log(f"Some source files did not compile (exit {compiled}); they are left as they are.")
     else:
         (site / PTH).unlink(missing_ok=True)
 

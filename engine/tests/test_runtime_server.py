@@ -300,3 +300,28 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
         time.sleep(0.05)
     removed = engine.handle({"id": 5, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
     assert removed is not None and removed["result"]["removed"] is not None
+
+
+def test_an_engine_that_shuts_down_stops_its_install(
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, source_server: SourceServer
+) -> None:
+    """The app closes the engine's stdin when it quits; an install still going must not outlive it."""
+    release = _stalled_source(tiny, source_server)
+    events = Events()
+    engine = Engine(
+        tmp_path / "data", [BUILTIN_NODES_DIR], events.append, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU
+    )
+    reply = engine.handle({"id": 1, "method": "runtimes.install", "params": {"runtime": "tiny"}})
+    assert reply is not None and "result" in reply
+    end = time.monotonic() + WAIT_S
+    while not events.of("runtime.progress") and not events.of("runtime.failed") and time.monotonic() < end:
+        time.sleep(0.05)
+    assert events.of("runtime.progress"), events
+
+    closing = threading.Thread(target=engine.shutdown)
+    closing.start()
+    release.set()  # the download sees Stop when its next bytes arrive
+    closing.join(60)
+    assert not closing.is_alive()
+    assert events.of("runtime.stopped") and engine.runtimes.installing() is None
+    assert not (tmp_path / "data" / "runtimes" / "tiny" / "cpu" / runtime_install.MARKER).exists()

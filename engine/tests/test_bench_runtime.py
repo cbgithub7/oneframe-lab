@@ -66,3 +66,23 @@ def test_a_runtime_that_does_not_exist_is_an_exit_code_not_a_crash(
     code = bench_runtime.main(["nope", "--data", str(tmp_path), "--runtimes", str(tiny.parent)])
     assert code == 1
     assert "No runtime called 'nope' is defined." in capsys.readouterr().err
+
+
+def test_a_number_the_machine_did_not_give_is_reported_unknown_not_zero() -> None:
+    record = {
+        "runtime": "x",
+        "date": "2026-09-29T00:00:00+00:00",
+        "engine": "0",
+        "profile": {
+            "os": "linux",
+            "gpus": [{"index": 0, "name": "card", "capability": "8.6", "vram_total_mb": None}],
+            "driver": "580.88",
+            "disk_free_mb": None,
+            "raw": "",
+        },
+        "plan": {"build": None, "why": "blocked", "considered": [], "notes": []},
+        "install": {"ok": False, "message": "no"},
+    }
+    report = bench_runtime.render(record)
+    assert "unknown total" in report and "Free disk on the data root: unknown" in report
+    assert "0 MB" not in report

@@ -89,7 +89,8 @@ def parse_gpus(text: str, fields: tuple[str, ...] = FIELDS) -> tuple[list[dict[s
                 "vram_free_mb": _mb(row["memory.free"]),
             }
         )
-        driver = driver or row.get("driver_version") or None
+        reported = row.get("driver_version") or ""
+        driver = driver or (reported if _number(reported.split(".")[0]) is not None else None)
     return gpus, driver
 
 

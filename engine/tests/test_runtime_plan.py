@@ -380,3 +380,28 @@ def test_too_little_free_disk_blocks_a_build_that_is_not_installed(tmp_path: Pat
     assert short.blocked == "cu126 needs about 6000 MB, and the data root has 3000 MB free."
     assert runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000), installed={"cu126"}).build == "cu126"
     assert runtimes.plan(runtime, _machine("6.1", "560.94", disk=7000)).build == "cu126"
+
+
+def test_the_processor_build_keeps_to_its_systems_too(tmp_path: Path) -> None:
+    builds = [AC1_BUILDS[1], {"name": "cpu", "vendor": "none", "os": ["linux"]}]
+    runtime = _runtime(tmp_path, builds=builds)
+    assert runtimes.plan(runtime, _machine(os="linux")).build == "cpu"
+    windows = runtimes.plan(runtime, _machine(os="windows"))
+    assert windows.build is None
+    assert windows.blocked is not None and "cpu runs on linux only" in windows.blocked
+
+
+def test_a_driver_version_that_is_not_a_version_counts_as_unknown(tmp_path: Path) -> None:
+    p = runtimes.plan(_runtime(tmp_path), _machine("8.6", "[N/A]"))
+    assert p.build == "cpu"
+    assert _why(p, "cu130") == "cu130 needs NVIDIA driver 580 or newer, and the driver version is unknown"
+
+
+def test_a_definition_is_read_again_only_when_its_files_change(make_runtime: MakeRuntime) -> None:
+    folder = make_runtime(_definition())
+    first = runtimes.load(folder / "runtime.json")
+    assert runtimes.load(folder / "runtime.json") is first
+    (folder / "uv.lock").write_text(
+        'version = 1\nrequires-python = ">=3.12"\n', encoding="utf-8", newline="\n"
+    )
+    assert runtimes.load(folder / "runtime.json") is not first

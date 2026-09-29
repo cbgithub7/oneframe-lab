@@ -132,11 +132,21 @@ class RuntimeDef:
         return self.folder / LOCK
 
     def hashes(self) -> dict[str, str]:
-        """What an installed environment was built from. Read now, not when the definition was
-        loaded, so a lock changed under a running engine makes the runtime out of date at once."""
+        """What an installed environment was built from: the lock, the definition, and the
+        stand-ins copied into it. Read now, not when the definition was loaded, so a change under a
+        running engine makes the runtime out of date at once."""
+        stand_ins = hashlib.sha256()
+        for ext in self.extensions:
+            if ext.kind != "stand-in":
+                continue
+            root = self.folder / ext.stand_in
+            for path in sorted(p for p in root.rglob("*") if p.is_file() and "__pycache__" not in p.parts):
+                stand_ins.update(path.relative_to(self.folder).as_posix().encode("utf-8") + b"\0")
+                stand_ins.update(text_sha256(path).encode("ascii"))
         return {
             "lock_sha256": text_sha256(self.lock_path),
             "definition_sha256": text_sha256(self.definition_path),
+            "stand_ins_sha256": stand_ins.hexdigest(),
         }
 
     def to_json(self) -> dict[str, Any]:
@@ -401,8 +411,32 @@ def parse(data: dict[str, Any], folder: Path, source: str = DEFINITION) -> Runti
     )
 
 
+_LOADED: dict[Path, tuple[tuple[Any, ...], RuntimeDef]] = {}
+
+
+def _stamp(folder: Path) -> tuple[Any, ...]:
+    """What changes when any file a definition is read from changes."""
+    out: list[Any] = []
+    for path in sorted(folder.rglob("*")) if folder.is_dir() else []:
+        if path.is_file():
+            stat = path.stat()
+            out.append((str(path), stat.st_size, stat.st_mtime_ns))
+    return tuple(out)
+
+
 def load(path: Path) -> RuntimeDef:
-    """Read `<folder>/runtime.json` and check it with the files beside it."""
+    """Read `<folder>/runtime.json` and check it with the files beside it. A definition whose
+    files have not changed since it was last read is not read again."""
+    stamp = _stamp(path.parent)
+    cached = _LOADED.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    runtime = _load(path)
+    _LOADED[path] = (stamp, runtime)
+    return runtime
+
+
+def _load(path: Path) -> RuntimeDef:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -496,6 +530,8 @@ def _refusal(build: Build, card: dict[str, Any] | None, profile: dict[str, Any])
         return f"is not offered on {os_name}"
     floor = build.driver_floor(os_name)
     driver = profile.get("driver")
+    if driver and not _VERSION.match(str(driver)):
+        driver = None  # nvidia-smi said something that is not a version: treat it as unknown
     if floor and not driver:
         return f"needs NVIDIA driver {floor} or newer, and the driver version is unknown"
     if floor and driver and not at_least(driver, floor):
@@ -549,6 +585,16 @@ def plan(runtime: RuntimeDef, profile: dict[str, Any], installed: Collection[str
         else:
             result.considered.append({"build": build.name, "chosen": False, "why": f"{build.name} {why}"})
     processor = next((b for b in runtime.builds if b.vendor == "none"), None)
+    os_name = str(profile.get("os") or "")
+    if processor is not None and processor.os and os_name not in processor.os:
+        result.considered.append(
+            {
+                "build": processor.name,
+                "chosen": False,
+                "why": f"{processor.name} runs on {', '.join(processor.os)} only",
+            }
+        )
+        processor = None
     if processor is not None:
         if chosen is None:
             chosen = processor
@@ -692,11 +738,12 @@ class Runtimes:
             b.name for b in runtime.builds if runtime_install.env_dir(self.data, runtime.id, b.name).is_dir()
         ]
         marker = markers.get(build) if build else None
+        hashes = runtime.hashes()
         if self.installing() == runtime.id:
             state = "installing"
         elif marker is None:
             state = "not installed"
-        elif {k: marker.get(k) for k in ("lock_sha256", "definition_sha256")} != runtime.hashes():
+        elif {k: marker.get(k) for k in hashes} != hashes:
             state = "out of date"
         elif not runtime_install.interpreter(
             runtime_install.env_dir(self.data, runtime.id, str(build))
@@ -772,7 +819,20 @@ class Runtimes:
         )
 
     def env_for(self, runtime_id: str) -> dict[str, str]:
-        return dict(self.get(runtime_id).env)
+        """runtime.json's variables. On a machine with several NVIDIA cards, also the card the plan
+        was made for, so that a node's "cuda" is that card: CUDA numbers cards fastest first unless
+        told to use the PCI order nvidia-smi reports them in."""
+        runtime = self.get(runtime_id)
+        env = dict(runtime.env)
+        profile = self.profile()
+        cards = [g for g in profile.get("gpus") or [] if g.get("vendor") == "nvidia"]
+        the_plan = self.plan_for(runtime)
+        build = runtime.build(str(the_plan.build)) if the_plan.build else None
+        card = _card(profile)
+        if len(cards) > 1 and card is not None and build is not None and build.vendor == "nvidia":
+            env.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+            env.setdefault("CUDA_VISIBLE_DEVICES", str(card.get("index", 0)))
+        return env
 
     # changing
 

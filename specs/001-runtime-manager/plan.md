@@ -17,6 +17,9 @@ these answers; say if one should change.
    install but names no method. `run.stop` stays for graph runs.
 3. **Several GPUs.** The plan is made for the card with the most VRAM (the lowest index on a tie),
    and its reason says so. Choosing a card per node belongs to spec 002.
+    - Added while implementing, after review, for the owner to confirm: a node's child then sees
+      only that card (`CUDA_VISIBLE_DEVICES`, in PCI order), because CUDA's own first card could
+      be one the chosen build has no kernels for.
 4. **Free disk can block.** A build may state `disk_mb`. If the planned build is not installed and
    the data root has less free space than that, the plan is blocked, naming both numbers.
 5. **The AC9 runtime is `runtimes/torch/`:** Python 3.14 and torch only, with builds `cpu`,
