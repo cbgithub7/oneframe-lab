@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from conftest import TINY_RUNTIME, MakeRuntime, write_runtime
 
 from oneframe import RUNTIMES_DIR, runtimes
@@ -186,3 +187,196 @@ def test_the_hashes_do_not_change_with_line_endings(make_runtime: MakeRuntime) -
     assert runtime.hashes() == before
     lock.write_bytes(lock.read_bytes() + b"# changed\n")
     assert runtime.hashes()["lock_sha256"] != before["lock_sha256"]
+
+
+# -- the plan ---------------------------------------------------------------------------------
+
+# The test runtime of AC1: cpu, cu126 (compute 5.0 to 12.x, driver 528 or newer) and cu130
+# (compute 7.5 or newer, driver 580 or newer).
+AC1_BUILDS = [
+    {"name": "cu130", "vendor": "nvidia", "min_capability": "7.5", "min_driver": "580"},
+    {
+        "name": "cu126",
+        "vendor": "nvidia",
+        "min_capability": "5.0",
+        "max_capability": "12",
+        "min_driver": "528",
+    },
+    {"name": "cpu", "vendor": "none"},
+]
+NAME = "Zorblax 9000 Ti"  # a card nobody makes: it must not reach any plan
+
+
+def _machine(
+    capability: str | None = None,
+    driver: str | None = None,
+    os: str = "windows",
+    disk: int | None = 500_000,
+    gpus: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    if gpus is None:
+        gpus = (
+            []
+            if capability is None and driver is None
+            else [
+                {
+                    "index": 0,
+                    "vendor": "nvidia",
+                    "name": NAME,
+                    "capability": capability,
+                    "vram_total_mb": 8590,
+                }
+            ]
+        )
+    return {
+        "os": os,
+        "gpus": gpus,
+        "driver": driver,
+        "nvidia": {
+            "found": bool(gpus),
+            "why": "nvidia-smi listed a card." if gpus else "nvidia-smi was not found.",
+        },
+        "disk_free_mb": disk,
+        "raw": f"0, {NAME}, {capability}, 8192, 8000, {driver}\n" if gpus else "",
+    }
+
+
+def _runtime(root: Path, **over: Any) -> runtimes.RuntimeDef:
+    folder = write_runtime(root, _definition(**{"builds": AC1_BUILDS, **over}))
+    return runtimes.load(folder / "runtime.json")
+
+
+def _why(p: runtimes.Plan, build: str) -> str:
+    return next(row["why"] for row in p.considered if row["build"] == build)
+
+
+@pytest.mark.parametrize(
+    ("capability", "driver", "build"),
+    [("6.1", "560.94", "cu126"), ("8.6", "580.88", "cu130"), ("8.6", "560.94", "cu126"), (None, None, "cpu")],
+)
+def test_the_plan_picks_the_build_each_machine_can_run(
+    tmp_path: Path, capability: str | None, driver: str | None, build: str
+) -> None:
+    p = runtimes.plan(_runtime(tmp_path), _machine(capability, driver))
+    assert (p.build, p.blocked) == (build, None)
+    assert [row["build"] for row in p.considered if row["chosen"]] == [build]
+
+
+def test_a_runtime_without_a_cpu_build_is_blocked_by_an_old_driver_and_says_so(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path, builds=AC1_BUILDS[:2])
+    p = runtimes.plan(runtime, _machine("6.1", "470.82.01"))
+    assert p.build is None
+    assert p.blocked == (
+        "No build of Demo runs on this machine: "
+        "cu130 needs NVIDIA driver 580 or newer; this machine has 470.82.01; "
+        "cu126 needs NVIDIA driver 528 or newer; this machine has 470.82.01."
+    )
+
+
+def test_a_refused_build_says_whether_the_card_or_the_driver_refused_it(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    old_card = runtimes.plan(runtime, _machine("6.1", "580.88"))
+    assert _why(old_card, "cu130") == "cu130 needs compute capability 7.5 or higher; this card is 6.1"
+    old_driver = runtimes.plan(runtime, _machine("8.6", "560.94"))
+    assert _why(old_driver, "cu130") == "cu130 needs NVIDIA driver 580 or newer; this machine has 560.94"
+    assert _why(old_driver, "cpu") == "a GPU build runs here"
+
+
+def test_no_gpu_name_reaches_a_plan(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    for machine in (
+        _machine("6.1", "560.94"),
+        _machine("8.6", "580.88"),
+        _machine("6.1", "470.00"),
+        _machine(),
+    ):
+        assert NAME not in json.dumps(runtimes.plan(runtime, machine).to_json())
+
+
+def test_capabilities_compare_as_numbers_and_a_bare_major_covers_all_of_it(tmp_path: Path) -> None:
+    builds = [{"name": "gpu", "vendor": "nvidia", "min_capability": "12.9", "max_capability": "13"}]
+    runtime = _runtime(tmp_path, builds=builds)
+    assert runtimes.plan(runtime, _machine("12.10", "600")).build == "gpu"
+    assert runtimes.plan(runtime, _machine("13.9", "600")).build == "gpu"
+    refused = runtimes.plan(runtime, _machine("12.8", "600"))
+    assert refused.blocked is not None and "needs compute capability 12.9 or higher" in refused.blocked
+    exact = _runtime(tmp_path / "x", builds=[{"name": "gpu", "vendor": "nvidia", "max_capability": "12.0"}])
+    assert runtimes.plan(exact, _machine("12.1", "600")).blocked == (
+        "No build of Demo runs on this machine: gpu covers compute capability up to 12.0; this card is 12.1."
+    )
+
+
+def test_driver_floors_can_differ_by_os(tmp_path: Path) -> None:
+    builds = [
+        {"name": "cu126", "vendor": "nvidia", "min_driver": {"windows": "528.33", "linux": "525.60.13"}},
+        {"name": "cpu", "vendor": "none"},
+    ]
+    runtime = _runtime(tmp_path, builds=builds)
+    assert runtimes.plan(runtime, _machine("6.1", "525.60.13", os="linux")).build == "cu126"
+    windows = runtimes.plan(runtime, _machine("6.1", "528.10", os="windows"))
+    assert windows.build == "cpu"
+    assert _why(windows, "cu126") == "cu126 needs NVIDIA driver 528.33 or newer; this machine has 528.10"
+    assert _why(runtimes.plan(runtime, _machine("6.1", "600", os="macos")), "cu126") == (
+        "cu126 is not offered on macos"
+    )
+
+
+def test_a_card_too_old_to_report_its_capability_gets_the_processor_build(tmp_path: Path) -> None:
+    p = runtimes.plan(
+        _runtime(tmp_path),
+        _machine(
+            None,
+            "470.82.01",
+            gpus=[{"index": 0, "vendor": "nvidia", "name": NAME, "capability": None, "vram_total_mb": 11997}],
+        ),
+    )
+    assert p.build == "cpu"
+    assert _why(p, "cu130").startswith("cu130 needs NVIDIA driver 580")
+
+
+def test_with_several_cards_the_plan_is_for_the_one_with_the_most_memory(tmp_path: Path) -> None:
+    gpus = [
+        {"index": 0, "vendor": "nvidia", "name": NAME, "capability": "6.1", "vram_total_mb": 8590},
+        {"index": 1, "vendor": "nvidia", "name": NAME, "capability": "8.6", "vram_total_mb": 12885},
+    ]
+    p = runtimes.plan(_runtime(tmp_path), _machine(driver="580.88", gpus=gpus))
+    assert p.build == "cu130"
+    assert "Planned for card 1 of 2, the one with the most memory." in p.notes
+
+
+def test_a_required_extension_blocks_the_plan_and_says_what_it_needs(tmp_path: Path) -> None:
+    extensions = [
+        {"package": "raster", "class": "required", "for": "texture baking", "needs": "a C++ compiler"},
+        {
+            "package": "flash",
+            "class": "optional",
+            "for": "fast attention",
+            "why": "PyTorch attention is used instead",
+        },
+    ]
+    p = runtimes.plan(_runtime(tmp_path, extensions=extensions), _machine("8.6", "580.88"))
+    assert p.build is None
+    assert p.blocked == (
+        "Demo needs raster (texture baking), which has to be compiled: that takes a C++ compiler. "
+        "Prebuilt wheels are not supported yet."
+    )
+    assert _why(p, "cu130") == "cu130 fits this machine, but it cannot be installed."
+    assert "flash (fast attention) is left out: PyTorch attention is used instead" in p.notes
+
+
+def test_an_optional_extension_is_noted_and_does_not_block(tmp_path: Path) -> None:
+    extensions = [{"package": "flash", "class": "optional", "for": "fast attention", "why": "slower without"}]
+    p = runtimes.plan(_runtime(tmp_path, extensions=extensions), _machine("8.6", "580.88"))
+    assert (p.build, p.blocked) == ("cu130", None)
+    assert p.notes == ["flash (fast attention) is left out: slower without"]
+
+
+def test_too_little_free_disk_blocks_a_build_that_is_not_installed(tmp_path: Path) -> None:
+    builds = [{**AC1_BUILDS[1], "disk_mb": 6000}, {"name": "cpu", "vendor": "none", "disk_mb": 1500}]
+    runtime = _runtime(tmp_path, builds=builds)
+    short = runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000))
+    assert short.blocked == "cu126 needs about 6000 MB, and the data root has 3000 MB free."
+    assert (
+        runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000), installed_build="cu126").build == "cu126"
+    )
+    assert runtimes.plan(runtime, _machine("6.1", "560.94", disk=7000)).build == "cu126"

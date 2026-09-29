@@ -18,7 +18,7 @@ design each task follows is in [plan.md](plan.md).
       `uv lock --project engine/tests/runtimes/tiny`.
     - Tests for each definition check, including the torch floor (a lock with torch 2.5.1).
     - The first version of `docs/runtimes.md`: the folder and `runtime.json`.
-- [ ] 3. **Plan.**
+- [x] 3. **Plan.**
     - `plan()` in `runtimes.py`: builds in order, driver before capability, CPU after, then
       blocked; extension classes; disk.
     - `test_runtime_plan.py`: the five AC1 cases, the blocked reason naming the driver, "12.10"
