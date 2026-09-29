@@ -22,6 +22,11 @@ export const ENGINE_METHODS = new Set([
   "graph.validate",
   "graph.run",
   "run.stop",
+  "runtimes.list",
+  "runtimes.plan",
+  "runtimes.install",
+  "runtimes.stop",
+  "runtimes.remove",
 ]);
 
 const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");

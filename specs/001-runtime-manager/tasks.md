@@ -47,7 +47,7 @@ design each task follows is in [plan.md](plan.md).
     - Test: a runtime node runs in the installed tiny runtime through the scheduler, with its env
       variable set and the network closed. (AC3)
     - `docs/architecture.md` (the parts table) and `docs/nodes.md` (`run.runtime`).
-- [ ] 7. **Engine methods.**
+- [x] 7. **Engine methods.**
     - In `server.py`: `runtimes.list`, `runtimes.plan`, `runtimes.install`, `runtimes.stop`,
       `runtimes.remove`; `--runtimes` and `--uv`; installs on a thread, one at a time; the rules on
       runs and installs.

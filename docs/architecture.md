@@ -66,8 +66,16 @@ A run answers `graph.run` at once with a run id; everything after is pushed:
 node, then `node.done` | `node.failed` → `run.done` | `run.failed` | `run.stopped`.
 
 Failure kinds: `oom` (the scheduler will try the node's next arrangement, once arrangements land),
-`fetch` (something tried to download), `missing` (an import the runtime lacks), `runtime` (not
-installed), `contract` (a node broke its manifest), `node` (the node explained), `error`, `died`.
+`fetch` (something tried to download), `missing` (an import the runtime lacks), `runtime` (the
+runtime cannot run yet; `reason` says whether it is not installed, out of date, being installed,
+blocked on this machine, or unknown), `contract` (a node broke its manifest), `node` (the node
+explained), `error`, `died`.
+
+A runtime install answers `runtimes.install` at once with the build it will install; then:
+
+`runtime.start` → per step `runtime.step` (index and total), with `runtime.log` lines from uv and
+`runtime.progress` for source downloads → `runtime.done` | `runtime.failed` | `runtime.stopped`.
+`runtimes.stop` ends an install; one install runs at a time.
 
 ## What comes next
 

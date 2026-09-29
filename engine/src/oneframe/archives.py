@@ -70,10 +70,12 @@ def download(
         with opener(url, timeout=TIMEOUT_S) as response, part.open("wb") as handle:
             length = response.headers.get("Content-Length")
             total = int(length) if length and str(length).isdigit() else None
+            # read1 returns what has arrived, so progress and Stop are seen while bytes trickle in
+            read = getattr(response, "read1", response.read)
             while True:
                 if should_stop is not None and should_stop():
                     raise Stopped()
-                chunk = response.read(CHUNK)
+                chunk = read(CHUNK)
                 if not chunk:
                     break
                 digest.update(chunk)
