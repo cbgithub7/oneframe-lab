@@ -1,6 +1,6 @@
 ---
 name: local-session
-description: Start of an Oneframe Lab session on the owner's own PC, used to run what a cloud session cannot -- GPU runs, Windows-only behaviour, real model weights -- and to record the evidence as a report. Checks the machine and the checkout, finds the hardware steps a spec's plan asks for, runs exactly those, and commits a report. Use at the start of any local session, and when asked to verify a spec or PR on real hardware.
+description: Start of an Oneframe Lab session on the owner's own PC, used to run what a cloud session cannot -- GPU runs, Windows-only behaviour, real model weights -- and to record the evidence as a report. Brings the checkout up to date with the cloud's work first, then checks the machine, finds the hardware steps a spec's plan asks for, runs exactly those, and commits a report. Use at the start of any local session, and when asked to verify a spec or PR on real hardware.
 ---
 
 # Local session (real hardware)
@@ -20,39 +20,72 @@ The rules in `AGENTS.md` apply here too. Two differ from a cloud session:
 
 Do these steps in order.
 
-## 1. Rules and target
+## 1. Get up to date
 
-Read `AGENTS.md`. Ask the owner which spec or PR to verify if the message does not say. Read that
-spec's `spec.md` (the acceptance criteria marked hardware) and its `plan.md` (the Verification
-section: the exact commands and the report each writes).
+This machine is always behind: specs, plans and code are written in the cloud. Update before
+reading anything else, because the rules, the spec, and this skill itself may have changed.
+
+1. **Tree clean?** Run `git status --porcelain`. If anything is listed, show it to the owner and ask
+   what to do: commit it, stash it by name, or discard it. Never discard or stash on your own.
+2. **Remember where you started:** `git rev-parse HEAD`. Then fetch everything:
+   `git fetch origin --prune`.
+3. **Update `main`** without leaving the current branch:
+    - if `main` is checked out: `git pull --ff-only origin main`;
+    - otherwise: `git fetch origin main:main`.
+
+    If either refuses because local `main` has diverged, stop. Local commits on `main` break the
+    rules, so show them to the owner.
+4. **Pick the branch to verify:**
+    - the PR or spec the owner named (a PR's branch is its head branch on GitHub);
+    - otherwise, list what may be waiting: open PRs whose description says "pending hardware", if
+      GitHub access is available, and branches under `spec/` newer than `main`. Ask the owner which
+      one.
+    - If nothing is waiting, verify `main` itself (checks only; there are no hardware steps to run).
+5. **Check out and update it:** `git checkout <branch>`, then `git pull --ff-only`. If the local copy
+   has diverged from `origin`, stop and ask. Never reset over local commits.
+6. **Did this skill change?** Compare `.claude/skills/local-session/SKILL.md` with the copy you
+   started from: `git diff <the commit you started from> HEAD -- .claude/skills/local-session/SKILL.md`. If
+   it changed, re-read it and follow the new version from section 2, "Rules and target".
+7. **Note the commit.** `git rev-parse HEAD` is the commit every result in this session refers to.
+   If anything is pulled later in the session, rerun the checks and state the new commit.
+
+## 2. Rules and target
+
+Read `AGENTS.md`. Read the chosen spec's `spec.md` (the acceptance criteria marked hardware) and its
+`plan.md` (the Verification section: the exact commands and the report each writes).
 
 If the plan gives no command for a hardware criterion, stop and say so. Do not invent a
 procedure: the cloud session that wrote the plan owes one.
 
-## 2. The machine
+## 3. The machine and its tools
 
 Record, for the report:
 
 - **OS:** `cmd /c ver` (Windows build), or `uname -a` elsewhere.
 - **GPU:** `nvidia-smi --query-gpu=name,compute_cap,memory.total,memory.used,driver_version --format=csv`.
   If there is no `nvidia-smi`, record "no NVIDIA GPU".
-- **Other GPU users:** `nvidia-smi` process list. Ask the owner to close anything heavy, and the
+- **Other GPU users:** the `nvidia-smi` process list. Ask the owner to close anything heavy, and the
   Oneframe Lab app itself, which holds the card. Note what was still running.
 - **Free disk** on the data root (`%LOCALAPPDATA%\OneframeLab` unless `ONEFRAME_DATA` says
   otherwise).
-- **Tools:** `node --version` against `.node-version`, `uv --version` against `engine/pyproject.toml`
-  `required-version`, `git --version`. If Node or uv is older than required, stop and tell the owner
-  what to install. The versions are part of the evidence, so no substitutes.
+- **Tools,** checked against the versions the updated checkout pins (cloud sessions raise them
+  often):
+    - `node --version` against `.node-version`;
+    - `uv --version` against `required-version` in `engine/pyproject.toml`;
+    - `git --version`.
 
-## 3. The checkout
+  If Node or uv is older than required, stop and tell the owner exactly what to install
+  (for uv, `uv self update` usually does it). The versions are part of the evidence, so no
+  substitutes.
 
-- `git status`: the tree must be clean. Stash nothing silently; ask the owner.
-- `git fetch origin`, then check out the PR's branch (or the spec's branch) and `git pull`.
-- `npm install`, then `uv sync --project engine --frozen`.
-- Run `npm run check` and `npm run engine:check` here too. Windows catches what Linux CI can
-  miss. Record the result, and stop if they fail before any hardware step.
+## 4. Dependencies and checks
 
-## 4. Run the hardware steps
+- `npm install`, then `uv sync --project engine --frozen`. Run both every session, even when
+  nothing seems to have changed: the pull may have brought new lock files.
+- Run `npm run check` and `npm run engine:check`. Windows catches what Linux CI can miss. Record
+  the result, and stop if they fail before any hardware step.
+
+## 5. Run the hardware steps
 
 For each hardware acceptance criterion, in the plan's order:
 
@@ -66,7 +99,7 @@ For each hardware acceptance criterion, in the plan's order:
 Never retry quietly until something passes. A second attempt is fine when the first failed for a
 reason you name (the app was still holding the card); the report lists both.
 
-## 5. The report
+## 6. The report
 
 Write `specs/<id>/reports/<YYYY-MM-DD>-<short-step-name>.json`, plus a `.md` of the same name for
 people, unless the plan's command already wrote the JSON (then add only the `.md`). The JSON
@@ -94,7 +127,7 @@ Leave out anything personal: no user name, home path, host name or serial number
 `%USERPROFILE%` for the home folder). The GPU's model name is fine in a report. Decisions in the
 code still never key on it.
 
-## 6. Hand back
+## 7. Hand back
 
 - Commit the reports on the PR's branch ("Add hardware report for NNN ACx: passed"), and push.
 - If you have GitHub access, comment on the PR with one line per criterion: outcome, headline
