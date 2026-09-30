@@ -1,6 +1,6 @@
 # 001: Runtime manager
 
-Status: in progress
+Status: done (every acceptance criterion verified 2026-09-30; AC9 by the owner's GTX 1070 report)
 Owner approval: 2026-09-29 (spec and plan)
 
 ## Problem
