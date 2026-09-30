@@ -30,7 +30,7 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   design target: the app should try what might run on any hardware and fail with a clear reason
   when it cannot.
 
-## State (2026-09-29)
+## State (2026-09-30)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
@@ -40,7 +40,7 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - the content-addressed cache and the scheduler, with trust carried through;
     - engine and runtime-child executors, and the child protocol;
     - the NDJSON stdio server.
-- **Runtime manager** (spec 001, on `claude/sweet-davinci-ko7mlh` until its PR merges):
+- **Runtime manager** (spec 001, merged in PR #3):
     - runtime definitions in `runtimes/`, found by looking ([runtimes.md](runtimes.md));
     - the machine profile from nvidia-smi, and the plan that picks a build by capability and
       driver, never by a card's name;
@@ -87,7 +87,8 @@ hold the detail.
 
 | Spec | Status |
 | --- | --- |
-| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; tasks 1 to 11 done, in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3); AC9 passed: the owner's GTX 1070 report is committed ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)) |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
+| [002 Attempt ladder](../specs/002-attempt-ladder/spec.md) | draft, waiting for the owner's answers to its open questions and approval |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
