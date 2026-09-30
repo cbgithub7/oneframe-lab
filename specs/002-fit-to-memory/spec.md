@@ -42,11 +42,12 @@ rule in [AGENTS.md](../../AGENTS.md)).
     - **Device:** the first of the node's `devices` that this machine has and the node's runtime
       build supports.
     - **Budget:** the free memory on that device, measured just before the load, less a margin
-      (open question 2). The CPU's budget is free system memory less a margin, so a CPU fit is
+      (decision 2). The CPU's budget is free system memory less a margin, so a CPU fit is
       checked too.
     - **Search:** start from the node's defaults and the person's settings, then apply the
       declared changes in order until the estimate fits the budget. Nothing the person set is
-      changed.
+      changed. A setting the person chose that does not fit is kept, and the node is tried with a
+      warning (decision 3).
     - **Fallback:** if nothing fits on the first device, try the next device the node lists.
     - **Nothing fits anywhere:** the node fails before loading, with kind `memory`. The message
       names the smallest need, the free memory on each device, and what would help (closing
@@ -115,7 +116,7 @@ its resolution and chunk size. The machine profiles used are:
 - an 8 GB card, compute 6.1, with 1.5 GB held by other programs;
 - a 12 GB card, compute 8.6;
 - a 24 GB card, compute 8.9;
-- an 80 GB card, compute 9.0;
+- an 80 GB card, compute 9.0 (its margin is 8 GB, 10% of the card);
 - two cards, 8 GB and 24 GB;
 - a 2 GB card with 4 GB of system memory.
 
@@ -139,7 +140,8 @@ The plan's test table gives the expected fit for each; the owner reviews that ta
     - two cards use the card the runtime's plan chose;
     - the 2 GB machine fails before loading, with kind `memory` and a message naming the need and
       the free memory;
-    - a setting the graph sets is never changed, on any profile;
+    - a setting the graph sets is never changed, on any profile; when it does not fit, the fit
+      warns and keeps it;
     - renaming every card in the profiles changes no fit.
 - [ ] AC3: Checked by integration tests in the tiny runtime, on a recorded profile, in CI on
   Windows and Linux. The node only reads its fit, so no GPU is needed.
@@ -180,11 +182,11 @@ The plan's test table gives the expected fit for each; the owner reviews that ta
 
 ## Out of scope
 
-- Keeping models loaded between runs (open question 1 decides whether and where).
+- Keeping models loaded between runs (spec 004, decision 1).
 - Loading part of a model onto the GPU in the engine. A node may offer its own offload setting,
   which the fit can turn on as a speed-only change.
 - Weight sizes read from downloaded files (spec 003). Until then the manifest states them.
-- Memory models for real nodes (spec 004). Each is measured at several settings, names the card,
+- Memory models for real nodes (spec 005). Each is measured at several settings, names the card,
   and is corrected on each machine by requirement 6.
 - Reading memory on AMD, Intel and Apple devices. The fit takes a budget from any device the
   machine profile reports; only NVIDIA and the CPU are read today.
@@ -192,43 +194,35 @@ The plan's test table gives the expected fit for each; the owner reviews that ta
 - Showing the fit in the page, and estimating a whole run before it starts (workspace UI spec).
   This spec adds no method to the page's allowlist.
 
+## Decisions
+
+Answered by the owner on 2026-09-30:
+
+1. **Keep models loaded: yes, in its own spec** (spec 004, between the model store and the first
+   model nodes). Each runtime gets a long-lived worker: kept while idle for a set time, evicted
+   when another runtime needs the device, killed on Stop. Every app in the research keeps models
+   loaded. The fit in this spec does not depend on it.
+2. **The margin: as much as is reasonable.** The larger of 1.5 GiB and 10% of the device's total
+   memory, on every OS. It is adjustable in the settings and reported in `node.fit`.
+    - Other apps keep less: ComfyUI 400 MB (600 MB on Windows) plus 0.8 GB for inference,
+      Ollama 457 MiB, llama.cpp 1 GiB.
+    - This margin also covers the CUDA context, which Accelerate's docs put at 1 to 2 GB, other
+      programs growing after the measurement, and estimate error.
+    - A bigger margin costs speed or quality a little sooner on small cards; a smaller one risks
+      the run crawling in shared memory.
+    - The AC8 report measures the context's size, to check the floor.
+3. **A setting the person chose that does not fit** is tried anyway, with a warning in
+   `node.fit`, as llama.cpp does. The cap turns an overrun into `oom`.
+5. **Falling to the CPU:** yes, only for nodes that list `cpu`, and labelled. A node that is
+   impractical on a CPU does not list it.
+6. **Formulas are declared in the manifest,** as coefficients over named params and input sizes.
+   Nodes stay data, and the engine never runs a model node's code. A function in the node's
+   folder is added later only if a real model's memory cannot be written this way.
+
 ## Open questions
 
-Answered by the owner before approval. Each has a recommendation.
+4. **Reuse a result made on another device?** Results are saved so the same job is not redone.
+   If a result was made on the CPU and the same job later runs where a GPU is free, should the
+   saved result be reused, or made again on the GPU? The two differ only in tiny rounding.
 
-1. **Keep models loaded?** Every app in the research does. Here, one child process per run means
-   every run reloads its weights.
-    - a. A long-lived worker per runtime: kept while idle for a set time, evicted when another
-      runtime needs the device, killed on Stop. Model nodes then load once and run many times.
-    - b. Keep one process per run, and accept the reloads.
-
-   *Recommended:* a, as its own spec between this one and the first model nodes. It changes the
-   executors, Stop and the node API (loading separate from running). The fit here does not
-   depend on it.
-2. **The margin.** Other apps keep 400 MB (600 MB on Windows) plus 0.8 GB for inference
-   (ComfyUI), 457 MiB (Ollama), 1 GiB (llama.cpp), or 10% (Accelerate). Here the estimate already
-   covers working memory, so the margin covers the CUDA context, other programs and estimate
-   error.
-
-   *Recommended:* 1 GiB on Windows and 512 MB elsewhere, adjustable in the settings and reported
-   in `node.fit`. The AC8 report checks it against the context size it measures.
-3. **A setting the person chose that does not fit.**
-    - a. Try it anyway, with a warning in `node.fit`; the cap turns an overrun into `oom`.
-    - b. Refuse before loading.
-
-   *Recommended:* a, as llama.cpp does. The estimate can be pessimistic, and the person asked.
-4. **The device in the cache key.** Should a CPU result be served where a GPU one at the same
-   precision and settings is asked for? The two are close but not bit-identical.
-
-   *Recommended:* yes. The output records the device.
-5. **Falling to the CPU.** Should the fit move to the CPU when no card fits, although that can take
-   many times longer?
-
-   *Recommended:* yes, only for nodes that list `cpu`, and labelled. A node that is impractical
-   on a CPU does not list it.
-6. **How a formula is written.**
-    - a. Declared in the manifest: coefficients over named params and input sizes.
-    - b. A small pure-Python function in the node's folder, run by the engine.
-
-   *Recommended:* a. Nodes stay data, and the engine never runs a model node's code. Add b later
-   only if a real model's memory cannot be written as a.
+   *Recommended:* reuse it. It is instant, and the result still says which device made it.

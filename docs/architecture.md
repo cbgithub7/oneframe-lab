@@ -82,6 +82,7 @@ A runtime install answers `runtimes.install` at once with the build it will inst
 1. Fit to memory: before a model loads, its estimated need is fitted to the free memory measured
    on this machine, changing only settings the person left alone; one narrow retry on `oom`.
 2. Model store: Download for a node's weights, into the data root.
-3. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
+3. Keep models loaded: a long-lived worker per runtime in place of one child process per run.
+4. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
    and a reconstructor, enough for both loops.
-4. Workspace UI: variants side by side, a graph editor, the three.js + Spark viewer.
+5. Workspace UI: variants side by side, a graph editor, the three.js + Spark viewer.

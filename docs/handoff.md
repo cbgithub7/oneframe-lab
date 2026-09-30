@@ -89,7 +89,7 @@ hold the detail.
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
-| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | draft, redrafted 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md); waiting for the owner's answers to its open questions and approval |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | draft, redrafted 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md); five of six questions decided, one open, then the owner's approval |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
@@ -109,7 +109,11 @@ hold the detail.
 3. **Model store.** Download for a node's weights and companion files, into
    `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Pin every
    repository revision.
-4. **First model nodes,** enough for both loops:
+4. **Keep models loaded** (decided 2026-09-30). A long-lived worker per runtime, in place of one
+   child process per run: a model loads once and runs many times. The worker stays while idle for
+   a set time, is evicted when another runtime needs the device, and is killed on Stop. It
+   changes the executors, Stop and the node API (loading separate from running).
+5. **First model nodes,** enough for both loops:
     - depth: Depth Pro and MoGe-2;
     - segmentation: SAM 2.1;
     - one object generator: TripoSR or Hunyuan3D-2mini, first because they can be verified on the
@@ -120,11 +124,11 @@ hold the detail.
     - evaluate: agreement with the source photo from the input camera.
 
     Each gets a CPU or tiny path for CI, and says plainly what is unverified.
-5. **Workspace UI.**
+6. **Workspace UI.**
     - Variants side by side per photo, then a graph editor (Drawflow or a hand-written SVG editor).
     - A three.js plus Spark 2 viewer for meshes, splats and the 2.5D photo, with clay, wireframe
       and trust shading.
-6. **Packaging** (phase 2 of the roadmap):
+7. **Packaging** (phase 2 of the roadmap):
     - an NSIS per-user installer with a bundled, pinned uv;
     - a first-run wizard with preflight checks;
     - a two-tier uninstaller;
