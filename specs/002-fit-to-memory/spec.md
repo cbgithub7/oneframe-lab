@@ -90,7 +90,7 @@ rule in [AGENTS.md](../../AGENTS.md)).
       beside the trust label. The fit never changes an output's trust.
 8. **The cache.**
     - Precision and every output-affecting setting are part of a result's key; the device is not
-      (open question 4).
+      (decision 4).
     - Before fitting, the engine looks for a cached result at the node's unreduced settings, then
       at each reduction in order, and serves the first it finds.
     - A result made on a bigger machine, or on a day with more free memory, is therefore reused
@@ -213,16 +213,12 @@ Answered by the owner on 2026-09-30:
     - The AC8 report measures the context's size, to check the floor.
 3. **A setting the person chose that does not fit** is tried anyway, with a warning in
    `node.fit`, as llama.cpp does. The cap turns an overrun into `oom`.
+4. **A result made on another device is reused.** Results are saved so the same job is not
+   redone. A result made on the CPU is served where the same job asks for a GPU, and the other
+   way round: the two differ only in tiny rounding, and the result records the device that made
+   it.
 5. **Falling to the CPU:** yes, only for nodes that list `cpu`, and labelled. A node that is
    impractical on a CPU does not list it.
 6. **Formulas are declared in the manifest,** as coefficients over named params and input sizes.
    Nodes stay data, and the engine never runs a model node's code. A function in the node's
    folder is added later only if a real model's memory cannot be written this way.
-
-## Open questions
-
-4. **Reuse a result made on another device?** Results are saved so the same job is not redone.
-   If a result was made on the CPU and the same job later runs where a GPU is free, should the
-   saved result be reused, or made again on the GPU? The two differ only in tiny rounding.
-
-   *Recommended:* reuse it. It is instant, and the result still says which device made it.

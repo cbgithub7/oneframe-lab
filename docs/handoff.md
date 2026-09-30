@@ -89,7 +89,7 @@ hold the detail.
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
-| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | draft, redrafted 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md); five of six questions decided, one open, then the owner's approval |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | draft, redrafted 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md); every question decided 2026-09-30; waiting for the owner's approval |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
