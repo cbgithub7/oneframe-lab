@@ -1,6 +1,6 @@
 # 002: Plan
 
-Status: draft, for the owner's approval (decision 10 added on the owner's question, 2026-09-30)
+Status: draft, for the owner's approval (revised 2026-09-30 for the amended spec)
 
 The spec is [spec.md](spec.md); the research behind it is [research.md](research.md).
 
@@ -10,94 +10,107 @@ Choices the spec leaves open. Each has the answer this plan uses. Approving the 
 these answers; say if one should change.
 
 1. **Precision is a param the engine adds.** A node with a memory model gets a `precision` choice
-   param whose choices are the precisions its memory model lists, the first being the default.
-    - The graph can then set it like any other param.
-    - It is part of the cache key, because it affects the output.
-    - A fit changes it like any other setting.
-    - The node reads it as `ctx.precision`, as today.
+   param whose choices are the precisions its model lists, the first being the default.
+    - The graph sets it like any other param.
+    - It is part of the cache key.
+    - The fit changes it like any other setting.
+    - The node reads it as `ctx.precision`.
+    - `nodes.list` shows it, so the page sees it: `Manifest.to_json` adds the params the engine
+      made.
 
-   A manifest may not declare its own `precision` param. Nodes without a memory model are
-   unchanged, and so are their existing cache keys: no cache key version bump.
-2. **How a formula is written.** Working memory is a base plus a sum of terms. Each term is a
-   coefficient times a product of factors. A factor is:
-    - one of the node's numeric params;
-    - an input's `width`, `height` or `pixels` (read from that input's `meta`);
-    - `bytes`: 4 at fp32, 2 at fp16 and bf16.
+   A manifest may not declare its own `precision`. Nodes without a memory model, and their cache
+   keys, are unchanged.
+2. **How the memory model is written.**
+    - **Weights** are a table keyed by precision, and optionally also by one choice param named
+      in `weights_by` (the checkpoint).
+    - **Each precision** states `cuda_min_capability` (or none), `cpu` (true or false), and
+      optionally `bytes`, the bytes per value its working memory uses (4 at fp32 and 2 at
+      fp16/bf16 by default; a mixed-precision node states its own).
+    - **Working memory** is a base plus terms, each a coefficient times a product of factors. A
+      factor is:
+        - one of the node's numeric params;
+        - `bytes`;
+        - `<port>.<field>`, a numeric field of that input's `meta` (`image.width`,
+          `views.count`); `<port>.pixels` is width × height.
+    - **Missing inputs:** an unconnected optional input counts as 0. A connected input without
+      the field makes the estimate unknown.
+    - **Other figures:** `system_mb` is a formula of the same form, defaulting to the weights'
+      size. `outside_torch_mb` is a number, default 0.
+    - **Time** is optional, per kind of device: `{"seconds", "at", "source"}`, where `at` names
+      the settings it was measured at.
 
-   This is ComfyUI's form (area × bytes × a per-model factor), and it covers the planned models'
-   settings: resolution, tokens, chunk size, octree resolution. It is a product of known numbers,
-   not a language; nothing is evaluated.
-3. **The margin can be overridden in `<data>/settings.json`,** as `{"memory": {"margin_mb": N}}`.
-    - That is the first engine setting, so the file is new.
-    - No page for it in this spec (workspace UI).
-    - The margin in force is reported in every `node.fit`.
-4. **Which device is "here".**
+   The formula is a product of known numbers, not a language; nothing is evaluated.
+3. **Settings live in `<data>/settings.json`,** the engine's first settings file:
+
+   ```json
+   { "memory": { "margin_mb": { "cuda": null, "cpu": null }, "never_reduce_quality": false, "fit": "on" } }
+   ```
+
+   `null` means the default margin. The file is read at each fit. The page's editor for it is
+   the workspace UI's job.
+4. **Which devices are here.**
     - `cuda` is available to a runtime node when its installed build is an NVIDIA build and the
-      machine profile has the card that build was planned for. That card is the one spec 001's
-      plan picked, and the child already sees only that card.
-    - The engine process never uses a GPU, so engine nodes fit only on `cpu`.
-    - `mps`, `xpu` and `rocm` are not read yet and are skipped with that reason.
-5. **What counts as the measured peak.**
-    - On a card: torch's peak reserved memory, which the child already reports; that is what the
-      allocator really held.
-    - On the processor: the growth of the child's peak resident memory while the node ran. The
-      child reads it with the standard library only: `resource` on Linux, `GetProcessMemoryInfo`
-      through `ctypes` on Windows.
-    - A run that runs out of memory also records its peak. It is a lower bound, so the retry and
-      later fits still learn from it.
-6. **Corrections.** One entry per node id, node version, memory-model hash and kind of device
-   (`cpu`, or `cuda:<compute capability>`), holding the largest ratio seen and when it was last
-   seen.
-    - The file is `<data>/memory/corrections.json`, written to a temporary file and renamed into
-      place.
-    - It holds at most 256 entries; the least recently seen goes first.
-    - A ratio below 1 is kept too, so an estimate that is too high also improves. The largest
-      ratio wins, so the correction only ever errs on the side of more memory.
-7. **"Tried anyway"** (decision 3 of the spec).
-    - It happens only when nothing fits on any device *and* a change was skipped because the
-      graph sets its param.
-    - The node then runs on its first available device, with every change it is allowed, capped
-      at the budget, and `node.fit` carries the warning.
-    - When nothing fits and nothing the person set was in the way, the node fails before loading
-      with kind `memory`.
-8. **How a result says how it was made.** The engine writes `made_with` into each output's `meta`:
-   the device, the precision, the changes, and `reduced` when a change cost quality. It
-   overwrites a node's own `made_with` key, so a node cannot claim a fit it did not get.
-9. **The hardware test node** lives in `engine/tests/hardware/test.vram/`, outside `nodes/`, so the
-   app never lists it.
-    - It allocates exactly what its memory model says, so the report measures the mechanism, not
-      a model.
-    - It imports torch, which the engine's environment does not have, so that one import carries
-      a pyright ignore.
-    - A new `npm run bench:fit` runs it and writes the AC8 report.
-10. **Retrying one step inside the node: `ctx.fallbacks`.** This is the narrow retry the
-    research found in ComfyUI (a failed decode redone in tiles). It costs no reload, so it comes
-    before the engine's retry. A node lists ways to do one step, cheapest first:
+      profile has the card that build was planned for (spec 001's choice; the child sees only
+      that card).
+    - Engine nodes fit only on `cpu`, because the engine process never uses a GPU.
+    - `mps`, `xpu` and `rocm` are skipped as not read yet.
+    - A `cpu` job in a GPU build gets `CUDA_VISIBLE_DEVICES=""` in its own environment, so the
+      executor's environment becomes per job.
+5. **What is measured.**
+    - On a card: torch's peak reserved memory, reset for each `ctx.fallbacks` way.
+    - On the processor: the growth of the child's peak resident memory, read with the standard
+      library (`resource` on Linux, `GetProcessMemoryInfo` through `ctypes` on Windows).
+    - Engine nodes are not measured, because the engine process's peak covers its whole life.
+    - The child reports both peaks in `done` and in `error`. `NodeError` carries them, so the
+      scheduler can report "both peaks" and learn from failures.
+6. **What each machine learns: `<data>/memory/learned.json`,** with a format version, written to a
+   temporary file and renamed into place.
+    - **Key:** one entry per node id, node version, memory-model hash, runtime lock hash and kind
+      of device (`cpu`, `cuda:<capability>`, or `cuda:unknown`).
+    - **Contents:**
+        - the last 8 working-memory ratios, each measured working memory (peak − weights −
+          outside torch) over the *uncorrected* working estimate;
+        - the measured peak per settings hash;
+        - the seconds per settings hash.
+    - **The correction** is the largest of the recent ratios. It may go below 1 only when at
+      least 2 successful runs agree. A failed run adds its ratio only when it is above 1, as a
+      lower bound.
+    - **The bound:** 256 entries; the least recently used goes first.
+7. **"Tried anyway"** happens only when nothing fits anywhere *and* a change was skipped because
+   the graph sets its param. The node then runs on its first device with every change it is
+   allowed, capped, and `node.fit` carries the warning. Otherwise nothing fitting is a `memory`
+   failure.
+8. **`made_with`** is written by the engine into each output's `meta`. It holds:
+    - the device and precision, and each changed setting;
+    - the `ctx.fallbacks` way each step finished with;
+    - `reduced` when a change cost quality;
+    - `reduced_input` when any input was reduced or made from a reduced input.
 
-    ```python
-    mesh = ctx.fallbacks("decode", [
-        ("whole", lambda: decode(latents), "speed"),
-        ("tiles 512", lambda: decode_tiled(latents, 512), "speed"),
-        ("tiles 256, fewer faces", lambda: decode_tiled(latents, 256, coarse=True), "quality"),
-    ])
-    ```
-
-    - On an out-of-memory error, and only that (as `classify` reads it), the helper does three
-      things:
-        - leaves the `except` block before trying again, so the error's traceback no longer holds
-          the failed tensors;
-        - empties torch's cache if torch is loaded;
-        - emits `node.step_oom` with the step, the way that failed and its peak.
-
-      Then it tries the next way.
-    - Any other error goes straight up. When every way runs out of memory, the last error goes
-      up as `oom`, and the engine's retry takes over.
-    - The way that finished goes into `made_with`. A way marked `quality` sets `reduced`, so a
-      result made the cheaper way says so.
-    - A node that never calls it is unaffected.
-
-    The order is: the fit before loading, then this retry inside the process, then one engine
-    retry with a smaller fit, then failure.
+   It overwrites a node's own `made_with`, so a node cannot claim a fit it did not get.
+9. **`npm run bench:fit -- <node> [--grid k=v1,v2 ...]` measures any node** at a grid of settings
+   and writes a report with suggested coefficients. Spec 005 uses it to measure real models. With
+   no node it runs the AC8 test node, `engine/tests/hardware/test.vram/`, which lives outside
+   `nodes/` so the app never lists it. That node imports torch, which the engine's environment
+   lacks, so its one import carries a pyright ignore.
+10. **`ctx.fallbacks(step, ways)`** retries one step a cheaper way in the same process. Each way is
+    `(name, fn)`, and every way must give the same result within rounding.
+    - It retries only on torch's `OutOfMemoryError`, found by the type's name, anywhere in the
+      error's cause chain. Other CUDA memory errors go to the engine's retry, because the context
+      may not be usable after them.
+    - Before the next way it leaves the `except` block, so the traceback's frames are gone, and
+      empties torch's cache.
+    - It resets the peak statistics and emits `node.step_oom`.
+    - When every way runs out of memory, the last error goes up as `oom`.
+11. **The cap is set inside the child,** after `torch.cuda.init()`:
+    - `min(budget, mem_get_info free − 256 MB) − outside_torch_mb`;
+    - 256 MB is the headroom ComfyUI's allocator keeps by default ([research.md](research.md)).
+    - `ceiling` reports the budget, the free memory it saw, and the cap.
+    - `ctx.memory_free_mb()` is the cap less torch's reserved memory, plus torch's reserved but
+      inactive memory: ComfyUI's free-memory formula, bounded by our cap.
+12. **Events:**
+    - `node.fit` comes before each attempt's `node.start`, and `node.start` carries `attempt`.
+    - An engine node's retry happens in the engine's process.
+    - A node with no memory model is capped but never retried.
 
 ## Files
 
@@ -105,224 +118,270 @@ New:
 
 | File | Why |
 | --- | --- |
-| `engine/src/oneframe/memory.py` | The memory model: parse and check it, `estimate()`, the margin, `fit()` (pure), and the corrections store |
-| `engine/src/oneframe/bench_fit.py` | The AC8 report: profile, context size, three settings, a forced overrun, Windows shared-memory samples, Markdown out |
-| `engine/tests/test_memory.py` | AC1, AC2, AC4 and the fit half of AC5 |
-| `engine/tests/fixtures/machines.py` | The eight machine profiles of the spec's acceptance criteria, as profile dicts |
-| `engine/tests/hardware/test.vram/node.json`, `node.py` | The AC8 node: allocates its weights and working memory as its model says |
+| `engine/src/oneframe/memory.py` | The memory model (parse, check, hash), `estimate()`, margins and settings, `fit()` (pure), and the learned store |
+| `engine/src/oneframe/bench_fit.py` | `bench:fit`: any node over a grid of settings; the AC8 run; NVML and Windows performance counters through `ctypes`; Markdown out |
+| `engine/tests/test_memory.py` | AC1, AC2, AC4, and the fit half of AC5 |
+| `engine/tests/fixtures/machines.py` | The profiles of the spec's acceptance criteria, as profile dicts |
+| `engine/tests/hardware/test.vram/node.json`, `node.py` | The AC8 node: allocates its weights and working memory as its model says, with a `ctx.fallbacks` step, and a param that overruns |
 | `specs/002-fit-to-memory/reports/` | Where AC8's report is committed |
 
 Changed:
 
 | File | Why |
 | --- | --- |
-| `engine/src/oneframe/manifest.py` | Read `memory`; add the `precision` param; refuse a bad model with every problem named |
-| `engine/src/oneframe/graph.py` | A `Step` remembers which params the graph set (`explicit`), because the fit must not change them |
-| `engine/src/oneframe/hardware.py` | System memory, total and free, in the profile (Linux `/proc/meminfo`, Windows `GlobalMemoryStatusEx`, otherwise unknown) |
-| `engine/src/oneframe/runtimes.py` | `device_target(runtime_id)`: the installed build's vendor and the card it was planned for |
-| `engine/src/oneframe/scheduler.py` | Cache lookup across reductions; fit before running; the job carries the fit and the cap; one retry on `oom`; corrections; `made_with`; the new events |
-| `engine/src/oneframe/child.py` | The cap without torch; `ctx.memory_budget_mb`; `ctx.fallbacks`; the peak on the processor; more out-of-memory forms |
-| `engine/src/oneframe/server.py` | `nodes.fit` and `nodes.forget`; the scheduler gets the machine, the runtimes' targets and the corrections |
-| `engine/tests/test_scheduler.py`, `test_runtime_server.py`, `test_hardware.py`, `test_ports_and_manifests.py` | AC3, AC5, AC6, AC7 and the system-memory parsing |
+| `engine/src/oneframe/manifest.py` | Read `memory`; add `precision`; refuse a bad model with every problem named; `to_json` shows the added param |
+| `engine/src/oneframe/graph.py` | A `Step` remembers which params the graph set (`explicit`) |
+| `engine/src/oneframe/hardware.py` | System memory, total and available (Linux `MemAvailable`, Windows `GlobalMemoryStatusEx`, otherwise unknown) |
+| `engine/src/oneframe/runtimes.py` | `device_target(runtime_id)`: the installed build's vendor, its card, and the lock hash |
+| `engine/src/oneframe/executors.py` | `NodeError` carries the peaks; a per-job environment (for `CUDA_VISIBLE_DEVICES=""`) |
+| `engine/src/oneframe/scheduler.py` | Cache first, fit, key per attempt, job fields, events, `made_with`, learning, one retry |
+| `engine/src/oneframe/child.py` | The cap in the child, with or without torch; `memory_budget_mb`, `memory_free_mb()`, `fallbacks`; peaks in `done` and `error`; the out-of-memory forms and cause chain |
+| `engine/src/oneframe/server.py` | `nodes.fit`, `nodes.forget`; the scheduler gets the machine, targets, settings and store |
+| `engine/tests/test_scheduler.py`, `test_runtime_server.py`, `test_hardware.py`, `test_ports_and_manifests.py` | AC3, AC5, AC6, AC7, system memory |
 | `package.json` | `bench:fit` |
-| `docs/nodes.md` | How to write a memory model, and how to measure one |
+| `docs/nodes.md` | Writing a memory model; measuring it with `bench:fit`; `ctx.fallbacks`; Windows' Sysmem Fallback Policy for people who run the app |
 | `docs/architecture.md` | The Memory part, the events, the failure kind `memory` |
-| `AGENTS.md` | The hardware-claims rule says "the fit that finished" instead of "the arrangement"; the `bench:fit` command |
+| `AGENTS.md` | "the fit that finished" in the hardware-claims rule; the `bench:fit` command |
 | `docs/handoff.md` | State and the spec's status |
 
 ## Design
 
 ### The memory model in a manifest
 
+This is the test node's model; the numbers are what the test table uses.
+
 ```json
 "memory": {
-  "weights": {
-    "fp32": { "mb": 3000, "source": "specs/002-fit-to-memory/reports/<report>.md (GTX 1070)" },
-    "fp16": { "mb": 1500, "source": "..." }
+  "precisions": {
+    "fp32": { "cuda_min_capability": null, "cpu": true },
+    "fp16": { "cuda_min_capability": "6.0", "cpu": false },
+    "bf16": { "cuda_min_capability": "8.0", "cpu": true }
   },
+  "weights": { "fp32": 3000, "fp16": 1500, "bf16": 1500, "source": "test node, exact by construction" },
   "working": {
     "mb": 200,
     "terms": [
       { "coef": 0.00025, "of": ["resolution", "resolution", "bytes"] },
       { "coef": 0.25, "of": ["chunk_size"] }
     ],
-    "source": "..."
+    "source": "test node, exact by construction"
   },
   "changes": [
     { "set": { "chunk_size": 2048 }, "costs": "speed" },
     { "set": { "chunk_size": 512 }, "costs": "speed" },
     { "set": { "precision": "fp16" }, "costs": "quality" },
     { "set": { "resolution": 512 }, "costs": "quality" }
-  ]
+  ],
+  "upgrades": [ { "set": { "chunk_size": 32768 } } ]
 }
 ```
 
-- A figure nobody has measured is `"mb": null` with a source that says so; the estimate is then
-  unknown.
+- With `weights_by: "checkpoint"`, `weights` becomes `{ "<choice>": { "<precision>": mb } }`.
 - The checks (AC1):
     - every `set` names a param (or `precision`) with a valid value;
-    - a `speed` change sets only params marked `"affects": "speed"`, so its result is the same;
-    - a `quality` change sets at least one output-affecting param or `precision`;
+    - a `speed` change and every upgrade set only params marked `"affects": "speed"`;
+    - a `quality` change sets an output-affecting param, `precision`, or the `weights_by` param;
     - no `quality` change comes before a `speed` one;
-    - every factor names a numeric param, `bytes`, or `<input>.width|height|pixels` of a real
-      input;
-    - every figure has a source.
+    - every precision has its rule for where it runs;
+    - `weights_by` names a choice param, and every choice has weights;
+    - every factor names a numeric param, `bytes`, or `<port>.<field>` of a real input;
+    - every figure has a source (`null` values say why).
 
 ### The fit
 
-`fit(manifest, params, explicit, inputs, machine, corrections, margin_mb=None) -> Fit` is a pure
+`fit(model, values, explicit, inputs, machine, target, learned, settings) -> Fit` is a pure
 function.
 
-1. **The estimate** for a set of values on a device is:
-    - the weights for the precision, plus working memory;
-    - times the correction for that node and kind of device, if any;
-    - unknown if any figure it needs is null.
-2. **The margin** for a device is `margin_mb` from the settings if set. Otherwise it is the
-   larger of 1611 MB (1.5 GiB) and 10% of the device's total memory. The budget is the free
-   memory less the margin.
-3. **The walk.** For each available device in `devices` order:
-    - try the values as they stand;
-    - then apply the changes cumulatively, in order, skipping any that sets a param in
-      `explicit`;
-    - the first estimate within the budget wins.
-4. **Unknowns.** An unknown estimate, or a device whose free memory cannot be read, ends the walk
-   at once: the node runs at its values on that device, and the fit says why.
-5. **Nothing fits:** "tried anyway" (decision 7), or kind `memory`. The message names the smallest
-   estimate on each device and its free memory.
-6. **The result.** `Fit` holds:
-    - the device, the values, and the changes applied and skipped (with the reason);
-    - the estimate (known, unknown or corrected), the budget, the margin and the free memory;
-    - the warning, if any;
-    - the index of the last change applied, which the retry starts after.
+1. **Estimate.** For values on a device:
+    - device need = weights + working × correction + outside torch;
+    - system need = the `system_mb` formula.
 
-   The fit never reads a card's name.
+   It is unknown if a figure it needs is null, unless the learned store has a peak for these
+   settings on this kind of device.
+2. **Margin.** From the settings, or the larger of 1611 MB (1.5 GiB) and 10% of the device's
+   total, for cards and for system memory alike.
+3. **Devices.** The devices of `devices` that are here (decision 4) and on which the current
+   precision can run.
+4. **Order.**
+    1. With `fit: "off"`: the first device, at the values, and nothing else.
+    2. Upgrades, on the first device, if both needs fit.
+    3. Speed only: for each device, the values, then the speed changes cumulatively. A change is
+       skipped when it sets an explicit param, or a precision that cannot run on that device.
+    4. Unless `never_reduce_quality`: the same with every change, speed and quality, in order.
+    5. Nothing fits: "tried anyway" (decision 7), or kind `memory`.
+5. **Slower device.** When the fit's device is not the node's first listed device, `Fit.warning`
+   is `slow`, with:
+    - the expected seconds and their basis: `measured` from the learned store, `published` from
+      the manifest's `time`, or `unknown`;
+    - `alternative`: step 4.4's result on the first device, when there is one and
+      `never_reduce_quality` is off.
+6. **Unknowns.** An unknown estimate or an unreadable budget ends the walk: the node runs at the
+   values on that device, and the fit says why.
+7. **The result.** `Fit` holds the device, the values, the changes applied and skipped with
+   reasons, the upgrades, the needs, budgets, margins and free memory, the estimate's basis, the
+   warning, and the index of the last change applied.
+
+The fit never reads a card's name. A test renames every card and checks every fit is unchanged.
 
 ### The run
 
 For each step, in the scheduler:
 
-1. **Cache first.** Compute the key for the step's values, then for the values after each
-   quality change in order (speed changes do not change the key). Serve the first key the cache
-   holds. This reads no machine state, so it is the same on every machine.
-2. **Fit.** Read the machine (the profile, refreshed) and the runtime's target, then fit, and emit
-   `node.fit`. The job gets `device`, `params` (with the fitted values), `precision`,
-   `memory_budget_mb`, and `vram_cap_mb` (the budget, for `cuda` only).
-3. **Run.** On success, record the correction (peak ÷ estimate) and write `made_with` into every
-   output's `meta` before the cache commit. `node.done` carries the fit.
-4. **Retry.** On `oom`:
-    - record the correction from the failed attempt, and emit `node.oom` with its peak;
-    - refit with the refreshed profile, starting after the last change applied (or on the next
-      device when none are left), and run once more in a new process;
-    - a second `oom` fails the node with both fits and both peaks.
-
-   Any other kind, and Stop, go through as today.
+1. **The unreduced key.** If it is cached, serve it (`node.cached`).
+2. **Fit.** Read the machine (a fresh profile) and the runtime's target, then fit, and emit
+   `node.fit`. A `memory` failure ends here.
+3. **The cache, down to the fit.** Look up the keys after each quality change, in order, up to
+   the fitted values, skipping changes that touch `explicit`. Serve the first hit.
+4. **Run.**
+    - Compute the key for the fitted values and begin its work folder.
+    - Emit `node.start` with `attempt`.
+    - The job carries `device`, `params` (with the fitted values), `precision`,
+      `memory_budget_mb`, `vram_cap_mb` (the budget, for `cuda`), `outside_torch_mb`, and the
+      per-job environment.
+5. **Success.**
+    - Record the peak, ratio and seconds in the learned store (runtime nodes only).
+    - Write `made_with` into every output's `meta`, then commit under the fitted key.
+    - `node.done` carries the fit.
+6. **`oom`.**
+    - Record the failed attempt, and emit `node.oom` with both peaks.
+    - A node without a memory model fails here.
+    - Otherwise, refit with a fresh profile, starting after the last change applied (or at the
+      next change, if the estimate was unknown).
+    - Repeat steps 3 to 5 once, in a new process for a runtime node and in the engine's process
+      for an engine node.
+    - A second `oom` fails the node with both fits and both peaks.
+7. **Everything else,** including Stop, goes through as today. `node.failed` carries the fit.
 
 ### The child
 
-- `_cap_allocator` imports torch only if it can. Without torch, it emits
+- **The cap:** `_cap_allocator` becomes decision 11. Without torch it emits
   `ceiling {applied: false, why}` and carries on.
-- `NodeContext.memory_budget_mb` comes from the job.
-- `NodeContext.fallbacks(step, ways)` is decision 10. What it chose is kept on the context and
-  returned in `done`, and the scheduler folds it into `made_with`.
-- `classify` adds `CUBLAS_STATUS_ALLOC_FAILED`, `CUDA error: out of memory` and `MemoryError`.
-- `done` and `error` gain `peak_ram_mb` when the device is `cpu`.
+- **The context:** `memory_budget_mb`, `memory_free_mb()` and `fallbacks` (decision 10).
+- **Peaks:** `done` and `error` carry `peak_reserved_mb`, `peak_vram_mb` and `peak_ram_mb`.
+- **`classify`:**
+    - walks `__cause__` and `__context__`;
+    - adds `CUBLAS_STATUS_ALLOC_FAILED`, `CUDNN_STATUS_ALLOC_FAILED`, `CUDA error: out of memory`
+      and `MemoryError`.
+- **`died`:** the executor's message for `died` says "may have run out of system memory" when the
+  exit code is the operating system's kill (-9 on Linux).
 
 ### Events and methods
 
-- `node.fit`: `step`, `node`, `device`, `free_mb`, `margin_mb`, `budget_mb`, `estimate_mb`,
-  `estimate` (known, unknown or corrected), `changes`, `skipped`, `warning`.
-- `node.oom`: `step`, `attempt`, `peak_mb`, `message`.
-- `node.step_oom`: `step`, `stage`, `way`, `next`, `peak_mb` (from `ctx.fallbacks`).
-- `nodes.fit {node, params?, inputs?}` returns the same shape as `node.fit`. `inputs` maps a port
-  to `{width, height}`, because an input's size is not known before a run.
-- `nodes.forget {node}` returns the number of corrections dropped.
-- Neither is added to the page's allowlist.
+- `node.fit`: `step`, `node`, `attempt`, `device`, `precision`, `needs`, `free`, `margins`,
+  `budgets`, `estimate` (known, unknown, corrected or measured), `changes`, `upgrades`,
+  `skipped`, `settings`, `warning` (`slow` with `seconds`, `basis` and `alternative`,
+  `tried_anyway`, or `unknown`).
+- `node.start`: adds `attempt`.
+- `node.oom`: `step`, `attempt`, `peak_reserved_mb`, `peak_ram_mb`, `message`.
+- `node.step_oom`: `step`, `stage`, `way`, `next`, `peak_reserved_mb`.
+- `nodes.fit {node, params?, inputs?}`: the same shape as `node.fit`. `inputs` maps a port to its
+  `meta` fields.
+- `nodes.forget {node}`: the number of entries dropped.
+- Neither method is added to the page's allowlist.
 
 ## The test table (AC2)
 
-The test node is the manifest above:
+The test node is the model above. Its defaults are resolution 1024, chunk 8192, fp32.
 
-| Defaults | resolution 1024, chunk 8192, precision fp32 |
+| Values | Device need |
 | --- | --- |
-| Estimate at the defaults | 6297 MB |
-| After change 1 | 4761 MB |
-| After change 2 | 4377 MB |
-| After change 3 | 2352 MB |
-| After change 4 | 1959 MB |
+| Defaults | 6297 MB |
+| With the upgrade (chunk 32768) | 12441 MB |
+| After change 1 (chunk 2048) | 4761 MB |
+| After change 2 (chunk 512) | 4377 MB |
+| After change 3 (fp16) | 2352 MB |
+| After change 4 (resolution 512) | 1959 MB |
 
-MB are 10^6 bytes, as the profile reports them.
+The system need is the weights: 3000 MB at fp32, 1500 MB at fp16. MB are 10^6 bytes, as the
+profile reports them.
 
-| Machine | Free / total (MB) | Margin | Budget | Expected fit |
+| Machine | Card free / total | System free / total | Budgets (card; system) | Expected fit |
 | --- | --- | --- | --- | --- |
-| No GPU, 32 GB system memory | system 24000 / 34360 | 3436 | 20564 | `cpu`, defaults |
-| 4 GB card, compute 5.2 (16 GB system) | 3900 / 4295 | 1611 | 2289 | `cuda`, changes 1–4, `reduced` |
-| 8 GB card, compute 6.1, 1.5 GB held by other programs | 7000 / 8590 | 1611 | 5389 | `cuda`, change 1 only |
-| 12 GB card, compute 8.6 | 12000 / 12885 | 1611 | 10389 | `cuda`, defaults |
-| 24 GB card, compute 8.9 | 24500 / 25770 | 2577 | 21923 | `cuda`, defaults |
-| 80 GB card, compute 9.0 | 84000 / 85899 | 8590 | 75410 | `cuda`, defaults |
-| Two cards, 8 GB and 24 GB | as the rows above | | | the 24 GB card (the runtime's plan), defaults |
-| 2 GB card, compute 5.2, 4 GB system | card 1900 / 2147; system 3000 / 4295 | 1611 | 289; 1389 | fails before loading: kind `memory`, "needs 1959 MB at the smallest settings; 1900 MB free on the card, 3000 MB free in system memory" |
+| No GPU, 32 GB | none | 24000 / 34360 | –; 20564 | `cpu` with the upgrade; warning `slow` (no card) |
+| 4 GB, compute 5.2, 16 GB | 3900 / 4295 | 10000 / 17180 | 2289; 8282 | `cpu`, defaults; warning `slow`, no alternative (fp16 needs compute 6.0, and fp32 does not fit reduced) |
+| 4 GB, compute 7.5, 16 GB | 3900 / 4295 | 10000 / 17180 | 2289; 8282 | `cpu`, defaults; warning `slow`, alternative `cuda` with changes 1–4 |
+| 4 GB, compute 7.5, 8 GB | 3900 / 4295 | 5000 / 8590 | 2289; 3389 | `cuda`, changes 1–4, `reduced` (the processor cannot fit either) |
+| 6 GB, compute 7.5 | 6000 / 6442 | 10000 / 17180 | 4389; 8282 | `cuda`, changes 1–2 |
+| 8 GB, compute 6.1, 1.5 GB held | 7000 / 8590 | 10000 / 17180 | 5389; 8282 | `cuda`, change 1 |
+| 12 GB, compute 8.6 | 12000 / 12885 | 24000 / 34360 | 10389; 20564 | `cuda`, defaults (the upgrade does not fit) |
+| 24 GB, compute 8.9 | 24500 / 25770 | 50000 / 68719 | 21923; 43128 | `cuda` with the upgrade |
+| 80 GB, compute 9.0 | 84000 / 85899 | 200000 / 274878 | 75410; 172512 | `cuda` with the upgrade |
+| Two cards, 8 GB and 24 GB | as the rows above | 50000 / 68719 | | the 24 GB card (the runtime's plan), with the upgrade |
+| 2 GB, compute 6.1, 4 GB | 1900 / 2147 | 3000 / 4295 | 289; 1389 | kind `memory`: "needs 1959 MB on the card at the smallest settings; 1900 MB free. Needs 3590 MB on the processor (fp16 cannot run there); 3000 MB free" |
 
-Also:
-- On the 2 GB machine with the graph setting resolution 1024, the node is tried anyway on `cuda`
-  with changes 1–3 and a warning.
-- On the 8 GB machine with the graph setting chunk 8192, changes 1 and 2 are skipped, naming
-  `chunk_size`, and change 3 fits.
-- Every row is run again with every card renamed, and must give the same fit.
+The extra cases:
+
+| Case | Expected fit |
+| --- | --- |
+| 2 GB, the graph sets resolution 1024 | tried anyway on `cuda` with changes 1–3 and a warning |
+| 8 GB, the graph sets chunk 8192 | changes 1–2 skipped naming `chunk_size`; `cpu` at defaults, warning `slow`, alternative `cuda` with change 3 |
+| 8 GB, the graph sets precision bf16 | `cuda` is out (bf16 needs compute 8.0); `cpu` at bf16, warning `slow` |
+| 4 GB 7.5 with 8 GB, `never_reduce_quality` | kind `memory` (only a quality cut would fit) |
+| 4 GB 7.5 with 16 GB, `never_reduce_quality` | `cpu`, warning `slow`, no alternative offered |
+| 8 GB, `fit: "off"` | `cuda` at defaults, capped at the budget |
+| 8 GB, learned correction 1.5 on `cuda:6.1` | change 2 instead of change 1 (the correction scales working memory only) |
+| Every row with every card renamed | the same fit |
+
+The table is computed in the test from the manifest and asserted against these values. They
+were computed by a script following these rules before being written here.
 
 ## Risks
 
 | Risk | What catches it |
 | --- | --- |
-| The estimate is wrong for a real model on a card nobody here has | The margin, the cap turning an overrun into `oom`, the one retry, and the correction on that machine. Each real node's model is measured at several settings (spec 005) |
-| Free memory changes between the measurement and the load | The margin covers other programs' growth; the cap keeps our own overrun an `oom` |
-| The cap does not cover the CUDA context or extensions' own allocations (research) | The margin covers the context, and the AC8 report measures it. Windows' Sysmem Fallback Policy stays the person's setting (out of scope) |
-| Torch's cap is a fraction of total memory, not free | The fraction is computed from the budget, so the cap equals the budget |
-| A node changes its `made_with` or lies about its peak | `made_with` is written by the engine after the node returns; the peak comes from the child's own measurement |
-| Reading `/proc/meminfo` or `GlobalMemoryStatusEx` fails | System memory is then unknown, and a CPU fit runs at its values and says so |
-| The test-table numbers drift from the formula | The table is computed in the test from the manifest, and asserted against the values above |
+| An estimate is wrong for a real model on a card nobody here has | The margin, the cap turning an overrun into `oom`, `ctx.fallbacks`, the one retry, and the correction on that machine. Real nodes are measured at several settings with `bench:fit` (spec 005) |
+| Free memory changes between the measurement and the load | The child measures again after its context exists and caps at the smaller figure |
+| Extensions allocate outside torch's cap | `outside_torch_mb` lowers the cap; the margin covers the rest; `bench:fit` measures the whole card, not only torch |
+| A correction feeds on itself | Ratios are always against the uncorrected estimate, and only the working part is scaled |
+| One unlucky run inflates a correction for ever | Only the last 8 runs count; `nodes.forget` clears it |
+| A retry inside the process leaves the context broken | `ctx.fallbacks` retries only torch's own `OutOfMemoryError`; everything else goes to a new process |
+| The slow warning's time is wrong | Its basis is always stated; "unknown" is said plainly |
+| Reading system memory fails | System memory is unknown; a processor fit then runs at its values and says so, and a card's fit skips the system check and says so |
+| The test table drifts from the rules | It is computed in the test from the manifest |
 
 ## Tests
 
 - **Added:**
     - `test_memory.py`:
-        - the manifest checks, each refusal with every problem (AC1);
-        - the estimate and the formula factors;
-        - the margin and its override;
-        - every row of the test table, the two extra cases, and the renamed-cards run (AC2);
-        - corrections: scale, device kind, version bump, forget, the bound, an interrupted write
-          (AC4);
-        - the cache candidates in order (AC5).
-    - `test_scheduler.py`:
-        - a cached unreduced result is served on a machine that would reduce;
-        - `made_with` in `meta` and in `node.done`;
-        - `fp32` and `fp16` keys differ, and a device change alone does not change the key (AC5);
-        - out-of-memory forms (AC6);
-        - `ctx.fallbacks`, run by an engine test node:
-            - a first way that runs out of memory is followed by the second, in the same
-              process, with `node.step_oom`;
-            - the finishing way is in `made_with`, and a `quality` way sets `reduced`;
-            - another error kind is not retried;
-            - when every way runs out, the engine's retry follows;
-            - the failed way's objects are released before the next way starts (a weak
-              reference to them is dead by then).
-    - `test_runtime_server.py`:
-        - in the tiny runtime's `cu130` build, on a recorded compute 7.5 profile:
-            - `oom` → one retry in a new process → done, with the events in order;
-            - a second `oom` fails with both fits and nothing cached;
-            - another kind, and Stop, give no retry (AC3);
-            - the `ceiling` event says the cap was not applied (AC7);
+        - each manifest refusal, with every problem named (AC1);
+        - the estimate and its factors: checkpoint weights, `bytes`, meta fields, missing
+          optional inputs;
+        - margins and settings;
+        - every row and extra case of the test table, and the renamed run (AC2);
+        - the learned store: corrections after two runs, no lowering from one run or a failure,
+          device kinds, measured peaks for unknown estimates, seconds, the key's parts, forget,
+          the bound, an interrupted write (AC4);
+        - the cache candidates (AC5).
+    - `test_scheduler.py`, with engine test nodes:
+        - the cache rules (AC5): served unreduced; a reduced result not served where better is
+          possible or where it changes an explicit param; stored under the key it ran with;
+          `made_with` and `reduced_input`;
+        - `classify` forms and cause chains (AC6);
+        - `ctx.fallbacks`: second way in the same process, `node.step_oom`, only on torch's
+          out-of-memory error, the failed way's objects released (a weak reference is dead),
+          the peak reset;
+        - the in-process retry of an engine node;
+        - no retry without a memory model.
+    - `test_runtime_server.py`, in the tiny runtime's `cu130` build on a recorded compute 7.5
+      profile:
+        - the retry in a new process with events in order, and both peaks on a second failure
+          with nothing cached;
+        - no retry for another kind or on Stop (AC3);
+        - the uncapped `ceiling` event;
+        - a `cpu` job that sees no card;
         - `nodes.fit` and `nodes.forget` with sockets blocked and no heavy imports (AC7).
-    - `test_hardware.py`: system memory from recorded `/proc/meminfo` text, and from a stubbed
-      Windows call.
+    - `test_hardware.py`: system memory from recorded `/proc/meminfo` text and a stubbed Windows
+      call.
+    - A test that runs `bench_fit` on the processor, with an engine test node, to prove its
+      plumbing without a GPU.
 - **Removed:** none.
 
 ## Verification
 
 | Criterion | How |
 | --- | --- |
-| AC1, AC2, AC4, AC5, AC6 | Unit tests above, in `npm run engine:check`, in CI on Windows and Linux |
-| AC3, AC7 | Integration tests above, with the real uv and the tiny runtime, in CI on Windows and Linux |
+| AC1–AC6 | The tests above, in `npm run engine:check`, in CI on Windows and Linux |
+| AC7 | Integration tests with the real uv and the tiny runtime, in CI on Windows and Linux |
 | AC8 (hardware) | The owner's PC, below |
 
 AC8, on the owner's Windows PC, from a checkout of the PR's branch, in a local session
@@ -333,32 +392,30 @@ npm run engine:sync
 npm run bench:fit -- --out specs/002-fit-to-memory/reports/
 ```
 
-`bench:fit` installs the torch runtime if needed (as `bench:runtime` does), then:
+With no node named, `bench:fit` runs the AC8 test node. It installs the torch runtime if needed
+(as `bench:runtime` does), then:
 
-1. **Context size.** It measures the CUDA context: nvidia-smi's used memory for the process after
-   `torch.cuda.init()`, less torch's reserved memory.
-2. **Three settings.** It runs `test.vram` at three settings and records, for each:
-    - the estimate, the measured peak, and the ratio;
-    - seconds;
-    - free memory before the run.
+1. **Context size.** It measures the whole card's used memory through NVML (`ctypes`) before and
+   after `torch.cuda.init()` in a probe, less torch's reserved memory. Per-process figures are
+   not available under Windows' display driver, so it does not use them.
+2. **Three settings.** It runs the node at three settings and records, for each:
+    - the estimate, the measured peak and the ratio;
+    - the seconds;
+    - the free memory before the run.
 
-   The criterion holds when every ratio is within 10% or 64 MB of 1.
-3. **A tight budget.** It reruns with `settings.json` setting a margin that leaves only the
-   smallest setting's budget, and records the fit it chose and that the run finished.
-4. **A forced overrun.** It runs with a param that makes the node allocate 30% more than its
-   model says, and records:
-    - the cap, and the `oom` from the cap;
-    - Windows' `\GPU Adapter Memory(*)\Shared Usage` sampled every 250 ms with `Get-Counter`
-      before, during and after the attempt;
-    - the retry's fit, and that it finished.
+   It holds when every ratio is within 10% or 64 MB of 1.
+3. **Another program holding memory.** It starts a holder process in the torch runtime that
+   allocates enough to leave only the smallest setting's budget, then runs the node. It records
+   the fit it chose, and that the run finished.
+4. **An overrun past the cap.** It sets the margin so the budget equals the estimate, and runs
+   with the param that allocates 30% more, so the allocation must exceed the cap. It samples the
+   run's `\GPU Process Memory(pid_*)\Shared Usage` counter every 250 ms through the Windows
+   performance-counter API (`ctypes`), before, during and after. It runs twice:
+    1. With `ctx.fallbacks`: `node.step_oom`, then the second way finishing in the same process.
+    2. With the fallbacks turned off: `node.oom`, then the engine's retry in a new process.
 
-   It runs twice. First, `test.vram`'s working step uses `ctx.fallbacks` (whole, then in two
-   halves): the report shows `node.step_oom` and the second way finishing in the same process,
-   with no reload. Second, with a param that disables the fallbacks: the report shows the
-   engine's retry in a new process. It records the seconds of each, so the saving of the narrow
-   retry is measured.
-
-   The criterion holds when shared usage does not rise during either overrun.
+   It records the seconds of each. It holds when shared usage does not rise during either
+   overrun.
 5. **The report.** It writes `YYYY-MM-DD-<card>-fit.md` with every number, and says plainly what
    was not measured. The report names the card because it is evidence; nothing in the code reads
    that name.
