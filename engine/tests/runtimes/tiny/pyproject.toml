@@ -1,0 +1,16 @@
+# The runtime manager's test runtime: two builds of one small pure-Python package, so the tests
+# install a real environment from a real lock in seconds, without a GPU or a large download.
+[project]
+name = "oneframe-runtime-tiny"
+version = "1"
+description = "Test runtime for the runtime manager."
+requires-python = "==3.11.*"
+dependencies = []
+
+[project.optional-dependencies]
+cpu = ["idna==3.20"]
+cu130 = ["idna==3.19"]
+
+[tool.uv]
+package = false
+conflicts = [[{ extra = "cpu" }, { extra = "cu130" }]]

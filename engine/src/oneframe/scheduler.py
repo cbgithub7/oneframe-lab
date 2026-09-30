@@ -34,18 +34,19 @@ from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopp
 from oneframe.graph import Graph, Plan, Step, plan
 from oneframe.manifest import Manifest
 from oneframe.registry import Registry
+from oneframe.runtimes import RuntimeMissing
 
 LOGGER = logging.getLogger(__name__)
 Emit = Callable[[dict[str, Any]], None]
 TRUST_ORDER = {"measured": 0, "predicted": 1, "synthetic": 2}
 
 
-class RuntimeMissing(RuntimeError):
-    """A node's runtime is not installed on this machine."""
-
-
 def no_runtimes(runtime: str) -> Path:
     raise RuntimeMissing(f"The runtime {runtime!r} is not installed.")
+
+
+def no_env(_runtime: str) -> dict[str, str]:
+    return {}
 
 
 @dataclass
@@ -70,10 +71,12 @@ class Scheduler:
         runtime_python: Callable[[str], Path] = no_runtimes,
         models_dir: Path | None = None,
         log_dir: Path | None = None,
+        runtime_env: Callable[[str], dict[str, str]] = no_env,
     ):
         self.registry = registry
         self.cache = cache
         self.runtime_python = runtime_python
+        self.runtime_env = runtime_env
         self.models_dir = models_dir
         self.log_dir = log_dir
         self.engine = EngineExecutor()
@@ -81,8 +84,9 @@ class Scheduler:
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
         if manifest.run.where == "engine":
             return self.engine
-        python = self.runtime_python(str(manifest.run.runtime))
-        return ProcessExecutor(python, log_dir=self.log_dir)
+        runtime = str(manifest.run.runtime)
+        python = self.runtime_python(runtime)
+        return ProcessExecutor(python, env=self.runtime_env(runtime), log_dir=self.log_dir)
 
     def run(
         self,
@@ -123,6 +127,8 @@ class Scheduler:
                     "message": str(exc),
                     "detail": getattr(exc, "detail", ""),
                 }
+                if isinstance(exc, RuntimeMissing):
+                    error["reason"] = exc.reason  # unknown, blocked, installing, not installed, out of date
                 result.status = "failed"
                 result.error = error
                 say(dict(error, event="node.failed"))

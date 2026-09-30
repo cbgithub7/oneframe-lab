@@ -10,6 +10,10 @@ way in is this process's own stdin, which only the app holds.
 
 Only one graph runs at a time: they share one GPU, and a second run would only fight the first for
 memory. A run asked for while another is going is refused with the running one's id.
+
+Runtimes (the environments heavy nodes run in) are listed, planned, installed and removed here too.
+An install answers at once and reports itself as runtime.* events; one runs at a time, and a
+runtime the running graph uses is neither installed over nor removed.
 """
 
 from __future__ import annotations
@@ -30,23 +34,41 @@ from oneframe import BUILTIN_NODES_DIR, __version__, ports
 from oneframe.cache import Cache
 from oneframe.graph import Graph, GraphError, plan
 from oneframe.registry import Registry, discover
+from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
 
 LOGGER = logging.getLogger("oneframe.server")
 
 
 class Engine:
-    def __init__(self, data: Path, node_roots: list[Path], say: Callable[[dict[str, Any]], None]):
+    def __init__(
+        self,
+        data: Path,
+        node_roots: list[Path],
+        say: Callable[[dict[str, Any]], None],
+        runtime_roots: list[Path] | None = None,
+        uv: str | None = None,
+        uv_home: Path | None = None,
+        profile: Callable[[], dict[str, Any]] | None = None,
+    ):
         self.data = data
         self.node_roots = node_roots
         self.say = say
         self.registry: Registry = discover(node_roots)
         self.cache = Cache(data / "cache")
         self.cache.clear_tmp()
+        self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
         self.scheduler = Scheduler(
-            self.registry, self.cache, models_dir=data / "models", log_dir=data / "logs"
+            self.registry,
+            self.cache,
+            runtime_python=self.runtimes.python_for,
+            runtime_env=self.runtimes.env_for,
+            models_dir=data / "models",
+            log_dir=data / "logs",
         )
-        self._run: tuple[str, threading.Event] | None = None
+        self._install: threading.Thread | None = None
+        # the running graph: its id, its stop flag, and the runtimes its nodes run in
+        self._run: tuple[str, threading.Event, set[str]] | None = None
         self._lock = threading.Lock()
         self.methods: dict[str, Callable[[dict[str, Any]], Any]] = {
             "engine.hello": self.hello,
@@ -56,6 +78,11 @@ class Engine:
             "graph.validate": self.graph_validate,
             "graph.run": self.graph_run,
             "run.stop": self.run_stop,
+            "runtimes.list": self.runtimes_list,
+            "runtimes.plan": self.runtimes_plan,
+            "runtimes.install": self.runtimes_install,
+            "runtimes.stop": self.runtimes_stop,
+            "runtimes.remove": self.runtimes_remove,
         }
 
     def hello(self, _params: dict[str, Any]) -> dict[str, Any]:
@@ -92,13 +119,14 @@ class Engine:
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
         graph = Graph.from_json(params["graph"])
-        plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
+        the_plan = plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
+        used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
         with self._lock:
             if self._run is not None:
                 raise RuntimeError(f"Run {self._run[0]} is still going; stop it first.")
             run_id = uuid.uuid4().hex[:12]
             stop = threading.Event()
-            self._run = (run_id, stop)
+            self._run = (run_id, stop, used)
 
         def work() -> None:
             try:
@@ -128,6 +156,52 @@ class Engine:
             self._run[1].set()
             return {"stopping": True, "run": self._run[0]}
 
+    def runtimes_list(self, _params: dict[str, Any]) -> dict[str, Any]:
+        return self.runtimes.list()
+
+    def runtimes_plan(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self.runtimes.plans(params.get("runtime"), refresh=bool(params.get("refresh")))
+
+    def _refuse_if_running(self, runtime_id: str, doing: str) -> None:
+        with self._lock:
+            run = self._run
+        if run is not None and runtime_id in run[2]:
+            raise InstallRefused(f"Run {run[0]} is using {runtime_id}; stop it before {doing} the runtime.")
+
+    def runtimes_install(self, params: dict[str, Any]) -> dict[str, Any]:
+        runtime_id = str(params["runtime"])
+        self._refuse_if_running(runtime_id, "installing")
+        claimed = self.runtimes.begin_install(runtime_id, params.get("build"))
+        if claimed is None:
+            return {"runtime": runtime_id, "already": True}
+        runtime, build, stop = claimed
+
+        def work() -> None:
+            try:
+                self.runtimes.run_install(runtime, build, stop, self.say)
+            except Exception:  # already reported as runtime.failed; keep the engine up
+                LOGGER.exception("installing %s crashed", runtime_id)
+
+        self._install = threading.Thread(target=work, name=f"install-{runtime_id}", daemon=True)
+        self._install.start()
+        return {"runtime": runtime_id, "build": build}
+
+    def runtimes_stop(self, params: dict[str, Any]) -> dict[str, Any]:
+        return {"stopping": self.runtimes.stop(str(params["runtime"]))}
+
+    def runtimes_remove(self, params: dict[str, Any]) -> dict[str, Any]:
+        runtime_id = str(params["runtime"])
+        self._refuse_if_running(runtime_id, "removing")
+        return self.runtimes.remove(runtime_id)
+
+    def shutdown(self, timeout: float = 30) -> None:
+        """Stop an install that is still going, so that its uv does not outlive the engine."""
+        installing = self.runtimes.installing()
+        if installing is not None:
+            self.runtimes.stop(installing)
+        if self._install is not None:
+            self._install.join(timeout)
+
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         req_id = message.get("id")
         method = message.get("method")
@@ -138,6 +212,8 @@ class Engine:
             return {"id": req_id, "result": fn(dict(message.get("params") or {}))}
         except GraphError as exc:
             return {"id": req_id, "error": {"message": "The graph cannot run.", "problems": exc.problems}}
+        except (InstallRefused, RuntimeMissing) as exc:  # a sentence for a person, not a bug
+            return {"id": req_id, "error": {"message": str(exc)}}
         except Exception as exc:
             LOGGER.exception("%s failed", method)
             return {"id": req_id, "error": {"message": f"{type(exc).__name__}: {exc}"}}
@@ -161,6 +237,19 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="a folder of nodes; repeat for more (default: the built-in nodes)",
     )
+    parser.add_argument(
+        "--runtimes",
+        type=Path,
+        action="append",
+        default=None,
+        help="a folder of runtimes; repeat for more (default: the repo's runtimes/)",
+    )
+    parser.add_argument(
+        "--uv", default=None, help="the uv to build runtimes with (default: UV, ONEFRAME_UV, PATH)"
+    )
+    parser.add_argument(
+        "--uv-home", type=Path, default=None, help="uv's cache and Pythons (default: <data>/uv)"
+    )
     args = parser.parse_args(argv)
     data = args.data or default_data_dir()
     data.mkdir(parents=True, exist_ok=True)
@@ -182,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
             out.write(line + "\n")
             out.flush()
 
-    engine = Engine(data, args.nodes or [BUILTIN_NODES_DIR], say)
+    engine = Engine(data, args.nodes or [BUILTIN_NODES_DIR], say, args.runtimes, args.uv, args.uv_home)
     say({"event": "engine.ready", **engine.hello({})})
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:
@@ -197,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         reply = engine.handle(message)
         if reply is not None:
             say(reply)
+    engine.shutdown()  # stdin closed: the app is quitting
     return 0
 
 

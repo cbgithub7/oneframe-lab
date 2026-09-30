@@ -1,0 +1,18 @@
+{
+  "_sources": [
+    "Driver floors: NVIDIA, CUDA Toolkit 13.4 Update 1 release notes, 'Driver Range for Minor Version Compatibility': CUDA 13.x runs on driver 580 or newer, CUDA 12.x on 525 or newer.",
+    "Compute capabilities: PyTorch v2.14.0, .ci/manywheel/build_env_setup.py, TORCH_CUDA_ARCH_LIST_TABLE for x86_64 release wheels (SASS only): CUDA 12.6 builds sm_50 to sm_90, CUDA 13.0 builds sm_75 to sm_120. NVIDIA's CUDA 13 notes: support for Maxwell, Pascal and Volta was removed.",
+    "Wheels: torch 2.14.0 has cp314 wheels for win_amd64 and manylinux x86_64 on the cu130, cu126 and cpu indexes (checked 2026-09-29).",
+    "disk_mb is left out until the hardware report measures a real install."
+  ],
+  "id": "torch",
+  "title": "PyTorch",
+  "summary": "PyTorch alone, with no model code: the runtime the hardware report checks.",
+  "python": "3.14",
+  "builds": [
+    { "name": "cu130", "vendor": "nvidia", "min_capability": "7.5", "max_capability": "12", "min_driver": "580" },
+    { "name": "cu126", "vendor": "nvidia", "min_capability": "5.0", "max_capability": "9", "min_driver": "525" },
+    { "name": "cpu", "vendor": "none" }
+  ],
+  "probe": "probe.py:run"
+}

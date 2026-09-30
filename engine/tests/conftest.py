@@ -1,12 +1,24 @@
 """Test nodes are written on the fly into a temporary folder, each a real node.json plus node.py,
-so every test goes through the same discovery, validation and execution a real node does."""
+so every test goes through the same discovery, validation and execution a real node does.
+
+Runtime tests install real environments with the real uv: the tiny runtime (two small builds of a
+pure-Python package) from its committed lock, with uv's cache and Pythons shared by the whole
+session so Python 3.11 is fetched once. They need the network (PyPI, and uv's Python downloads);
+offline they fail with the download error rather than skip."""
 
 from __future__ import annotations
 
+import hashlib
+import http.server
+import io
 import json
+import os
+import shutil
 import sys
+import tarfile
 import textwrap
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +129,51 @@ def scheduler_for(tmp_path: Path, node_root: Path) -> Callable[..., Scheduler]:
     return make
 
 
+TINY_RUNTIME = Path(__file__).parent / "runtimes" / "tiny"
+MakeRuntime = Callable[..., Path]
+
+
+def write_runtime(
+    root: Path,
+    definition: dict[str, Any],
+    lock: str = 'version = 1\nrequires-python = "==3.11.*"\n',
+    extras: list[str] | None = None,
+    package: bool = False,
+) -> Path:
+    """A runtime folder for tests that plan or check definitions: runtime.json as given, a
+    pyproject with an extra per build (all in one conflict set) and the lock text as given."""
+    folder = root / definition["id"]
+    folder.mkdir(parents=True, exist_ok=True)
+    names = extras if extras is not None else [b["name"] for b in definition.get("builds") or []]
+    conflicts = ", ".join(f'{{ extra = "{n}" }}' for n in names)
+    pyproject = (
+        f'[project]\nname = "rt-{definition["id"]}"\nversion = "1"\nrequires-python = ">=3.11"\n'
+        "[project.optional-dependencies]\n"
+        + "".join(f"{n} = []\n" for n in names)
+        + f"[tool.uv]\npackage = {'true' if package else 'false'}\n"
+        + (f"conflicts = [[{conflicts}]]\n" if len(names) > 1 else "")
+    )
+    (folder / "pyproject.toml").write_text(pyproject, encoding="utf-8", newline="\n")
+    (folder / "uv.lock").write_text(lock, encoding="utf-8", newline="\n")
+    (folder / "runtime.json").write_text(json.dumps(definition, indent=2), encoding="utf-8", newline="\n")
+    return folder
+
+
+@pytest.fixture
+def runtime_root(tmp_path: Path) -> Path:
+    root = tmp_path / "runtimes"
+    root.mkdir()
+    return root
+
+
+@pytest.fixture
+def make_runtime(runtime_root: Path) -> MakeRuntime:
+    def make(definition: dict[str, Any], **kw: Any) -> Path:
+        return write_runtime(runtime_root, definition, **kw)
+
+    return make
+
+
 class Events(list[dict[str, Any]]):
     def kinds(self) -> list[str]:
         return [e["event"] for e in self]
@@ -128,3 +185,119 @@ class Events(list[dict[str, Any]]):
 @pytest.fixture
 def events() -> Events:
     return Events()
+
+
+# -- installing runtimes -------------------------------------------------------------------------
+
+NO_GPU: dict[str, Any] = {
+    "os": "linux",
+    "gpus": [],
+    "driver": None,
+    "nvidia": {"found": False, "why": "nvidia-smi was not found, so no NVIDIA card is known."},
+    "disk_free_mb": 10**6,
+    "raw": "",
+}
+AMPERE: dict[str, Any] = {
+    **NO_GPU,
+    "gpus": [
+        {"index": 0, "vendor": "nvidia", "name": "test card", "capability": "8.6", "vram_total_mb": 12885}
+    ],
+    "driver": "580.88",
+    "nvidia": {"found": True, "why": "nvidia-smi listed 1 card."},
+}
+
+
+@pytest.fixture(scope="session")
+def uv_exe() -> str:
+    found = os.environ.get("UV") or shutil.which("uv")
+    assert found, "the runtime tests need uv; run them with `uv run` (npm run engine:check)"
+    return found
+
+
+@pytest.fixture(scope="session")
+def uv_home(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """uv's cache and Pythons for the whole session, so each test does not fetch them again."""
+    return tmp_path_factory.mktemp("uv-home")
+
+
+@pytest.fixture
+def tiny(tmp_path: Path) -> Path:
+    """A copy of the tiny runtime, which a test may change without touching the repo's."""
+    folder = tmp_path / "defs" / "tiny"
+    shutil.copytree(TINY_RUNTIME, folder)
+    return folder
+
+
+def upstream_archive(value: str = "upstream") -> bytes:
+    """A GitHub-style source archive: one top folder holding the package upstream_pkg."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        data = f"WHERE = {value!r}\n".encode()
+        info = tarfile.TarInfo("upstream-0123abc/upstream_pkg/__init__.py")
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+def add_source(folder: Path, url: str, data: bytes, name: str = "upstream") -> None:
+    path = folder / "runtime.json"
+    definition = json.loads(path.read_text(encoding="utf-8"))
+    definition["sources"] = [
+        {"name": name, "url": url, "sha256": hashlib.sha256(data).hexdigest(), "paths": ["."]}
+    ]
+    path.write_text(json.dumps(definition, indent=2), encoding="utf-8")
+
+
+class SourceServer:
+    """Serves files on 127.0.0.1. A stalled path sends half its bytes and waits to be released,
+    which is how a test catches an install in the middle of a download."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.stalled: dict[str, threading.Event] = {}
+        self.half_sent = threading.Event()
+        server = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                data = server.files.get(self.path)
+                if data is None:
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                release = server.stalled.get(self.path)
+                if release is None:
+                    self.wfile.write(data)
+                    return
+                self.wfile.write(data[: len(data) // 2])
+                self.wfile.flush()
+                server.half_sent.set()
+                if release.wait(60):
+                    self.wfile.write(data[len(data) // 2 :])
+
+            def log_message(self, format: str, *args: Any) -> None:
+                pass
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd.daemon_threads = True
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def url(self, path: str) -> str:
+        return f"http://127.0.0.1:{self.httpd.server_address[1]}{path}"
+
+    def close(self) -> None:
+        for event in self.stalled.values():
+            event.set()
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+@pytest.fixture
+def source_server() -> Iterator[SourceServer]:
+    server = SourceServer()
+    try:
+        yield server
+    finally:
+        server.close()

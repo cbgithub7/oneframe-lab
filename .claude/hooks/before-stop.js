@@ -13,7 +13,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { envWithPinnedTools } from "./pinned-tools.js";
+
 const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+const ENV = envWithPinnedTools(ROOT);
 const MAX_BLOCKS = 3;
 
 /**
@@ -24,7 +27,7 @@ const MAX_BLOCKS = 3;
 function run(command, args) {
   const shell = process.platform === "win32" && (command === "npm" || command.endsWith(".cmd"));
   const quote = (/** @type {string} */ s) => (shell && /\s/.test(s) ? `"${s}"` : s);
-  const r = spawnSync(quote(command), args.map(quote), { cwd: ROOT, encoding: "utf8", shell, maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync(quote(command), args.map(quote), { cwd: ROOT, env: ENV, encoding: "utf8", shell, maxBuffer: 64 * 1024 * 1024 });
   return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

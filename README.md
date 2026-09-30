@@ -30,6 +30,7 @@ Electron shell, and the checks. No model nodes yet; those come with the runtime 
 | `app/` | Electron: `main/` (process, engine client), `preload/` (the only bridge), `renderer/` (the page) |
 | `engine/` | The Python engine, `oneframe` (Python 3.14, managed by uv) |
 | `nodes/` | Built-in nodes, one folder each |
+| `runtimes/` | The Python environments heavy nodes run in, one folder each |
 | `contracts/` | Data both sides read: port types |
 | `scripts/` | `check-versions.js` |
 | `docs/` | Architecture, writing a node, version policy |
@@ -53,6 +54,9 @@ npm run engine:check   # ruff, pyright, pytest
 npm run versions       # every pin against its latest release
 ```
 
+A hardware claim needs numbers: `npm run bench:runtime -- <id>` installs a runtime on this machine
+and writes a report of what it did.
+
 ## Documents
 
 - [AGENTS.md](AGENTS.md): the rules and the way work is done, for people and agents
@@ -60,4 +64,5 @@ npm run versions       # every pin against its latest release
 - [docs/handoff.md](docs/handoff.md): what is done, what was decided, what comes next
 - [docs/architecture.md](docs/architecture.md): how the parts fit, and the rules that keep them apart
 - [docs/nodes.md](docs/nodes.md): writing a node
+- [docs/runtimes.md](docs/runtimes.md): writing a runtime
 - [docs/versions.md](docs/versions.md): the version policy

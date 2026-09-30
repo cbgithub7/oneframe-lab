@@ -1,0 +1,17 @@
+{
+  "id": "tiny",
+  "title": "Tiny test runtime",
+  "summary": "Two builds of one small package, a stand-in and an environment variable, for the runtime manager's tests. The app never lists it.",
+  "python": "3.11",
+  "builds": [
+    { "name": "cu130", "vendor": "nvidia", "min_capability": "7.5", "max_capability": "12", "min_driver": "580", "disk_mb": 1 },
+    { "name": "cpu", "vendor": "none", "disk_mb": 1 }
+  ],
+  "extensions": [
+    { "package": "tinyext", "class": "stand-in", "for": "a compiled helper, replaced here by pure Python", "stand_in": "stand-ins/tinyext" },
+    { "package": "fastpath", "class": "optional", "for": "a faster path", "why": "it needs a compiler, and the nodes work without it" }
+  ],
+  "sources": [],
+  "env": { "ONEFRAME_TINY": "on" },
+  "probe": "probe.py:run"
+}

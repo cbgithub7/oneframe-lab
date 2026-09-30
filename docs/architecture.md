@@ -27,6 +27,9 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params and input keys; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; checks every value at every port; carries trust |
 | Executors | `oneframe/executors.py`, `oneframe/child.py` | In-process or child-process runs; one `NodeContext` either way |
+| Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
+| Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, free disk |
+| Archives | `oneframe/archives.py` | Pinned downloads kept only when their sha256 matches; unpacking that stays inside its folder |
 | Server | `oneframe/server.py` | The engine's NDJSON protocol |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
 | Main | `app/main/main.js` | The window, the engine process, and the one IPC door |
@@ -63,13 +66,21 @@ A run answers `graph.run` at once with a run id; everything after is pushed:
 node, then `node.done` | `node.failed` → `run.done` | `run.failed` | `run.stopped`.
 
 Failure kinds: `oom` (the scheduler will try the node's next arrangement, once arrangements land),
-`fetch` (something tried to download), `missing` (an import the runtime lacks), `runtime` (not
-installed), `contract` (a node broke its manifest), `node` (the node explained), `error`, `died`.
+`fetch` (something tried to download), `missing` (an import the runtime lacks), `runtime` (the
+runtime cannot run yet; `reason` says whether it is not installed, out of date, being installed,
+blocked on this machine, or unknown), `contract` (a node broke its manifest), `node` (the node
+explained), `error`, `died`.
+
+A runtime install answers `runtimes.install` at once with the build it will install; then:
+
+`runtime.start` → per step `runtime.step` (index and total), with `runtime.log` lines from uv and
+`runtime.progress` for source downloads → `runtime.done` | `runtime.failed` | `runtime.stopped`.
+`runtimes.stop` ends an install; one install runs at a time.
 
 ## What comes next
 
-1. Runtime manager: uv environments per node family from lock files, torch chosen by compute
-   capability and driver (carried over from depth-pro-gui's `objects/runtime.py`).
+1. Attempt ladder: each node's arrangements of device, precision and settings, tried best first
+   under an allocator ceiling.
 2. Model store: Download for a node's weights, into the data root.
 3. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
    and a reconstructor, enough for both loops.

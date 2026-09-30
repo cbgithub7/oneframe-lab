@@ -39,7 +39,9 @@ the code it names. The folder is named after the node's id.
 - **Params** with `"affects": "speed"` do not change the result, so they are not part of the
   cache key. Every other parameter is.
 - **run.where** is `engine` for light nodes that ship with the app, and `runtime` for anything
-  that imports a model library; `runtime` names the environment it runs in.
+  that imports a model library; `runtime` names the environment it runs in, a folder in
+  `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
+  node fails with kind `runtime` and the reason: not installed, out of date, or blocked here.
 - **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
   repair, texture, convert, evaluate, export.
 
