@@ -1,8 +1,8 @@
 # 002: Fit to memory
 
-Status: draft (redrafted 2026-09-30, after the owner's review and the research in
+Status: approved (redrafted 2026-09-30, after the owner's review and the research in
 [research.md](research.md))
-Owner approval: (date, once approved)
+Owner approval: 2026-09-30 (spec)
 
 ## Problem
 
