@@ -1,6 +1,6 @@
 # 002: Plan
 
-Status: draft, for the owner's approval
+Status: draft, for the owner's approval (decision 10 added on the owner's question, 2026-09-30)
 
 The spec is [spec.md](spec.md); the research behind it is [research.md](research.md).
 
@@ -70,6 +70,34 @@ these answers; say if one should change.
     - It imports torch, which the engine's environment does not have, so that one import carries
       a pyright ignore.
     - A new `npm run bench:fit` runs it and writes the AC8 report.
+10. **Retrying one step inside the node: `ctx.fallbacks`.** This is the narrow retry the
+    research found in ComfyUI (a failed decode redone in tiles). It costs no reload, so it comes
+    before the engine's retry. A node lists ways to do one step, cheapest first:
+
+    ```python
+    mesh = ctx.fallbacks("decode", [
+        ("whole", lambda: decode(latents), "speed"),
+        ("tiles 512", lambda: decode_tiled(latents, 512), "speed"),
+        ("tiles 256, fewer faces", lambda: decode_tiled(latents, 256, coarse=True), "quality"),
+    ])
+    ```
+
+    - On an out-of-memory error, and only that (as `classify` reads it), the helper does three
+      things:
+        - leaves the `except` block before trying again, so the error's traceback no longer holds
+          the failed tensors;
+        - empties torch's cache if torch is loaded;
+        - emits `node.step_oom` with the step, the way that failed and its peak.
+
+      Then it tries the next way.
+    - Any other error goes straight up. When every way runs out of memory, the last error goes
+      up as `oom`, and the engine's retry takes over.
+    - The way that finished goes into `made_with`. A way marked `quality` sets `reduced`, so a
+      result made the cheaper way says so.
+    - A node that never calls it is unaffected.
+
+    The order is: the fit before loading, then this retry inside the process, then one engine
+    retry with a smaller fit, then failure.
 
 ## Files
 
@@ -93,7 +121,7 @@ Changed:
 | `engine/src/oneframe/hardware.py` | System memory, total and free, in the profile (Linux `/proc/meminfo`, Windows `GlobalMemoryStatusEx`, otherwise unknown) |
 | `engine/src/oneframe/runtimes.py` | `device_target(runtime_id)`: the installed build's vendor and the card it was planned for |
 | `engine/src/oneframe/scheduler.py` | Cache lookup across reductions; fit before running; the job carries the fit and the cap; one retry on `oom`; corrections; `made_with`; the new events |
-| `engine/src/oneframe/child.py` | The cap without torch; `ctx.memory_budget_mb`; the peak on the processor; more out-of-memory forms |
+| `engine/src/oneframe/child.py` | The cap without torch; `ctx.memory_budget_mb`; `ctx.fallbacks`; the peak on the processor; more out-of-memory forms |
 | `engine/src/oneframe/server.py` | `nodes.fit` and `nodes.forget`; the scheduler gets the machine, the runtimes' targets and the corrections |
 | `engine/tests/test_scheduler.py`, `test_runtime_server.py`, `test_hardware.py`, `test_ports_and_manifests.py` | AC3, AC5, AC6, AC7 and the system-memory parsing |
 | `package.json` | `bench:fit` |
@@ -194,6 +222,8 @@ For each step, in the scheduler:
 - `_cap_allocator` imports torch only if it can. Without torch, it emits
   `ceiling {applied: false, why}` and carries on.
 - `NodeContext.memory_budget_mb` comes from the job.
+- `NodeContext.fallbacks(step, ways)` is decision 10. What it chose is kept on the context and
+  returned in `done`, and the scheduler folds it into `made_with`.
 - `classify` adds `CUBLAS_STATUS_ALLOC_FAILED`, `CUDA error: out of memory` and `MemoryError`.
 - `done` and `error` gain `peak_ram_mb` when the device is `cpu`.
 
@@ -202,6 +232,7 @@ For each step, in the scheduler:
 - `node.fit`: `step`, `node`, `device`, `free_mb`, `margin_mb`, `budget_mb`, `estimate_mb`,
   `estimate` (known, unknown or corrected), `changes`, `skipped`, `warning`.
 - `node.oom`: `step`, `attempt`, `peak_mb`, `message`.
+- `node.step_oom`: `step`, `stage`, `way`, `next`, `peak_mb` (from `ctx.fallbacks`).
 - `nodes.fit {node, params?, inputs?}` returns the same shape as `node.fit`. `inputs` maps a port
   to `{width, height}`, because an input's size is not known before a run.
 - `nodes.forget {node}` returns the number of corrections dropped.
@@ -266,7 +297,15 @@ Also:
         - a cached unreduced result is served on a machine that would reduce;
         - `made_with` in `meta` and in `node.done`;
         - `fp32` and `fp16` keys differ, and a device change alone does not change the key (AC5);
-        - out-of-memory forms (AC6).
+        - out-of-memory forms (AC6);
+        - `ctx.fallbacks`, run by an engine test node:
+            - a first way that runs out of memory is followed by the second, in the same
+              process, with `node.step_oom`;
+            - the finishing way is in `made_with`, and a `quality` way sets `reduced`;
+            - another error kind is not retried;
+            - when every way runs out, the engine's retry follows;
+            - the failed way's objects are released before the next way starts (a weak
+              reference to them is dead by then).
     - `test_runtime_server.py`:
         - in the tiny runtime's `cu130` build, on a recorded compute 7.5 profile:
             - `oom` → one retry in a new process → done, with the events in order;
@@ -313,7 +352,13 @@ npm run bench:fit -- --out specs/002-fit-to-memory/reports/
       before, during and after the attempt;
     - the retry's fit, and that it finished.
 
-   The criterion holds when shared usage does not rise during the attempt.
+   It runs twice. First, `test.vram`'s working step uses `ctx.fallbacks` (whole, then in two
+   halves): the report shows `node.step_oom` and the second way finishing in the same process,
+   with no reload. Second, with a param that disables the fallbacks: the report shows the
+   engine's retry in a new process. It records the seconds of each, so the saving of the narrow
+   retry is measured.
+
+   The criterion holds when shared usage does not rise during either overrun.
 5. **The report.** It writes `YYYY-MM-DD-<card>-fit.md` with every number, and says plainly what
    was not measured. The report names the card because it is evidence; nothing in the code reads
    that name.

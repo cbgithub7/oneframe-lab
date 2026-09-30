@@ -13,6 +13,8 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   AC4 tests.
 - [ ] 5. **The child.** Cap without torch, `ctx.memory_budget_mb`, the peak on the processor, the
   new out-of-memory forms. AC6 tests, and the no-torch half of AC7.
+- [ ] 5b. **`ctx.fallbacks`,** the retry of one step inside the node (plan decision 10), with its
+  tests.
 - [ ] 6. **The runtimes' target.** `Runtimes.device_target()`: the installed build's vendor and
   its card. Tests.
 - [ ] 7. **The scheduler.** Cache candidates, fit, job fields, `node.fit`, `made_with`,
