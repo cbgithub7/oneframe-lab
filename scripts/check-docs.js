@@ -65,7 +65,8 @@ export function linkTargets(text) {
 
 function main() {
   const docs = [...["AGENTS.md", "CLAUDE.md", "README.md"].map((f) => path.join(ROOT, f)),
-    ...markdownFiles(path.join(ROOT, "docs")), ...markdownFiles(path.join(ROOT, "specs"))];
+    ...markdownFiles(path.join(ROOT, "docs")), ...markdownFiles(path.join(ROOT, "specs")),
+    ...markdownFiles(path.join(ROOT, ".claude", "skills"))];
   const problems = [];
   for (const file of docs) {
     const rel = path.relative(ROOT, file).split(path.sep).join("/");
