@@ -81,7 +81,7 @@ design each task follows is in [plan.md](plan.md).
       read runtime locks.
     - Run `/code-review` on the branch and fix what it finds.
     - Open the PR, with each criterion ticked by its test name, and AC9 listed as unverified.
-- [ ] 11. **The owner, on the GTX 1070: AC9.**
+- [x] 11. **The owner, on the GTX 1070: AC9.**
     - Run `npm run bench:runtime -- torch --out specs/001-runtime-manager/reports/<date>-gtx1070.md`,
       then commit the report.
     - Add its raw nvidia-smi output to `engine/tests/fixtures/nvidia-smi/`, with a test that it

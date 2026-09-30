@@ -1,8 +1,9 @@
 """The machine profile, read from nvidia-smi output.
 
-The fixtures in fixtures/nvidia-smi/ are written from nvidia-smi's documented CSV format
-(`--format=csv,noheader,nounits`), not recorded on a real card: the cloud sessions this was written
-in have none. Output recorded on the owner's PC joins them with the spec's hardware report."""
+One fixture in fixtures/nvidia-smi/, gtx1070-recorded.txt, was recorded on the owner's GTX 1070
+for spec 001's hardware report (specs/001-runtime-manager/reports/2026-09-29-gtx1070.md). The others
+are written from nvidia-smi's documented CSV format (`--format=csv,noheader,nounits`), not recorded
+on a real card: the cloud sessions they were written in have none."""
 
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from oneframe import hardware
+from oneframe import RUNTIMES_DIR, hardware, runtimes
 
 FIXTURES = Path(__file__).parent / "fixtures" / "nvidia-smi"
 
@@ -67,6 +68,16 @@ def test_two_gpus_are_read_from_nvidia_smi() -> None:
     ]
     assert prof["driver"] == "580.88"
     assert "2 cards" in prof["nvidia"]["why"]
+
+
+def test_output_recorded_on_the_owners_gtx_1070_is_read() -> None:
+    _calls, run = _runner((0, _fixture("gtx1070-recorded.txt")))
+    prof = hardware.profile(run=run, platform="win32", which=_found)
+    assert [(g["vendor"], g["capability"]) for g in prof["gpus"]] == [("nvidia", "6.1")]
+    assert prof["gpus"][0]["vram_total_mb"] > 8000
+    assert prof["driver"] == "582.66"
+    torch = runtimes.load(RUNTIMES_DIR / "torch" / "runtime.json")
+    assert runtimes.plan(torch, prof).build == "cu126"
 
 
 def test_no_nvidia_smi_means_no_gpu_not_an_error() -> None:
