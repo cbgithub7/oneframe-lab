@@ -31,6 +31,12 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 - **Nothing hard-coded.** No code outside a node's folder names a node, a model, or a
   pipeline. The engine and app learn what exists from `nodes/*/node.json`; ports come from
   `contracts/port-types.json`. A new model is a new folder, never an edit to the engine or app.
+- **Any card that can run it.** The app targets every machine that can run a model, from no GPU
+  to the largest cards. The owner's GTX 1070 is the only card we can test on; it is never the
+  target. No default, margin, threshold, formula or model choice is tuned to it, and nothing
+  decides on a card's name: hardware decisions come from what the machine reports (compute
+  capability, total and free memory, driver). A test of a hardware decision covers a range of
+  machines, not one card. A report from the 1070 proves a mechanism works; it tunes nothing.
 - **Ports are typed, facets included.** Never connect values whose facets differ without a
   converter node. Disparity must never flow silently into a metric port.
 - **Light engine.** Importing `oneframe.server` loads no numpy, Pillow, torch or other model

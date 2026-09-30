@@ -26,9 +26,10 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   match it.
 - **Honesty.** Nothing is called tested or working without numbers from a real run. The cloud
   container has no GPU and cannot reach Hugging Face; real model runs happen on the owner's PC.
-  The owner's test machine is a GTX 1070 (8 GB, compute 6.1). It is one test machine, not the
-  design target: the app should try what might run on any hardware and fail with a clear reason
-  when it cannot.
+  The owner's test machine is a GTX 1070 (8 GB, compute 6.1). It is the only card we can test
+  on, never the design target: the app runs on any machine that can run a model, from no GPU to
+  the largest cards, and fails with a clear reason when it cannot. Nothing is tuned to the 1070
+  (the "Any card that can run it" rule in [AGENTS.md](../AGENTS.md)).
 
 ## State (2026-09-30)
 
@@ -88,7 +89,7 @@ hold the detail.
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
-| [002 Attempt ladder](../specs/002-attempt-ladder/spec.md) | draft, waiting for the owner's answers to its open questions and approval |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | draft, redrafted 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md); waiting for the owner's answers to its open questions and approval |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
@@ -98,18 +99,21 @@ hold the detail.
     - The environment is rebuilt only when its lock file changes.
 
     The scheduler's `runtime_python` hook is where it plugs in.
-2. **Attempt ladder.**
-    - Manifests gain `arrangements`: device, precision and settings, each with a published VRAM
-      figure and its source, best quality first.
-    - The scheduler walks them on `oom` under an allocator ceiling.
-    - Observations per machine re-order them.
+2. **Fit to memory.** How the best local AI apps do it, without asking anyone to run a test
+   ([research](../specs/002-fit-to-memory/research.md)):
+    - each node declares a memory model: its weights per precision, and its working memory as a
+      function of its settings;
+    - before loading, the engine measures free memory, keeps a margin, and changes only settings
+      the person left alone: speed-only settings first, quality last, and labels the result;
+    - one narrow retry on `oom`; measured peaks correct the estimate on each machine.
 3. **Model store.** Download for a node's weights and companion files, into
    `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Pin every
    repository revision.
 4. **First model nodes,** enough for both loops:
     - depth: Depth Pro and MoGe-2;
     - segmentation: SAM 2.1;
-    - one object generator: TripoSR or Hunyuan3D-2mini, the two that have really run on the 1070;
+    - one object generator: TripoSR or Hunyuan3D-2mini, first because they can be verified on the
+      test card (the catalogue is not limited to what fits it);
     - one view synthesiser and one reconstructor: pick from the proposal's catalogue by what runs
       locally;
     - render: an asset to a ViewSet along a CameraPath;

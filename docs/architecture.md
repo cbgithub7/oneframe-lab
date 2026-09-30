@@ -65,7 +65,7 @@ A run answers `graph.run` at once with a run id; everything after is pushed:
 `run.start` → per node `node.start` | `node.cached`, then `stage` / `progress` / `ceiling` from the
 node, then `node.done` | `node.failed` → `run.done` | `run.failed` | `run.stopped`.
 
-Failure kinds: `oom` (the scheduler will try the node's next arrangement, once arrangements land),
+Failure kinds: `oom` (retried once with a smaller fit, once spec 002 lands),
 `fetch` (something tried to download), `missing` (an import the runtime lacks), `runtime` (the
 runtime cannot run yet; `reason` says whether it is not installed, out of date, being installed,
 blocked on this machine, or unknown), `contract` (a node broke its manifest), `node` (the node
@@ -79,8 +79,8 @@ A runtime install answers `runtimes.install` at once with the build it will inst
 
 ## What comes next
 
-1. Attempt ladder: each node's arrangements of device, precision and settings, tried best first
-   under an allocator ceiling.
+1. Fit to memory: before a model loads, its estimated need is fitted to the free memory measured
+   on this machine, changing only settings the person left alone; one narrow retry on `oom`.
 2. Model store: Download for a node's weights, into the data root.
 3. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
    and a reconstructor, enough for both loops.
