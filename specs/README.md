@@ -24,8 +24,10 @@ Each one is a check that can fail, and names how it is checked:
 - *Good:* "Planning a runtime for compute 6.1 with driver 560 picks the cu126 build (unit test)."
 - *Bad:* "Picks a sensible torch build."
 
-Criteria that need a GPU name the hardware and the report that proves them. The owner runs those
-steps on real hardware and commits the report under `specs/<id>/reports/`.
+Criteria that need a GPU name the hardware and the report that proves them. The plan's
+Verification section gives the exact commands; the owner runs them in a local session with
+`/local-session` (`.claude/skills/local-session/SKILL.md`), which writes and commits the report
+under `specs/<id>/reports/`. Cloud sessions start with `/cloud-session`.
 
 ## Numbering and status
 

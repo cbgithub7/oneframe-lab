@@ -2,6 +2,8 @@
 
 ## Claude Code specifics
 
+- **Start every session with a skill:** `/cloud-session` in Claude Code on the web (no GPU), or
+  `/local-session` on the owner's PC for hardware steps and reports. Both are in `.claude/skills/`.
 - **Hooks run on their own** (`.claude/settings.json`); do not work around them:
     - after every edit, the edited file is formatted and lint-fixed (ruff for Python, ESLint for
       JavaScript), and remaining lint errors are reported back;
