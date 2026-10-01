@@ -30,6 +30,7 @@ for Python 3.11 (ruff.toml, pyrightconfig.json).
 
 from __future__ import annotations
 
+import gc
 import importlib.util
 import json
 import os
@@ -38,14 +39,15 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 _OUT: Any = None
 _WRITE = threading.Lock()
 
 Emit = Callable[[dict[str, Any]], None]
+T = TypeVar("T")
 
 
 class NetworkForbidden(ConnectionError):
@@ -310,6 +312,27 @@ def is_oom(exc: BaseException) -> bool:
     return False
 
 
+def is_torch_oom(exc: BaseException) -> bool:
+    """torch's own OutOfMemoryError, by its name, anywhere in the chain. After it the CUDA context
+    is still usable; after other CUDA memory errors it may not be, so those go to the engine."""
+    return any(type(error).__name__ == "OutOfMemoryError" for error in _chain(exc))
+
+
+def _release(device: str) -> None:
+    """Free what a failed way left: traceback cycles can keep tensors alive until collected, and
+    torch keeps freed blocks cached until asked to give them back. Then start the peak again."""
+    gc.collect()
+    torch = sys.modules.get("torch")
+    if torch is None or not device.startswith("cuda"):
+        return
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+    except Exception:
+        pass
+
+
 def classify(exc: BaseException) -> str:
     """The kinds the engine acts on: oom is retried with a smaller fit; the rest stop the run."""
     if isinstance(exc, Stopped):
@@ -410,6 +433,7 @@ class NodeContext:
         self._cap_mb = cap_mb
         self._ram_start = ram_start if ram_start is not None else resident_mb()[0]
         self._reserved_floor: float | None = None
+        self.ways: dict[str, str] = {}  # each ctx.fallbacks step, and the way it finished with
 
     def memory_free_mb(self) -> float | None:
         """The memory still free for this run, in MB, or None when it is not known.
@@ -428,6 +452,49 @@ class NodeContext:
 
     def peaks(self) -> dict[str, Any]:
         return peaks(self.device, self._ram_start, self._reserved_floor)
+
+    def fallbacks(self, step: str, ways: Sequence[tuple[str, Callable[[], T]]]) -> T:
+        """Run one step of the node, trying each way in turn when torch runs out of memory.
+
+            mesh = ctx.fallbacks("decode", [
+                ("whole", lambda: decode(latents)),
+                ("tiled", lambda: decode_tiled(latents, tile=256)),
+            ])
+
+        Every way must give the same result within rounding: a way that costs quality belongs in
+        the memory model's changes, where the fit can weigh it. Only torch's OutOfMemoryError moves
+        on to the next way; anything else, and the last way running out, goes up as it is. Before
+        the next way the failed one is released (its exception and frames dropped, collected, and
+        torch's cache emptied), so it does not hold the memory the next way needs."""
+        if not ways:
+            raise ValueError("ctx.fallbacks needs at least one way")
+        for index, (name, fn) in enumerate(ways[:-1]):
+            try:
+                result = fn()
+            except BaseException as exc:
+                if not is_torch_oom(exc):
+                    raise
+                # It ran out. Nothing of exc outlives this block, so the failed way's frames can go.
+            else:
+                self.ways[step] = name
+                return result
+            peak = peak_vram_mb(self.device, reserved=True)
+            if peak is not None:
+                self._reserved_floor = max(self._reserved_floor or 0.0, peak)
+            _release(self.device)
+            self._say(
+                {
+                    "event": "step_oom",
+                    "stage": step,
+                    "way": name,
+                    "next": ways[index + 1][0],
+                    "peak_reserved_mb": peak,
+                }
+            )
+        name, fn = ways[-1]
+        result = fn()
+        self.ways[step] = name
+        return result
 
     def path(self, name: str) -> Path:
         """A path for a file this run writes. Names stay inside the output folder."""
@@ -507,6 +574,7 @@ def run_context(ctx: NodeContext) -> dict[str, Any]:
         "outputs": ctx.outputs,
         "seconds": round(time.monotonic() - started, 3),
         **ctx.peaks(),
+        "ways": dict(ctx.ways),
         "stats": stats if isinstance(stats, dict) else {},
     }
 

@@ -12,7 +12,9 @@ import json
 import subprocess
 import sys
 import textwrap
+import weakref
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -330,3 +332,143 @@ def test_the_engine_reads_its_own_resident_memory() -> None:
     now, peak = child.resident_mb()
     if sys.platform in ("linux", "win32"):
         assert now is not None and peak is not None and 0 < now <= peak + 1
+
+
+# -- ctx.fallbacks -------------------------------------------------------------------------------
+
+
+class FakeCuda:
+    """torch.cuda as fallbacks uses it: a peak that a reset starts again, and a cache to empty."""
+
+    def __init__(self) -> None:
+        self.peak = 0
+        self.calls: list[str] = []
+
+    def is_available(self) -> bool:
+        return True
+
+    def empty_cache(self) -> None:
+        self.calls.append("empty_cache")
+
+    def reset_peak_memory_stats(self) -> None:
+        self.calls.append("reset")
+        self.peak = 0
+
+    def max_memory_reserved(self) -> int:
+        return self.peak
+
+    def max_memory_allocated(self) -> int:
+        return self.peak
+
+
+def _ctx(tmp_path: Path, events: list[dict[str, Any]], device: str = "cuda") -> child.NodeContext:
+    job = {"node": "t", "out_dir": str(tmp_path / "out"), "device": device}
+    return child.NodeContext(job, events.append)
+
+
+def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cuda = FakeCuda()
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=cuda))
+    events: list[dict[str, Any]] = []
+    ctx = _ctx(tmp_path, events)
+
+    def whole() -> str:
+        cuda.peak = 4_000_000_000
+        raise OutOfMemoryError("CUDA out of memory. Tried to allocate 2.00 GiB")
+
+    def tiled() -> str:
+        cuda.peak = 1_500_000_000
+        return "mesh"
+
+    assert ctx.fallbacks("decode", [("whole", whole), ("tiled", tiled)]) == "mesh"
+    assert ctx.ways == {"decode": "tiled"}
+    assert events == [
+        {"event": "step_oom", "stage": "decode", "way": "whole", "next": "tiled", "peak_reserved_mb": 4000.0}
+    ]
+    assert cuda.calls == ["empty_cache", "reset"]
+    # The way that ran out is a lower bound on what this run needed.
+    assert ctx.peaks()["peak_reserved_mb"] == 4000.0
+
+
+def test_the_failed_way_is_released_before_the_next_starts(tmp_path: Path) -> None:
+    class Tensor:
+        pass
+
+    held: list[weakref.ref[Tensor]] = []
+
+    def whole() -> str:
+        big = Tensor()
+        held.append(weakref.ref(big))
+        raise OutOfMemoryError("out of memory")  # the traceback's frame holds `big`
+
+    def tiled() -> str:
+        return "released" if held[0]() is None else "still held"
+
+    assert _ctx(tmp_path, []).fallbacks("decode", [("whole", whole), ("tiled", tiled)]) == "released"
+
+
+def test_only_torchs_out_of_memory_error_moves_to_the_next_way(tmp_path: Path) -> None:
+    ran: list[str] = []
+
+    def second() -> str:
+        ran.append("second")
+        return "ok"
+
+    for error in (RuntimeError("CUDA error: out of memory"), MemoryError(), ValueError("bad shape")):
+
+        def first(error: BaseException = error) -> str:
+            raise error
+
+        with pytest.raises(type(error)):
+            _ctx(tmp_path, []).fallbacks("step", [("first", first), ("second", second)])
+    assert ran == []
+
+
+def test_torchs_error_as_the_cause_of_another_moves_on(tmp_path: Path) -> None:
+    def first() -> str:
+        try:
+            raise OutOfMemoryError("out of memory")
+        except OutOfMemoryError as exc:
+            raise RuntimeError("the decoder failed") from exc
+
+    assert _ctx(tmp_path, []).fallbacks("step", [("first", first), ("second", lambda: "ok")]) == "ok"
+
+
+def test_when_every_way_runs_out_the_last_error_goes_up_as_oom(tmp_path: Path) -> None:
+    def way(name: str) -> Any:
+        def run() -> str:
+            raise OutOfMemoryError(f"{name} ran out")
+
+        return run
+
+    events: list[dict[str, Any]] = []
+    ctx = _ctx(tmp_path, events)
+    with pytest.raises(OutOfMemoryError, match="c ran out") as info:
+        ctx.fallbacks("step", [("a", way("a")), ("b", way("b")), ("c", way("c"))])
+    assert classify(info.value) == "oom"
+    assert [(e["way"], e["next"]) for e in events] == [("a", "b"), ("b", "c")]
+    assert ctx.ways == {}
+    with pytest.raises(ValueError, match="at least one way"):
+        ctx.fallbacks("step", [])
+
+
+def test_a_first_way_that_works_is_the_way_recorded(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, [])
+    assert ctx.fallbacks("load", [("on the card", lambda: 1), ("offloaded", lambda: 2)]) == 1
+    assert ctx.ways == {"load": "on the card"}
+
+
+def test_the_ways_reach_the_done_event(tmp_path: Path) -> None:
+    body = """
+    class OutOfMemoryError(RuntimeError):
+        pass
+    def whole():
+        raise OutOfMemoryError("out of memory")
+    ctx.fallbacks("decode", [("whole", whole), ("tiled", lambda: None)])
+    """
+    code = _write_node(tmp_path / "node", body)
+    events = _run_child(tmp_path, _job(tmp_path, code))
+    assert [e["event"] for e in events] == ["step_oom", "done"]
+    assert events[-1]["ways"] == {"decode": "tiled"}
