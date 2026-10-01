@@ -1,6 +1,7 @@
 # 002: Fit to memory
 
-Status: approved (redrafted 2026-09-30, after the owner's review and the research in
+Status: implemented 2026-10-01; AC1–AC7 checked by tests, AC8 pending the owner's hardware run
+(approved after a redraft on 2026-09-30, following the owner's review and the research in
 [research.md](research.md); amended 2026-09-30 after a second review, with the owner's approval)
 Owner approval: 2026-09-30 (spec, and its amendment); 2026-10-01 (plan)
 
