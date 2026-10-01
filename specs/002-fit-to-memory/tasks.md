@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-Pick up at task 7 (plan approved 2026-10-01).
+Pick up at task 8 (plan approved 2026-10-01).
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
@@ -25,7 +25,7 @@ Pick up at task 7 (plan approved 2026-10-01).
 - [x] 6. **`ctx.fallbacks`.** Speed-only ways, torch's `OutOfMemoryError` only, no exception kept,
   `gc.collect()` and the cache emptied before the next way, peak reset with the failed way's peak
   kept as a lower bound, `node.step_oom`. Tests.
-- [ ] 7. **Executors and the runtimes' target.** `NodeError` carries peaks; per-job environment
+- [x] 7. **Executors and the runtimes' target.** `NodeError` carries peaks; per-job environment
   (`CUDA_VISIBLE_DEVICES=-1` for `cpu` jobs); the child's pid to a listener; the `died` message
   (-9 on Linux, 0xC0000017 and 0xC000012D on Windows); `Runtimes.device_target()` with the lock
   hash. Tests.
