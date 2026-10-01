@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-Pick up at task 10 (plan approved 2026-10-01).
+Pick up at task 11 (plan approved 2026-10-01).
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
@@ -35,7 +35,7 @@ Pick up at task 10 (plan approved 2026-10-01).
   engine test nodes.
 - [x] 9. **The server.** Wire the machine, targets, settings and store into the scheduler;
   `nodes.fit` and `nodes.forget`. AC3 in the tiny runtime, and the rest of AC7.
-- [ ] 10. **The bench.** `engine/tests/hardware/test.vram/`, `bench_fit.py` (any node at given
+- [x] 10. **The bench.** `engine/tests/hardware/test.vram/`, `bench_fit.py` (any node at given
   settings, the context size from nvidia-smi, the Windows per-process counter through `ctypes`
   with its control run, a holder process), `npm run bench:fit`, and a test of its plumbing on the
   processor.

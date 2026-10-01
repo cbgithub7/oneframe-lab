@@ -1,0 +1,47 @@
+{
+  "id": "test.vram",
+  "version": "1",
+  "title": "VRAM test node",
+  "category": "test",
+  "summary": "Allocates on its device exactly what its memory model says, for spec 002's AC8 (npm run bench:fit). It lives outside nodes/, so the app never lists it.",
+  "outputs": { "text": "Text" },
+  "params": {
+    "resolution": { "type": "int", "default": 1024, "min": 64, "max": 16384 },
+    "chunk_size": { "type": "int", "default": 2048, "min": 64, "max": 262144, "affects": "speed" },
+    "overrun": {
+      "type": "float", "default": 0, "min": 0, "max": 1, "affects": "speed",
+      "doc": "On attempt 1 only, allocate this share more working memory than the model says, so the allocation passes the cap."
+    },
+    "fallbacks": {
+      "type": "bool", "default": true, "affects": "speed",
+      "doc": "Allocate the working memory through ctx.fallbacks, whose second way allocates what the model says."
+    },
+    "spill_mb": {
+      "type": "int", "default": 0, "min": 0, "max": 4096, "affects": "speed",
+      "doc": "The control run: lift the cap and allocate this much past the card's free memory for two seconds."
+    },
+    "hold_s": { "type": "float", "default": 1.0, "min": 0, "max": 60, "affects": "speed" }
+  },
+  "devices": ["cuda", "cpu"],
+  "run": { "where": "runtime", "runtime": "torch", "entry": "node.py:run" },
+  "memory": {
+    "precisions": {
+      "fp32": { "cuda_min_capability": null, "cpu": true },
+      "fp16": { "cuda_min_capability": null, "cpu": false }
+    },
+    "weights": { "fp32": 1000, "fp16": 500, "source": "allocated by the node itself, exact by construction" },
+    "working": {
+      "mb": 200,
+      "terms": [
+        { "coef": 0.00025, "of": ["resolution", "resolution", "bytes"] },
+        { "coef": 0.25, "of": ["chunk_size"] }
+      ],
+      "source": "allocated by the node itself, exact by construction"
+    },
+    "changes": [
+      { "set": { "chunk_size": 512 }, "costs": "speed" },
+      { "set": { "precision": "fp16" }, "costs": "quality" },
+      { "set": { "resolution": 512 }, "costs": "quality" }
+    ]
+  }
+}
