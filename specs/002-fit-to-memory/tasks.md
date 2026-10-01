@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-Pick up at task 5 (plan approved 2026-10-01).
+Pick up at task 6 (plan approved 2026-10-01).
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
@@ -17,7 +17,7 @@ Pick up at task 5 (plan approved 2026-10-01).
 - [x] 4. **What each machine learns.** The store in `memory.py`: corrections from recent runs,
   peaks for unknown estimates, seconds, the key's parts, forget, the bound, atomic writes. AC4
   tests.
-- [ ] 5. **The child.** First, `ruff.toml` and `pyrightconfig.json` target Python 3.11 for code
+- [x] 5. **The child.** First, `ruff.toml` and `pyrightconfig.json` target Python 3.11 for code
   that runs in runtimes (plan decision 13). Then the cap after the context exists, with and
   without torch, and without the budget in "tried anyway" and `fit: "off"`; `memory_budget_mb`,
   `memory_free_mb()` and `attempt`; peaks in `done` and `error`; `classify` with cause chains and

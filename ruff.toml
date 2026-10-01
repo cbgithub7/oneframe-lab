@@ -3,6 +3,14 @@ target-version = "py314"
 line-length = 110
 extend-exclude = ["node_modules"]
 
+# Code that runs inside a runtime's own Python, which may be older than the engine's (the tiny test
+# runtime's is 3.11): formatting for 3.14 would rewrite `except (A, B):` as `except A, B:`, a syntax
+# error before 3.14 (spec 002, plan decision 13).
+[per-file-target-version]
+"engine/src/oneframe/child.py" = "py311"
+"engine/tests/runtimes/**" = "py311"
+"engine/tests/hardware/**" = "py311"
+
 [lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PTH"]
 ignore = ["RUF001", "RUF002", "RUF003"]
