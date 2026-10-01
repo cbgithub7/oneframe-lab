@@ -7,8 +7,9 @@ With a node, it runs that node once per `--set` group (once at its defaults with
 records, for each: the estimate, the peak it measured, their ratio, the seconds, and the free memory
 before the run. Spec 005 measures real models with it.
 
-With no node, it runs spec 002's AC8 on this machine's card with the test node in
-engine/tests/hardware/test.vram/, in the torch runtime (installed if needed):
+With no node, it runs spec 002's AC8 on this machine's card, in the torch runtime (installed if
+needed), with the test node whose folder under engine/tests/hardware/ holds an `ac8.json` saying
+how (which param to size, the overrun's params and so on), so nothing here names that node:
 
 1. the CUDA context's size, from nvidia-smi before CUDA starts and after a first kernel;
 2. the node at three settings sized to this card's budget, each estimate against its peak;
@@ -27,7 +28,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
-import math
 import re
 import subprocess
 import sys
@@ -35,6 +35,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -51,11 +52,10 @@ from oneframe.scheduler import Scheduler
 from oneframe.server import default_data_dir
 
 HARDWARE_NODES = Path(__file__).resolve().parents[2] / "tests" / "hardware"
-AC8_NODE = "test.vram"
+AC8_FILE = "ac8.json"
 TOLERANCE_SHARE = 0.10  # an estimate holds within 10% of the peak,
 TOLERANCE_MB = 64  # or 64 MB, whichever is larger
 SAMPLE_S = 0.25
-SPILL_MB = 256
 
 
 # -- one run at given settings -------------------------------------------------------------------
@@ -114,9 +114,9 @@ def measure(scheduler: Scheduler, node: str, params: dict[str, Any], label: str 
     fits = [e for e in events if e["event"] == "node.fit"]
     done = next((e for e in events if e["event"] == "node.done"), None)
     failed = next((e for e in events if e["event"] == "node.failed"), None)
-    first = fits[0] if fits else {}
-    device = (done or {}).get("made_with", {}).get("device") or first.get("device")
-    estimate = (first.get("needs") or {}).get("device")
+    last = fits[-1] if fits else {}  # the fit of the attempt that finished, or failed last
+    device = (done or {}).get("made_with", {}).get("device") or last.get("device")
+    estimate = (last.get("needs") or {}).get("device")
     measured = None
     if done is not None:
         if device == "cuda":
@@ -130,7 +130,7 @@ def measure(scheduler: Scheduler, node: str, params: dict[str, Any], label: str 
                 measured = round(float(reserved) + outside, 1)
         else:
             measured = done.get("peak_ram_mb")
-    free = ((first.get("devices") or {}).get(device or "") or {}).get("free")
+    free = ((last.get("devices") or {}).get(device or "") or {}).get("free")
     return {
         "label": label or ", ".join(f"{k}={v}" for k, v in params.items()) or "defaults",
         "params": params,
@@ -144,6 +144,7 @@ def measure(scheduler: Scheduler, node: str, params: dict[str, Any], label: str 
         "seconds": (done or {}).get("seconds", seconds),
         "free_before_mb": free,
         "fits": fits,
+        "attempts": len(fits),
         "steps_oom": [e for e in events if e["event"] == "node.step_oom"],
         "ooms": [e for e in events if e["event"] == "node.oom"],
         "ceilings": [e for e in events if e["event"] == "ceiling"],
@@ -322,26 +323,80 @@ def _card_device(profile: dict[str, Any], target: memory.Target) -> dict[str, An
     return next((g for g in profile.get("gpus") or [] if g.get("index") == target.card), None)
 
 
-def three_settings(budget: float, chunk: int = 2048) -> list[dict[str, Any]]:
-    """Three resolutions whose need at fp32 is about 30%, 50% and 70% of this card's budget, so the
-    settings follow the card the bench runs on rather than any one card."""
-    base = 1000 + 200 + 0.25 * chunk  # weights and the fixed part of the test node's working memory
+@dataclass(frozen=True)
+class Ac8:
+    """How AC8 runs, from the test node's own folder (`ac8.json`)."""
+
+    folder: Path
+    node: str
+    scale: str
+    fixed: dict[str, Any]
+    shares: tuple[float, ...]
+    control: dict[str, Any]
+    overrun: dict[str, Any]
+    without_fallbacks: dict[str, Any]
+    context: str
+    holder: str
+
+
+def find_ac8(root: Path = HARDWARE_NODES) -> Ac8:
+    """The one folder under `root` with an ac8.json, read."""
+    found = sorted(root.glob(f"*/{AC8_FILE}"))
+    if len(found) != 1:
+        raise FileNotFoundError(f"Expected one {AC8_FILE} under {root}; found {len(found)}.")
+    folder = found[0].parent
+    row = json.loads(found[0].read_text(encoding="utf-8"))
+    node = json.loads((folder / "node.json").read_text(encoding="utf-8"))["id"]
+    return Ac8(
+        folder,
+        node,
+        row["scale"],
+        dict(row["fixed"]),
+        tuple(row["shares"]),
+        dict(row["control"]),
+        dict(row["overrun"]),
+        dict(row["without_fallbacks"]),
+        row["context"],
+        row["holder"],
+    )
+
+
+def three_settings(
+    manifest: Manifest, plan: Ac8, budget: float, card: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """For each share, the largest value of the scale param (a multiple of 64) whose estimate, from
+    the node's own memory model, is at most that share of this card's budget; so the settings
+    follow the card the bench runs on rather than any one card."""
+    model = manifest.memory
+    param = manifest.params[plan.scale]
+    assert model is not None
+    low, high = int(param.minimum or 64), int(param.maximum or 16384)
+    base = {**_defaults(manifest), **plan.fixed}
     out = []
-    for share in (0.3, 0.5, 0.7):
-        room = share * budget - base
-        resolution = 64 if room <= 0 else max(64, int(math.sqrt(room / (0.00025 * 4)) // 64 * 64))
-        out.append({"resolution": resolution, "chunk_size": chunk, "precision": "fp32"})
+    for share in plan.shares:
+        target = share * budget
+        best = low
+        lo, hi = low // 64, high // 64
+        while lo <= hi:  # the need grows with the param: find the last value that fits
+            mid = (lo + hi) // 2
+            need = _need(model, {**base, plan.scale: max(mid * 64, low)}, card)
+            if need is not None and need <= target:
+                best, lo = max(mid * 64, low), mid + 1
+            else:
+                hi = mid - 1
+        out.append({**plan.fixed, plan.scale: best})
     return out
 
 
-def _probe_context(manager: Runtimes, card: int) -> dict[str, Any]:
+def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
     python = manager.python_for("torch")
+    file, _, function = plan.context.partition(":")
     with tempfile.TemporaryDirectory(prefix="oneframe-context-") as out:
         job = {
             "run": "bench",
             "step": "context",
             "node": "probe:context",
-            "entry": {"file": str(HARDWARE_NODES / AC8_NODE / "context.py"), "function": "run"},
+            "entry": {"file": str(plan.folder / file), "function": function},
             "inputs": {},
             "params": {"card": card},
             "out_dir": out,
@@ -357,10 +412,10 @@ def _probe_context(manager: Runtimes, card: int) -> dict[str, Any]:
 
 
 @contextlib.contextmanager
-def _holding(manager: Runtimes, mb: float) -> Iterator[None]:
+def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
     """Another program holding `mb` on the card while the block runs."""
     proc = subprocess.Popen(
-        [str(manager.python_for("torch")), str(HARDWARE_NODES / AC8_NODE / "holder.py"), str(round(mb))],
+        [str(manager.python_for("torch")), str(plan.folder / plan.holder), str(round(mb))],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True,
@@ -406,7 +461,8 @@ def _sampled(scheduler: Scheduler, node: str, params: dict[str, Any], label: str
 
 def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
     """Everything AC8's report shows, as data."""
-    record: dict[str, Any] = {"mode": "ac8", "node": AC8_NODE}
+    plan = find_ac8()
+    record: dict[str, Any] = {"mode": "ac8", "node": plan.node}
     try:
         installed = manager.install("torch", emit=_progress)
     except (InstallRefused, RuntimeMissing) as exc:
@@ -425,28 +481,29 @@ def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
         )
         return record
     record["card"] = card
-    registry = discover([HARDWARE_NODES])
+    registry = discover([plan.folder.parent])
     scheduler = make_scheduler(registry, manager, cache_root)
-    model = registry.get(AC8_NODE).memory
+    manifest = registry.get(plan.node)
+    model = manifest.memory
     assert model is not None
 
     _say("1/4 the CUDA context's size")
-    record["context"] = _probe_context(manager, int(card["index"]))
+    record["context"] = _probe_context(manager, plan, int(card["index"]))
 
     _say("2/4 three settings")
     fresh = _card_device(hardware.profile(manager.data), target) or card
     margin = memory.margin(Settings(), "cuda", fresh.get("vram_total_mb"))
     budget = (fresh.get("vram_free_mb") or 0) - margin
     record["settings"] = []
-    for i, params in enumerate(three_settings(budget)):
+    for i, params in enumerate(three_settings(manifest, plan, budget, fresh)):
         with _fresh_cache(scheduler, i):
-            record["settings"].append(measure(scheduler, AC8_NODE, params))
+            record["settings"].append(measure(scheduler, plan.node, params))
 
     _say("3/4 another program holding memory")
-    record["holder"] = _bench_holder(manager, scheduler, model, target)
+    record["holder"] = _bench_holder(manager, scheduler, plan, target)
 
     _say("4/4 an overrun past the cap")
-    record["overrun"] = _bench_overrun(manager, scheduler, model, target)
+    record["overrun"] = _bench_overrun(manager, scheduler, plan, target)
     return record
 
 
@@ -461,16 +518,22 @@ def _defaults(manifest: Manifest) -> dict[str, Any]:
     return {name: p.default for name, p in manifest.params.items()}
 
 
+def _label(params: dict[str, Any]) -> str:
+    return ", ".join(f"{k}={v}" for k, v in params.items())
+
+
 def _bench_holder(
-    manager: Runtimes, scheduler: Scheduler, model: memory.MemoryModel, target: memory.Target
+    manager: Runtimes, scheduler: Scheduler, plan: Ac8, target: memory.Target
 ) -> dict[str, Any]:
     """Hold memory so the budget leaves room only for the node after its first change, then run it
     at its defaults and record the fit it was given."""
     card = _card_device(hardware.profile(manager.data), target)
     if card is None or card.get("vram_free_mb") is None:
         return {"why": "The card's free memory could not be read."}
-    defaults = _defaults(scheduler.registry.get(AC8_NODE))
-    after_first = {**defaults, **model.changes[0].set}
+    manifest = scheduler.registry.get(plan.node)
+    model = manifest.memory
+    assert model is not None
+    after_first = {**_defaults(manifest), **model.changes[0].set}
     need = _need(model, after_first, card) or 0.0
     margin = memory.margin(Settings(), "cuda", card.get("vram_total_mb"))
     hold = float(card["vram_free_mb"]) - (need + 32 + margin)  # a budget of the need, plus 32 MB
@@ -478,18 +541,21 @@ def _bench_holder(
         return {
             "why": f"The card has too little free memory to hold any back ({card['vram_free_mb']} MB free)."
         }
-    with _holding(manager, hold), _fresh_cache(scheduler, 100):
-        row = measure(scheduler, AC8_NODE, {}, "defaults, with memory held")
+    with _holding(manager, plan, hold), _fresh_cache(scheduler, 100):
+        row = measure(scheduler, plan.node, {}, "defaults, with memory held")
     row["held_mb"] = round(hold)
     row["expected_changes"] = [0]
     return row
 
 
 def _bench_overrun(
-    manager: Runtimes, scheduler: Scheduler, model: memory.MemoryModel, target: memory.Target
+    manager: Runtimes, scheduler: Scheduler, plan: Ac8, target: memory.Target
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    defaults = _defaults(scheduler.registry.get(AC8_NODE))
+    manifest = scheduler.registry.get(plan.node)
+    model = manifest.memory
+    assert model is not None
+    defaults = _defaults(manifest)
     card = _card_device(hardware.profile(manager.data), target)
     if card is None or card.get("vram_free_mb") is None:
         return {"why": "The card's free memory could not be read."}
@@ -497,11 +563,9 @@ def _bench_overrun(
     # The control: a deliberate spill, with the fit off and the cap lifted by the node itself.
     scheduler.settings = lambda: Settings(fit="off")
     with _fresh_cache(scheduler, 200):
-        out["control"] = _sampled(
-            scheduler, AC8_NODE, {"spill_mb": SPILL_MB}, f"control: {SPILL_MB} MB past free"
-        )
+        out["control"] = _sampled(scheduler, plan.node, plan.control, f"control: {_label(plan.control)}")
 
-    # The overrun: a budget of the estimate (plus the tolerance), and 30% more on attempt 1.
+    # The overrun: a budget of the estimate (plus the tolerance), and more than that on attempt 1.
     need = _need(model, defaults, card) or 0.0
     free = float((_card_device(hardware.profile(manager.data), target) or card)["vram_free_mb"] or 0)
     margin_mb = max(free - (need + TOLERANCE_MB), 0.0)
@@ -509,11 +573,11 @@ def _bench_overrun(
     out["budget_mb"] = round(free - margin_mb)
     out["estimate_mb"] = round(need)
     with _fresh_cache(scheduler, 201):
-        out["fallbacks"] = _sampled(scheduler, AC8_NODE, {"overrun": 0.3}, "overrun, with ctx.fallbacks")
+        out["fallbacks"] = _sampled(scheduler, plan.node, plan.overrun, "overrun, with ctx.fallbacks")
     with _fresh_cache(scheduler, 202):
-        out["retry"] = _sampled(
-            scheduler, AC8_NODE, {"overrun": 0.3, "fallbacks": False}, "overrun, with the engine's retry"
-        )
+        retry = {**plan.overrun, **plan.without_fallbacks}
+        out["retry"] = _sampled(scheduler, plan.node, retry, "overrun, with the engine's retry")
+    out["overrun_params"] = plan.overrun
     scheduler.settings = Settings
     return out
 
@@ -617,7 +681,7 @@ def render(record: dict[str, Any]) -> str:
         control = overrun.get("control") or {}
         out += [
             f"- Budget {_mb(overrun.get('budget_mb'))} for an estimate of {_mb(overrun.get('estimate_mb'))}; "
-            "attempt 1 allocates 30% more working memory",
+            f"attempt 1 runs with {_label(overrun.get('overrun_params') or {})}",
             "- Control (a deliberate spill): shared GPU memory rose by "
             + _mb(control.get("shared_growth_mb"))
             + (f" ({control['shared_why']})" if control.get("shared_why") else ""),

@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -191,7 +192,8 @@ class _Reader:
                 self.problem(f"{where}.bytes should be a positive number")
                 ok = False
             if ok:
-                runs = ("cuda" in self.devices) or (cpu and "cpu" in self.devices)
+                unread = any(d not in ("cuda", "cpu") for d in self.devices)  # no rule for them yet
+                runs = ("cuda" in self.devices) or (cpu and "cpu" in self.devices) or unread
                 if not runs:
                     self.problem(f"{where} runs on none of the node's devices ({', '.join(self.devices)})")
                 self.precisions[name] = Precision(name, capability, cpu, float(size))
@@ -327,6 +329,10 @@ class _Reader:
                 output_affecting = True
                 if value not in self.precisions:
                     self.problem(f"{where} sets precision {value!r}, which the model does not list")
+                    ok = False
+                elif costs == "speed":
+                    advice = "" if where.startswith("upgrades") else ' (mark the change "costs": "quality")'
+                    self.problem(f"{where} costs speed but sets precision, which changes the output{advice}")
                     ok = False
                 continue
             param = self.params.get(name)
@@ -896,13 +902,26 @@ class _Fitter:
             return f"{precision} cannot run on {'the processor' if device.type == 'cpu' else device.kind}"
         return None
 
+    def reachable(self, device: Device) -> bool:
+        """Whether the node can run on this device: at the values' precision, or at one a change
+        the fit may make sets (precision changes cost quality, so not with never_reduce_quality)."""
+        if self.runs_on(device, str(self.values.get(PRECISION_PARAM))):
+            return True
+        if self.settings.never_reduce_quality or PRECISION_PARAM in self.explicit:
+            return False
+        return any(
+            self.runs_on(device, str(change.set[PRECISION_PARAM]))
+            for change in self.model.changes
+            if PRECISION_PARAM in change.set and not set(change.set) & self.explicit
+        )
+
     def points(self, device: Device, quality: bool, after: int | None = None) -> list[_Point]:
         """The values, then each change in turn, cumulatively. With `after`, a retry's: only the
         points past that change (-1: past the values), so it never repeats what ran out."""
         out: list[_Point] = []
         values: dict[str, Any] = dict(self.values)
         applied: tuple[int, ...] = ()
-        if after is None:
+        if after is None and self.runs_on(device, str(values.get(PRECISION_PARAM))):
             out.append(_Point(device, dict(values), applied))
         for i, change in enumerate(self.model.changes):
             if change.costs == "quality" and not quality:
@@ -913,7 +932,8 @@ class _Fitter:
                 continue
             values.update(change.set)
             applied = (*applied, i)
-            if after is None or i > after:
+            runs_here = self.runs_on(device, str(values.get(PRECISION_PARAM)))
+            if (after is None or i > after) and runs_here:
                 out.append(_Point(device, dict(values), applied))
         return out
 
@@ -995,8 +1015,7 @@ class _Fitter:
             basis = "published" if seconds is not None else "unknown"
         alternative = None
         first = next((d for d in self.here if d.type == self.devices[0]), None)
-        precision = str(self.values.get(PRECISION_PARAM))
-        if first is not None and not self.settings.never_reduce_quality and self.runs_on(first, precision):
+        if first is not None and not self.settings.never_reduce_quality and self.reachable(first):
             probe = self.fresh()
             for point in probe.points(first, quality=True):
                 if probe.fits(probe.measure(point)):
@@ -1023,14 +1042,16 @@ class _Fitter:
 
     def run(self, after: Fit | None) -> Fit:
         precision = str(self.values.get(PRECISION_PARAM))
-        usable = [d for d in self.here if self.runs_on(d, precision)]
-        if not usable:
+        usable = [d for d in self.here if self.reachable(d)]
+        # The first device the values themselves run on: where the fit off, the upgrades and
+        # "tried anyway" run. A device only a precision change makes usable comes later.
+        first = next((d for d in usable if self.runs_on(d, precision)), None)
+        if not usable or (first is None and self.settings.fit == "off"):
             return self.failed(_no_device(self.devices, self.model.precisions.get(precision)))
-        first = usable[0]
-        if self.settings.fit == "off":
+        if self.settings.fit == "off" and first is not None:
             return self.result(self.measure(_Point(first, dict(self.values), ())), "off")
 
-        if after is None:
+        if after is None and first is not None:
             base = self.measure(_Point(first, dict(self.values), ()))
             if self.unknown(base):
                 return self.stop_unknown(base)
@@ -1061,9 +1082,12 @@ class _Fitter:
         if after is not None:
             return self.failed("Nothing smaller than the attempt that ran out of memory is left to try.")
         if self.explicit_blocked:
-            point = self.measure(self.points(first, not self.settings.never_reduce_quality)[-1])
-            why = "Nothing fits in the free memory, and the graph sets a setting the engine would change"
-            return self.result(point, "tried_anyway", {"kind": "tried_anyway", "why": why})
+            for device in [d for d in (first, *usable) if d is not None]:
+                allowed = self.points(device, not self.settings.never_reduce_quality)
+                if allowed:
+                    point = self.measure(allowed[-1])
+                    why = "Nothing fits in the free memory, and the graph sets what the engine would change"
+                    return self.result(point, "tried_anyway", {"kind": "tried_anyway", "why": why})
         return self.failed(self.memory_message(usable))
 
     def upgrade(self, first: Device) -> _Point | None:
@@ -1129,6 +1153,9 @@ def _row(device: Device) -> dict[str, Any]:
 
 def _no_device(devices: tuple[str, ...], rule: Precision | None = None) -> str:
     listed = ", ".join(devices) or "no device"
+    unread = [d for d in devices if d not in ("cuda", "cpu")]
+    if unread and not any(d in ("cuda", "cpu") for d in devices):
+        return f"This node runs on {listed}; the engine does not read {', '.join(unread)} yet."
     if rule is not None:
         card = (
             f"a card of compute {rule.cuda_min_capability} or later" if rule.cuda_min_capability else "a card"
@@ -1205,6 +1232,8 @@ class LearnedStore:
     def __init__(self, data_root: Path | None) -> None:
         self.path = None if data_root is None else Path(data_root) / "memory" / "learned.json"
         self._data: dict[str, Any] | None = None
+        # A run records while nodes.fit and nodes.forget read and clear, from another thread.
+        self._lock = threading.RLock()
 
     def _load(self) -> dict[str, Any]:
         if self._data is None:
@@ -1227,6 +1256,19 @@ class LearnedStore:
         temporary.replace(self.path)
 
     def view(self, key: StoreKey) -> Learned:
+        with self._lock:
+            return self._view(key)
+
+    def record(self, key: StoreKey, kind: str, **measured: Any) -> None:
+        """One run's measurement; see `_record` for what it takes."""
+        with self._lock:
+            self._record(key, kind, **measured)
+
+    def forget(self, node: str) -> int:
+        with self._lock:
+            return self._forget(node)
+
+    def _view(self, key: StoreKey) -> Learned:
         """What a fit reads: a correction per kind of device, and needs and seconds per settings."""
         prefix = key.text("")
         corrections: dict[str, float] = {}
@@ -1245,7 +1287,7 @@ class LearnedStore:
                 seconds[(kind, settings)] = float(value)
         return Learned(corrections, peaks, seconds)
 
-    def record(
+    def _record(
         self,
         key: StoreKey,
         kind: str,
@@ -1288,7 +1330,7 @@ class LearnedStore:
             del entries[oldest]
         self._save()
 
-    def forget(self, node: str) -> int:
+    def _forget(self, node: str) -> int:
         """Drops everything learned about a node, every version and kind of device; how many
         entries went."""
         entries: dict[str, Any] = self._load()["entries"]

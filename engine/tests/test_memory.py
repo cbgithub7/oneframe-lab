@@ -307,6 +307,11 @@ def test_ac1_a_bad_model_is_refused_with_every_problem_named(tmp_path: Path) -> 
             "time.cpu.at names steps",
         ),
         ({"budget": 4}, "memory.budget is not part of a memory model"),
+        (
+            {"changes": [{"set": {"precision": "fp16"}, "costs": "speed"}]},
+            "changes[0] costs speed but sets precision, which changes the output",
+        ),
+        ({"upgrades": [{"set": {"precision": "bf16"}}]}, "upgrades[0] costs speed but sets precision"),
     ],
 )
 def test_ac1_each_mistake_is_named(tmp_path: Path, memory: dict[str, Any], needle: str) -> None:
@@ -987,3 +992,49 @@ def test_a_store_without_a_data_root_lives_in_memory(tmp_path: Path) -> None:
     store = LearnedStore(None)
     _run(store, 1.25)
     assert store.view(KEY).corrections == {"cuda:6.1": pytest.approx(1.25)}
+
+
+# -- a precision change can make a card usable ---------------------------------------------------
+
+BF16_FIRST: dict[str, Any] = {
+    "precisions": {
+        "bf16": {"cuda_min_capability": "8.0", "cpu": True},
+        "fp16": {"cuda_min_capability": "6.0", "cpu": False},
+    },
+    "weights": {"bf16": 1500, "fp16": 1500, "source": SOURCE},
+    "changes": [{"set": {"precision": "fp16"}, "costs": "quality"}],
+}
+
+
+def test_a_card_only_a_precision_change_can_use_is_still_considered(tmp_path: Path) -> None:
+    held = machines.get("8 GB, compute 6.1, 1.5 GB held")
+    roomy = _fit(tmp_path, held, **BF16_FIRST)
+    # Full quality on the processor beats reduced quality on the card, with the card offered.
+    assert (roomy.device, roomy.values["precision"]) == ("cpu", "bf16")
+    assert roomy.warning is not None and roomy.warning["alternative"] is not None
+    assert roomy.warning["alternative"]["set"] == {"precision": "fp16"}
+    tight = _fit(tmp_path, machines.with_system(held, 4500, 8590), **BF16_FIRST)
+    assert (tight.device, tight.values["precision"], tight.reduced) == ("cuda", "fp16", True)
+    never = _fit(tmp_path, held, settings=Settings(never_reduce_quality=True), **BF16_FIRST)
+    assert never.device == "cpu" and never.warning is not None and never.warning["alternative"] is None
+
+
+def test_devices_the_engine_does_not_read_yet_are_named(tmp_path: Path) -> None:
+    data = _node(tmp_path)
+    data["devices"] = ["mps"]
+    data["memory"]["precisions"] = {"fp32": {"cuda_min_capability": None, "cpu": True}}
+    data["memory"]["weights"] = {"fp32": 3000, "source": SOURCE}
+    data["memory"]["changes"] = [{"set": {"chunk_size": 2048}, "costs": "speed"}]
+    m = parse(data, tmp_path)
+    got = fit(
+        m.memory,
+        _values(m),
+        set(),
+        {},
+        machines.get("no GPU, 32 GB"),
+        Target(),
+        Learned(),
+        Settings(),
+        m.devices,
+    )
+    assert got.outcome == "memory" and "does not read mps yet" in got.message

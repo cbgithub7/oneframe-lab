@@ -121,6 +121,23 @@ class Plan:
         return [s.id for s in self.steps]
 
 
+def step_params(manifest: Manifest, given: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """A step's params: what the graph gives, the defaults for the rest, and every problem."""
+    params: dict[str, Any] = {}
+    problems: list[str] = []
+    for name, param in manifest.params.items():
+        value = given.get(name, param.default)
+        if value is None:
+            problems.append(f"parameter {name} needs a value")
+            continue
+        why = check_param(name, param, value)
+        if why:
+            problems.append(why)
+        params[name] = value
+    problems += [f"{manifest.id} has no parameter {name}" for name in given if name not in manifest.params]
+    return params, problems
+
+
 def plan(graph: Graph, registry: Registry) -> Plan:
     problems: list[dict[str, str]] = []
     notes: list[str] = []
@@ -137,19 +154,9 @@ def plan(graph: Graph, registry: Registry) -> Plan:
         if manifest is None:
             problem(key, f"no node called {gnode.node!r} is installed")
             continue
-        params: dict[str, Any] = {}
-        for name, param in manifest.params.items():
-            value = gnode.params.get(name, param.default)
-            if value is None:
-                problem(key, f"parameter {name} needs a value")
-                continue
-            why = check_param(name, param, value)
-            if why:
-                problem(key, why)
-            params[name] = value
-        for name in gnode.params:
-            if name not in manifest.params:
-                problem(key, f"{manifest.id} has no parameter {name}")
+        params, wrong = step_params(manifest, gnode.params)
+        for why in wrong:
+            problem(key, why)
         steps[key] = Step(
             id=key, manifest=manifest, params=params, inputs={}, explicit=frozenset(gnode.params)
         )

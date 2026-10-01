@@ -90,12 +90,23 @@ def test_an_estimate_holds_within_ten_percent_or_64_mb() -> None:
     assert bench_fit.holds(None, 10) is None and bench_fit.holds(10, None) is None
 
 
-def test_the_three_settings_follow_the_card_they_run_on() -> None:
-    small, large = bench_fit.three_settings(3000), bench_fit.three_settings(70000)
-    for settings in (small, large):
-        resolutions = [s["resolution"] for s in settings]
-        assert resolutions == sorted(resolutions) and all(r >= 64 and r % 64 == 0 for r in resolutions)
-    assert large[2]["resolution"] > small[2]["resolution"]
+def test_ac8_is_described_by_its_node_folder_and_sized_from_the_nodes_own_model() -> None:
+    plan = bench_fit.find_ac8()
+    assert plan.node == "test.vram" and (plan.folder / "node.json").is_file()
+    manifest = discover([plan.folder.parent]).get(plan.node)
+    for total, free in ((4295, 3900), (8590, 7000), (25770, 24500), (85899, 84000)):
+        card = {"index": 0, "capability": "8.6", "vram_total_mb": total, "vram_free_mb": free}
+        budget = free - max(1611, 0.1 * total)
+        settings = bench_fit.three_settings(manifest, plan, budget, card)
+        values = [s[plan.scale] for s in settings]
+        assert values == sorted(values) and all(v % 64 == 0 for v in values)
+        for share, params in zip(plan.shares, settings, strict=True):
+            need = bench_fit._need(manifest.memory, {**bench_fit._defaults(manifest), **params}, card)  # type: ignore[arg-type]
+            assert need is not None
+            assert need <= share * budget or params[plan.scale] == manifest.params[plan.scale].minimum
+    small = bench_fit.three_settings(manifest, plan, 3000, {"vram_total_mb": 4295})
+    large = bench_fit.three_settings(manifest, plan, 70000, {"vram_total_mb": 85899})
+    assert large[-1][plan.scale] > small[-1][plan.scale]
 
 
 def test_the_report_says_what_was_not_measured() -> None:

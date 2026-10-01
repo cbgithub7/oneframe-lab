@@ -573,3 +573,31 @@ def test_ac7_nodes_fit_and_forget_load_no_model_library(
         [sys.executable, "-c", probe], capture_output=True, text=True, check=True, timeout=120
     )
     assert json.loads(out.stdout.strip().splitlines()[-1]) == {"fit": True, "forget": True, "heavy": []}
+
+
+def test_nodes_fit_refuses_what_a_graph_would_refuse(
+    tmp_path: Path, make_node: MakeNode, node_root: Path
+) -> None:
+    make_node(
+        {
+            "id": "test.needs_value",
+            "version": "1",
+            "title": "Needs a value",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "params": {**fit_node.PARAMS, "prompt": {"type": "string"}},
+            "devices": ["cuda", "cpu"],
+            "memory": fit_node.model(),
+        }
+    )
+    engine = Engine(tmp_path / "data", [node_root], Events().append)
+    missing = engine.handle({"id": 1, "method": "nodes.fit", "params": {"node": "test.needs_value"}})
+    assert missing is not None and "parameter prompt needs a value" in missing["error"]["message"]
+    given = engine.handle(
+        {
+            "id": 2,
+            "method": "nodes.fit",
+            "params": {"node": "test.needs_value", "params": {"prompt": "a chair"}},
+        }
+    )
+    assert given is not None and "result" in given, given

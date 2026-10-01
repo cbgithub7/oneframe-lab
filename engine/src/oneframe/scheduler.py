@@ -424,11 +424,14 @@ class Scheduler:
                     memory.evaluate(manifest.memory.outside_torch, manifest.memory, values, context.inputs)[0]
                     or 0.0
                 )
-            uncapped = found.outcome in ("tried_anyway", "off")
+            # No budget in the cap where the fit knows it is too small, or where there is none left
+            # (the card already more than full): the child then caps at the free memory alone.
+            budget = found.budget
+            uncapped = found.outcome in ("tried_anyway", "off") or budget is None or budget <= 0
             job.update(
                 precision=values.get(memory.PRECISION_PARAM),
                 memory_budget_mb=found.budget,
-                vram_cap_mb=found.budget if device == "cuda" and not uncapped else None,
+                vram_cap_mb=budget if device == "cuda" and not uncapped else None,
                 outside_torch_mb=outside,
             )
             if manifest.run.where == "runtime" and device == "cpu":
@@ -525,17 +528,21 @@ class Scheduler:
         else:
             need = peaks.get("peak_ram_mb")
             weights = memory.weights_mb(model, found.values) if model else None
-        self.learned.record(
-            context.key,
-            found.kind,
-            settings=memory.settings_hash(found.values, context.inputs),
-            ok=ok,
-            need_mb=need,
-            working_mb=found.need.working if found.need is not None else None,
-            weights_mb=weights,
-            outside_mb=outside,
-            seconds=seconds,
-        )
+        try:
+            self.learned.record(
+                context.key,
+                found.kind,
+                settings=memory.settings_hash(found.values, context.inputs),
+                ok=ok,
+                need_mb=need,
+                working_mb=found.need.working if found.need is not None else None,
+                weights_mb=weights,
+                outside_mb=outside if found.device == "cuda" else 0.0,  # the processor has no outside
+                seconds=seconds,
+            )
+        except OSError:
+            # Learning is a help, never a reason for a run to fail.
+            LOGGER.warning("could not record what %s taught this machine", manifest.id, exc_info=True)
 
     def _check_outputs(
         self, step: Step, inputs: dict[str, Value], declared: dict[str, Any], key: str

@@ -32,8 +32,7 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
-from oneframe.graph import Graph, GraphError, Step, plan
-from oneframe.manifest import check_param
+from oneframe.graph import Graph, GraphError, Step, plan, step_params
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
@@ -127,13 +126,7 @@ class Engine:
         loads no model library."""
         manifest = self.registry.get(str(params.get("node")))
         given = dict(params.get("params") or {})
-        problems = [f"{manifest.id} has no parameter {name}" for name in given if name not in manifest.params]
-        values: dict[str, Any] = {}
-        for name, param in manifest.params.items():
-            values[name] = given.get(name, param.default)
-            why = check_param(name, param, values[name]) if values[name] is not None else None
-            if why:
-                problems.append(why)
+        values, problems = step_params(manifest, given)
         if problems:
             raise ValueError("; ".join(problems))
         sizes = dict(params.get("inputs") or {})

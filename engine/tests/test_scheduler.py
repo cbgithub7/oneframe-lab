@@ -703,3 +703,73 @@ def test_an_attempt_that_used_the_last_change_starts_no_second_process(
     assert result.error is not None and result.error["kind"] == "oom"
     assert result.error["message"].startswith("Ran out of memory, and nothing smaller")
     assert events.kinds().count("node.start") == 1 and events.kinds().count("node.fit") == 2
+
+
+# -- from the review -----------------------------------------------------------------------------
+
+
+class _Recorder(LearnedStore):
+    def __init__(self, fail: bool = False) -> None:
+        super().__init__(None)
+        self.fail = fail
+        self.calls: list[dict[str, Any]] = []
+
+    def record(self, key: StoreKey, kind: str, **measured: Any) -> None:
+        self.calls.append({"kind": kind, **measured})
+        if self.fail:
+            raise PermissionError("learned.json is locked")
+
+
+def test_a_processor_run_learns_with_nothing_outside_torch(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
+) -> None:
+    model = fit_node.model()
+    model["outside_torch_mb"] = {"mb": 800, "source": fit_node.SOURCE}
+    make_node(
+        {
+            "id": "test.outside",
+            "version": "1",
+            "title": "Outside",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "params": fit_node.PARAMS,
+            "devices": ["cuda", "cpu"],
+            "run": {"where": "runtime", "runtime": "test", "entry": "node.py:run"},
+            "memory": model,
+        },
+        SEEN.format(extra="    pass"),
+    )
+    store = _Recorder()
+    result = scheduler_for(machine=_with(ROOMY), learned=store).run(
+        _one_node("test.outside"), lambda _e: None
+    )
+    assert result.status == "done", result.error
+    assert [(c["kind"], c["outside_mb"]) for c in store.calls] == [("cpu", 0.0)]
+
+
+def test_a_failure_to_record_what_was_learned_never_fails_the_run(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    _fit_node(make_node, "test.fit", where="runtime")
+    result = scheduler_for(machine=_with(ROOMY), learned=_Recorder(fail=True)).run(
+        _one_node("test.fit"), events.append
+    )
+    assert result.status == "done", result.error
+    assert events.kinds()[-2:] == ["node.done", "run.done"]
+
+
+def test_a_card_with_no_room_left_is_capped_at_its_free_memory_not_at_a_budget_below_zero(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    _fit_node(make_node, "test.plain", where="runtime", model=False)
+    full = machines.machine(
+        [machines.card(0, "8.6", 12885, 1200)], 10000, 17180
+    )  # 1200 free, under the margin
+    result = scheduler_for(machine=_with(full), target=lambda _r: Target(card=0, lock="l")).run(
+        _one_node("test.plain"), events.append
+    )
+    assert result.status == "done", result.error
+    (fitted,) = events.of("node.fit")
+    assert fitted["device"] == "cuda" and fitted["devices"]["cuda"]["budget"] < 0
+    (ceiling,) = events.of("ceiling")
+    assert ceiling["budget_mb"] is None  # the child caps at the free memory it measures instead
