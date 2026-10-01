@@ -1165,3 +1165,149 @@ def fit(
         return found
     fitter = _Fitter(model, values, frozenset(explicit), inputs, learned, settings, devices, here, system)
     return fitter.run(after)
+
+
+# -- what each machine learns ----------------------------------------------------------------------
+
+STORE_VERSION = 1
+STORE_ENTRIES = 256  # the least recently used entry goes first
+RECENT_RATIOS = 8
+RECENT_SETTINGS = 16
+MIN_WORKING_MB = 64  # a smaller working estimate gives a ratio that is noise
+LOWER_AFTER_RUNS = 2  # successful runs that must agree before a correction goes below 1
+
+
+@dataclass(frozen=True)
+class StoreKey:
+    """What a node's learning is kept under: a new version, memory model or runtime lock starts it
+    over, and each kind of device learns on its own."""
+
+    node: str
+    version: str
+    model: str  # the memory model's hash; "" without one
+    lock: str  # the runtime lock's hash; "" for none
+
+    def text(self, kind: str) -> str:
+        return "|".join((self.node, self.version, self.model, self.lock, kind))
+
+
+class LearnedStore:
+    """`<data>/memory/learned.json`: per node and kind of device, the recent working-memory ratios,
+    and the measured need and seconds for recent settings. Written to a temporary file and renamed
+    into place, so an interrupted write leaves the previous file. Without a data root it lives in
+    memory only."""
+
+    def __init__(self, data_root: Path | None) -> None:
+        self.path = None if data_root is None else Path(data_root) / "memory" / "learned.json"
+        self._data: dict[str, Any] | None = None
+
+    def _load(self) -> dict[str, Any]:
+        if self._data is None:
+            self._data = {"version": STORE_VERSION, "clock": 0, "entries": {}}
+            if self.path is not None:
+                try:
+                    data = json.loads(self.path.read_text(encoding="utf-8"))
+                except OSError, ValueError:
+                    data = None
+                if isinstance(data, dict) and data.get("version") == STORE_VERSION:
+                    self._data = data
+        return self._data
+
+    def _save(self) -> None:
+        if self.path is None or self._data is None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(self.path.name + ".tmp")
+        temporary.write_text(json.dumps(self._data, separators=(",", ":")), encoding="utf-8")
+        temporary.replace(self.path)
+
+    def view(self, key: StoreKey) -> Learned:
+        """What a fit reads: a correction per kind of device, and needs and seconds per settings."""
+        prefix = key.text("")
+        corrections: dict[str, float] = {}
+        peaks: dict[tuple[str, str], float] = {}
+        seconds: dict[tuple[str, str], float] = {}
+        for text, entry in self._load()["entries"].items():
+            if not text.startswith(prefix):
+                continue
+            kind = text[len(prefix) :]
+            correction = _correction(entry.get("ratios") or [])
+            if correction is not None:
+                corrections[kind] = correction
+            for settings, mb in (entry.get("peaks") or {}).items():
+                peaks[(kind, settings)] = float(mb)
+            for settings, value in (entry.get("seconds") or {}).items():
+                seconds[(kind, settings)] = float(value)
+        return Learned(corrections, peaks, seconds)
+
+    def record(
+        self,
+        key: StoreKey,
+        kind: str,
+        *,
+        settings: str,
+        ok: bool,
+        need_mb: float | None,
+        working_mb: float | None,
+        weights_mb: float | None,
+        outside_mb: float = 0.0,
+        seconds: float | None = None,
+    ) -> None:
+        """One run's measurement. `need_mb` is what it used on the device, in the fit's terms (on a
+        card, torch's peak reserved memory plus the memory outside torch; on the processor, the
+        growth of its resident memory); `working_mb` is the working estimate before any
+        correction, and `weights_mb` the weights it held on the device. A failed run's need is a
+        lower bound: it adds a ratio only above 1, and no need or seconds."""
+        data = self._load()
+        entries: dict[str, Any] = data["entries"]
+        text = key.text(kind)
+        entry = entries.pop(text, None) or {"ratios": [], "peaks": {}, "seconds": {}}
+        if (
+            need_mb is not None
+            and working_mb is not None
+            and weights_mb is not None
+            and working_mb >= MIN_WORKING_MB
+        ):
+            ratio = max(need_mb - weights_mb - outside_mb, 0.0) / working_mb
+            if ok or ratio > 1:
+                entry["ratios"] = [*entry["ratios"], {"ratio": round(ratio, 4), "ok": ok}][-RECENT_RATIOS:]
+        if ok and need_mb is not None:
+            entry["peaks"] = _recent(entry["peaks"], settings, round(need_mb, 1))
+        if ok and seconds is not None:
+            entry["seconds"] = _recent(entry["seconds"], settings, round(seconds, 3))
+        data["clock"] = int(data.get("clock", 0)) + 1
+        entry["used"] = data["clock"]
+        entries[text] = entry
+        while len(entries) > STORE_ENTRIES:
+            oldest = min(entries, key=lambda k: entries[k].get("used", 0))
+            del entries[oldest]
+        self._save()
+
+    def forget(self, node: str) -> int:
+        """Drops everything learned about a node, every version and kind of device; how many
+        entries went."""
+        entries: dict[str, Any] = self._load()["entries"]
+        gone = [text for text in entries if text.split("|", 1)[0] == node]
+        for text in gone:
+            del entries[text]
+        if gone:
+            self._save()
+        return len(gone)
+
+
+def _recent(rows: dict[str, Any], settings: str, value: float) -> dict[str, Any]:
+    """The newest value for these settings, keeping the last few settings."""
+    rows = {k: v for k, v in rows.items() if k != settings}
+    rows[settings] = value
+    return dict(list(rows.items())[-RECENT_SETTINGS:])
+
+
+def _correction(ratios: list[dict[str, Any]]) -> float | None:
+    """The largest recent ratio. It goes below 1 only when at least two successful runs agree;
+    until then a smaller ratio leaves the estimate as it is."""
+    if not ratios:
+        return None
+    largest = max(float(r["ratio"]) for r in ratios)
+    if largest < 1 and sum(1 for r in ratios if r.get("ok")) < LOWER_AFTER_RUNS:
+        return None
+    return largest

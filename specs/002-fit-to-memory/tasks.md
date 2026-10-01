@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-Pick up at task 4 (plan approved 2026-10-01).
+Pick up at task 5 (plan approved 2026-10-01).
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
@@ -14,7 +14,7 @@ Pick up at task 4 (plan approved 2026-10-01).
   `settings.json`, `memory.fit()` with upgrades, speed before quality, the slow warning and its
   alternative, tried anyway, `never_reduce_quality`, `fit: "off"`; `Step.explicit` in `graph.py`.
   The test table and every extra case, and the renamed run (AC2).
-- [ ] 4. **What each machine learns.** The store in `memory.py`: corrections from recent runs,
+- [x] 4. **What each machine learns.** The store in `memory.py`: corrections from recent runs,
   peaks for unknown estimates, seconds, the key's parts, forget, the bound, atomic writes. AC4
   tests.
 - [ ] 5. **The child.** First, `ruff.toml` and `pyrightconfig.json` target Python 3.11 for code

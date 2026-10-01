@@ -24,7 +24,9 @@ from oneframe.memory import (
     Fit,
     Formula,
     Learned,
+    LearnedStore,
     Settings,
+    StoreKey,
     Target,
     Term,
     estimate,
@@ -837,3 +839,174 @@ def test_the_message_names_system_memory_when_it_is_what_blocks_the_card(tmp_pat
         "Needs 3111 MB free in system memory to load its weights for the card (1500 MB plus a 1611 MB"
         in got.message
     )
+
+
+# -- what each machine learns (AC4) --------------------------------------------------------------
+
+KEY = StoreKey("test.memory", "1", "model-a", "lock-a")
+WORKING = 3296.576  # the test node's working estimate at its defaults, in MB
+
+
+def _run(
+    store: LearnedStore, ratio: float, *, ok: bool = True, kind: str = "cuda:6.1", key: StoreKey = KEY
+) -> None:
+    store.record(
+        key,
+        kind,
+        settings="defaults",
+        ok=ok,
+        need_mb=3000 + WORKING * ratio + 100,
+        working_mb=WORKING,
+        weights_mb=3000,
+        outside_mb=100,
+        seconds=12.5,
+    )
+
+
+def test_ac4_two_runs_at_1_3_times_the_estimate_correct_the_next_fit(tmp_path: Path) -> None:
+    store = LearnedStore(tmp_path)
+    _run(store, 1.3)
+    _run(store, 1.3)
+    learned = LearnedStore(tmp_path).view(KEY)  # read back from the file
+    assert learned.corrections == {"cuda:6.1": pytest.approx(1.3)}
+    m = _load(tmp_path)
+    assert m.memory is not None
+    card = replace(CARD, kind="cuda:6.1", capability="6.1")
+    got = estimate(m.memory, _values(m), {"image": None}, card, learned)
+    assert got.basis == "corrected" and got.device == pytest.approx(3000 + WORKING * 1.3)
+    fitted = _fit(tmp_path, "8 GB, compute 6.1, 1.5 GB held", learned=learned)
+    assert fitted.to_json()["estimate"] == "corrected"
+
+
+def test_ac4_one_run_or_a_failed_run_never_lowers_an_estimate(tmp_path: Path) -> None:
+    store = LearnedStore(tmp_path)
+    _run(store, 0.7)
+    assert store.view(KEY).corrections == {}  # one run below 1 is not enough
+    _run(store, 0.8, ok=False)
+    assert store.view(KEY).corrections == {}  # a failed run below 1 adds nothing
+    _run(store, 0.7)
+    assert store.view(KEY).corrections == {"cuda:6.1": pytest.approx(0.7)}  # two runs agree
+    _run(store, 1.2, ok=False)
+    assert store.view(KEY).corrections == {"cuda:6.1": pytest.approx(1.2)}  # a failure above 1 counts
+
+
+def test_ac4_a_correction_is_for_its_own_kind_of_device(tmp_path: Path) -> None:
+    store = LearnedStore(tmp_path)
+    _run(store, 1.5, kind="cuda:6.1")
+    learned = store.view(KEY)
+    m = _load(tmp_path)
+    assert m.memory is not None
+    assert estimate(m.memory, _values(m), {"image": None}, CARD, learned).basis == "known"  # cuda:8.6
+    assert estimate(m.memory, _values(m), {"image": None}, PROCESSOR, learned).basis == "known"
+
+
+def test_ac4_an_unknown_estimate_uses_the_need_measured_for_the_same_settings(tmp_path: Path) -> None:
+    m = _load(tmp_path, working={"mb": None, "source": "not measured yet"})
+    assert m.memory is not None
+    values, inputs = _values(m), {"image": {"width": 640, "height": 480}}
+    store = LearnedStore(tmp_path)
+    store.record(
+        KEY,
+        "cuda:8.6",
+        settings=settings_hash(values, inputs),
+        ok=True,
+        need_mb=5200,
+        working_mb=None,
+        weights_mb=3000,
+        seconds=3.0,
+    )
+    got = estimate(m.memory, values, inputs, CARD, store.view(KEY))
+    assert (got.basis, got.device) == ("measured", 5200)
+    assert store.view(KEY).corrections == {}  # no estimate, so no ratio
+
+
+def test_ac4_a_new_version_a_new_lock_or_forget_drops_what_was_learned(tmp_path: Path) -> None:
+    store = LearnedStore(tmp_path)
+    _run(store, 1.4)
+    _run(store, 1.4, kind="cpu")
+    assert replace(KEY, version="2") != KEY
+    assert store.view(replace(KEY, version="2")) == Learned()
+    assert store.view(replace(KEY, lock="lock-b")) == Learned()
+    assert store.view(replace(KEY, model="model-b")) == Learned()
+    _run(store, 1.4, key=StoreKey("other.node", "1", "m", "l"))
+    assert store.forget("test.memory") == 2
+    assert store.view(KEY) == Learned()
+    assert LearnedStore(tmp_path).view(StoreKey("other.node", "1", "m", "l")).corrections
+    assert store.forget("test.memory") == 0
+
+
+def test_ac4_the_store_keeps_its_bound(tmp_path: Path) -> None:
+    store = LearnedStore(tmp_path)
+    for i in range(mem.STORE_ENTRIES + 20):
+        _run(store, 1.1, key=StoreKey(f"node.{i}", "1", "m", "l"))
+    data = json.loads((tmp_path / "memory" / "learned.json").read_text(encoding="utf-8"))
+    assert len(data["entries"]) == mem.STORE_ENTRIES
+    assert store.view(StoreKey("node.0", "1", "m", "l")) == Learned()  # the least recently used went
+    assert store.view(StoreKey(f"node.{mem.STORE_ENTRIES + 19}", "1", "m", "l")).corrections
+
+
+def test_ac4_recent_runs_and_settings_only(tmp_path: Path) -> None:
+    store = LearnedStore(tmp_path)
+    _run(store, 2.0)
+    for _ in range(mem.RECENT_RATIOS):
+        _run(store, 1.1)
+    assert store.view(KEY).corrections == {"cuda:6.1": pytest.approx(1.1)}  # the 2.0 is no longer recent
+    for i in range(mem.RECENT_SETTINGS + 4):
+        store.record(
+            KEY,
+            "cpu",
+            settings=f"s{i}",
+            ok=True,
+            need_mb=100.0 + i,
+            working_mb=None,
+            weights_mb=None,
+            seconds=i,
+        )
+    learned = store.view(KEY)
+    cpu = [s for (kind, s) in learned.peaks if kind == "cpu"]
+    assert len(cpu) == mem.RECENT_SETTINGS and "s0" not in cpu and f"s{mem.RECENT_SETTINGS + 3}" in cpu
+    assert learned.seconds[("cpu", "s19")] == 19
+
+
+def test_ac4_a_tiny_working_estimate_teaches_no_ratio(tmp_path: Path) -> None:
+    store = LearnedStore(tmp_path)
+    store.record(KEY, "cpu", settings="x", ok=True, need_mb=500, working_mb=40, weights_mb=100)
+    store.record(KEY, "cpu", settings="x", ok=True, need_mb=500, working_mb=40, weights_mb=100)
+    assert store.view(KEY).corrections == {} and store.view(KEY).peaks == {("cpu", "x"): 500}
+
+
+def test_ac4_an_interrupted_write_leaves_the_previous_file_readable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = LearnedStore(tmp_path)
+    _run(store, 1.3)
+    path = tmp_path / "memory" / "learned.json"
+    before = path.read_text(encoding="utf-8")
+
+    def interrupted(self: Path, target: Path) -> Path:
+        raise OSError("the machine lost power")
+
+    monkeypatch.setattr(Path, "replace", interrupted)
+    with pytest.raises(OSError, match="lost power"):
+        _run(store, 1.9)
+    monkeypatch.undo()
+    assert path.read_text(encoding="utf-8") == before
+    assert LearnedStore(tmp_path).view(KEY).corrections == {"cuda:6.1": pytest.approx(1.3)}
+
+
+def test_a_store_file_that_cannot_be_read_starts_empty(tmp_path: Path) -> None:
+    path = tmp_path / "memory" / "learned.json"
+    path.parent.mkdir()
+    path.write_text("{half a file", encoding="utf-8")
+    assert LearnedStore(tmp_path).view(KEY) == Learned()
+    path.write_text(json.dumps({"version": 99, "entries": {"x": {}}}), encoding="utf-8")
+    assert LearnedStore(tmp_path).view(KEY) == Learned()
+    store = LearnedStore(tmp_path)
+    _run(store, 1.2)
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == mem.STORE_VERSION
+
+
+def test_a_store_without_a_data_root_lives_in_memory(tmp_path: Path) -> None:
+    store = LearnedStore(None)
+    _run(store, 1.25)
+    assert store.view(KEY).corrections == {"cuda:6.1": pytest.approx(1.25)}
