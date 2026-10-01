@@ -1,0 +1,106 @@
+{
+  "spec": "002-fit-to-memory",
+  "criterion": "AC8",
+  "outcome": "failed",
+  "date": "2026-10-01",
+  "commit": "f721c4826a6e3e670b346bd3db6b6ce3f1572a82",
+  "machine": {
+    "os": "Microsoft Windows [Version 10.0.19045.6466]",
+    "gpu": "NVIDIA GeForce GTX 1070",
+    "compute_capability": "6.1",
+    "vram_mb": 8192,
+    "driver": "582.66",
+    "free_disk_gb": 401.8,
+    "other_gpu_processes": [
+      "explorer.exe",
+      "SearchApp.exe",
+      "ShellExperienceHost.exe",
+      "TextInputHost.exe",
+      "lghub_system_tray.exe",
+      "Cursor.exe",
+      "brave.exe (2)",
+      "Code.exe",
+      "claude.exe (2)",
+      "Discord.exe",
+      "2 processes not readable without elevation"
+    ]
+  },
+  "tools": {
+    "node": "v24.21.0",
+    "uv": "0.12.20",
+    "python": "3.14.5 (engine), 3.14.7 (torch runtime)",
+    "torch": "2.14.0+cu126 (CUDA 12.6), runtime build cu126, already installed and current"
+  },
+  "commands": [
+    "npm install",
+    "uv sync --project engine --frozen",
+    "npm run check",
+    "npm run engine:check",
+    "npm run engine:sync",
+    "npm run bench:fit -- --out specs/002-fit-to-memory/reports/"
+  ],
+  "checks": {
+    "npm run check": "passed (15 node tests, 22 documents)",
+    "npm run engine:check": "passed (322 passed, 3 skipped: the Linux system-memory reader, SIGKILL, and a symlink that needs a privilege on Windows)"
+  },
+  "results": {
+    "seconds": 52,
+    "peak_vram_mb": 4274,
+    "fit": "Three settings on cuda at fp32 with no changes; the holder and both overrun runs were fitted to the cpu at full quality, so no overrun reached the card",
+    "notes": "Exit code 0. The bench's own report is 2026-10-01-gtx-1070-fit.md beside this file. The card had 471 MiB in use by the desktop before the run. The session could not watch the screen during the deliberate spill.",
+    "parts": [
+      {
+        "part": "the CUDA context's size",
+        "outcome": "passed",
+        "numbers": "94 MB (471 MB used before CUDA, 567 MB after a first kernel, 2 MB reserved by torch). The margin's floor of 1,611 MB covers it."
+      },
+      {
+        "part": "estimate within 10% or 64 MB of the measured peak, at three settings",
+        "outcome": "passed",
+        "numbers": "resolution 448: 1,913 MB estimated, 1,915 MB peak (1.001), 1.112 s; 1216: 3,195 vs 3,192 (0.999), 1.154 s; 1600: 4,279 vs 4,274 (0.999), 1.207 s. The second and third estimates were corrected in memory by the first run (see finding 1); the uncorrected estimates, 3,191 and 4,272 MB, give 1.000 and 1.000."
+      },
+      {
+        "part": "with another program holding memory, the fit makes the changes the budget calls for, and the run finishes",
+        "outcome": "not proven",
+        "numbers": "Held 3,982 MB; the card then had 3,920 MB free, a budget of 2,309 MB. The bench meant to leave 2,409 MB for the 2,377 MB the node needs after change 0. The fit moved the node to the cpu at full quality and warned that it may be slow, offering chunk_size 512 and fp16 on the card. That follows decision 7 for the budget it saw, and the run finished in 4.772 s. But it is not the card fit with a speed-only change this step was built to show (finding 2)."
+      },
+      {
+        "part": "the control: a deliberate spill makes shared GPU memory rise",
+        "outcome": "passed",
+        "numbers": "Shared usage rose 67 MB for a 256 MB spill, in 2.388 s. The child saw 7,565 MB free and allocated 7,822 MB."
+      },
+      {
+        "part": "an overrun past the cap raises oom; ctx.fallbacks answers it in-process, and the engine's retry answers it without fallbacks; shared memory does not grow",
+        "outcome": "not exercised",
+        "numbers": "Both overrun runs were fitted to the cpu, so neither ran on the card. With fallbacks: done in 4.728 s, step_oom 0. With the engine's retry: done in 4.605 s, oom 0. No cap applied, and shared usage was not measured (finding 1)."
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": 1,
+      "title": "The bench learns within its run, so the control spill pushes the overrun off the card",
+      "where": "engine/src/oneframe/bench_fit.py make_scheduler; engine/src/oneframe/memory.py LearnedStore",
+      "what": "make_scheduler passes LearnedStore(None), and its docstring says that means 'nothing learned (estimates stay uncorrected)'. LearnedStore(None) in fact keeps what it learns in memory, and every later fit in the same bench reads it. The control spill (fit off, 7,822 MB measured against an estimate of 2,764 MB) recorded a working-memory ratio of about 3.875 for cuda:6.1. _correction takes the largest recent ratio. So the overrun's card estimate was scaled about 3.9 times, and it no longer fit the 2,825 MB budget the bench had set from the uncorrected estimate. The fit then chose the cpu at full quality.",
+      "evidence": "With working memory scaled 3.875 times, changes 0 and 1 need about 3,803 MB, which does not fit 2,825 MB; changes 0, 1 and 2 need about 2,279 MB, which does. Changes [0, 1, 2] is exactly the faster alternative the overrun's node.fit offered. Before the control, the holder's alternative was [0, 1], consistent with a ratio near 1."
+    },
+    {
+      "id": 2,
+      "title": "The holder is sized without its own CUDA context",
+      "where": "engine/src/oneframe/bench_fit.py _bench_holder",
+      "what": "The holder runs as a separate torch process, so it creates its own CUDA context (94 MB here, as step 1 measured) on top of the memory it holds. hold = free - (need + 32 + margin) leaves that out. So the budget came out 2,309 MB instead of about 2,409 MB, under the 2,377 MB that change 0 needs."
+    },
+    {
+      "id": 3,
+      "title": "The report shows 'done' for overrun runs that never overran",
+      "where": "engine/src/oneframe/bench_fit.py render / _bench_overrun",
+      "what": "The plan says the report 'says plainly what was not measured'. Both overrun rows read 'done' with step_oom 0 and oom 0, on the cpu. Nothing says the step's precondition (a card fit at the estimate) was not met. The bench exited 0."
+    }
+  ],
+  "observations": [
+    "On the cpu, the measured peak is about 493 MB above the node's own allocation: the torch runtime's footprint. The holder run recorded it as a cpu working-memory ratio of 1.28.",
+    "The control spill showed only 67 MB of shared growth for spill_mb 256. The counter does rise, so the control holds, but the evidence is thin; a larger spill would make it unambiguous.",
+    "Nothing persisted on this machine beyond the run logs: the bench's learned store lives in memory, and no memory/learned.json was written under the data root."
+  ],
+  "local_changes": "none"
+}
