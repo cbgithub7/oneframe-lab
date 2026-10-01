@@ -107,6 +107,8 @@ class Step:
     params: dict[str, Any]
     inputs: dict[str, tuple[str, str]]  # input port -> (step id, output port)
     inserted: bool = False
+    # The params the graph sets. The fit never changes them (spec 002); the rest are defaults.
+    explicit: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -148,7 +150,9 @@ def plan(graph: Graph, registry: Registry) -> Plan:
         for name in gnode.params:
             if name not in manifest.params:
                 problem(key, f"{manifest.id} has no parameter {name}")
-        steps[key] = Step(id=key, manifest=manifest, params=params, inputs={})
+        steps[key] = Step(
+            id=key, manifest=manifest, params=params, inputs={}, explicit=frozenset(gnode.params)
+        )
 
     converters = registry.converters()
     for edge in graph.edges:

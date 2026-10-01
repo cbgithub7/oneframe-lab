@@ -17,7 +17,8 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, TypeIs
 
 if TYPE_CHECKING:
     from oneframe.manifest import Param
@@ -128,7 +129,7 @@ def _weights_formula(source: str) -> Formula:
     return Formula(mb=0, terms=(Term(1, ("weights",)),), source=source)
 
 
-def _number(value: Any) -> bool:
+def _number(value: Any) -> TypeIs[int | float]:
     return isinstance(value, int | float) and not isinstance(value, bool)
 
 
@@ -474,3 +475,693 @@ def model_hash(raw: Mapping[str, Any]) -> str:
     """What the learned store keys on: a change to the model starts its learning over."""
     text = json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+# -- the settings ------------------------------------------------------------------------------
+
+MARGIN_FLOOR_MB = 1611  # 1.5 GiB, in MB of 10^6 bytes
+MARGIN_SHARE = 0.10  # of the device's total, when that is larger
+SETTINGS_FILE = "settings.json"
+FIT_MODES = ("on", "off")
+
+
+@dataclass(frozen=True)
+class Settings:
+    """The person's control over the fit, from `<data>/settings.json`'s `memory` object."""
+
+    margin_mb: Mapping[str, float | None] = field(default_factory=lambda: {"cuda": None, "cpu": None})
+    never_reduce_quality: bool = False
+    fit: str = "on"
+    notes: tuple[str, ...] = ()  # what in the file was not understood, and so left at its default
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "margin_mb": dict(self.margin_mb),
+            "never_reduce_quality": self.never_reduce_quality,
+            "fit": self.fit,
+            **({"notes": list(self.notes)} if self.notes else {}),
+        }
+
+
+def read_settings(data_root: Path | None) -> Settings:
+    """The settings, read again at each fit. A missing file is the defaults; a value that is not
+    understood is left at its default, and said so in `notes`."""
+    if data_root is None:
+        return Settings()
+    path = Path(data_root) / SETTINGS_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return Settings()
+    except (OSError, ValueError) as exc:
+        return Settings(notes=(f"{SETTINGS_FILE} could not be read ({exc}); the defaults are used",))
+    row = data.get("memory") if isinstance(data, dict) else None
+    if row is None:
+        return Settings()
+    if not isinstance(row, dict):
+        return Settings(notes=(f"{SETTINGS_FILE}: memory should be an object; the defaults are used",))
+    notes: list[str] = []
+    margins: dict[str, float | None] = {"cuda": None, "cpu": None}
+    for device, value in (row.get("margin_mb") or {}).items():
+        if device not in margins:
+            notes.append(f"margin_mb.{device}: only cuda and cpu have a margin")
+        elif value is not None and (not _number(value) or value < 0):
+            notes.append(f"margin_mb.{device} should be MB, or null for the default")
+        else:
+            margins[device] = None if value is None else float(value)
+    never = row.get("never_reduce_quality", False)
+    if not isinstance(never, bool):
+        notes.append("never_reduce_quality should be true or false")
+        never = False
+    mode = row.get("fit", "on")
+    if mode not in FIT_MODES:
+        notes.append('fit should be "on" or "off"')
+        mode = "on"
+    return Settings(margins, never, mode, tuple(notes))
+
+
+def margin(settings: Settings, device_type: str, total_mb: float | None) -> float:
+    """The person's margin for this type of device, or the larger of 1.5 GiB and 10% of its total."""
+    chosen = settings.margin_mb.get(device_type)
+    if chosen is not None:
+        return float(chosen)
+    return max(MARGIN_FLOOR_MB, MARGIN_SHARE * total_mb) if total_mb else float(MARGIN_FLOOR_MB)
+
+
+# -- the machine, as a fit sees it ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Target:
+    """What a node's runtime can use: the card its build was planned for (None: no card, as for an
+    engine node or a processor build), and the lock hash its learning is kept under."""
+
+    card: int | None = None
+    lock: str | None = None
+
+
+@dataclass(frozen=True)
+class Device:
+    type: str  # "cuda" or "cpu"
+    kind: str  # what learning is kept under: "cpu", "cuda:<capability>" or "cuda:unknown"
+    capability: str | None
+    free: float | None
+    total: float | None
+    margin: float
+    card: int | None = None
+
+    @property
+    def budget(self) -> float | None:
+        return None if self.free is None else self.free - self.margin
+
+
+def _system_device(machine: Mapping[str, Any], settings: Settings) -> Device:
+    system = machine.get("system") or {}
+    total = system.get("total_mb")
+    return Device("cpu", "cpu", None, system.get("free_mb"), total, margin(settings, "cpu", total))
+
+
+def _card(machine: Mapping[str, Any], target: Target, settings: Settings) -> Device | None:
+    if target.card is None:
+        return None
+    gpu = next((g for g in machine.get("gpus") or [] if g.get("index") == target.card), None)
+    if gpu is None:
+        return None
+    capability = gpu.get("capability")
+    total = gpu.get("vram_total_mb")
+    return Device(
+        "cuda",
+        f"cuda:{capability or 'unknown'}",
+        capability,
+        gpu.get("vram_free_mb"),
+        total,
+        margin(settings, "cuda", total),
+        target.card,
+    )
+
+
+# -- what this machine has learned, as a fit sees it ---------------------------------------------
+
+
+@dataclass(frozen=True)
+class Learned:
+    """What this machine learned about one node: a correction per kind of device, and the measured
+    need and seconds per (kind of device, settings hash)."""
+
+    corrections: Mapping[str, float] = field(default_factory=dict)
+    peaks: Mapping[tuple[str, str], float] = field(default_factory=dict)
+    seconds: Mapping[tuple[str, str], float] = field(default_factory=dict)
+
+
+def settings_hash(values: Mapping[str, Any], inputs: Mapping[str, Mapping[str, Any] | None]) -> str:
+    """The values, the precision among them, and every input's size: a peak measured at 512 × 512
+    is never used for 4096 × 4096."""
+    sizes = {
+        port: {k: v for k, v in sorted(meta.items()) if _number(v)} if meta is not None else None
+        for port, meta in sorted(inputs.items())
+    }
+    text = json.dumps({"values": dict(values), "inputs": sizes}, sort_keys=True, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+# -- the estimate --------------------------------------------------------------------------------
+
+Inputs = Mapping[str, Mapping[str, Any] | None]  # port -> its meta; None when not connected
+
+
+@dataclass(frozen=True)
+class Need:
+    """What a run needs, in unrounded MB. `device` is on the card, or in system memory on the
+    processor; `system` is a card run's need in system memory (on the processor it is `device`)."""
+
+    device: float | None
+    system: float | None
+    working: float | None  # the working estimate before any correction
+    basis: str  # "known", "corrected", "measured" or "unknown"
+    why: str = ""
+
+
+def _weights(model: MemoryModel, values: Mapping[str, Any]) -> float | None:
+    checkpoint = str(values.get(model.weights_by, "")) if model.weights_by else ""
+    return model.weights.get(checkpoint, {}).get(str(values.get(PRECISION_PARAM)))
+
+
+def _factor(
+    model: MemoryModel, name: str, values: Mapping[str, Any], inputs: Inputs
+) -> tuple[float | None, str]:
+    precision = model.precisions.get(str(values.get(PRECISION_PARAM)))
+    if name == "bytes":
+        return (precision.bytes, "") if precision else (None, "no precision")
+    if name == "weights":
+        size = _weights(model, values)
+        return size, "" if size is not None else "the weights' size at this precision is not known"
+    port, dot, meta_field = name.partition(".")
+    if dot:
+        if port not in inputs:
+            return None, f"the size of input {port} is not known"
+        meta = inputs[port]
+        if meta is None:
+            return 0.0, ""  # an optional input that is not connected
+        if meta_field == "pixels":
+            width, height = meta.get("width"), meta.get("height")
+            if _number(width) and _number(height):
+                return float(width) * float(height), ""
+            return None, f"input {port} does not say its width and height"
+        value = meta.get(meta_field)
+        return (float(value), "") if _number(value) else (None, f"input {port} does not say its {meta_field}")
+    value = values.get(name)
+    if isinstance(value, bool):
+        return float(value), ""
+    if name in model.factors:
+        return model.factors[name].get(str(value)), ""
+    return (float(value), "") if _number(value) else (None, f"{name} is not a number")
+
+
+def evaluate(
+    formula: Formula, model: MemoryModel, values: Mapping[str, Any], inputs: Inputs
+) -> tuple[float | None, str]:
+    """A formula's MB, never below 0, or None with why it is not known."""
+    if formula.mb is None:
+        return None, f"not measured ({formula.source})"
+    total = formula.mb
+    for term in formula.terms:
+        product = term.coef
+        for name in term.of:
+            value, why = _factor(model, name, values, inputs)
+            if value is None:
+                return None, why
+            product *= value
+        total += product
+    return max(total, 0.0), ""
+
+
+def estimate(
+    model: MemoryModel,
+    values: Mapping[str, Any],
+    inputs: Inputs,
+    device: Device,
+    learned: Learned,
+) -> Need:
+    correction = learned.corrections.get(device.kind, 1.0)
+    working, why = evaluate(model.working, model, values, inputs)
+    system, system_why = evaluate(model.system, model, values, inputs)
+    if device.type == "cpu":
+        weights = _weights(model, values)
+        need = (
+            None if working is None or weights is None else max(weights + working * correction, system or 0.0)
+        )
+        if need is not None and system is None:
+            need, why = None, system_why
+        if need is None and why == "":
+            why = "the weights' size at this precision is not known"
+    else:
+        on_device, on_why = evaluate(model.weights_on_device, model, values, inputs)
+        outside, out_why = evaluate(model.outside_torch, model, values, inputs)
+        need = None
+        if working is not None and on_device is not None and outside is not None:
+            need = on_device + working * correction + outside
+        else:
+            why = why or on_why or out_why
+    if need is None:
+        peak = learned.peaks.get((device.kind, settings_hash(values, inputs)))
+        if peak is not None:
+            return Need(peak, peak if device.type == "cpu" else system, working, "measured", why)
+        return Need(None, system, working, "unknown", why)
+    basis = "corrected" if correction != 1.0 else "known"
+    return Need(need, need if device.type == "cpu" else system, working, basis)
+
+
+# -- the fit -------------------------------------------------------------------------------------
+
+
+@dataclass
+class Fit:
+    """Where a node runs, at which values, and why. `outcome` is:
+
+    - "fits": the values fit the device's budget;
+    - "unknown": the estimate or the budget could not be known, so it runs at the values reached;
+    - "unfitted": the node has no memory model, so it runs at its values on its first device;
+    - "off": the person turned the fit off;
+    - "tried_anyway": nothing fits, but a setting the graph sets kept a change from being made;
+    - "memory": nothing fits anywhere; `message` says what would help."""
+
+    outcome: str
+    device: str | None = None
+    kind: str | None = None
+    card: int | None = None
+    values: dict[str, Any] = field(default_factory=dict)
+    applied: tuple[int, ...] = ()  # the changes made, by index
+    upgrades: tuple[int, ...] = ()
+    reasons: dict[int, str] = field(default_factory=dict)
+    skipped: list[dict[str, Any]] = field(default_factory=list)
+    need: Need | None = None
+    devices: dict[str, dict[str, Any]] = field(default_factory=dict)
+    warning: dict[str, Any] | None = None
+    message: str = ""
+    notes: list[str] = field(default_factory=list)
+    reduced: bool = False  # a change that costs quality was made
+
+    @property
+    def budget(self) -> float | None:
+        row = self.devices.get(self.device or "")
+        return row.get("budget") if row else None
+
+    @property
+    def last_change(self) -> int:
+        return max(self.applied, default=-1)
+
+    def to_json(self) -> dict[str, Any]:
+        def mb(value: Any) -> Any:
+            return round(value) if isinstance(value, float) else value
+
+        need = self.need
+        return {
+            "outcome": self.outcome,
+            "device": self.device,
+            "kind": self.kind,
+            "precision": self.values.get(PRECISION_PARAM),
+            "values": dict(self.values),
+            "changes": [{"change": i, "why": self.reasons.get(i, "")} for i in self.applied],
+            "upgrades": list(self.upgrades),
+            "skipped": list(self.skipped),
+            "reduced": self.reduced,
+            "estimate": need.basis if need else "unknown",
+            "needs": {"device": mb(need.device), "system": mb(need.system)} if need else None,
+            "devices": {name: {k: mb(v) for k, v in row.items()} for name, row in self.devices.items()},
+            "warning": self.warning,
+            "message": self.message,
+            "notes": list(self.notes),
+        }
+
+
+def can_retry(found: Fit) -> bool:
+    """Whether an attempt that ran out of memory may be fitted again. Not without a memory model,
+    when tried anyway, or with the fit off: nothing would change."""
+    return found.outcome in ("fits", "unknown")
+
+
+@dataclass
+class _Point:
+    """One place the walk looks: a device and the values after some changes."""
+
+    device: Device
+    values: dict[str, Any]
+    applied: tuple[int, ...]
+    upgrades: tuple[int, ...] = ()
+    need: Need | None = None
+
+
+def _devices_here(
+    devices: tuple[str, ...], machine: Mapping[str, Any], target: Target, settings: Settings
+) -> list[Device]:
+    """The node's devices that this machine has and its runtime can use, in the manifest's order.
+    `mps`, `xpu` and `rocm` are not read yet."""
+    here: list[Device] = []
+    for name in devices:
+        if name == "cuda":
+            card = _card(machine, target, settings)
+            if card is not None:
+                here.append(card)
+        elif name == "cpu":
+            here.append(_system_device(machine, settings))
+    return here
+
+
+class _Fitter:
+    def __init__(
+        self,
+        model: MemoryModel,
+        values: Mapping[str, Any],
+        explicit: frozenset[str],
+        inputs: Inputs,
+        learned: Learned,
+        settings: Settings,
+        devices: tuple[str, ...],
+        here: list[Device],
+        system: Device,
+    ) -> None:
+        self.model = model
+        self.values = dict(values)
+        self.explicit = explicit
+        self.inputs = inputs
+        self.learned = learned
+        self.settings = settings
+        self.devices = devices
+        self.here = here
+        self.system = system
+        self.rows = {d.type: _row(d) for d in [*here, system]}
+        self.notes = list(settings.notes)
+        if system.free is None:
+            self.notes.append("System memory could not be read, so a card's fit does not check it")
+        self.skipped: dict[tuple[str, int], str] = {}
+        self.explicit_blocked = False
+        self.smallest: dict[str, _Point] = {}  # per type of device, the smallest need seen
+        self.precision_skipped: dict[str, set[str]] = {}
+
+    def fresh(self) -> _Fitter:
+        return _Fitter(
+            self.model,
+            self.values,
+            self.explicit,
+            self.inputs,
+            self.learned,
+            self.settings,
+            self.devices,
+            self.here,
+            self.system,
+        )
+
+    # -- looking at one point --
+
+    def runs_on(self, device: Device, precision: str) -> bool:
+        rule = self.model.precisions.get(precision)
+        if rule is None:
+            return False
+        return rule.cpu if device.type == "cpu" else rule.runs_on_card(device.capability)
+
+    def blocked(self, change: Change, device: Device) -> str | None:
+        """Why a change cannot be made on this device, or None."""
+        set_by_graph = sorted(set(change.set) & self.explicit)
+        if set_by_graph:
+            self.explicit_blocked = True
+            return f"the graph sets {', '.join(set_by_graph)}"
+        precision = change.set.get(PRECISION_PARAM)
+        if precision is not None and not self.runs_on(device, str(precision)):
+            self.precision_skipped.setdefault(device.type, set()).add(str(precision))
+            return f"{precision} cannot run on {'the processor' if device.type == 'cpu' else device.kind}"
+        return None
+
+    def points(self, device: Device, quality: bool, after: int | None = None) -> list[_Point]:
+        """The values, then each change in turn, cumulatively. With `after`, a retry's: only the
+        points past that change (-1: past the values), so it never repeats what ran out."""
+        out: list[_Point] = []
+        values: dict[str, Any] = dict(self.values)
+        applied: tuple[int, ...] = ()
+        if after is None:
+            out.append(_Point(device, dict(values), applied))
+        for i, change in enumerate(self.model.changes):
+            if change.costs == "quality" and not quality:
+                break
+            why = self.blocked(change, device)
+            if why:
+                self.skipped.setdefault(("change", i), why)
+                continue
+            values.update(change.set)
+            applied = (*applied, i)
+            if after is None or i > after:
+                out.append(_Point(device, dict(values), applied))
+        return out
+
+    def measure(self, point: _Point) -> _Point:
+        point.need = estimate(self.model, point.values, self.inputs, point.device, self.learned)
+        need = point.need.device
+        if need is not None:
+            best = self.smallest.get(point.device.type)
+            if best is None or best.need is None or best.need.device is None or need < best.need.device:
+                self.smallest[point.device.type] = point
+        return point
+
+    def fits(self, point: _Point) -> bool:
+        need, device = point.need, point.device
+        if need is None or need.device is None or device.budget is None or need.device > device.budget:
+            return False
+        if device.type == "cuda" and self.system.budget is not None and need.system is not None:
+            return need.system <= self.system.budget
+        return True
+
+    def unknown(self, point: _Point) -> bool:
+        return point.need is None or point.need.device is None or point.device.budget is None
+
+    # -- results --
+
+    def result(self, point: _Point, outcome: str, warning: dict[str, Any] | None = None) -> Fit:
+        found = Fit(
+            outcome,
+            point.device.type,
+            point.device.kind,
+            point.device.card,
+            point.values,
+            applied=point.applied,
+            upgrades=point.upgrades,
+            reasons=self.reasons(point),
+            skipped=self.skipped_rows(),
+            need=point.need,
+            devices=self.rows,
+            warning=warning,
+            notes=self.notes,
+            reduced=any(self.model.changes[i].costs == "quality" for i in point.applied),
+        )
+        if found.warning is None and self.devices and found.device != self.devices[0]:
+            found.warning = self.slow(found)
+        return found
+
+    def stop_unknown(self, point: _Point) -> Fit:
+        if point.need is not None and point.need.device is None:
+            why = f"The memory this needs is not known: {point.need.why}"
+        else:
+            why = f"The free memory on {point.device.kind} could not be read"
+        return self.result(point, "unknown", {"kind": "unknown", "why": why})
+
+    def skipped_rows(self) -> list[dict[str, Any]]:
+        return [{what: i, "why": why} for (what, i), why in sorted(self.skipped.items())]
+
+    def reasons(self, point: _Point) -> dict[int, str]:
+        out: dict[int, str] = {}
+        for i in point.applied:
+            change = self.model.changes[i]
+            costs = (
+                "costs quality: no speed-only change fits"
+                if change.costs == "quality"
+                else "costs speed only"
+            )
+            settings = ", ".join(f"{k} {self.values.get(k)} → {v}" for k, v in change.set.items())
+            out[i] = f"{settings}; {costs}"
+        return out
+
+    def slow(self, found: Fit) -> dict[str, Any]:
+        """The warning when the fit leaves the node's first listed device: how long it may take, on
+        what basis, and the faster alternative at reduced quality, if there is one."""
+        kind = found.kind or ""
+        seconds = self.learned.seconds.get((kind, settings_hash(found.values, self.inputs)))
+        basis = "measured"
+        if seconds is None:
+            published = self.model.time.get(kind) or self.model.time.get(found.device or "")
+            seconds = published.seconds if published else None
+            basis = "published" if seconds is not None else "unknown"
+        alternative = None
+        first = next((d for d in self.here if d.type == self.devices[0]), None)
+        precision = str(self.values.get(PRECISION_PARAM))
+        if first is not None and not self.settings.never_reduce_quality and self.runs_on(first, precision):
+            probe = self.fresh()
+            for point in probe.points(first, quality=True):
+                if probe.fits(probe.measure(point)):
+                    alternative = {
+                        "device": first.type,
+                        "changes": list(point.applied),
+                        "set": {k: v for k, v in point.values.items() if self.values.get(k) != v},
+                        "reduced": any(self.model.changes[i].costs == "quality" for i in point.applied),
+                    }
+                    break
+        return {"kind": "slow", "seconds": seconds, "basis": basis, "alternative": alternative}
+
+    def failed(self, message: str) -> Fit:
+        return Fit(
+            "memory",
+            values=self.values,
+            skipped=self.skipped_rows(),
+            devices=self.rows,
+            message=message,
+            notes=self.notes,
+        )
+
+    # -- the walk --
+
+    def run(self, after: Fit | None) -> Fit:
+        precision = str(self.values.get(PRECISION_PARAM))
+        usable = [d for d in self.here if self.runs_on(d, precision)]
+        if not usable:
+            return self.failed(_no_device(self.devices, self.model.precisions.get(precision)))
+        first = usable[0]
+        if self.settings.fit == "off":
+            return self.result(self.measure(_Point(first, dict(self.values), ())), "off")
+
+        if after is None:
+            base = self.measure(_Point(first, dict(self.values), ()))
+            if self.unknown(base):
+                return self.stop_unknown(base)
+            upgraded = self.upgrade(first)
+            if upgraded is not None:
+                return self.result(upgraded, "fits")
+
+        # Where a retry starts: past the change the failed attempt ended at, on its device. An
+        # attempt that used upgrades starts again from the values, without them.
+        start, past = 0, None
+        if after is not None and not after.upgrades:
+            start = next((i for i, d in enumerate(usable) if d.type == after.device), 0)
+            past = after.last_change
+        next_only = after is not None and after.outcome == "unknown" and not after.upgrades
+
+        for quality in [False] if self.settings.never_reduce_quality else [False, True]:
+            for index in range(start, len(usable)):
+                points = self.points(usable[index], quality, past if index == start else None)
+                if next_only and index == start:
+                    points = points[:1]
+                for point in points:
+                    self.measure(point)
+                    if self.unknown(point):
+                        return self.stop_unknown(point)
+                    if self.fits(point):
+                        return self.result(point, "fits")
+
+        if after is not None:
+            return self.failed("Nothing smaller than the attempt that ran out of memory is left to try.")
+        if self.explicit_blocked:
+            point = self.measure(self.points(first, not self.settings.never_reduce_quality)[-1])
+            why = "Nothing fits in the free memory, and the graph sets a setting the engine would change"
+            return self.result(point, "tried_anyway", {"kind": "tried_anyway", "why": why})
+        return self.failed(self.memory_message(usable))
+
+    def upgrade(self, first: Device) -> _Point | None:
+        """The most upgrades, in order, that fit on the first device; an upgrade that sets a param
+        the graph sets is skipped."""
+        best: _Point | None = None
+        values: dict[str, Any] = dict(self.values)
+        used: tuple[int, ...] = ()
+        for i, upgrade in enumerate(self.model.upgrades):
+            set_by_graph = sorted(set(upgrade.set) & self.explicit)
+            if set_by_graph:
+                self.skipped.setdefault(("upgrade", i), f"the graph sets {', '.join(set_by_graph)}")
+                continue
+            values.update(upgrade.set)
+            used = (*used, i)
+            point = self.measure(_Point(first, dict(values), (), used))
+            if not self.unknown(point) and self.fits(point):
+                best = point
+        return best
+
+    def memory_message(self, usable: list[Device]) -> str:
+        parts: list[str] = []
+        for device in usable:
+            point = self.smallest.get(device.type)
+            if point is None or point.need is None or point.need.device is None:
+                continue
+            need = point.need.device
+            system = point.need.system
+            free = round(device.free or 0)
+            if device.type == "cpu":
+                cannot = sorted(self.precision_skipped.get("cpu", ()))
+                note = f", {' and '.join(cannot)} cannot run there" if cannot else ""
+                parts.append(
+                    f"Needs {round(need + device.margin)} MB free in system memory for the processor "
+                    f"({round(need)} MB{note}, plus {round(device.margin)} MB); {free} MB are free."
+                )
+            elif device.budget is not None and need <= device.budget and system is not None:
+                parts.append(
+                    f"Needs {round(system + self.system.margin)} MB free in system memory to load "
+                    f"its weights for the card ({round(system)} MB plus a {round(self.system.margin)} MB "
+                    f"margin); {round(self.system.free or 0)} MB are free."
+                )
+            else:
+                parts.append(
+                    f"Needs {round(need + device.margin)} MB free on the card ({round(need)} MB at the "
+                    f"smallest settings plus a {round(device.margin)} MB margin); {free} MB are free."
+                )
+        parts.append(
+            "Closing other programs may free enough; otherwise it needs a device with that much memory."
+        )
+        return " ".join(parts)
+
+
+def _row(device: Device) -> dict[str, Any]:
+    return {
+        "kind": device.kind,
+        "free": device.free,
+        "total": device.total,
+        "margin": device.margin,
+        "budget": device.budget,
+    }
+
+
+def _no_device(devices: tuple[str, ...], rule: Precision | None = None) -> str:
+    listed = ", ".join(devices) or "no device"
+    if rule is not None:
+        card = (
+            f"a card of compute {rule.cuda_min_capability} or later" if rule.cuda_min_capability else "a card"
+        )
+        where = f"{card} or the processor" if rule.cpu else card
+        return f"This node runs on {listed}. At {rule.name} it needs {where}, which this machine lacks."
+    return f"This node runs on {listed}, and this machine has none of them that its runtime can use."
+
+
+def fit(
+    model: MemoryModel | None,
+    values: Mapping[str, Any],
+    explicit: frozenset[str] | set[str],
+    inputs: Inputs,
+    machine: Mapping[str, Any],
+    target: Target,
+    learned: Learned,
+    settings: Settings,
+    devices: tuple[str, ...],
+    after: Fit | None = None,
+) -> Fit:
+    """Where a node runs and at which values.
+
+    Pure: the same arguments give the same fit, and no card's name is read. `values` are the step's
+    params (with `precision`), `explicit` the ones the graph sets, `inputs` each input's `meta`,
+    `devices` the manifest's list, and `after` the fit of an attempt that ran out of memory, which
+    the result must be strictly smaller than."""
+    system = _system_device(machine, settings)
+    here = _devices_here(devices, machine, target, settings)
+    if model is None:
+        rows = {d.type: _row(d) for d in [*here, system]}
+        if not here:
+            return Fit("memory", values=dict(values), devices=rows, message=_no_device(devices))
+        first = here[0]
+        found = Fit("unfitted", first.type, first.kind, first.card, dict(values), devices=rows)
+        found.notes = list(settings.notes)
+        if devices and first.type != devices[0]:
+            found.warning = {"kind": "slow", "seconds": None, "basis": "unknown", "alternative": None}
+        return found
+    fitter = _Fitter(model, values, frozenset(explicit), inputs, learned, settings, devices, here, system)
+    return fitter.run(after)
