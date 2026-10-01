@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fixtures import machines
+from fixtures import fit_node, machines
 
 from oneframe import memory as mem
 from oneframe.cache import Cache
@@ -37,31 +37,8 @@ from oneframe.memory import (
 )
 from oneframe.registry import Registry
 
-SOURCE = "test node, exact by construction"
-
-TEST_MODEL: dict[str, Any] = {
-    "precisions": {
-        "fp32": {"cuda_min_capability": None, "cpu": True},
-        "fp16": {"cuda_min_capability": "6.0", "cpu": False},
-        "bf16": {"cuda_min_capability": "8.0", "cpu": True},
-    },
-    "weights": {"fp32": 3000, "fp16": 1500, "bf16": 1500, "source": SOURCE},
-    "working": {
-        "mb": 200,
-        "terms": [
-            {"coef": 0.00025, "of": ["resolution", "resolution", "bytes"]},
-            {"coef": 0.25, "of": ["chunk_size"]},
-        ],
-        "source": SOURCE,
-    },
-    "changes": [
-        {"set": {"chunk_size": 2048}, "costs": "speed"},
-        {"set": {"chunk_size": 512}, "costs": "speed"},
-        {"set": {"precision": "fp16"}, "costs": "quality"},
-        {"set": {"resolution": 512}, "costs": "quality"},
-    ],
-    "upgrades": [{"set": {"chunk_size": 32768}}],
-}
+SOURCE = fit_node.SOURCE
+TEST_MODEL = fit_node.TEST_MODEL
 
 TEST_NODE: dict[str, Any] = {
     "id": "test.memory",

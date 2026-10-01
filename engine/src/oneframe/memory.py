@@ -641,6 +641,11 @@ class Need:
     why: str = ""
 
 
+def weights_mb(model: MemoryModel, values: Mapping[str, Any]) -> float | None:
+    """The weights' size at these values' precision and checkpoint, or None if not known."""
+    return _weights(model, values)
+
+
 def _weights(model: MemoryModel, values: Mapping[str, Any]) -> float | None:
     checkpoint = str(values.get(model.weights_by, "")) if model.weights_by else ""
     return model.weights.get(checkpoint, {}).get(str(values.get(PRECISION_PARAM)))
