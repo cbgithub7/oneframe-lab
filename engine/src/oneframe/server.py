@@ -30,9 +30,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from oneframe import BUILTIN_NODES_DIR, __version__, ports
+from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
-from oneframe.graph import Graph, GraphError, plan
+from oneframe.graph import Graph, GraphError, Step, plan
+from oneframe.manifest import check_param
+from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
@@ -58,6 +60,9 @@ class Engine:
         self.cache = Cache(data / "cache")
         self.cache.clear_tmp()
         self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
+        self.learned = LearnedStore(data)
+        # A fit reads the machine fresh, since free memory changes; a test passes its own profile.
+        self._profile = profile
         self.scheduler = Scheduler(
             self.registry,
             self.cache,
@@ -65,6 +70,10 @@ class Engine:
             runtime_env=self.runtimes.env_for,
             models_dir=data / "models",
             log_dir=data / "logs",
+            machine=self._machine,
+            target=self.runtimes.device_target,
+            settings=lambda: read_settings(data),
+            learned=self.learned,
         )
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
@@ -74,6 +83,8 @@ class Engine:
             "engine.hello": self.hello,
             "nodes.list": self.nodes_list,
             "nodes.reload": self.nodes_reload,
+            "nodes.fit": self.nodes_fit,
+            "nodes.forget": self.nodes_forget,
             "ports.list": self.ports_list,
             "graph.validate": self.graph_validate,
             "graph.run": self.graph_run,
@@ -104,6 +115,39 @@ class Engine:
         self.registry = discover(self.node_roots)
         self.scheduler.registry = self.registry
         return self.nodes_list(params)
+
+    def _machine(self, cards: bool) -> dict[str, Any]:
+        if self._profile is not None:
+            return self._profile()
+        return hardware.profile(self.data, cards=cards)
+
+    def nodes_fit(self, params: dict[str, Any]) -> dict[str, Any]:
+        """The fit a node would get on this machine now: `{node, params?, inputs?}`, where `inputs`
+        maps a port to its value's `meta` (an image's width and height). It starts no runtime and
+        loads no model library."""
+        manifest = self.registry.get(str(params.get("node")))
+        given = dict(params.get("params") or {})
+        problems = [f"{manifest.id} has no parameter {name}" for name in given if name not in manifest.params]
+        values: dict[str, Any] = {}
+        for name, param in manifest.params.items():
+            values[name] = given.get(name, param.default)
+            why = check_param(name, param, values[name]) if values[name] is not None else None
+            if why:
+                problems.append(why)
+        if problems:
+            raise ValueError("; ".join(problems))
+        sizes = dict(params.get("inputs") or {})
+        meta: dict[str, dict[str, Any] | None] = {
+            port: None for port, spec in manifest.inputs.items() if spec.optional and port not in sizes
+        }
+        meta.update({port: dict(row or {}) for port, row in sizes.items() if port in manifest.inputs})
+        step = Step(id=manifest.id, manifest=manifest, params=values, inputs={}, explicit=frozenset(given))
+        found, settings = self.scheduler.preview(step, meta)
+        return {"node": manifest.id, **found.to_json(), "settings": settings.to_json()}
+
+    def nodes_forget(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Clears what this machine learned about a node; how many entries went."""
+        return {"node": params.get("node"), "dropped": self.learned.forget(str(params.get("node")))}
 
     def ports_list(self, _params: dict[str, Any]) -> dict[str, Any]:
         return {

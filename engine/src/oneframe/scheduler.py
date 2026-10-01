@@ -250,7 +250,7 @@ class Scheduler:
         if manifest.memory is None and manifest.run.where == "engine":
             return self._attempt(run_id, step, inputs, say, should_stop, None, None, 1, trail)
 
-        context = self._context(step, inputs)
+        context = self._context(step, _meta(step, inputs))
         found = self._fit(step, context, say, 1, None, trail)
         served = self._cached_down(step, found, inputs, say)
         if served is not None:
@@ -279,21 +279,20 @@ class Scheduler:
                 )
                 raise NodeError("oom", message, second.detail, second.peaks) from second
 
-    def _context(self, step: Step, inputs: dict[str, Value]) -> _Context:
+    def _context(self, step: Step, meta: memory.Inputs) -> _Context:
         manifest = step.manifest
         runtime = manifest.run.runtime if manifest.run.where == "runtime" else None
         target = self.target(str(runtime)) if runtime else Target()
-        meta: dict[str, dict[str, Any] | None] = {port: None for port in manifest.inputs}
-        meta.update({port: value.meta for port, value in inputs.items()})
         model_hash = manifest.memory.hash if manifest.memory else ""
         key = StoreKey(manifest.id, manifest.version, model_hash, target.lock or "")
         cards = runtime is not None and "cuda" in manifest.devices and target.card is not None
         return _Context(meta, target, key, cards)
 
-    def _fit(
-        self, step: Step, context: _Context, say: Emit, attempt: int, after: Fit | None, trail: _Trail
-    ) -> Fit:
-        """Fit with a fresh look at the machine, and say so; a fit that finds no room fails here."""
+    def preview(self, step: Step, meta: memory.Inputs) -> tuple[Fit, Settings]:
+        """The fit a step would get on this machine now, without running it (`nodes.fit`)."""
+        return self._fit_now(step, self._context(step, meta), None)
+
+    def _fit_now(self, step: Step, context: _Context, after: Fit | None) -> tuple[Fit, Settings]:
         manifest = step.manifest
         settings = self.settings()
         learned = self.learned.view(context.key) if manifest.run.where == "runtime" else memory.Learned()
@@ -309,6 +308,14 @@ class Scheduler:
             manifest.devices,
             after,
         )
+        return found, settings
+
+    def _fit(
+        self, step: Step, context: _Context, say: Emit, attempt: int, after: Fit | None, trail: _Trail
+    ) -> Fit:
+        """Fit with a fresh look at the machine, and say so; a fit that finds no room fails here."""
+        manifest = step.manifest
+        found, settings = self._fit_now(step, context, after)
         trail.fits.append(found)
         say(
             {
@@ -564,6 +571,13 @@ class Scheduler:
                 spec.type, path, facets, row.get("meta"), spec.trust or inherited, key=f"{key}:{port}"
             )
         return values
+
+
+def _meta(step: Step, inputs: dict[str, Value]) -> memory.Inputs:
+    """Each input's meta for the fit; None for an optional input that is not connected."""
+    meta: dict[str, dict[str, Any] | None] = {port: None for port in step.manifest.inputs}
+    meta.update({port: value.meta for port, value in inputs.items()})
+    return meta
 
 
 def _reduced(value: Value) -> bool:

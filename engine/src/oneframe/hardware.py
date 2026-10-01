@@ -273,6 +273,7 @@ def profile(
     which: Callable[[str], str | None] = shutil.which,
     env: dict[str, str] | None = None,
     read_memory: Callable[[], Any] | None = None,
+    cards: bool = True,
 ) -> dict[str, Any]:
     """What a plan and a fit need to know about this machine:
 
@@ -280,8 +281,13 @@ def profile(
          "driver", "nvidia": {"found", "why"}, "system": {"total_mb", "free_mb", "why"},
          "disk_free_mb", "raw"}
 
-    `raw` is nvidia-smi's own output, kept for the runtime report."""
-    nvidia = read_nvidia(run, platform, which, env)
+    `raw` is nvidia-smi's own output, kept for the runtime report. With `cards` false nvidia-smi is
+    not started, for a fit of a node that cannot use a card."""
+    if cards:
+        nvidia = read_nvidia(run, platform, which, env)
+    else:
+        why = "Not read: this node cannot use a card."
+        nvidia = {"gpus": [], "driver": None, "nvidia": {"found": False, "why": why}, "raw": ""}
     return {
         "os": os_name(platform),
         **nvidia,
