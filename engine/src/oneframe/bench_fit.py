@@ -13,12 +13,15 @@ how (which param to size, the overrun's params and so on), so nothing here names
 
 1. the CUDA context's size, from nvidia-smi before CUDA starts and after a first kernel;
 2. the node at three settings sized to this card's budget, each estimate against its peak;
-3. another program holding memory, and the fit the node gets;
+3. another program holding memory, so the budget has room for the node after its first change but
+   not at its defaults, and the fit the node gets;
 4. an overrun past the cap: a control spill first (Windows), then the overrun answered by
    ctx.fallbacks and, with them off, by the engine's retry, while Windows' per-process shared GPU
    memory counter is sampled every 250 ms.
 
-It writes a Markdown report of every number and says plainly what was not measured. The report
+Nothing is learned between runs, so every estimate is the node's own, uncorrected. It writes a
+Markdown report of every number, and says plainly what was not measured and which step did not
+happen as designed. The report
 names the card because it is evidence; nothing here decides on that name. Nothing here imports
 torch: the node and its helpers run in the runtime's own interpreter.
 """
@@ -153,6 +156,17 @@ def measure(scheduler: Scheduler, node: str, params: dict[str, Any], label: str 
     }
 
 
+class _Unlearned(LearnedStore):
+    """A store that learns nothing. `LearnedStore(None)` still learns, in memory, so one run's
+    peak (the control's deliberate spill, say) would correct the estimates of every run after it."""
+
+    def __init__(self) -> None:
+        super().__init__(None)
+
+    def record(self, key: memory.StoreKey, kind: str, **measured: Any) -> None:
+        return None
+
+
 def make_scheduler(
     registry: Registry,
     manager: Runtimes | None,
@@ -179,7 +193,7 @@ def make_scheduler(
         Cache(cache_root),
         machine=machine,
         settings=settings,
-        learned=LearnedStore(None),
+        learned=_Unlearned(),
         on_pid=on_pid,
         log_dir=manager.data / "logs" if manager else None,
         **kw,
@@ -500,7 +514,8 @@ def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
             record["settings"].append(measure(scheduler, plan.node, params))
 
     _say("3/4 another program holding memory")
-    record["holder"] = _bench_holder(manager, scheduler, plan, target)
+    context_mb = record["context"].get("context_mb")
+    record["holder"] = _bench_holder(manager, scheduler, plan, target, context_mb)
 
     _say("4/4 an overrun past the cap")
     record["overrun"] = _bench_overrun(manager, scheduler, plan, target)
@@ -522,29 +537,59 @@ def _label(params: dict[str, Any]) -> str:
     return ", ".join(f"{k}={v}" for k, v in params.items())
 
 
+def holder_size(
+    manifest: Manifest, card: dict[str, Any], margin: float, context_mb: float | None
+) -> tuple[float, tuple[float, float]] | None:
+    """How much the holder holds, and the window the budget must then fall in: room for the node
+    after its first change, not at its defaults. It aims at the window's middle, and counts the
+    holder's own CUDA context (step 1's size), which it creates on top of what it holds. None when
+    the first change lowers no need, so no budget calls for it."""
+    model = manifest.memory
+    assert model is not None
+    defaults = _defaults(manifest)
+    low = _need(model, {**defaults, **model.changes[0].set}, card)
+    high = _need(model, defaults, card)
+    if low is None or high is None or low >= high:
+        return None
+    hold = float(card["vram_free_mb"]) - margin - (low + high) / 2 - (context_mb or 0.0)
+    return hold, (low, high)
+
+
 def _bench_holder(
-    manager: Runtimes, scheduler: Scheduler, plan: Ac8, target: memory.Target
+    manager: Runtimes,
+    scheduler: Scheduler,
+    plan: Ac8,
+    target: memory.Target,
+    context_mb: float | None,
 ) -> dict[str, Any]:
     """Hold memory so the budget leaves room only for the node after its first change, then run it
-    at its defaults and record the fit it was given."""
+    at its defaults and record the fit it was given, and whether that showed the change."""
     card = _card_device(hardware.profile(manager.data), target)
     if card is None or card.get("vram_free_mb") is None:
         return {"why": "The card's free memory could not be read."}
     manifest = scheduler.registry.get(plan.node)
-    model = manifest.memory
-    assert model is not None
-    after_first = {**_defaults(manifest), **model.changes[0].set}
-    need = _need(model, after_first, card) or 0.0
     margin = memory.margin(Settings(), "cuda", card.get("vram_total_mb"))
-    hold = float(card["vram_free_mb"]) - (need + 32 + margin)  # a budget of the need, plus 32 MB
+    sized = holder_size(manifest, card, margin, context_mb)
+    if sized is None:
+        return {"why": "The node's first change lowers no need, so no budget calls for it."}
+    hold, (low, high) = sized
     if hold <= 0:
         return {
             "why": f"The card has too little free memory to hold any back ({card['vram_free_mb']} MB free)."
         }
     with _holding(manager, plan, hold), _fresh_cache(scheduler, 100):
+        free = (_card_device(hardware.profile(manager.data), target) or {}).get("vram_free_mb")
         row = measure(scheduler, plan.node, {}, "defaults, with memory held")
+    first = (row.get("fits") or [{}])[0]
     row["held_mb"] = round(hold)
+    row["budget_mb"] = None if free is None else round(free - margin)
+    row["window_mb"] = [round(low), round(high)]
     row["expected_changes"] = [0]
+    row["shown"] = (
+        row["status"] == "done"
+        and first.get("device") == "cuda"
+        and [c["change"] for c in first.get("changes") or []] == [0]
+    )
     return row
 
 
@@ -579,7 +624,21 @@ def _bench_overrun(
         out["retry"] = _sampled(scheduler, plan.node, retry, "overrun, with the engine's retry")
     out["overrun_params"] = plan.overrun
     scheduler.settings = Settings
+    control = out["control"]
+    control["spilled"] = _rose(control)
+    for key, event in (("fallbacks", "steps_oom"), ("retry", "ooms")):
+        row = out[key]
+        first = (row.get("fits") or [{}])[0]
+        # Exercised: attempt 1 ran on the card and its overrun met the cap as out of memory.
+        row["exercised"] = first.get("device") == "cuda" and bool(row.get(event))
+        row["spilled"] = _rose(row)
     return out
+
+
+def _rose(row: dict[str, Any]) -> bool | None:
+    """Whether the run's shared GPU memory rose at all; None where the counter was not read."""
+    growth = row.get("shared_growth_mb")
+    return None if growth is None else growth > 0
 
 
 # -- the report ----------------------------------------------------------------------------------
@@ -666,10 +725,20 @@ def render(record: dict[str, Any]) -> str:
     if holder.get("why"):
         out.append(f"Not measured: {holder['why']}")
     else:
+        window = holder.get("window_mb") or [None, None]
         out += [
             f"- Held by another process: {_mb(holder.get('held_mb'))}",
+            f"- The card's budget then: {_mb(holder.get('budget_mb'))}; the node needs "
+            f"{_mb(window[0])} after its first change and {_mb(window[1])} at its defaults",
             f"- The fit: {_changes(holder)} (expected change {holder.get('expected_changes')})",
             f"- Finished: {_yes(holder.get('status') == 'done')}",
+            f"- Shown: {_yes(holder.get('shown'))}"
+            + (
+                ""
+                if holder.get("shown")
+                else " (the fit did not make the expected change on the card, so this step shows "
+                "nothing about it)"
+            ),
             "",
             *_run_table([holder]),
         ]
@@ -684,7 +753,12 @@ def render(record: dict[str, Any]) -> str:
             f"attempt 1 runs with {_label(overrun.get('overrun_params') or {})}",
             "- Control (a deliberate spill): shared GPU memory rose by "
             + _mb(control.get("shared_growth_mb"))
-            + (f" ({control['shared_why']})" if control.get("shared_why") else ""),
+            + (f" ({control['shared_why']})" if control.get("shared_why") else "")
+            + (
+                "; **the counter did not rise, so no growth below proves nothing**"
+                if control.get("spilled") is False
+                else ""
+            ),
         ]
         for key, what in (("fallbacks", "ctx.fallbacks"), ("retry", "the engine's retry")):
             row = overrun.get(key) or {}
@@ -693,6 +767,12 @@ def render(record: dict[str, Any]) -> str:
                 f"step_oom {len(row.get('steps_oom') or [])}, oom {len(row.get('ooms') or [])}; "
                 f"{_changes(row)}; shared GPU memory rose by {_mb(row.get('shared_growth_mb'))}"
                 + (f" ({row['shared_why']})" if row.get("shared_why") else "")
+                + (
+                    ""
+                    if row.get("exercised")
+                    else "; **not exercised**: attempt 1 did not run on the card into the cap, so this "
+                    "run shows nothing about it"
+                )
             )
     out += [
         "",

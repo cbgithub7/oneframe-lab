@@ -70,6 +70,100 @@ def test_a_node_is_measured_at_each_group_of_settings(
     assert "| resolution=400 | cpu |" in report and "| defaults | cpu |" in report
 
 
+def test_the_bench_learns_nothing_so_every_estimate_is_the_nodes_own(
+    tmp_path: Path, make_node: MakeNode, node_root: Path
+) -> None:
+    # A store without a data root still learns in memory; on a card, the control spill's peak
+    # once corrected the overrun's estimate off the card (spec 002's first AC8 run).
+    # Here the first run allocates 200 MB its model does not know of, as the control does.
+    spills = {**SMALL_NODE["params"], "extra": {"type": "int", "default": 0, "min": 0, "max": 1000}}
+    make_node(
+        {**SMALL_NODE, "params": spills},
+        CODE.replace('ctx.params["resolution"]', 'ctx.params["resolution"] + ctx.params["extra"]'),
+    )
+    registry = discover([node_root])
+    scheduler = bench_fit.make_scheduler(
+        registry, None, tmp_path / "cache", runtime_python=lambda _runtime: Path(sys.executable)
+    )
+    groups = [{"resolution": 800, "extra": 200}, {"resolution": 800}, {"resolution": 800}]
+    rows = bench_fit.bench_node(scheduler, "test.bench", groups)["runs"]
+    assert [r["status"] for r in rows] == ["done", "done", "done"], [r["error"] for r in rows]
+    assert [r["estimate_mb"] for r in rows] == [140, 140, 140]
+    assert [f["estimate"] for r in rows for f in r["fits"]] == ["known", "known", "known"]
+
+
+def test_the_holder_leaves_room_for_the_first_change_only_on_every_card() -> None:
+    plan = bench_fit.find_ac8()
+    manifest = discover([plan.folder.parent]).get(plan.node)
+    for total, free in ((6442, 6000), (8590, 7000), (12885, 11000), (25770, 24500), (85899, 84000)):
+        card = {"index": 0, "capability": "8.6", "vram_total_mb": total, "vram_free_mb": free}
+        margin = max(1611, 0.1 * total)
+        for context in (None, 94.0, 300.0):
+            sized = bench_fit.holder_size(manifest, card, margin, context)
+            assert sized is not None
+            hold, (low, high) = sized
+            assert low < high
+            if hold <= 0:
+                continue  # the bench says the card has too little free memory
+            # The holder's own context comes on top of what it holds.
+            budget = free - hold - (context or 0.0) - margin
+            assert low < budget < high
+            assert budget == pytest.approx((low + high) / 2)
+
+
+def test_the_report_says_when_a_step_did_not_happen_as_designed() -> None:
+    def row(device: str, steps_oom: int, ooms: int, growth: float | None) -> dict[str, Any]:
+        return {
+            "status": "done",
+            "seconds": 4.7,
+            "steps_oom": [{}] * steps_oom,
+            "ooms": [{}] * ooms,
+            "fits": [{"attempt": 1, "device": device, "changes": []}],
+            "shared_growth_mb": growth,
+            "exercised": device == "cuda" and bool(steps_oom or ooms),
+            "spilled": None if growth is None else growth > 0,
+        }
+
+    record: dict[str, Any] = {
+        "mode": "ac8",
+        "node": "test.vram",
+        "date": "2026-10-01T00:00:00+00:00",
+        "engine": "0",
+        "card": {"index": 0, "name": "Some card", "capability": "6.1", "vram_total_mb": 8590},
+        "context": {"context_mb": 94.0},
+        "settings": [],
+        "holder": {
+            **row("cpu", 0, 0, None),
+            "label": "defaults, with memory held",
+            "held_mb": 3982,
+            "budget_mb": 2309,
+            "window_mb": [2377, 2761],
+            "expected_changes": [0],
+            "shown": False,
+        },
+        "overrun": {
+            "budget_mb": 2825,
+            "estimate_mb": 2761,
+            "control": {"shared_growth_mb": 0.0, "spilled": False},
+            "fallbacks": row("cpu", 0, 0, None),
+            "retry": row("cpu", 0, 0, None),
+        },
+    }
+    report = bench_fit.render(record)
+    assert "- Shown: **no** (the fit did not make the expected change" in report
+    assert "budget then: 2,309 MB; the node needs 2,377 MB after its first change" in report
+    assert report.count("**not exercised**") == 2
+    assert "the counter did not rise" in report
+
+    record["holder"]["shown"] = True
+    record["overrun"]["control"] = {"shared_growth_mb": 67.0, "spilled": True}
+    record["overrun"]["fallbacks"] = row("cuda", 1, 0, 0.0)
+    record["overrun"]["retry"] = row("cuda", 0, 1, 0.0)
+    report = bench_fit.render(record)
+    assert "- Shown: yes" in report and "did not make the expected change" not in report
+    assert "not exercised" not in report and "the counter did not rise" not in report
+
+
 def test_settings_are_typed_from_the_manifest_and_mistakes_named(
     tmp_path: Path, make_node: MakeNode, node_root: Path
 ) -> None:
