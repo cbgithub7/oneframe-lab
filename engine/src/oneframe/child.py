@@ -582,6 +582,9 @@ def run_context(ctx: NodeContext) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     _take_stdout()
+    # Its own process id: on Windows a venv's python.exe is a launcher that starts the interpreter
+    # as another process, so the id the parent holds is not the one using the card.
+    emit({"event": "pid", "pid": os.getpid()})
     with Path(argv[0]).open(encoding="utf-8") as handle:
         job = json.load(handle)
     if job.get("exit_with_parent"):

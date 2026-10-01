@@ -150,7 +150,7 @@ class ProcessExecutor:
         self.base_env = base_env
         self.poll = poll
         self.log_dir = log_dir
-        self.on_pid = on_pid  # told each child's process id, for a bench that watches the process
+        self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
     def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
         tmp = Path(tempfile.mkdtemp(prefix="oneframe-job-"))
@@ -177,8 +177,6 @@ class ProcessExecutor:
                 creationflags=NO_WINDOW,
             )
             LOGGER.info("started node child %s for %s", proc.pid, job.get("node"))
-            if self.on_pid is not None:
-                self.on_pid(proc.pid)
             lines: queue.Queue[str | None] = queue.Queue()
             threading.Thread(target=_reader, args=(proc.stdout, lines), daemon=True).start()
             threading.Thread(target=_tail, args=(proc.stderr, stderr_tail, log), daemon=True).start()
@@ -200,7 +198,10 @@ class ProcessExecutor:
                         LOGGER.warning("node child wrote a non-event line: %s", line.rstrip()[:200])
                         continue
                     kind = event.get("event")
-                    if kind == "done":
+                    if kind == "pid":
+                        if self.on_pid is not None:  # the interpreter's own id (see child.main)
+                            self.on_pid(int(event["pid"]))
+                    elif kind == "done":
                         done = event
                     elif kind == "error":
                         failed = event

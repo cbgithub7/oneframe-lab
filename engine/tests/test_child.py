@@ -175,7 +175,9 @@ def _run_child(
     )
     events = [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
     assert events, done.stderr
-    return events
+    # First, the interpreter's own process id (on Windows not the launcher's the parent started).
+    assert events[0]["event"] == "pid" and isinstance(events[0]["pid"], int), events[0]
+    return events[1:]
 
 
 def _torch_log(tmp_path: Path) -> list[dict[str, Any]]:
