@@ -9,6 +9,10 @@ needs no change here.
 A machine without nvidia-smi, or whose driver is not loaded, has no NVIDIA card as far as a plan is
 concerned. That is an answer with a reason, never an error: listing runtimes on a laptop without a
 GPU works and says why every GPU build was passed over.
+
+System memory, total and available, is what a node fits into on the processor and what a card's
+node needs besides the card. It is read from the operating system, never measured by allocating,
+and a machine where it cannot be read has it unknown, with the reason.
 """
 
 from __future__ import annotations
@@ -165,18 +169,122 @@ def disk_free_mb(path: Path | None) -> int | None:
         return None
 
 
+KIB = 1024 / 1_000_000  # MB per KiB: /proc/meminfo counts KiB ("kB")
+
+
+def _unknown_memory(why: str) -> dict[str, Any]:
+    return {"total_mb": None, "free_mb": None, "why": why}
+
+
+def parse_meminfo(text: str) -> dict[str, Any]:
+    """Linux's /proc/meminfo: the total, and `MemAvailable`, the kernel's own estimate of what can
+    be allocated without swapping (page cache that can be dropped counts as available)."""
+    fields: dict[str, int] = {}
+    for line in text.splitlines():
+        name, _, rest = line.partition(":")
+        parts = rest.split()
+        if parts and parts[0].isdigit():
+            fields[name.strip()] = int(parts[0])
+    if "MemTotal" not in fields or "MemAvailable" not in fields:
+        return _unknown_memory("/proc/meminfo has no MemTotal or MemAvailable (a kernel older than 3.14).")
+    return {
+        "total_mb": round(fields["MemTotal"] * KIB),
+        "free_mb": round(fields["MemAvailable"] * KIB),
+        "why": "Read from /proc/meminfo (MemAvailable).",
+    }
+
+
+def from_memory_status(status: dict[str, int]) -> dict[str, Any]:
+    """Windows' GlobalMemoryStatusEx, in bytes: physical memory, and the commit limit
+    (`total_commit`, `avail_commit`; MEMORYSTATUSEX calls them PageFile).
+
+    What is free is the smaller of available physical memory and available commit: Windows refuses
+    an allocation past its commit limit even with physical memory free, so a machine with a small
+    page file runs out of commit first."""
+    physical, commit = status["avail_phys"] // 1_000_000, status["avail_commit"] // 1_000_000
+    if commit < physical:
+        why = (
+            f"Read from GlobalMemoryStatusEx; the commit limit leaves {commit} MB, less than the "
+            f"{physical} MB of physical memory free."
+        )
+    else:
+        why = "Read from GlobalMemoryStatusEx (available physical memory)."
+    return {"total_mb": status["total_phys"] // 1_000_000, "free_mb": min(physical, commit), "why": why}
+
+
+def _read_meminfo() -> str:
+    return Path("/proc/meminfo").read_text(encoding="utf-8")
+
+
+def _read_memory_status() -> dict[str, int]:
+    """GlobalMemoryStatusEx through ctypes; only on Windows itself."""
+    if sys.platform != "win32":
+        raise OSError("GlobalMemoryStatusEx exists only on Windows")
+    import ctypes
+
+    class MemoryStatusEx(ctypes.Structure):
+        _fields_ = (
+            ("dwLength", ctypes.c_ulong),
+            ("dwMemoryLoad", ctypes.c_ulong),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        )
+
+    status = MemoryStatusEx()
+    status.dwLength = ctypes.sizeof(MemoryStatusEx)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        raise ctypes.WinError()
+    return {
+        "total_phys": status.ullTotalPhys,
+        "avail_phys": status.ullAvailPhys,
+        "total_commit": status.ullTotalPageFile,
+        "avail_commit": status.ullAvailPageFile,
+    }
+
+
+def system_memory(platform: str = sys.platform, read: Callable[[], Any] | None = None) -> dict[str, Any]:
+    """`{"total_mb", "free_mb", "why"}`; both numbers None, with the reason, when they cannot be read.
+
+    `read` returns what the platform's reader returns (/proc/meminfo's text on Linux, the
+    GlobalMemoryStatusEx fields on Windows); tests pass one, so they never reach the real system."""
+    if platform == "linux":
+        parse: Callable[[Any], dict[str, Any]] = parse_meminfo
+        read = read or _read_meminfo
+    elif platform == "win32":
+        parse = from_memory_status
+        read = read or _read_memory_status
+    else:
+        return _unknown_memory(f"System memory is read on Windows and Linux only, not {os_name(platform)}.")
+    try:
+        return parse(read())
+    except (OSError, KeyError, ValueError) as exc:
+        return _unknown_memory(f"System memory could not be read ({exc}).")
+
+
 def profile(
     data_root: Path | None = None,
     run: Run = subprocess.run,
     platform: str = sys.platform,
     which: Callable[[str], str | None] = shutil.which,
     env: dict[str, str] | None = None,
+    read_memory: Callable[[], Any] | None = None,
 ) -> dict[str, Any]:
-    """What a plan needs to know about this machine:
+    """What a plan and a fit need to know about this machine:
 
         {"os", "gpus": [{"index", "vendor", "name", "capability", "vram_total_mb", "vram_free_mb"}],
-         "driver", "nvidia": {"found", "why"}, "disk_free_mb", "raw"}
+         "driver", "nvidia": {"found", "why"}, "system": {"total_mb", "free_mb", "why"},
+         "disk_free_mb", "raw"}
 
     `raw` is nvidia-smi's own output, kept for the runtime report."""
     nvidia = read_nvidia(run, platform, which, env)
-    return {"os": os_name(platform), **nvidia, "disk_free_mb": disk_free_mb(data_root)}
+    return {
+        "os": os_name(platform),
+        **nvidia,
+        "system": system_memory(platform, read_memory),
+        "disk_free_mb": disk_free_mb(data_root),
+    }

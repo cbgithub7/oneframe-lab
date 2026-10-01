@@ -136,8 +136,11 @@ def render(record: dict[str, Any]) -> str:
         )
     if not profile.get("gpus"):
         out.append(f"- No NVIDIA card: {profile.get('nvidia', {}).get('why')}")
+    system = profile.get("system") or {}
     out += [
         f"- Driver: {profile.get('driver') or 'none'}",
+        f"- System memory: {_from_mb(system.get('free_mb'))} free of {_from_mb(system.get('total_mb'))}"
+        + (f" ({system['why']})" if system.get("why") else ""),
         f"- Free disk on the data root: {_from_mb(profile.get('disk_free_mb'))}",
         "",
         "nvidia-smi said:",
