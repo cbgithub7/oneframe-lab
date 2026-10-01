@@ -2,12 +2,12 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-Pick up at task 2 (plan approved 2026-10-01).
+Pick up at task 3 (plan approved 2026-10-01).
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
   `engine/tests/fixtures/machines.py` holds the profiles. Tests for both.
-- [ ] 2. **The memory model in manifests.** Parse and check `memory` (precisions and where they
+- [x] 2. **The memory model in manifests.** Parse and check `memory` (precisions and where they
   run, weights by precision and checkpoint, working and system formulas, outside torch, changes,
   upgrades, time, sources); add `precision`; `to_json` shows it. AC1 tests.
 - [ ] 3. **The estimate, the margins, the settings and the fit.** `memory.estimate()`,

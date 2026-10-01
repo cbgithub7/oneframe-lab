@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import ports
+from oneframe.memory import PRECISION_PARAM, MemoryModel
+from oneframe.memory import parse as parse_memory
 
 CATEGORIES = (
     "source",  # brings something in: a photo, clicks, text
@@ -81,6 +83,7 @@ class Manifest:
     run: Run
     folder: Path
     devices: tuple[str, ...] = ("cpu",)
+    memory: MemoryModel | None = None
     licence: dict[str, Any] = field(default_factory=dict)
     links: dict[str, str] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
@@ -90,8 +93,36 @@ class Manifest:
         return self.folder / self.run.file
 
     def to_json(self) -> dict[str, Any]:
-        """What the app is sent: the manifest as written, plus where it came from."""
-        return dict(self.raw, folder=str(self.folder))
+        """What the app is sent: the manifest as written, plus where it came from and the params
+        the engine added (`precision`, from a memory model)."""
+        out = dict(self.raw, folder=str(self.folder))
+        if self.memory is not None:
+            out["params"] = {**(self.raw.get("params") or {}), PRECISION_PARAM: self.memory.precision_param()}
+        return out
+
+
+def check_param(key: str, param: Param, value: Any) -> str | None:
+    """Why `value` is not a valid value of `param`, or None. A graph's values and a memory model's
+    changes are held to the same rules."""
+    kind = param.type
+    if kind == "bool" and not isinstance(value, bool):
+        return f"{key} should be true or false"
+    if kind in ("int", "float"):
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            return f"{key} should be a number"
+        if kind == "int" and not float(value).is_integer():
+            return f"{key} should be a whole number"
+        if param.minimum is not None and value < param.minimum:
+            return f"{key} is below its minimum {param.minimum}"
+        if param.maximum is not None and value > param.maximum:
+            return f"{key} is above its maximum {param.maximum}"
+    if kind == "choice" and value not in param.choices:
+        return f"{key} should be one of {', '.join(param.choices)}"
+    if kind in ("string", "file") and not isinstance(value, str):
+        return f"{key} should be text"
+    if kind == "file" and isinstance(value, str) and value and not Path(value).is_file():
+        return f"{key}: no file at {value}"
+    return None
 
 
 def _param(name: str, row: Any, problems: list[str]) -> Param | None:
@@ -183,6 +214,9 @@ def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Mani
         for name, row in raw_params.items():
             if name in inputs:
                 problems.append(f"params.{name} has the same name as an input")
+            if name == PRECISION_PARAM:
+                problems.append("params.precision is added by the engine from a memory model; remove it")
+                continue
             parsed = _param(name, row, problems)
             if parsed:
                 params[name] = parsed
@@ -208,6 +242,13 @@ def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Mani
         if device not in ("cpu", "cuda", "mps", "xpu", "rocm"):
             problems.append(f"devices: unknown device {device!r}")
 
+    model = None
+    if data.get("memory") is not None:
+        model = parse_memory(data["memory"], params, inputs, devices, problems, check_param)
+        precision = model and _param(PRECISION_PARAM, model.precision_param(), problems)
+        if precision:
+            params[PRECISION_PARAM] = precision
+
     if problems:
         raise ManifestError(source, problems)
     return Manifest(
@@ -222,6 +263,7 @@ def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Mani
         run=Run(where=where, file=file, function=function, runtime=runtime),
         folder=folder,
         devices=devices,
+        memory=model,
         licence=dict(data.get("licence") or {}),
         links=dict(data.get("links") or {}),
         raw=data,

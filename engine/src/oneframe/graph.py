@@ -25,11 +25,10 @@ and a converter node bridges them, the converter is inserted and the plan says s
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from oneframe import ports
-from oneframe.manifest import Manifest, Param
+from oneframe.manifest import Manifest, check_param
 from oneframe.registry import Registry
 
 RECIPE_VERSION = 1
@@ -120,28 +119,6 @@ class Plan:
         return [s.id for s in self.steps]
 
 
-def _check_param(key: str, param: Param, value: Any) -> str | None:
-    kind = param.type
-    if kind == "bool" and not isinstance(value, bool):
-        return f"{key} should be true or false"
-    if kind in ("int", "float"):
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            return f"{key} should be a number"
-        if kind == "int" and not float(value).is_integer():
-            return f"{key} should be a whole number"
-        if param.minimum is not None and value < param.minimum:
-            return f"{key} is below its minimum {param.minimum}"
-        if param.maximum is not None and value > param.maximum:
-            return f"{key} is above its maximum {param.maximum}"
-    if kind == "choice" and value not in param.choices:
-        return f"{key} should be one of {', '.join(param.choices)}"
-    if kind in ("string", "file") and not isinstance(value, str):
-        return f"{key} should be text"
-    if kind == "file" and isinstance(value, str) and value and not Path(value).is_file():
-        return f"{key}: no file at {value}"
-    return None
-
-
 def plan(graph: Graph, registry: Registry) -> Plan:
     problems: list[dict[str, str]] = []
     notes: list[str] = []
@@ -164,7 +141,7 @@ def plan(graph: Graph, registry: Registry) -> Plan:
             if value is None:
                 problem(key, f"parameter {name} needs a value")
                 continue
-            why = _check_param(name, param, value)
+            why = check_param(name, param, value)
             if why:
                 problem(key, why)
             params[name] = value
