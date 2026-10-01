@@ -2,6 +2,8 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
+Pick up at task 1 (plan approved 2026-10-01; no code written yet).
+
 - [ ] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
   `engine/tests/fixtures/machines.py` holds the profiles. Tests for both.

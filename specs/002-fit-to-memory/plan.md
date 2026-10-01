@@ -1,6 +1,6 @@
 # 002: Plan
 
-Status: draft, for the owner's approval (revised 2026-09-30 for the amended spec, and 2026-10-01 after the third review)
+Status: approved by the owner on 2026-10-01, with the fourteen decisions below as written (revised 2026-09-30 for the amended spec, and 2026-10-01 after the third review)
 
 The spec is [spec.md](spec.md); the research behind it is [research.md](research.md).
 

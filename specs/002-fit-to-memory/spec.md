@@ -2,7 +2,7 @@
 
 Status: approved (redrafted 2026-09-30, after the owner's review and the research in
 [research.md](research.md); amended 2026-09-30 after a second review, with the owner's approval)
-Owner approval: 2026-09-30 (spec, and its amendment)
+Owner approval: 2026-09-30 (spec, and its amendment); 2026-10-01 (plan)
 
 ## Problem
 
