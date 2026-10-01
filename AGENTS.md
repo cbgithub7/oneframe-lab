@@ -23,7 +23,7 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 5. **The PR is where the owner decides.** An agent's job ends when it opens the pull request.
    Nothing merges to `main` except through a PR with green CI.
 6. **Hardware claims need a report.** Nothing is called tested or working on a GPU without
-   numbers from a real run on real hardware (seconds, peak VRAM, the arrangement that finished).
+   numbers from a real run on real hardware (seconds, peak VRAM, the fit that finished).
    Cloud sessions have no GPU; say plainly what is unverified.
 
 ## Rules
@@ -61,5 +61,7 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 - `npm run versions`: version policy
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
   did (the numbers a hardware claim needs)
+- `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
+  its estimates beside the peaks measured; with no node, spec 002's hardware check
 - `node scripts/test-guard.js`: no test removed without a listed reason
 - `npm start`: the app (needs `npm run engine:sync` once)

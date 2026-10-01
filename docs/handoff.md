@@ -31,7 +31,7 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   the largest cards, and fails with a clear reason when it cannot. Nothing is tuned to the 1070
   (the "Any card that can run it" rule in [AGENTS.md](../AGENTS.md)).
 
-## State (2026-09-30)
+## State (2026-10-01)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
@@ -54,6 +54,20 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     runtime is `runtimes/torch/` (torch 2.14.0; cpu, cu126, cu130); its cpu build installed and
     ran its probe in a cloud session, and its cu126 build passed AC9 on the owner's GTX 1070.
     Locking a runtime needs `download.pytorch.org` and `download-r2.pytorch.org` reachable.
+- **Fit to memory** (spec 002, implemented on its branch; AC8 waits for the owner's card):
+    - a node's memory model in its manifest, checked with every problem named, and the
+      `precision` param the engine adds from it;
+    - the fit before each load: free memory less a margin, upgrades, speed-only changes before
+      quality, never a setting the graph sets, the slow-device warning with the faster
+      alternative, tried anyway, kind `memory` when nothing fits;
+    - the cap in the child, `ctx.memory_free_mb()`, `ctx.fallbacks`, and one retry after `oom`
+      with a strictly smaller fit;
+    - what each machine learns (`<data>/memory/learned.json`), `made_with` on every output, a
+      cache that never serves less than this machine can make, and `<data>/settings.json`;
+    - `nodes.fit`, `nodes.forget`, and `npm run bench:fit`.
+
+    Checked by tests on the processor and in the tiny runtime; nothing about a card's behaviour is
+    claimed until AC8's report.
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
     - a sandboxed page that reaches the engine through one IPC door with a method allowlist;
@@ -89,7 +103,7 @@ hold the detail.
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
-| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | draft, redrafted 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md); spec approved 2026-09-30, plan approved 2026-10-01; implementation starts at task 1 |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; implemented (tasks 1–11), AC1–AC7 checked by tests; AC8 pending the owner's hardware run (task 12) |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
@@ -99,8 +113,8 @@ hold the detail.
     - The environment is rebuilt only when its lock file changes.
 
     The scheduler's `runtime_python` hook is where it plugs in.
-2. **Fit to memory.** How the best local AI apps do it, without asking anyone to run a test
-   ([research](../specs/002-fit-to-memory/research.md)):
+2. **Fit to memory** (implemented; AC8 pending hardware). How the best local AI apps do it,
+   without asking anyone to run a test ([research](../specs/002-fit-to-memory/research.md)):
     - each node declares a memory model: its weights per precision, and its working memory as a
       function of its settings;
     - before loading, the engine measures free memory, keeps a margin, and changes only settings

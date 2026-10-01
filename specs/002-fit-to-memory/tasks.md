@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-Pick up at task 11 (plan approved 2026-10-01).
+Tasks 1–11 are done; task 12 is the owner's hardware run (AC8).
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
@@ -39,7 +39,7 @@ Pick up at task 11 (plan approved 2026-10-01).
   settings, the context size from nvidia-smi, the Windows per-process counter through `ctypes`
   with its control run, a holder process), `npm run bench:fit`, and a test of its plumbing on the
   processor.
-- [ ] 11. **Docs.** `docs/nodes.md` (memory models, `bench:fit`, `ctx.fallbacks`, Windows' Sysmem
+- [x] 11. **Docs.** `docs/nodes.md` (memory models, `bench:fit`, `ctx.fallbacks`, Windows' Sysmem
   Fallback Policy), `docs/architecture.md` (the Memory part, events, kind `memory`), `AGENTS.md`,
   `docs/handoff.md`.
 - [ ] 12. **The owner, on the test card: AC8.** Run the Verification commands in a local session
