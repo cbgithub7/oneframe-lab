@@ -55,6 +55,9 @@ noted.
       the rest are cast from system memory layer by layer (`comfy/model_patcher.py`).
     - The current default ("DynamicVRAM", from the comfy-aimdo allocator) faults weights in on
       demand, and needs CUDA 12.8+, PyTorch 2.8+ and Windows 11+.
+    - comfy-aimdo (Comfy-Org/comfy-aimdo @ 3b8e8c1, 2026-09-15, pinned as `comfy-aimdo==0.5.5`)
+      keeps a default headroom of 256 MB (`VRAM_HEADROOM`), set with `--reserve-vram` or
+      `--vram-headroom`.
     - Not verified: whether aimdo works on compute 6.x.
 - **Out of memory.**
     - `is_oom()` catches `OutOfMemoryError`, and accelerator errors that say "out of memory".
