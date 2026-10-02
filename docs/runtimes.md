@@ -105,8 +105,9 @@ runtimes that are fine:
 
 - the id matches the folder, and the three files are there;
 - every build is an extra, and all of them are one conflict set;
-- every torch in `uv.lock` is 2.6 or newer. Older torch can run code from a crafted weights file
-  (CVE-2025-32434), so a lock that holds one is refused;
+- every torch in `uv.lock` is 2.10 or newer. Older torch can run code from a crafted weights file,
+  even with `weights_only` (CVE-2025-32434 before 2.6, CVE-2026-24747 before 2.10), so a lock that
+  holds one is refused;
 - each extension, source and variable is well formed.
 
 ## Locking

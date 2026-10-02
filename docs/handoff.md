@@ -111,7 +111,7 @@ hold the detail.
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
     - The torch build is chosen by compute capability and driver: cu126 below compute 7.5 or on a
-      driver older than 580, otherwise cu130. The floor is torch 2.6.
+      driver older than 580, otherwise cu130. The floor is torch 2.10 (CVE-2026-24747; it was 2.6).
     - Compiled extensions are classed as stand-in, optional or required.
     - The environment is rebuilt only when its lock file changes.
 
@@ -128,8 +128,8 @@ hold the detail.
    repository revision. The draft, revised after the
    [research](../specs/003-model-store/research.md), recommends one copy per sha256, with a view
    in the Hugging Face layout per runtime, in place of a folder per node (its decision 1, accepted 2026-10-02).
-   The research also found the runtime manager's torch floor out of date: 2.10, not 2.6
-   (CVE-2026-24747); the owner accepted fixing it on its own (decision 6).
+   The research also found the runtime manager's torch floor out of date; it was raised from 2.6 to
+   2.10 (CVE-2026-24747) on its own, as the owner decided (decision 6).
 4. **Keep models loaded** (decided 2026-09-30). A long-lived worker per runtime, in place of one
    child process per run: a model loads once and runs many times. The worker stays while idle for
    a set time, is evicted when another runtime needs the device, and is killed on Stop. It

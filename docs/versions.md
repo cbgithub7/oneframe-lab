@@ -35,8 +35,9 @@ decision someone made for a stated reason, not something that happened because n
 
 ## Floors that are never crossed
 
-- **torch ≥ 2.6** in every runtime. Earlier versions let a crafted weight file run code even with
-  `weights_only=True` (CVE-2025-32434).
+- **torch ≥ 2.10** in every runtime. Earlier versions let a crafted weight file run code even with
+  `weights_only=True`: CVE-2025-32434 before 2.6, and CVE-2026-24747 (memory corruption in the
+  `weights_only` unpickler) before 2.10.
 - **No end-of-life Python** anywhere, runtimes included.
 - **Electron within its supported majors.**
 
