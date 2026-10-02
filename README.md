@@ -19,9 +19,12 @@ person presses Download.
 
 ## Status
 
-Phase 0 and the start of phase 1: the engine (node manifests, typed ports, graph planning, a
-content-addressed cache, a scheduler that runs nodes in-process or in their own runtime), the
-Electron shell, and the checks. No model nodes yet; those come with the runtime manager.
+The engine (node manifests, typed ports, graph planning, a content-addressed cache, and a scheduler
+that runs nodes in-process or in their own runtime), the runtime manager (spec 001), fitting each
+node to the memory a machine has (spec 002), the Electron shell, and the checks. No real model has
+run yet: the only nodes are a photo source and a depth-to-points converter. The model store (spec
+003) is being specified, and the first real models follow it. [docs/handoff.md](docs/handoff.md)
+has the state and what comes next.
 
 ## Layout
 

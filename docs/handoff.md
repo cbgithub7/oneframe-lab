@@ -67,9 +67,13 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - `nodes.fit`, `nodes.forget`, and `npm run bench:fit`.
 
     Checked by tests on the processor and in the tiny runtime. On the owner's GTX 1070 (AC8,
-    [2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)): estimates within
-    0.1% of the peak at three settings, the fit under another program's load, and the cap refusing
-    an overrun while the card had room, answered by `ctx.fallbacks` and by the engine's retry.
+    [2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)):
+    - measured peaks within 0.1% of the estimates at three settings. The test node allocates
+      exactly what its memory model says, so this proves the measuring and the cap work, not that a
+      formula predicts a real model; no real model's memory model has been measured yet;
+    - the fit under another program's load;
+    - the cap refusing an overrun while the card had room, answered by `ctx.fallbacks` and by the
+      engine's retry.
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
     - a sandboxed page that reaches the engine through one IPC door with a method allowlist;
