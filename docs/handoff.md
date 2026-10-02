@@ -102,6 +102,12 @@ Each step becomes a spec in `specs/` ([specs/README.md](../specs/README.md)): sp
 approval, plan, owner approval, tasks, implementation, PR. The list below is the order; the specs
 hold the detail.
 
+**Under review (2026-10-02).** A review of the project as a whole
+([reviews/2026-10-02.md](reviews/2026-10-02.md)) proposes a different order: fixes, foundations,
+the core of 003, then a first vertical slice with two real depth models, before spec 004. It also
+proposes a lighter process and storage rules. Its ten decisions are the owner's. Until they are
+made, the list below stands.
+
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |

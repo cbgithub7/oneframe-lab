@@ -231,9 +231,10 @@ Measured in this container, unless a source is named.
   range request with a wrong ETag in `If-Range`. Only our own pins catch a changed source. Every
   206 and 200 carries the total size, so **comparing it with the pinned size on the first
   response** fails a changed source before 10 GB arrive.
-- **Signed redirects expire.** A GitHub release asset redirects to an Azure SAS URL whose token
-  lives 1800 s; about 30 minutes were left when it was fetched. A 10 GB file at 5 MB/s takes 33
-  minutes.
+- **Signed redirects expire.** A GitHub release asset redirects to a signed URL. The first check
+  read its token as living 1800 s. The second round (below) found it now carries a token that lives
+  **300 s**: reused after that, the URL answered `618 jwt:expired` with a short HTML body. A 10 GB
+  file at 5 MB/s takes 33 minutes.
   - Hugging Face's resolve URL redirects to signed CDN URLs too (lifetime unverified).
   - Hugging Face's client, Ollama and Chromium all reuse the signed URL across retries.
   - The robust rule costs nothing: **every attempt starts from the source URL** and follows its
@@ -499,3 +500,62 @@ questions.
     - archives as weights.
 13. **The torch floor goes to 2.10** (CVE-2026-24747). It is a one-line change to the runtime
     manager, best made as its own small fix.
+
+## Second round (2026-10-02)
+
+The owner accepted every recommendation, asking that the downloader decision be checked again.
+The second round also re-reviewed the spec; the project-wide findings are in
+[the review of 2026-10-02](../../docs/reviews/2026-10-02.md).
+
+**The downloader, checked again: the decision holds, built on `http.client`.** Each option was
+weighed against requirements 3, 4 and 8, from the libraries' source and from spikes against a
+local server over HTTP and TLS. All spikes ran on Linux.
+
+| Option | Why not, or why |
+| --- | --- |
+| Standard library, our own | **Chosen.** A 157-line prototype on `http.client` passed every case, as listed below. No dependency. |
+| urllib3 2.8.0 | Saves about 15 lines. It still follows https→http redirects and reads no proxy variables. **The fallback** if our transport passes about 600 lines or keeps finding protocol bugs. |
+| httpx 0.28.1, httpx2 2.13.1 | Ask for gzip by default, which can make CloudFront ignore ranges. Closing does not unblock a read. httpx has had no stable release since 2024-12. |
+| niquests 3.21.2 | Installs a fork of urllib3 under urllib3's own import name. |
+| huggingface_hub 2.1.1 | No resume across processes. No sha256. It reuses the signed URL across retries, and appends a 206 that starts at the wrong offset. |
+| hf_xet 1.6.0 | No resume after a stop: the next download rewrites from byte 0, with the chunk cache off. No sha256. It does open 4 to 64 connections, so it is the candidate if AC13 shows the per-connection cap. |
+| aria2 1.37.0 | GPL; last release 2023-11; no https-only rule. |
+| curl 8.22.0 | A binary per OS, with no pinned-size or sha256 check. |
+| Electron net | Splits the store across two processes and two languages; the CLI tools and tests would need Electron. |
+
+What the prototype passed:
+
+- a drop at 40%;
+- a stall, with a 2 s window;
+- Stop during a stall, in 1.01 s;
+- a 206 at the wrong offset, and a 200 to a range request;
+- a half-full partial, and a full partial answered with 416;
+- a size mismatch failing before the body, and a hash mismatch;
+- a refused http redirect.
+
+Findings that change the spec:
+
+- **Stop needs a watchdog,** whichever library is used. Closing a stalled response unblocks
+  nothing in urllib, urllib3 or httpx, while shutting the socket down unblocks all of them.
+    - The read then ends differently by library: an empty read over HTTP, `BrokenPipeError` over
+      TLS. So a stop is recognised by its own flag, and a dropped connection by counting bytes
+      against the total.
+    - A read timeout is final, so it cannot be used to poll for Stop.
+    - **This is the one behaviour not yet verified on Windows**, so AC3's Stop case must pass on
+      the Windows runner.
+- **An unusual status from a redirect target** (GitHub's `618 jwt:expired`) means ask the source
+  URL again. Nothing is written before the status is checked.
+- **Speed is not the client's problem.** One stream ran at 1.1 GB/s over plain HTTP and about
+  530 MB/s over TLS on loopback, far above any CDN's speed per connection.
+
+What the second review found in the spec: four blockers, all fixed by rewording, and none
+reversing a decision.
+
+- the views had no location, lifecycle or rule for removal;
+- "redirects only to https" contradicted the loopback test server;
+- nothing names the checkpoint param without `weights_by`;
+- the methods and events were undefined, and slow work blocked the engine.
+
+The review lists them, with the should-fix items and what to cut. The spec is revised once the
+owner settles its scope (the review's decision 2).
+
