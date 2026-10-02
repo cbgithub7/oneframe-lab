@@ -77,6 +77,7 @@ class Engine:
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
         self._run: tuple[str, threading.Event, set[str]] | None = None
+        self._run_thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self.methods: dict[str, Callable[[dict[str, Any]], Any]] = {
             "engine.hello": self.hello,
@@ -183,7 +184,10 @@ class Engine:
                 with self._lock:
                     self._run = None
 
-        threading.Thread(target=work, name=f"run-{run_id}", daemon=True).start()
+        thread = threading.Thread(target=work, name=f"run-{run_id}", daemon=True)
+        with self._lock:
+            self._run_thread = thread
+        thread.start()
         return {"run": run_id}
 
     def run_stop(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -232,10 +236,18 @@ class Engine:
         return self.runtimes.remove(runtime_id)
 
     def shutdown(self, timeout: float = 30) -> None:
-        """Stop an install that is still going, so that its uv does not outlive the engine."""
+        """Stop a run and an install that are still going, and wait for them, so that no node
+        process holding the card and no uv outlives the engine."""
+        with self._lock:
+            running = self._run
+            run_thread = self._run_thread
+        if running is not None:
+            running[1].set()  # the executor sees it within a poll and kills the node's process
         installing = self.runtimes.installing()
         if installing is not None:
             self.runtimes.stop(installing)
+        if run_thread is not None:
+            run_thread.join(timeout)
         if self._install is not None:
             self._install.join(timeout)
 

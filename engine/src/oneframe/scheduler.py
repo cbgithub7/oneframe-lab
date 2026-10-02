@@ -416,6 +416,9 @@ class Scheduler:
             "device": device,
             "models": str(self.models_dir) if self.models_dir else None,
             "attempt": attempt,
+            # A runtime child ends when the engine does, even when the engine is killed without a
+            # chance to stop it, so no orphaned process keeps holding the card.
+            "exit_with_parent": True,
         }
         outside = 0.0
         if found is not None and context is not None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import textwrap
 import time
@@ -12,9 +13,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, MakeNode, wait_gone
 
-from oneframe.executors import NodeError, ProcessExecutor, died_message
+from oneframe.executors import CHILD, NodeError, ProcessExecutor, child_env, died_message
 from oneframe.graph import Graph
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
@@ -91,12 +92,13 @@ def test_a_child_that_dies_is_reported_with_its_stderr(
     assert "last words" in result.error["detail"]
 
 
+HANG = "import os, time\ndef run(ctx):\n    ctx.stage('hang', str(os.getpid()))\n    time.sleep(60)\n"
+
+
 def test_stop_kills_a_runtime_child(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
-    _runtime_node(
-        make_node, "test.hang", "import time\ndef run(ctx):\n    ctx.stage('hang')\n    time.sleep(60)\n"
-    )
+    _runtime_node(make_node, "test.hang", HANG)
     started = time.monotonic()
 
     def stop_when_hanging() -> bool:
@@ -105,6 +107,54 @@ def test_stop_kills_a_runtime_child(
     result = scheduler_for().run(_one("test.hang"), events.append, stop_when_hanging)
     assert result.status == "stopped"
     assert time.monotonic() - started < 20
+    # The interpreter itself, not only the process the engine started (on Windows a venv's
+    # python.exe is a launcher that starts the interpreter as another process).
+    assert wait_gone(int(events.of("stage")[0]["message"]))
+
+
+def test_a_runtime_child_is_told_to_end_with_the_engine(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    _runtime_node(
+        make_node,
+        "test.told",
+        "def run(ctx):\n    ctx.stage('told', str(ctx.job.get('exit_with_parent')))\n" + WRITE,
+    )
+    result = scheduler_for().run(_one("test.told"), events.append)
+    assert result.status == "done", result.error
+    assert events.of("stage")[0]["message"] == "True"
+
+
+def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
+    """A killed engine cannot stop its children; the child sees its stdin close and ends itself."""
+    job = _executor_job(tmp_path, "ctx.stage('hang', str(os.getpid()))\nimport time\ntime.sleep(60)\n")
+    job["exit_with_parent"] = True
+    job_path = tmp_path / "job.json"
+    job_path.write_text(json.dumps(job), encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-u", str(CHILD), str(job_path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        env=child_env(None, {}),
+        text=True,
+        encoding="utf-8",
+    )
+    try:
+        assert proc.stdout is not None and proc.stdin is not None
+        pid = None
+        for line in proc.stdout:
+            event = json.loads(line)
+            if event.get("event") == "stage":
+                pid = int(event["message"])
+                break
+        assert pid is not None
+        proc.stdin.close()  # what the engine's death looks like from here
+        assert proc.wait(timeout=10) == 1
+        assert wait_gone(pid)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 def test_a_missing_runtime_is_its_own_failure(

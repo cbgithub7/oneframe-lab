@@ -235,7 +235,10 @@ class ProcessExecutor:
             finally:
                 if proc.poll() is None:
                     proc.kill()
-                    proc.wait(timeout=10)
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:  # never hide why the run ended behind this
+                        LOGGER.warning("node child %s did not end within 10 s of being killed", proc.pid)
             if done is not None:
                 return done
             if failed is not None:

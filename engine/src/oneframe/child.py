@@ -116,8 +116,8 @@ def forbid_network() -> None:
 def _exit_with_parent() -> None:
     """End this process when stdin closes. The parent never writes, so end of file means it has
     gone. os._exit, not sys.exit: the main thread may be inside a CUDA kernel, and the driver hands
-    the card back only when the process is gone. Used for runtimes inside WSL, where ending
-    wsl.exe would leave the Linux process running."""
+    the card back only when the process is gone. Every run asks for it, so a node outlives neither
+    an engine that was killed nor, later, a wsl.exe that was ended."""
 
     def watch() -> None:
         try:
