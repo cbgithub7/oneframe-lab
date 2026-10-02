@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-Tasks 1–11 are done; task 12 is the owner's hardware run (AC8).
+Tasks 1–12 are done; task 13 is the owner's hardware run (AC8).
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
@@ -38,9 +38,17 @@ Tasks 1–11 are done; task 12 is the owner's hardware run (AC8).
 - [x] 10. **The bench.** `engine/tests/hardware/test.vram/`, `bench_fit.py` (any node at given
   settings, the context size from nvidia-smi, the Windows per-process counter through `ctypes`
   with its control run, a holder process), `npm run bench:fit`, and a test of its plumbing on the
-  processor.
+  processor. (The counter and the control run were replaced in task 12.)
 - [x] 11. **Docs.** `docs/nodes.md` (memory models, `bench:fit`, `ctx.fallbacks`, Windows' Sysmem
   Fallback Policy), `docs/architecture.md` (the Memory part, events, kind `memory`), `AGENTS.md`,
   `docs/handoff.md`.
-- [ ] 12. **The owner, on the test card: AC8.** Run the Verification commands in a local session
-  and commit the report under `specs/002-fit-to-memory/reports/`.
+- [x] 12. **The AC8 amendment** (2026-10-02, approved by the owner after the AC8 rerun). The
+  overrun is judged by torch's own out-of-memory message, not by Windows' shared GPU memory
+  counter: `node.step_oom` carries `message`; `bench_fit.cap_refusal()` reads the request, the
+  card's free memory and the cap from it; the counter, the control spill and the test node's
+  `spill_mb` are gone. Spec AC8, plan Verification 4, Tests and Risks, and
+  [research.md](research.md#the-ac8-spill-check-2026-10-02).
+- [ ] 13. **The owner, on the test card: AC8.** Run the Verification commands in a local session
+  and commit the report under `specs/002-fit-to-memory/reports/`. The rerun of 2026-10-01 already
+  shows the engine's retry refused by the cap; this run adds `ctx.fallbacks`, whose event carried
+  no message before task 12.

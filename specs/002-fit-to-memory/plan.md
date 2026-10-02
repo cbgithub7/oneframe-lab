@@ -1,6 +1,6 @@
 # 002: Plan
 
-Status: approved by the owner on 2026-10-01, with the fourteen decisions below as written (revised 2026-09-30 for the amended spec, and 2026-10-01 after the third review)
+Status: approved by the owner on 2026-10-01, with the fourteen decisions below as written (revised 2026-09-30 for the amended spec, and 2026-10-01 after the third review); Verification 4 revised 2026-10-02 for the amended AC8, with the owner's approval
 
 The spec is [spec.md](spec.md); the research behind it is [research.md](research.md).
 
@@ -333,7 +333,8 @@ For each step, in the scheduler:
   `tried_anyway`, or `unknown`).
 - `node.start`: adds `attempt`.
 - `node.oom`: `step`, `attempt`, `peak_reserved_mb`, `peak_ram_mb`, `message`.
-- `node.step_oom`: `step`, `stage`, `way`, `next`, `peak_reserved_mb`.
+- `node.step_oom`: `step`, `stage`, `way`, `next`, `peak_reserved_mb`, `message` (torch's text,
+  as `node.oom` carries it).
 - `nodes.fit {node, params?, inputs?}`: the same shape as `node.fit`. `inputs` maps a port to its
   `meta` fields.
 - `nodes.forget {node}`: the number of entries dropped.
@@ -406,7 +407,7 @@ independently by the third review.
 | Reading system memory fails | System memory is unknown; a processor fit then runs at its values and says so, and a card's fit skips the system check and says so |
 | The test table drifts from the rules | It is computed in the test from the manifest |
 | Formatting for 3.14 breaks code that runs in an older runtime | Decision 13: ruff and pyright target 3.11 for that code, and CI runs it under 3.11 |
-| The AC8 counter reads nothing and "no growth" passes by mistake | A control run must show the counter rising first (Verification 4) |
+| torch's out-of-memory message changes shape, so AC8 cannot read it | The bench then says "not shown" and AC8 is not passed; torch is pinned by the runtime's lock |
 
 ## Tests
 
@@ -447,7 +448,11 @@ independently by the third review.
       Linux still works.
     - A test that runs `bench_fit` on the processor, with an engine test node, to prove its
       plumbing without a GPU.
-- **Removed:** none.
+    - `test_bench_fit.py`: reading torch's out-of-memory message, from the GTX 1070 report's own
+      text (2026-10-02).
+- **Removed** (2026-10-02, with the AC8 amendment; added by this spec, never on `main`):
+    - `test_the_shared_memory_counter_reads_or_says_why`: the bench no longer reads Windows'
+      shared GPU memory counter, so there is no counter to test.
 
 ## Verification
 
@@ -484,19 +489,20 @@ With no node named, `bench:fit` runs the AC8 test node. It installs the torch ru
    the fit it chose, and that the run finished.
 4. **An overrun past the cap.** It sets the margin so the budget equals the estimate, and runs
    with the param that allocates 30% more on attempt 1 only, so the allocation must exceed the
-   cap. It samples the run's `\GPU Process Memory(pid_*)\Shared Usage` counter every 250 ms
-   through the Windows performance-counter API (`ctypes`), before, during and after; the
-   executor reports the child's pid.
-    - **Control first:** with `fit: "off"` and the cap removed, it allocates 256 MB past the
-      card's free memory for two seconds. The counter must rise. This is a brief, deliberate
-      spill, so a reading of "no growth" later cannot be a counter that reads nothing.
-
-   It then runs the overrun twice:
+   cap. It runs the overrun twice:
     1. With `ctx.fallbacks`: `node.step_oom`, then the second way finishing in the same process.
     2. With the fallbacks turned off: `node.oom`, then the engine's retry in a new process.
 
-   It records the seconds of each. It holds when shared usage does not rise during either
-   overrun.
+   For each it records the seconds, and reads torch's out-of-memory message from the event
+   (`message`): the request ("Tried to allocate"), the card's free memory then ("of which … is
+   free") and the cap ("allowed"). It holds when both runs finish and, in each, the card had more
+   free than the request. torch checks the cap before it asks the driver for memory
+   (`CUDACachingAllocator.cpp`, `alloc_block`), so such a request never reached the driver and
+   could not spill. A message without those three figures is "not shown", never a pass.
+
+   (Until 2026-10-02 this step sampled Windows' per-process shared GPU memory counter, with a
+   deliberate spill as a control. The rerun showed why that was the wrong test; see
+   [research.md](research.md#the-ac8-spill-check-2026-10-02).)
 5. **The report.** It writes `YYYY-MM-DD-<card>-fit.md` with every number, and says plainly what
    was not measured. The report names the card because it is evidence; nothing in the code reads
    that name.

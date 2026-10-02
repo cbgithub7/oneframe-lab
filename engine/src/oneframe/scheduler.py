@@ -8,7 +8,7 @@ Events, in order, for the app (all carry `run`):
     node.cached    step, outputs, fit             (a reduced result the fit allows)
     node.start     step, node, where, attempt
     stage / progress / ceiling                    (forwarded from the node, with step added)
-    node.step_oom  step, stage, way, next         (ctx.fallbacks moved to its next way)
+    node.step_oom  step, stage, way, next, message (ctx.fallbacks moved to its next way)
     node.done      step, seconds, peaks, made_with, fit, outputs
     node.oom       step, attempt, peaks, message  (before the one retry, or the failure)
     node.failed    step, kind, message, fits

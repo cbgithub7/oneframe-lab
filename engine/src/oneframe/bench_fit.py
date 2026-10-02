@@ -15,9 +15,10 @@ how (which param to size, the overrun's params and so on), so nothing here names
 2. the node at three settings sized to this card's budget, each estimate against its peak;
 3. another program holding memory, so the budget has room for the node after its first change but
    not at its defaults, and the fit the node gets;
-4. an overrun past the cap: a control spill first (Windows), then the overrun answered by
-   ctx.fallbacks and, with them off, by the engine's retry, while Windows' per-process shared GPU
-   memory counter is sampled every 250 ms.
+4. an overrun past the cap, answered by ctx.fallbacks and, with them off, by the engine's retry.
+   torch's own out-of-memory message shows, for each, the request, the card's free memory then
+   and the cap: a request the card had room for was refused by the cap before the driver was
+   asked, so it could not spill into shared memory.
 
 Nothing is learned between runs, so every estimate is the node's own, uncorrected. It writes a
 Markdown report of every number, and says plainly what was not measured and which step did not
@@ -35,7 +36,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -58,7 +58,6 @@ HARDWARE_NODES = Path(__file__).resolve().parents[2] / "tests" / "hardware"
 AC8_FILE = "ac8.json"
 TOLERANCE_SHARE = 0.10  # an estimate holds within 10% of the peak,
 TOLERANCE_MB = 64  # or 64 MB, whichever is larger
-SAMPLE_S = 0.25
 
 
 # -- one run at given settings -------------------------------------------------------------------
@@ -158,7 +157,7 @@ def measure(scheduler: Scheduler, node: str, params: dict[str, Any], label: str 
 
 class _Unlearned(LearnedStore):
     """A store that learns nothing. `LearnedStore(None)` still learns, in memory, so one run's
-    peak (the control's deliberate spill, say) would correct the estimates of every run after it."""
+    peak (an overrun's, say) would correct the estimates of every run after it."""
 
     def __init__(self) -> None:
         super().__init__(None)
@@ -220,114 +219,31 @@ def _fresh_cache(scheduler: Scheduler, index: int) -> Iterator[None]:
         scheduler.cache = Cache(base)
 
 
-# -- Windows' per-process shared GPU memory --------------------------------------------------------
+# -- torch's out-of-memory message ---------------------------------------------------------------
+
+_SIZE = r"([\d.]+) (bytes|KiB|MiB|GiB)"
+_BYTES = {"bytes": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}
 
 
-class SharedMemorySampler:
-    """Samples `\\GPU Process Memory(pid_<pid>_*)\\Shared Usage` every 250 ms through the Windows
-    performance-counter API (pdh.dll, through ctypes). What a process has spilled into shared
-    system memory shows here; nvidia-smi cannot say it under Windows' display driver. Elsewhere,
-    or where the counter cannot be read, `why` says so and nothing is sampled."""
+def cap_refusal(message: str | None) -> dict[str, float] | None:
+    """What torch's out-of-memory message says when its capped allocator refused a request: the
+    request, the card's free memory then, and the cap ("allowed"), in MB. None when the message
+    is not torch's or names no cap.
 
-    def __init__(self) -> None:
-        self.samples: list[tuple[float, float]] = []  # (seconds since start, MB)
-        self.why: str | None = None
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-
-    def start(self, pid: int) -> None:
-        if sys.platform != "win32":
-            self.why = "Shared GPU memory is a Windows counter; not measured on this system."
-            return
-        self._thread = threading.Thread(target=self._sample, args=(pid,), daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-
-    @property
-    def growth_mb(self) -> float | None:
-        if not self.samples:
-            return None
-        return max(mb for _t, mb in self.samples) - self.samples[0][1]
-
-    def _sample(self, pid: int) -> None:
-        try:
-            read = _pdh_reader(pid)
-        except OSError as exc:
-            self.why = f"The counter could not be opened ({exc})."
-            return
-        started = time.monotonic()
-        while not self._stop.is_set():
-            try:
-                value = read()
-            except OSError as exc:
-                self.why = f"The counter could not be read ({exc})."
-                return
-            if value is not None:
-                self.samples.append((round(time.monotonic() - started, 2), value))
-            self._stop.wait(SAMPLE_S)
-
-
-def _pdh_reader(pid: int) -> Callable[[], float | None]:
-    """A function returning the process's shared GPU memory in MB (summed over its adapters), or
-    None while the process has no instance yet."""
-    if sys.platform != "win32":
-        raise OSError("pdh.dll exists only on Windows")
-    import ctypes
-    from ctypes import wintypes
-
-    class Value(ctypes.Structure):
-        class Union(ctypes.Union):
-            _fields_ = (
-                ("longValue", ctypes.c_long),
-                ("doubleValue", ctypes.c_double),
-                ("largeValue", ctypes.c_longlong),
-            )
-
-        _fields_ = (("CStatus", wintypes.DWORD), ("u", Union))
-
-    class Item(ctypes.Structure):
-        _fields_ = (("szName", wintypes.LPWSTR), ("FmtValue", Value))
-
-    pdh = ctypes.WinDLL("pdh.dll")
-    more_data = 0x800007D2
-    fmt_large = 0x00000400
-    query = wintypes.HANDLE()
-    counter = wintypes.HANDLE()
-    if pdh.PdhOpenQueryW(None, None, ctypes.byref(query)) != 0:
-        raise OSError("PdhOpenQueryW failed")
-    path = "\\GPU Process Memory(*)\\Shared Usage"
-    status = pdh.PdhAddEnglishCounterW(query, path, None, ctypes.byref(counter))
-    if status != 0:
-        raise OSError(f"PdhAddEnglishCounterW failed with 0x{status & 0xFFFFFFFF:08X}")
-    pdh.PdhCollectQueryData(query)
-    prefix = f"pid_{pid}_"
-
-    def read() -> float | None:
-        if pdh.PdhCollectQueryData(query) != 0:
-            return None
-        size, count = wintypes.DWORD(0), wintypes.DWORD(0)
-        status = pdh.PdhGetFormattedCounterArrayW(
-            counter, fmt_large, ctypes.byref(size), ctypes.byref(count), None
-        )
-        if status & 0xFFFFFFFF != more_data:
-            return None
-        buffer = (ctypes.c_byte * size.value)()
-        status = pdh.PdhGetFormattedCounterArrayW(
-            counter, fmt_large, ctypes.byref(size), ctypes.byref(count), buffer
-        )
-        if status != 0:
-            return None
-        items = ctypes.cast(buffer, ctypes.POINTER(Item))
-        found = [
-            items[i].FmtValue.u.largeValue for i in range(count.value) if items[i].szName.startswith(prefix)
-        ]
-        return sum(found) / 1e6 if found else None
-
-    return read
+    torch checks the cap before it asks the driver for memory, so a request the card had room
+    for was refused by the cap, and could not have spilled into shared memory."""
+    if not message:
+        return None
+    found = [
+        re.search(pattern, message)
+        for pattern in (rf"Tried to allocate {_SIZE}", rf"of which {_SIZE} is free", rf"{_SIZE} allowed;")
+    ]
+    if not all(found):
+        return None
+    request, free, allowed = (
+        round(float(m.group(1)) * _BYTES[m.group(2)] / 1e6, 1) for m in found if m is not None
+    )
+    return {"request_mb": request, "card_free_mb": free, "allowed_mb": allowed}
 
 
 # -- AC8 -------------------------------------------------------------------------------------------
@@ -346,7 +262,6 @@ class Ac8:
     scale: str
     fixed: dict[str, Any]
     shares: tuple[float, ...]
-    control: dict[str, Any]
     overrun: dict[str, Any]
     without_fallbacks: dict[str, Any]
     context: str
@@ -367,7 +282,6 @@ def find_ac8(root: Path = HARDWARE_NODES) -> Ac8:
         row["scale"],
         dict(row["fixed"]),
         tuple(row["shares"]),
-        dict(row["control"]),
         dict(row["overrun"]),
         dict(row["without_fallbacks"]),
         row["context"],
@@ -448,29 +362,6 @@ def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             proc.kill()
-
-
-def _sampled(scheduler: Scheduler, node: str, params: dict[str, Any], label: str) -> dict[str, Any]:
-    """A run with the shared-memory counter sampled for each process it starts."""
-    samplers: list[SharedMemorySampler] = []
-
-    def watch(pid: int) -> None:
-        sampler = SharedMemorySampler()
-        samplers.append(sampler)
-        sampler.start(pid)
-
-    scheduler.on_pid = watch
-    try:
-        row = measure(scheduler, node, params, label)
-    finally:
-        scheduler.on_pid = None
-        for sampler in samplers:
-            sampler.stop()
-    growth = [s.growth_mb for s in samplers]
-    row["shared_growth_mb"] = None if any(g is None for g in growth) or not growth else max(growth)  # type: ignore[type-var]
-    row["shared_why"] = next((s.why for s in samplers if s.why), None)
-    row["shared_samples"] = [s.samples for s in samplers]
-    return row
 
 
 def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
@@ -605,11 +496,6 @@ def _bench_overrun(
     if card is None or card.get("vram_free_mb") is None:
         return {"why": "The card's free memory could not be read."}
 
-    # The control: a deliberate spill, with the fit off and the cap lifted by the node itself.
-    scheduler.settings = lambda: Settings(fit="off")
-    with _fresh_cache(scheduler, 200):
-        out["control"] = _sampled(scheduler, plan.node, plan.control, f"control: {_label(plan.control)}")
-
     # The overrun: a budget of the estimate (plus the tolerance), and more than that on attempt 1.
     need = _need(model, defaults, card) or 0.0
     free = float((_card_device(hardware.profile(manager.data), target) or card)["vram_free_mb"] or 0)
@@ -618,27 +504,22 @@ def _bench_overrun(
     out["budget_mb"] = round(free - margin_mb)
     out["estimate_mb"] = round(need)
     with _fresh_cache(scheduler, 201):
-        out["fallbacks"] = _sampled(scheduler, plan.node, plan.overrun, "overrun, with ctx.fallbacks")
+        out["fallbacks"] = measure(scheduler, plan.node, plan.overrun, "overrun, with ctx.fallbacks")
     with _fresh_cache(scheduler, 202):
         retry = {**plan.overrun, **plan.without_fallbacks}
-        out["retry"] = _sampled(scheduler, plan.node, retry, "overrun, with the engine's retry")
+        out["retry"] = measure(scheduler, plan.node, retry, "overrun, with the engine's retry")
     out["overrun_params"] = plan.overrun
     scheduler.settings = Settings
-    control = out["control"]
-    control["spilled"] = _rose(control)
     for key, event in (("fallbacks", "steps_oom"), ("retry", "ooms")):
         row = out[key]
         first = (row.get("fits") or [{}])[0]
         # Exercised: attempt 1 ran on the card and its overrun met the cap as out of memory.
         row["exercised"] = first.get("device") == "cuda" and bool(row.get(event))
-        row["spilled"] = _rose(row)
+        refusal = cap_refusal(((row.get(event) or [{}])[0]).get("message"))
+        row["refusal"] = refusal
+        # By the cap: the card had room for the request, so the driver was never asked for it.
+        row["by_cap"] = None if refusal is None else refusal["card_free_mb"] > refusal["request_mb"]
     return out
-
-
-def _rose(row: dict[str, Any]) -> bool | None:
-    """Whether the run's shared GPU memory rose at all; None where the counter was not read."""
-    growth = row.get("shared_growth_mb")
-    return None if growth is None else growth > 0
 
 
 # -- the report ----------------------------------------------------------------------------------
@@ -747,26 +628,16 @@ def render(record: dict[str, Any]) -> str:
     if overrun.get("why"):
         out.append(f"Not measured: {overrun['why']}")
     else:
-        control = overrun.get("control") or {}
-        out += [
+        out.append(
             f"- Budget {_mb(overrun.get('budget_mb'))} for an estimate of {_mb(overrun.get('estimate_mb'))}; "
-            f"attempt 1 runs with {_label(overrun.get('overrun_params') or {})}",
-            "- Control (a deliberate spill): shared GPU memory rose by "
-            + _mb(control.get("shared_growth_mb"))
-            + (f" ({control['shared_why']})" if control.get("shared_why") else "")
-            + (
-                "; **the counter did not rise, so no growth below proves nothing**"
-                if control.get("spilled") is False
-                else ""
-            ),
-        ]
+            f"attempt 1 runs with {_label(overrun.get('overrun_params') or {})}"
+        )
         for key, what in (("fallbacks", "ctx.fallbacks"), ("retry", "the engine's retry")):
             row = overrun.get(key) or {}
             out.append(
                 f"- With {what}: {row.get('status')}, {row.get('seconds')} s; "
                 f"step_oom {len(row.get('steps_oom') or [])}, oom {len(row.get('ooms') or [])}; "
-                f"{_changes(row)}; shared GPU memory rose by {_mb(row.get('shared_growth_mb'))}"
-                + (f" ({row['shared_why']})" if row.get("shared_why") else "")
+                f"{_changes(row)}; {_refusal(row)}"
                 + (
                     ""
                     if row.get("exercised")
@@ -779,21 +650,25 @@ def render(record: dict[str, Any]) -> str:
         "## Everything, as recorded",
         "",
         "```json",
-        json.dumps(_trimmed(record), indent=2, default=str),
+        json.dumps(record, indent=2, default=str),
         "```",
         "",
     ]
     return "\n".join(out)
 
 
-def _trimmed(record: dict[str, Any]) -> dict[str, Any]:
-    """The record without the counter's raw samples, which only make the report long."""
-    text = json.dumps(record, default=str)
-    data = json.loads(text)
-    for row in (data.get("overrun") or {}).values():
-        if isinstance(row, dict):
-            row.pop("shared_samples", None)
-    return data
+def _refusal(row: dict[str, Any]) -> str:
+    """What torch's message shows about who refused the overrun: the cap, or a full card."""
+    refusal = row.get("refusal")
+    if refusal is None:
+        return "**not shown**: torch's message did not give the request, the card's free memory and the cap"
+    said = (
+        f"torch refused {_mb(refusal['request_mb'])} with {_mb(refusal['card_free_mb'])} free on the "
+        f"card and {_mb(refusal['allowed_mb'])} allowed"
+    )
+    if row.get("by_cap"):
+        return f"{said}: the cap refused it, so the driver was never asked and nothing could spill"
+    return f"{said}: **the card had no room for it, so this does not show the cap refused it**"
 
 
 def report_path(out: Path, record: dict[str, Any]) -> Path:

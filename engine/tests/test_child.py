@@ -387,7 +387,14 @@ def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(
     assert ctx.fallbacks("decode", [("whole", whole), ("tiled", tiled)]) == "mesh"
     assert ctx.ways == {"decode": "tiled"}
     assert events == [
-        {"event": "step_oom", "stage": "decode", "way": "whole", "next": "tiled", "peak_reserved_mb": 4000.0}
+        {
+            "event": "step_oom",
+            "stage": "decode",
+            "way": "whole",
+            "next": "tiled",
+            "peak_reserved_mb": 4000.0,
+            "message": "CUDA out of memory. Tried to allocate 2.00 GiB",
+        }
     ]
     assert cuda.calls == ["empty_cache", "reset"]
     # The way that ran out is a lower bound on what this run needed.

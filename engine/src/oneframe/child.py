@@ -474,7 +474,8 @@ class NodeContext:
             except BaseException as exc:
                 if not is_torch_oom(exc):
                     raise
-                # It ran out. Nothing of exc outlives this block, so the failed way's frames can go.
+                # It ran out. Only its text outlives this block, so the failed way's frames can go.
+                message = str(exc)
             else:
                 self.ways[step] = name
                 return result
@@ -489,6 +490,7 @@ class NodeContext:
                     "way": name,
                     "next": ways[index + 1][0],
                     "peak_reserved_mb": peak,
+                    "message": message,
                 }
             )
         name, fn = ways[-1]

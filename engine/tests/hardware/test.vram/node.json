@@ -16,10 +16,6 @@
       "type": "bool", "default": true, "affects": "speed",
       "doc": "Allocate the working memory through ctx.fallbacks, whose second way allocates what the model says."
     },
-    "spill_mb": {
-      "type": "int", "default": 0, "min": 0, "max": 4096, "affects": "speed",
-      "doc": "The control run: lift the cap and allocate this much past the card's free memory for two seconds."
-    },
     "hold_s": { "type": "float", "default": 1.0, "min": 0, "max": 60, "affects": "speed" }
   },
   "devices": ["cuda", "cpu"],

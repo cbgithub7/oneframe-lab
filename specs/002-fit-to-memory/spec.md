@@ -2,8 +2,10 @@
 
 Status: implemented 2026-10-01; AC1–AC7 checked by tests, AC8 pending the owner's hardware run
 (approved after a redraft on 2026-09-30, following the owner's review and the research in
-[research.md](research.md); amended 2026-09-30 after a second review, with the owner's approval)
-Owner approval: 2026-09-30 (spec, and its amendment); 2026-10-01 (plan)
+[research.md](research.md); amended 2026-09-30 after a second review, with the owner's approval;
+AC8's spill clause amended 2026-10-02 with the owner's approval, after the AC8 rerun and the
+research in [research.md](research.md#the-ac8-spill-check-2026-10-02))
+Owner approval: 2026-09-30 (spec, and its amendment); 2026-10-01 (plan); 2026-10-02 (AC8 amendment)
 
 ## Problem
 
@@ -278,10 +280,12 @@ The plan's test table gives the expected fit for each; the owner reviews that ta
     - its estimate is within the tolerance the plan sets of the measured peak at each setting;
     - with another program holding memory, the fit makes the changes the budget calls for, and
       the run finishes;
-    - an allocation past the cap makes the cap raise `oom`, and the shared GPU memory Windows
-      reports for the run does not grow. The overrun is then answered by `ctx.fallbacks` in the
-      same process, and, with the fallbacks turned off, by the engine's retry. The report gives
-      the seconds of each;
+    - an allocation past the cap makes the cap raise `oom` while the card still has room for
+      the request, as torch's own out-of-memory message shows (the request, the card's free
+      memory and the cap). torch checks the cap before it asks the driver, so the driver is never
+      asked and cannot spill into shared memory. The overrun is then answered by `ctx.fallbacks`
+      in the same process, and, with the fallbacks turned off, by the engine's retry. The report
+      gives the seconds of each, and torch's figures for each;
     - the report gives the CUDA context's size, so the margin can be checked against it.
 
 ## Out of scope

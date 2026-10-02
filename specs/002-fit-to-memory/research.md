@@ -217,3 +217,66 @@ and each measurement names the card and settings it was made on.
 - One narrow retry on out-of-memory.
 - Keep models loaded between runs. That needs a long-lived worker per runtime, a change to the
   architecture's one child process per run, and is decided with the owner.
+
+## The AC8 spill check (2026-10-02)
+
+The AC8 rerun ([2026-10-01-ac8-rerun.md](reports/2026-10-01-ac8-rerun.md)) failed one clause:
+"the shared GPU memory Windows reports for the run does not grow". It read +63 MB and +17 MB
+during the overruns. This section asks whether that check matters, whether other apps make it,
+and what to check instead. Code was read on each project's default branch on 2026-10-02. NVIDIA's
+support site, NVIDIA's forums, lmstudio.ai and learn.microsoft.com could not be reached from the
+session; anything from them is from search snippets and says so.
+
+### What the check could show
+
+- **torch checks the cap before it asks the driver.** In `c10/cuda/CUDACachingAllocator.cpp`
+  (pytorch v2.14.1, 5c48869, around line 3861), `alloc_block` returns `cudaErrorMemoryAllocation`
+  when `total_allocated_memory + size` passes `allowed_memory_maximum`, before
+  `try_allocate_expandable_block` or `cudaMalloc` runs. Expandable segments do not bypass it, and
+  cuBLAS and cuDNN workspaces go through the same allocator.
+- **So a request over the cap never reaches the driver, and cannot spill.** The rerun's own
+  message says so: "Tried to allocate 2.13 GiB. GPU 0 has a total capacity of 8.00 GiB of which
+  6.10 GiB is free … 2.63 GiB allowed". The card had room for the request; the cap refused it.
+- **The overrun could not have spilled even without the cap.** It needed about 3.6 GB on a card
+  with about 7.9 GB free. The counter's +63 MB was the ~64 MiB of shared memory every CUDA process
+  holds, read before the context made it. No vendor explains that baseline; small projects
+  measure 64 to 78 MiB and attribute it to staging buffers.
+- **What the cap does not cover:** the CUDA context, memory an extension allocates with its own
+  `cudaMalloc`, and other programs that grow after the child measures free memory (pytorch issue
+  #58466). Those are the real ways to spill. The margin and the driver setting cover them; the
+  AC8 check tested none of them.
+- **NVIDIA's article 5490** (snippets only): "The switch to use shared memory occurs when running
+  close to maxing out GPU memory". The fallback can start before the card is completely full,
+  which is one more reason for the margin.
+
+### What other apps do
+
+None of them has a test showing that no spill happens.
+
+| App | Detects a spill | Prevents one | Tells the person |
+| --- | --- | --- | --- |
+| ComfyUI (43444cb) and comfy-aimdo (3b8e8c1) | No. aimdo polls DXGI's local usage every 2 s to keep under budget, and logs that it "is blind to the driver sysmem fallback policy" | 600 MiB reserve on Windows "because of the shared vram issue" | A code comment |
+| InvokeAI (8f7bd21) | Only on AMD (ROCm): `wddm.py` reads the same PDH counter and warns when 512 MiB or more stays paged across two sessions; its tests use mocked counters | ROCm only | Docs: set "Prefer No Sysmem Fallback" |
+| llama.cpp (a868c3e) | No | `--fit`, 1024 MiB margin | `docs/build.md` points to the setting |
+| Ollama (e4c0d18) | No | 457 MiB plus `OLLAMA_GPU_OVERHEAD` | No |
+| KoboldCpp (4959b8d) | No | Margin in its automatic layer count | Not found |
+| LM Studio (closed) | Unknown | "Limit Model Offload to Dedicated GPU Memory" (0.3.14; snippets only) | Yes |
+| Forge (dfdcbab) | Only a low-free-memory warning under 1536 MB | GPU Weights slider | Warning text |
+| SD.Next (1423497) | No | `cuda_mem_fraction`, off by default | Wiki links article 5490 |
+| text-generation-webui (c93f887), Fooocus (ae05379) | No | No | A user discussion; a README naming driver 531 |
+
+No app sets the driver's policy from code. The public NVAPI header (NVIDIA/nvapi @ 70d337d,
+2026-09-18) still has no ID for it; `0x10ECECC9` appears only in NVIDIA Profile Inspector's
+`CustomSettingNames.xml` (0 default, 1 prefer no fallback, 2 prefer fallback).
+
+### What follows
+
+- AC8 judges the overrun by torch's own message: the cap raised `oom` while the card still had
+  room for the request. This holds by construction and cannot be fooled by the counter's
+  baseline. The deliberate spill, which only proved the counter worked and could stall the
+  desktop, is no longer run.
+- `node.step_oom` carries torch's message, as `node.oom` does, so both overruns can be read.
+- Watching for spills in a real run, for the cases the cap does not cover, is a possible later
+  feature, not part of AC8. InvokeAI's way would fit: the child takes its baseline after the CUDA
+  context and a first kernel exist, reads its own process's counter instance on the card's LUID,
+  and warns past a tolerance, naming the driver setting. That needs its own spec.
