@@ -37,12 +37,30 @@ ShouldStop = Callable[[], bool]
 
 
 class NodeError(RuntimeError):
-    """A node ended without its outputs. `kind` is oom / fetch / missing / node / error / died."""
+    """A node ended without its outputs. `kind` is oom / fetch / missing / node / error / died.
+    `peaks` are what the run had used when it ended (`peak_reserved_mb`, `peak_vram_mb`,
+    `peak_ram_mb`), so a failed attempt can be reported and learned from."""
 
-    def __init__(self, kind: str, message: str, detail: str = ""):
+    def __init__(self, kind: str, message: str, detail: str = "", peaks: dict[str, Any] | None = None):
         super().__init__(message)
         self.kind = kind
         self.detail = detail
+        self.peaks = dict(peaks or {})
+
+
+PEAKS = ("peak_reserved_mb", "peak_vram_mb", "peak_ram_mb")
+# How Windows reports a process ended for lack of memory, as Python gives the exit code (unsigned):
+# STATUS_NO_MEMORY, and STATUS_COMMITMENT_LIMIT (the page file is full).
+WINDOWS_NO_MEMORY = (0xC0000017, 0xC000012D)
+
+
+def died_message(code: int | None, platform: str = sys.platform) -> str:
+    """What a child that ended without a word is reported as. On Linux -9 is how the kernel's
+    out-of-memory killer ends a process (though anything may send it); on Windows the codes say so."""
+    text = f"The node's process exited with code {code} and said nothing."
+    if (platform == "linux" and code == -9) or (platform == "win32" and code in WINDOWS_NO_MEMORY):
+        text += " It may have run out of system memory."
+    return text
 
 
 class Stopped(RuntimeError):
@@ -125,12 +143,14 @@ class ProcessExecutor:
         base_env: dict[str, str] | None = None,
         poll: float = 0.2,
         log_dir: Path | None = None,
+        on_pid: Callable[[int], None] | None = None,
     ):
         self.python = Path(python)
         self.env = dict(env or {})
         self.base_env = base_env
         self.poll = poll
         self.log_dir = log_dir
+        self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
     def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
         tmp = Path(tempfile.mkdtemp(prefix="oneframe-job-"))
@@ -149,7 +169,7 @@ class ProcessExecutor:
                 stdin=subprocess.PIPE if job.get("exit_with_parent") else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=child_env(self.base_env, self.env),
+                env=child_env(self.base_env, {**self.env, **(job.get("env") or {})}),
                 cwd=tmp,
                 text=True,
                 encoding="utf-8",
@@ -178,7 +198,10 @@ class ProcessExecutor:
                         LOGGER.warning("node child wrote a non-event line: %s", line.rstrip()[:200])
                         continue
                     kind = event.get("event")
-                    if kind == "done":
+                    if kind == "pid":
+                        if self.on_pid is not None:  # the interpreter's own id (see child.main)
+                            self.on_pid(int(event["pid"]))
+                    elif kind == "done":
                         done = event
                     elif kind == "error":
                         failed = event
@@ -195,11 +218,8 @@ class ProcessExecutor:
                     str(failed.get("kind") or "error"),
                     str(failed.get("message")),
                     str(failed.get("trace") or ""),
+                    {k: failed.get(k) for k in PEAKS},
                 )
-            raise NodeError(
-                "died",
-                f"The node's process exited with code {proc.returncode} and said nothing.",
-                "\n".join(stderr_tail),
-            )
+            raise NodeError("died", died_message(proc.returncode), "\n".join(stderr_tail))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 from conftest import NO_GPU, Events, MakeNode, SourceServer, add_source, upstream_archive
+from fixtures import fit_node, machines
 
 from oneframe import BUILTIN_NODES_DIR, runtime_install
 from oneframe.server import Engine
@@ -325,3 +326,278 @@ def test_an_engine_that_shuts_down_stops_its_install(
     assert not closing.is_alive()
     assert events.of("runtime.stopped") and engine.runtimes.installing() is None
     assert not (tmp_path / "data" / "runtimes" / "tiny" / "cpu" / runtime_install.MARKER).exists()
+
+
+# -- spec 002 in the tiny runtime: the retry (AC3) and what a run sees (AC7) ---------------------
+
+# The tiny runtime's cu130 build on a compute 7.5 card. Its system memory is small enough that the
+# processor cannot fit the test node, so a retry stays on the card and takes the next change.
+CARD_7_5 = machines.with_system(machines.get("6 GB, compute 7.5"), 5000, 8590)
+
+FIT_SEEN = """
+import json, os, weakref
+
+class OutOfMemoryError(RuntimeError):
+    pass
+
+def run(ctx):
+{extra}
+    p = ctx.path("seen.json")
+    p.write_text(json.dumps({{
+        "params": ctx.params, "device": ctx.device, "attempt": ctx.attempt, "pid": os.getpid(),
+        "cuda_visible": os.environ.get("CUDA_VISIBLE_DEVICES"), "tiny": os.environ.get("ONEFRAME_TINY"),
+    }}))
+    ctx.output("text", p)
+"""
+
+
+def _tiny_node(
+    make_node: MakeNode,
+    node_id: str,
+    extra: str = "    pass",
+    *,
+    model: bool = True,
+    devices: tuple[str, ...] = ("cuda", "cpu"),
+) -> None:
+    manifest: dict[str, Any] = {
+        "id": node_id,
+        "version": "1",
+        "title": node_id,
+        "category": "test",
+        "outputs": {"text": "Text"},
+        "params": fit_node.PARAMS,
+        "devices": list(devices),
+        "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
+    }
+    if model:
+        manifest["memory"] = fit_node.model()
+    make_node(manifest, FIT_SEEN.format(extra=extra))
+
+
+def _run_graph(engine: Engine, events: Events, node: str, **params: Any) -> list[dict[str, Any]]:
+    """Run one node through the engine's own method; the events of that run."""
+    engine.handle({"id": 0, "method": "nodes.reload"})  # the test wrote its node after the engine started
+    graph = {"version": 1, "nodes": {"n": {"node": node, "params": params}}, "edges": []}
+    reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
+    assert reply is not None and "result" in reply, reply
+    run = reply["result"]["run"]
+    end = time.monotonic() + WAIT_S
+    while time.monotonic() < end:
+        ended = [
+            e
+            for e in events
+            if e.get("run") == run and e["event"] in ("run.done", "run.failed", "run.stopped")
+        ]
+        if ended and engine._run is None:
+            return [e for e in events if e.get("run") == run]
+        time.sleep(0.05)
+    raise TimeoutError(f"run {run} did not end")
+
+
+@pytest.fixture
+def tiny_engine(
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, node_root: Path
+) -> tuple[Engine, Events]:
+    events = Events()
+    engine = Engine(
+        tmp_path / "data", [node_root], events.append, [tiny.parent], uv_exe, uv_home, lambda: CARD_7_5
+    )
+    installed = engine.runtimes.install("tiny")
+    assert installed is not None and installed["build"] == "cu130", installed
+    return engine, events
+
+
+def _kinds(run: list[dict[str, Any]]) -> list[str]:
+    return [e["event"] for e in run if e["event"].startswith("node.")]
+
+
+def test_ac3_out_of_memory_is_retried_once_in_a_new_process_with_the_next_change(
+    make_node: MakeNode, tiny_engine: tuple[Engine, Events]
+) -> None:
+    _tiny_node(
+        make_node,
+        "test.tiny_fit",
+        "    if ctx.attempt == 1:\n        raise OutOfMemoryError('CUDA out of memory')",
+    )
+    engine, events = tiny_engine
+    run = _run_graph(engine, events, "test.tiny_fit")
+    assert _kinds(run) == ["node.fit", "node.start", "node.oom", "node.fit", "node.start", "node.done"], run
+    first, second = [e for e in run if e["event"] == "node.fit"]
+    assert first["device"] == second["device"] == "cuda"
+    assert [c["change"] for c in first["changes"]] == [0, 1]
+    assert [c["change"] for c in second["changes"]] == [0, 1, 2]  # the next change: fp16
+    assert [e["attempt"] for e in run if e["event"] == "node.start"] == [1, 2]
+    # AC7: the tiny runtime has no torch, so a card fit with a cap runs uncapped, and says so.
+    ceilings = [e for e in run if e["event"] == "ceiling"]
+    assert [c["applied"] for c in ceilings] == [False, False] and ceilings[0]["budget_mb"] == 4389
+    done = next(e for e in run if e["event"] == "node.done")
+    assert done["made_with"]["precision"] == "fp16" and done["made_with"]["reduced"] is True
+    seen = json.loads(Path(done["outputs"]["text"]["path"]).read_text(encoding="utf-8"))
+    assert seen["attempt"] == 2 and seen["tiny"] == "on" and seen["device"] == "cuda"
+
+
+def test_ac3_a_second_oom_another_failure_or_stop_ends_the_node(
+    make_node: MakeNode, tiny_engine: tuple[Engine, Events]
+) -> None:
+    engine, events = tiny_engine
+    _tiny_node(make_node, "test.tiny_oom", "    raise OutOfMemoryError('CUDA out of memory')")
+    _tiny_node(make_node, "test.tiny_bad", "    raise ValueError('expected a square image')")
+    _tiny_node(make_node, "test.tiny_wait", "    import time\n    ctx.stage('wait')\n    time.sleep(120)")
+    engine.handle({"id": 0, "method": "nodes.reload"})
+
+    twice = _run_graph(engine, events, "test.tiny_oom")
+    failed = next(e for e in twice if e["event"] == "node.failed")
+    assert failed["kind"] == "oom" and failed["message"].startswith("Ran out of memory twice")
+    assert len(failed["fits"]) == 2 and [p["attempt"] for p in failed["peaks"]] == [1, 2]
+    assert not list((engine.data / "cache" / "objects").glob("*/*/outputs.json"))  # nothing cached
+
+    other = _run_graph(engine, events, "test.tiny_bad")
+    assert _kinds(other) == ["node.fit", "node.start", "node.failed"]
+
+    graph = {"version": 1, "nodes": {"n": {"node": "test.tiny_wait"}}, "edges": []}
+    reply = engine.handle({"id": 2, "method": "graph.run", "params": {"graph": graph}})
+    assert reply is not None
+    run_id = reply["result"]["run"]
+    end = time.monotonic() + WAIT_S
+    while (
+        not [e for e in events if e.get("run") == run_id and e["event"] == "stage"] and time.monotonic() < end
+    ):
+        time.sleep(0.05)
+    engine.handle({"id": 3, "method": "run.stop", "params": {}})
+    while engine._run is not None and time.monotonic() < end:
+        time.sleep(0.05)
+    stopped = [e for e in events if e.get("run") == run_id]
+    assert stopped[-1]["event"] == "run.stopped" and _kinds(stopped) == ["node.fit", "node.start"]
+
+
+def test_ac3_fallbacks_move_to_the_next_way_in_the_same_process_after_releasing_the_first(
+    make_node: MakeNode, tiny_engine: tuple[Engine, Events]
+) -> None:
+    extra = (
+        "    held = []\n"
+        "    class Tensor:\n"
+        "        pass\n"
+        "    def whole():\n"
+        "        big = Tensor()\n"
+        "        held.append(weakref.ref(big))\n"
+        "        raise OutOfMemoryError('CUDA out of memory')\n"
+        "    released = ctx.fallbacks('decode', [('whole', whole), ('tiled', lambda: held[0]() is None)])\n"
+        "    if not released:\n"
+        "        raise RuntimeError('the failed way was still held')"
+    )
+    _tiny_node(make_node, "test.tiny_ways", extra)
+    engine, events = tiny_engine
+    run = _run_graph(engine, events, "test.tiny_ways")
+    assert _kinds(run) == ["node.fit", "node.start", "node.step_oom", "node.done"], run
+    moved = next(e for e in run if e["event"] == "node.step_oom")
+    assert (moved["stage"], moved["way"], moved["next"]) == ("decode", "whole", "tiled")
+    assert next(e for e in run if e["event"] == "node.done")["made_with"]["ways"] == {"decode": "tiled"}
+
+
+def test_ac7_a_processor_run_in_a_gpu_build_sees_no_card(
+    make_node: MakeNode, tiny_engine: tuple[Engine, Events]
+) -> None:
+    _tiny_node(make_node, "test.tiny_cpu", model=False, devices=("cpu",))
+    engine, events = tiny_engine
+    run = _run_graph(engine, events, "test.tiny_cpu")
+    done = next(e for e in run if e["event"] == "node.done")
+    seen = json.loads(Path(done["outputs"]["text"]["path"]).read_text(encoding="utf-8"))
+    assert seen["device"] == "cpu" and seen["cuda_visible"] == "-1"
+    assert not [e for e in run if e["event"] == "ceiling"]
+
+
+def test_ac7_nodes_fit_and_forget_answer_without_the_network(
+    make_node: MakeNode, tiny_engine: tuple[Engine, Events], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _tiny_node(make_node, "test.tiny_fit")
+    engine, events = tiny_engine
+    engine.handle({"id": 0, "method": "nodes.reload"})
+    _run_graph(engine, events, "test.tiny_fit")  # something learned, to forget
+
+    connects: list[Any] = []
+
+    def refuse(*args: Any, **_kw: Any) -> Any:
+        connects.append(args)
+        raise OSError("the network is closed for this test")
+
+    for name in ("connect", "connect_ex"):
+        monkeypatch.setattr(socket.socket, name, refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+
+    fitted = engine.handle({"id": 1, "method": "nodes.fit", "params": {"node": "test.tiny_fit"}})
+    assert fitted is not None and "result" in fitted, fitted
+    assert fitted["result"]["device"] == "cuda" and [c["change"] for c in fitted["result"]["changes"]] == [
+        0,
+        1,
+    ]
+    explicit = engine.handle(
+        {"id": 2, "method": "nodes.fit", "params": {"node": "test.tiny_fit", "params": {"chunk_size": 8192}}}
+    )
+    assert explicit is not None and explicit["result"]["outcome"] == "fits"
+    assert {"change": 0, "why": "the graph sets chunk_size"} in explicit["result"]["skipped"]
+    wrong = engine.handle(
+        {"id": 3, "method": "nodes.fit", "params": {"node": "test.tiny_fit", "params": {"steps": 3}}}
+    )
+    assert wrong is not None and "has no parameter steps" in wrong["error"]["message"]
+    forgot = engine.handle({"id": 4, "method": "nodes.forget", "params": {"node": "test.tiny_fit"}})
+    assert forgot is not None and forgot["result"]["dropped"] >= 1
+    assert connects == []
+
+
+def test_ac7_nodes_fit_and_forget_load_no_model_library(
+    tmp_path: Path, node_root: Path, make_node: MakeNode
+) -> None:
+    make_node(
+        {
+            "id": "test.fit_engine",
+            "version": "1",
+            "title": "Fit",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "params": fit_node.PARAMS,
+            "devices": ["cuda", "cpu"],
+            "memory": fit_node.model(),
+        }
+    )
+    probe = (
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "from oneframe.server import Engine\n"
+        f"engine = Engine(Path({str(tmp_path / 'data')!r}), [Path({str(node_root)!r})], lambda e: None)\n"
+        "a = engine.handle({'id': 1, 'method': 'nodes.fit', 'params': {'node': 'test.fit_engine'}})\n"
+        "b = engine.handle({'id': 2, 'method': 'nodes.forget', 'params': {'node': 'test.fit_engine'}})\n"
+        "heavy = [m for m in ('numpy', 'PIL', 'torch', 'cv2', 'transformers') if m in sys.modules]\n"
+        "print(json.dumps({'fit': 'result' in a, 'forget': 'result' in b, 'heavy': heavy}))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True, timeout=120
+    )
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == {"fit": True, "forget": True, "heavy": []}
+
+
+def test_nodes_fit_refuses_what_a_graph_would_refuse(
+    tmp_path: Path, make_node: MakeNode, node_root: Path
+) -> None:
+    make_node(
+        {
+            "id": "test.needs_value",
+            "version": "1",
+            "title": "Needs a value",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "params": {**fit_node.PARAMS, "prompt": {"type": "string"}},
+            "devices": ["cuda", "cpu"],
+            "memory": fit_node.model(),
+        }
+    )
+    engine = Engine(tmp_path / "data", [node_root], Events().append)
+    missing = engine.handle({"id": 1, "method": "nodes.fit", "params": {"node": "test.needs_value"}})
+    assert missing is not None and "parameter prompt needs a value" in missing["error"]["message"]
+    given = engine.handle(
+        {
+            "id": 2,
+            "method": "nodes.fit",
+            "params": {"node": "test.needs_value", "params": {"prompt": "a chair"}},
+        }
+    )
+    assert given is not None and "result" in given, given

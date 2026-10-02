@@ -139,7 +139,11 @@ Nothing is installed until a person asks. The engine picks the build this machin
   date. Nodes refuse to run in it, and installing again rebuilds it; nothing rebuilds on its own.
 - **Several cards:** the build is planned for the NVIDIA card with the most memory, and a node's
   child sees only that card (`CUDA_DEVICE_ORDER=PCI_BUS_ID`, `CUDA_VISIBLE_DEVICES`), so its
-  `cuda` is the card the build was chosen for.
+  `cuda` is the card the build was chosen for. The fit uses that card too (`device_target`), even when
+  another has more free; choosing among cards per node is a known limit. A node that runs on the
+  processor in a GPU build gets `CUDA_VISIBLE_DEVICES=-1`, so it sees no card.
+- **Learning:** what a machine learns about a node's memory is kept under the runtime's build and
+  lock hash, so a changed lock starts it over.
 - **Removing** a runtime deletes `<data>/runtimes/<id>/` and nothing else.
 - **Sizes:** uv links files from its cache into environments on the same volume instead of copying
   them, which is why the cache lives under the data root too. A runtime's size is the size of its

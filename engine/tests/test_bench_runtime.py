@@ -35,7 +35,7 @@ def test_the_bench_installs_a_runtime_runs_its_probe_and_writes_a_report(
     assert "| cu130 |" in report and "| cpu |" in report  # every build considered
     assert '"python": "3.11.' in report  # the probe ran in the runtime's own Python
     assert '"tinyext": "stand-in"' in report and '"env": "on"' in report
-    assert "nvidia-smi said:" in report
+    assert "nvidia-smi said:" in report and "- System memory: " in report
 
 
 def test_the_bench_works_with_relative_paths(
@@ -85,4 +85,5 @@ def test_a_number_the_machine_did_not_give_is_reported_unknown_not_zero() -> Non
     }
     report = bench_runtime.render(record)
     assert "unknown total" in report and "Free disk on the data root: unknown" in report
+    assert "System memory: unknown free of unknown" in report  # a record from before spec 002
     assert "0 MB" not in report

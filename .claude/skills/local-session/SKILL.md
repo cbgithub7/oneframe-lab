@@ -118,7 +118,7 @@ carries:
   },
   "tools": { "node": "...", "uv": "...", "python": "..." },
   "commands": ["exactly what ran"],
-  "results": { "seconds": 0, "peak_vram_mb": 0, "arrangement": "...", "notes": "..." },
+  "results": { "seconds": 0, "peak_vram_mb": 0, "fit": "...", "notes": "..." },
   "local_changes": "none, or what was changed and why"
 }
 ```

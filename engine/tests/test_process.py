@@ -3,12 +3,16 @@ network stays closed, failures keep their kind, and Stop kills the child."""
 
 from __future__ import annotations
 
+import sys
+import textwrap
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from conftest import Events, MakeNode
 
+from oneframe.executors import NodeError, ProcessExecutor, died_message
 from oneframe.graph import Graph
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
@@ -138,3 +142,83 @@ def test_engine_and_runtime_nodes_mix_in_one_graph(
     result = scheduler_for().run(g, events.append)
     assert result.status == "done", result.error
     assert result.outputs["r"]["depth"].facets == {"kind": "metric", "measure": "z"}
+
+
+# -- spec 002: what the executor carries ---------------------------------------------------------
+
+
+def _executor_job(tmp_path: Path, body: str, **extra: object) -> dict[str, object]:
+    code = tmp_path / "node" / "node.py"
+    code.parent.mkdir(parents=True, exist_ok=True)
+    code.write_text(
+        "import os, json\n\n\ndef run(ctx):\n" + textwrap.indent(textwrap.dedent(body), "    "),
+        encoding="utf-8",
+    )
+    return {
+        "node": "test.exec",
+        "entry": {"file": str(code), "function": "run"},
+        "out_dir": str(tmp_path / "out"),
+        "device": "cpu",
+        **extra,
+    }
+
+
+def test_a_failure_carries_the_peaks_of_the_run(tmp_path: Path) -> None:
+    body = """
+    class OutOfMemoryError(RuntimeError):
+        pass
+    raise OutOfMemoryError("CUDA out of memory")
+    """
+    with pytest.raises(NodeError) as info:
+        ProcessExecutor(Path(sys.executable)).execute(
+            _executor_job(tmp_path, body), lambda _e: None, lambda: False
+        )
+    assert info.value.kind == "oom"
+    assert set(info.value.peaks) == {"peak_reserved_mb", "peak_vram_mb", "peak_ram_mb"}
+
+
+def test_a_job_brings_its_own_environment(tmp_path: Path) -> None:
+    body = "ctx.stage('env', os.environ.get('CUDA_VISIBLE_DEVICES', 'unset'))\n"
+    seen: list[dict[str, object]] = []
+    executor = ProcessExecutor(Path(sys.executable), env={"CUDA_VISIBLE_DEVICES": "0", "KEEP": "1"})
+    executor.execute(
+        _executor_job(tmp_path, body, env={"CUDA_VISIBLE_DEVICES": "-1"}), seen.append, lambda: False
+    )
+    executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    assert [e["message"] for e in seen] == ["-1", "0"]  # a processor job sees no card; the next is unchanged
+
+
+def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:
+    pids: list[int] = []
+    seen: list[dict[str, object]] = []
+    body = "ctx.stage('pid', str(os.getpid()))\n"
+    ProcessExecutor(Path(sys.executable), on_pid=pids.append).execute(
+        _executor_job(tmp_path, body), seen.append, lambda: False
+    )
+    assert len(pids) == 1 and str(pids[0]) == seen[0]["message"]
+
+
+@pytest.mark.parametrize(
+    ("code", "platform", "memory"),
+    [
+        (-9, "linux", True),
+        (0xC0000017, "win32", True),
+        (0xC000012D, "win32", True),
+        (3, "linux", False),
+        (-9, "win32", False),
+        (0xC0000005, "win32", False),
+    ],
+)
+def test_a_death_that_may_be_lack_of_memory_says_so(code: int, platform: str, memory: bool) -> None:
+    text = died_message(code, platform)
+    assert f"code {code}" in text and ("may have run out of system memory" in text) == memory
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="SIGKILL, as the kernel's out-of-memory killer sends it")
+def test_a_child_killed_as_the_oom_killer_does_is_reported_as_maybe_out_of_memory(tmp_path: Path) -> None:
+    body = "import signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
+    with pytest.raises(NodeError) as info:
+        ProcessExecutor(Path(sys.executable)).execute(
+            _executor_job(tmp_path, body), lambda _e: None, lambda: False
+        )
+    assert info.value.kind == "died" and "may have run out of system memory" in str(info.value)

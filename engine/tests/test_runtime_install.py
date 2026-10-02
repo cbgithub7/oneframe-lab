@@ -431,3 +431,26 @@ def test_with_several_cards_a_node_runs_on_the_card_the_plan_was_made_for(tmp_pa
     assert one.env_for("tiny") == {"ONEFRAME_TINY": "on"}
     none = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU)
     assert none.env_for("tiny") == {"ONEFRAME_TINY": "on"}
+
+
+def test_the_device_target_is_the_planned_card_and_the_lock(tmp_path: Path, tiny: Path) -> None:
+    two = {
+        **AMPERE,
+        "gpus": [
+            {"index": 0, "vendor": "nvidia", "name": "a", "capability": "8.6", "vram_total_mb": 8000},
+            {"index": 1, "vendor": "nvidia", "name": "b", "capability": "8.9", "vram_total_mb": 24000},
+        ],
+    }
+    several = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: two).device_target("tiny")
+    one = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE).device_target("tiny")
+    none = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU).device_target("tiny")
+    assert (several.card, one.card, none.card) == (1, 0, None)  # the processor build has no card
+    lock = runtimes.load(tiny / "runtime.json").hashes()["lock_sha256"][:16]
+    assert one.lock == f"cu130:{lock}" and none.lock == f"cpu:{lock}"
+    (tiny / "uv.lock").write_text(
+        (tiny / "uv.lock").read_text(encoding="utf-8") + "\n# changed\n", encoding="utf-8"
+    )
+    changed = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE).device_target(
+        "tiny"
+    )
+    assert changed.lock != one.lock  # a new lock starts what this machine learns over

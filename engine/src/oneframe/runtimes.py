@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
+from oneframe.memory import Target
 
 DEFINITION = "runtime.json"
 PYPROJECT = "pyproject.toml"
@@ -509,7 +510,7 @@ def at_most(value: str, ceiling: str) -> bool:
 
 def _card(profile: dict[str, Any]) -> dict[str, Any] | None:
     """The card a plan is made for: the NVIDIA card with the most memory, the lowest index on a
-    tie. Choosing a card per node is the attempt ladder's job, not the runtime's."""
+    tie. A node runs on this card; choosing among several per node is a known limit (spec 002)."""
     cards = [g for g in profile.get("gpus") or [] if g.get("vendor") == "nvidia"]
     if not cards:
         return None
@@ -833,6 +834,19 @@ class Runtimes:
             env.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
             env.setdefault("CUDA_VISIBLE_DEVICES", str(card.get("index", 0)))
         return env
+
+    def device_target(self, runtime_id: str) -> Target:
+        """What a node in this runtime can use, for the fit: the card the plan's build was made
+        for (none for a processor build, or a machine without one), and the lock it was built from,
+        which what a machine learns is kept under."""
+        runtime = self.get(runtime_id)
+        the_plan = self.plan_for(runtime)
+        build = runtime.build(str(the_plan.build)) if the_plan.build else None
+        card = _card(self.profile())
+        lock = f"{the_plan.build}:{runtime.hashes()['lock_sha256'][:16]}"
+        if build is None or build.vendor != "nvidia" or card is None:
+            return Target(card=None, lock=lock)
+        return Target(card=int(card.get("index", 0)), lock=lock)
 
     # changing
 

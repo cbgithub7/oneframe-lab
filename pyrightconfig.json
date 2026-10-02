@@ -5,6 +5,9 @@
   "venv": ".venv",
   "include": ["engine/src", "engine/tests", "nodes"],
   "executionEnvironments": [
+    { "root": "engine/src/oneframe/child.py", "pythonVersion": "3.11" },
+    { "root": "engine/tests/runtimes", "pythonVersion": "3.11" },
+    { "root": "engine/tests/hardware", "pythonVersion": "3.11", "extraPaths": ["engine/src"] },
     { "root": "engine/tests", "extraPaths": ["engine/tests", "engine/src"] },
     { "root": "engine/src" },
     { "root": "nodes" }

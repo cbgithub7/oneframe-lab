@@ -26,11 +26,12 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   match it.
 - **Honesty.** Nothing is called tested or working without numbers from a real run. The cloud
   container has no GPU and cannot reach Hugging Face; real model runs happen on the owner's PC.
-  The owner's test machine is a GTX 1070 (8 GB, compute 6.1). It is one test machine, not the
-  design target: the app should try what might run on any hardware and fail with a clear reason
-  when it cannot.
+  The owner's test machine is a GTX 1070 (8 GB, compute 6.1). It is the only card we can test
+  on, never the design target: the app runs on any machine that can run a model, from no GPU to
+  the largest cards, and fails with a clear reason when it cannot. Nothing is tuned to the 1070
+  (the "Any card that can run it" rule in [AGENTS.md](../AGENTS.md)).
 
-## State (2026-09-29)
+## State (2026-10-02)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
@@ -40,7 +41,7 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - the content-addressed cache and the scheduler, with trust carried through;
     - engine and runtime-child executors, and the child protocol;
     - the NDJSON stdio server.
-- **Runtime manager** (spec 001, on `claude/sweet-davinci-ko7mlh` until its PR merges):
+- **Runtime manager** (spec 001, merged in PR #3):
     - runtime definitions in `runtimes/`, found by looking ([runtimes.md](runtimes.md));
     - the machine profile from nvidia-smi, and the plan that picks a build by capability and
       driver, never by a card's name;
@@ -53,6 +54,22 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     runtime is `runtimes/torch/` (torch 2.14.0; cpu, cu126, cu130); its cpu build installed and
     ran its probe in a cloud session, and its cu126 build passed AC9 on the owner's GTX 1070.
     Locking a runtime needs `download.pytorch.org` and `download-r2.pytorch.org` reachable.
+- **Fit to memory** (spec 002, done, in PR #5 until it merges):
+    - a node's memory model in its manifest, checked with every problem named, and the
+      `precision` param the engine adds from it;
+    - the fit before each load: free memory less a margin, upgrades, speed-only changes before
+      quality, never a setting the graph sets, the slow-device warning with the faster
+      alternative, tried anyway, kind `memory` when nothing fits;
+    - the cap in the child, `ctx.memory_free_mb()`, `ctx.fallbacks`, and one retry after `oom`
+      with a strictly smaller fit;
+    - what each machine learns (`<data>/memory/learned.json`), `made_with` on every output, a
+      cache that never serves less than this machine can make, and `<data>/settings.json`;
+    - `nodes.fit`, `nodes.forget`, and `npm run bench:fit`.
+
+    Checked by tests on the processor and in the tiny runtime. On the owner's GTX 1070 (AC8,
+    [2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)): estimates within
+    0.1% of the peak at three settings, the fit under another program's load, and the cap refusing
+    an overrun while the card had room, answered by `ctx.fallbacks` and by the engine's retry.
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
     - a sandboxed page that reaches the engine through one IPC door with a method allowlist;
@@ -87,7 +104,8 @@ hold the detail.
 
 | Spec | Status |
 | --- | --- |
-| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | spec and plan approved 2026-09-29; tasks 1 to 11 done, in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3); AC9 passed: the owner's GTX 1070 report is committed ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)) |
+| [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; done: AC1–AC7 by tests; AC8's spill clause amended 2026-10-02 (judged by torch's own out-of-memory message, not Windows' shared memory counter) and passed on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
@@ -97,29 +115,36 @@ hold the detail.
     - The environment is rebuilt only when its lock file changes.
 
     The scheduler's `runtime_python` hook is where it plugs in.
-2. **Attempt ladder.**
-    - Manifests gain `arrangements`: device, precision and settings, each with a published VRAM
-      figure and its source, best quality first.
-    - The scheduler walks them on `oom` under an allocator ceiling.
-    - Observations per machine re-order them.
+2. **Fit to memory** (implemented; AC8 pending hardware). How the best local AI apps do it,
+   without asking anyone to run a test ([research](../specs/002-fit-to-memory/research.md)):
+    - each node declares a memory model: its weights per precision, and its working memory as a
+      function of its settings;
+    - before loading, the engine measures free memory, keeps a margin, and changes only settings
+      the person left alone: speed-only settings first, quality last, and labels the result;
+    - one narrow retry on `oom`; measured peaks correct the estimate on each machine.
 3. **Model store.** Download for a node's weights and companion files, into
    `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Pin every
    repository revision.
-4. **First model nodes,** enough for both loops:
+4. **Keep models loaded** (decided 2026-09-30). A long-lived worker per runtime, in place of one
+   child process per run: a model loads once and runs many times. The worker stays while idle for
+   a set time, is evicted when another runtime needs the device, and is killed on Stop. It
+   changes the executors, Stop and the node API (loading separate from running).
+5. **First model nodes,** enough for both loops:
     - depth: Depth Pro and MoGe-2;
     - segmentation: SAM 2.1;
-    - one object generator: TripoSR or Hunyuan3D-2mini, the two that have really run on the 1070;
+    - one object generator: TripoSR or Hunyuan3D-2mini, first because they can be verified on the
+      test card (the catalogue is not limited to what fits it);
     - one view synthesiser and one reconstructor: pick from the proposal's catalogue by what runs
       locally;
     - render: an asset to a ViewSet along a CameraPath;
     - evaluate: agreement with the source photo from the input camera.
 
     Each gets a CPU or tiny path for CI, and says plainly what is unverified.
-5. **Workspace UI.**
+6. **Workspace UI.**
     - Variants side by side per photo, then a graph editor (Drawflow or a hand-written SVG editor).
     - A three.js plus Spark 2 viewer for meshes, splats and the 2.5D photo, with clay, wireframe
       and trust shading.
-6. **Packaging** (phase 2 of the roadmap):
+7. **Packaging** (phase 2 of the roadmap):
     - an NSIS per-user installer with a bundled, pinned uv;
     - a first-run wizard with preflight checks;
     - a two-tier uninstaller;

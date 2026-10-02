@@ -1,0 +1,119 @@
+{
+  "spec": "002-fit-to-memory",
+  "criterion": "AC8",
+  "outcome": "failed",
+  "date": "2026-10-01",
+  "commit": "4f1bc154ce0b1f19e32e09a4f0571adf64d2db8e",
+  "previous_run": "2026-10-01-ac8.json (commit f721c48)",
+  "machine": {
+    "os": "Microsoft Windows [Version 10.0.19045.6466]",
+    "gpu": "NVIDIA GeForce GTX 1070",
+    "compute_capability": "6.1",
+    "vram_mb": 8192,
+    "driver": "582.66",
+    "free_disk_gb": 401.8,
+    "other_gpu_processes": [
+      "explorer.exe",
+      "SearchApp.exe",
+      "ShellExperienceHost.exe",
+      "TextInputHost.exe",
+      "lghub_system_tray.exe",
+      "Cursor.exe",
+      "brave.exe (2)",
+      "Code.exe",
+      "claude.exe (2)",
+      "Discord.exe",
+      "2 processes not readable without elevation"
+    ]
+  },
+  "tools": {
+    "node": "v24.21.0",
+    "uv": "0.12.20",
+    "python": "3.14.5 (engine), 3.14.7 (torch runtime)",
+    "torch": "2.14.0+cu126 (CUDA 12.6), runtime build cu126, already installed and current"
+  },
+  "commands": [
+    "npm run engine:check",
+    "npm run check",
+    "node scripts/test-guard.js",
+    "npm run engine:sync",
+    "npm run bench:fit -- --out specs/002-fit-to-memory/reports/"
+  ],
+  "checks": {
+    "npm run check": "passed",
+    "npm run engine:check": "passed (325 passed, 3 skipped, the same three as before)",
+    "test-guard": "passed (121 tests at origin/main, 262 now)"
+  },
+  "results": {
+    "seconds": 54,
+    "peak_vram_mb": 4274,
+    "fit": "Three settings on cuda at fp32 with no changes; with memory held, cuda with change 0 (chunk_size 512); the overrun on cuda, finished by ctx.fallbacks' second way, or without fallbacks by attempt 2 on cuda with change 0",
+    "notes": "Exit code 0. The bench wrote 2026-10-01-gtx-1070-fit.md, which would have replaced the first run's report of that name; it was saved as 2026-10-01-gtx-1070-fit-rerun.md and the first run's file restored. The card had 509 MiB in use before the run.",
+    "parts": [
+      {
+        "part": "the CUDA context's size",
+        "outcome": "passed",
+        "numbers": "91 MB (534 MB used before CUDA, 627 MB after a first kernel, 2 MB reserved by torch); 94 MB in the first run. The margin's floor of 1,611 MB covers it."
+      },
+      {
+        "part": "estimate within 10% or 64 MB of the measured peak, at three settings",
+        "outcome": "passed",
+        "numbers": "resolution 384: 1,859 MB estimated, 1,860 MB peak (1.001), 1.113 s; 1152: 3,039 vs 3,041 (1.001), 1.15 s; 1600: 4,272 vs 4,274 (1.000), 1.226 s. All estimates uncorrected."
+      },
+      {
+        "part": "with another program holding memory, the fit makes the changes the budget calls for, and the run finishes",
+        "outcome": "passed",
+        "numbers": "Held 3,664 MB, leaving a budget of 2,558 MB, between the 2,377 MB the node needs after change 0 and the 2,761 MB at its defaults. The fit made change 0 on the card (chunk_size 512, speed only); the run finished in 1.119 s with a peak of 2,378 MB against 2,377 estimated."
+      },
+      {
+        "part": "an allocation past the cap makes the cap raise oom",
+        "outcome": "passed",
+        "numbers": "The cap was 2,825 MB, the budget (torch: '2.63 GiB allowed'). Attempt 1 held the 1,000 MB of weights and asked for 2.13 GiB of working memory, 30% over the model; torch raised OutOfMemoryError."
+      },
+      {
+        "part": "the overrun answered by ctx.fallbacks in the same process",
+        "outcome": "passed",
+        "numbers": "node.step_oom (way 'whole', next 'as modelled', 1,000 MB reserved at the failure), then the second way finished in the same process: 1.208 s, peak 2,762 MB, made_with ways work = 'as modelled', not reduced."
+      },
+      {
+        "part": "with the fallbacks off, the overrun answered by the engine's retry",
+        "outcome": "passed",
+        "numbers": "node.oom on attempt 1, then attempt 2 in a new process, re-fitted from change 0 (chunk_size 512, budget 2,820 MB): 1.112 s as node.done reports it, peak 2,378 MB, not reduced."
+      },
+      {
+        "part": "the shared GPU memory Windows reports for the run does not grow",
+        "outcome": "failed by the plan's measure; a diagnostic shows no spill",
+        "numbers": "The bench reports shared usage rising 63 MB with ctx.fallbacks and 17 MB with the retry, so by the plan's rule ('does not rise') the clause is not met. A diagnostic with every sample shows those rises are the CUDA context's own shared allocation forming (finding 4): every CUDA process here settles at 65 to 67 MB, in or out of an overrun, and none of the overrun processes went above it, while the control spill rose to 132 MB."
+      },
+      {
+        "part": "the control: a deliberate spill makes shared GPU memory rise",
+        "outcome": "passed",
+        "numbers": "+67 MB in the bench (2.327 s). The diagnostic shows it rising from a 65 MB baseline to 132 MB during the spill, so the counter does see a spill."
+      }
+    ]
+  },
+  "diagnostic": {
+    "why": "To read the shared-usage samples the report leaves out, after the bench reported a rise during both overruns.",
+    "how": "A script outside the repo, using bench_fit's own make_scheduler, _sampled and the AC8 node's params, each held 3 s (the control's own 2 s). Not part of the plan's procedure.",
+    "samples_mb": {
+      "inside the cap (defaults, fit on)": "67 flat from the first sample at 2.78 s to 6.12 s; growth 0",
+      "overrun with ctx.fallbacks": "52 at 3.02 s, then 67 flat to 6.6 s; step_oom 1; growth 15",
+      "overrun with the engine's retry": "process 1 (attempt 1, oom): 65, 67, 65; process 2: 4 at 3.03 s, then 67 flat to 6.63 s; growth 63",
+      "control spill (spill_mb 256)": "65 at 2.53 and 2.78 s, then 132 from 3.05 s to the end; growth 67"
+    }
+  },
+  "findings": [
+    {
+      "id": 4,
+      "title": "The bench's shared-growth measure counts the CUDA context's own shared allocation",
+      "where": "engine/src/oneframe/bench_fit.py SharedMemorySampler.growth_mb",
+      "what": "Growth is the largest sample less the first. The first sample can land before the process's CUDA context has made its own shared allocation (about 64 MiB here: a sample of 4 MB, then 67 MB), so an overrun that never spills reads as a rise of up to 64 MiB, the same size as the control's spill here. Judging an overrun by whether it rises above the plateau of a run inside the cap, sampled in the same step, would separate the two, and the report could keep the samples. Changing how 'does not rise' is judged reinterprets the plan's rule, so it is for the owner to decide."
+    }
+  ],
+  "observations": [
+    "Findings 1 to 3 from the first run are fixed in 4f1bc15, each with a regression test; every step now runs as designed.",
+    "Only about 64 MiB of the control's 256 MB spill reaches shared memory: the child sees 7,565 MB free and allocates 7,822 MB, so most of the spill fits in memory the driver reported as not free.",
+    "Nobody watched the screen during this session's three deliberate spills (one in each bench run, one in the diagnostic). Whether the desktop stuttered or froze is unknown."
+  ],
+  "local_changes": "4f1bc15 (asked for by the owner in this session): the bench learns nothing between runs, sizes the holder with its own CUDA context to the middle of the window between the node's need after its first change and at its defaults, and its report says when a step did not happen as designed. Three tests added in engine/tests/test_bench_fit.py; none removed."
+}

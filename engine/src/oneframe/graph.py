@@ -25,11 +25,10 @@ and a converter node bridges them, the converter is inserted and the plan says s
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from oneframe import ports
-from oneframe.manifest import Manifest, Param
+from oneframe.manifest import Manifest, check_param
 from oneframe.registry import Registry
 
 RECIPE_VERSION = 1
@@ -108,6 +107,8 @@ class Step:
     params: dict[str, Any]
     inputs: dict[str, tuple[str, str]]  # input port -> (step id, output port)
     inserted: bool = False
+    # The params the graph sets. The fit never changes them (spec 002); the rest are defaults.
+    explicit: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -120,26 +121,21 @@ class Plan:
         return [s.id for s in self.steps]
 
 
-def _check_param(key: str, param: Param, value: Any) -> str | None:
-    kind = param.type
-    if kind == "bool" and not isinstance(value, bool):
-        return f"{key} should be true or false"
-    if kind in ("int", "float"):
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            return f"{key} should be a number"
-        if kind == "int" and not float(value).is_integer():
-            return f"{key} should be a whole number"
-        if param.minimum is not None and value < param.minimum:
-            return f"{key} is below its minimum {param.minimum}"
-        if param.maximum is not None and value > param.maximum:
-            return f"{key} is above its maximum {param.maximum}"
-    if kind == "choice" and value not in param.choices:
-        return f"{key} should be one of {', '.join(param.choices)}"
-    if kind in ("string", "file") and not isinstance(value, str):
-        return f"{key} should be text"
-    if kind == "file" and isinstance(value, str) and value and not Path(value).is_file():
-        return f"{key}: no file at {value}"
-    return None
+def step_params(manifest: Manifest, given: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """A step's params: what the graph gives, the defaults for the rest, and every problem."""
+    params: dict[str, Any] = {}
+    problems: list[str] = []
+    for name, param in manifest.params.items():
+        value = given.get(name, param.default)
+        if value is None:
+            problems.append(f"parameter {name} needs a value")
+            continue
+        why = check_param(name, param, value)
+        if why:
+            problems.append(why)
+        params[name] = value
+    problems += [f"{manifest.id} has no parameter {name}" for name in given if name not in manifest.params]
+    return params, problems
 
 
 def plan(graph: Graph, registry: Registry) -> Plan:
@@ -158,20 +154,12 @@ def plan(graph: Graph, registry: Registry) -> Plan:
         if manifest is None:
             problem(key, f"no node called {gnode.node!r} is installed")
             continue
-        params: dict[str, Any] = {}
-        for name, param in manifest.params.items():
-            value = gnode.params.get(name, param.default)
-            if value is None:
-                problem(key, f"parameter {name} needs a value")
-                continue
-            why = _check_param(name, param, value)
-            if why:
-                problem(key, why)
-            params[name] = value
-        for name in gnode.params:
-            if name not in manifest.params:
-                problem(key, f"{manifest.id} has no parameter {name}")
-        steps[key] = Step(id=key, manifest=manifest, params=params, inputs={})
+        params, wrong = step_params(manifest, gnode.params)
+        for why in wrong:
+            problem(key, why)
+        steps[key] = Step(
+            id=key, manifest=manifest, params=params, inputs={}, explicit=frozenset(gnode.params)
+        )
 
     converters = registry.converters()
     for edge in graph.edges:
