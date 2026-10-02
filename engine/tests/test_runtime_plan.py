@@ -126,6 +126,17 @@ def test_every_problem_in_a_definition_is_listed_at_once(
     assert problems == expected
 
 
+def test_a_runtime_cannot_set_what_the_engine_sets_or_removes_for_a_run(
+    make_runtime: MakeRuntime, runtime_root: Path
+) -> None:
+    make_runtime(_definition(env={"HF_HUB_OFFLINE": "0", "HF_TOKEN": "x", "OMP_NUM_THREADS": "4"}))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems == [
+        "env sets HF_HUB_OFFLINE, HF_TOKEN, which the engine sets or removes for every run "
+        "(hub libraries offline, no hub token or endpoint, torch's weights_only loading on)"
+    ]
+
+
 def test_a_runtime_id_must_match_its_folder(make_runtime: MakeRuntime, runtime_root: Path) -> None:
     folder = make_runtime(_definition())
     data = json.loads((folder / "runtime.json").read_text(encoding="utf-8"))

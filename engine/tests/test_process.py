@@ -3,6 +3,8 @@ network stays closed, failures keep their kind, and Stop kills the child."""
 
 from __future__ import annotations
 
+import json
+import os
 import sys
 import textwrap
 import time
@@ -186,6 +188,46 @@ def test_a_job_brings_its_own_environment(tmp_path: Path) -> None:
     )
     executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
     assert [e["message"] for e in seen] == ["-1", "0"]  # a processor job sees no card; the next is unchanged
+
+
+def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) -> None:
+    """Hub libraries read only what is on disk, no token or endpoint reaches a run, and torch loads
+    with weights_only: whatever the person's environment or the runtime's definition says."""
+    names = (
+        "HF_HUB_OFFLINE",
+        "TRANSFORMERS_OFFLINE",
+        "TORCH_FORCE_WEIGHTS_ONLY_LOAD",
+        "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
+        "HF_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+        "HF_ENDPOINT",
+        "KEEP",
+    )
+    body = f"ctx.stage('env', json.dumps({{n: os.environ.get(n) for n in {names!r}}}))\n"
+    person = {
+        **os.environ,
+        "HF_HUB_OFFLINE": "0",
+        "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": "1",
+        "HF_TOKEN": "hf_secret",
+        "HUGGING_FACE_HUB_TOKEN": "hf_secret",
+        "HF_ENDPOINT": "http://127.0.0.1:9",
+        "KEEP": "1",
+    }
+    seen: list[dict[str, object]] = []
+    executor = ProcessExecutor(
+        Path(sys.executable), env={"TRANSFORMERS_OFFLINE": "0", "HF_TOKEN": "hf_runtime"}, base_env=person
+    )
+    executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    assert json.loads(str(seen[0]["message"])) == {
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "TORCH_FORCE_WEIGHTS_ONLY_LOAD": "1",
+        "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": None,
+        "HF_TOKEN": None,
+        "HUGGING_FACE_HUB_TOKEN": None,
+        "HF_ENDPOINT": None,
+        "KEEP": "1",
+    }
 
 
 def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:

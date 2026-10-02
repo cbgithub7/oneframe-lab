@@ -13,10 +13,12 @@ code is imported:
 - **The protocol gets its own descriptor.** Model code prints freely -- timers, tqdm, C extensions
   writing straight to fd 1. The NDJSON channel is a duplicate of stdout taken first; fd 1 itself
   is pointed at stderr, so nothing anybody prints can land in the middle of an event.
-- **The network is closed.** Hub libraries are also told they are offline, but only the ones that
-  read those flags listen. Connecting anywhere but this machine raises NetworkForbidden naming the
-  host, so a run fails with that name instead of fetching gigabytes nobody asked for. Downloads
-  happen when a person presses Download, never during a run.
+- **The network is closed to Python code.** The engine tells hub libraries they are offline and
+  passes no hub token (executors.FORCED_ENV), so they read only what is on disk. Connecting through
+  Python's sockets anywhere but this machine raises NetworkForbidden naming the host, so a run fails
+  with that name instead of fetching gigabytes nobody asked for. This stops accidents, not malicious
+  code: native code, DNS lookups and anything that undoes the patch go around it. Downloads happen
+  when a person presses Download, never during a run.
 - **tqdm reports progress.** Most model loops run through tqdm; patching its update() makes any
   loop, imported under any alias, a progress event.
 - **The allocator has a ceiling.** On Windows an overrun would spill into system memory and freeze

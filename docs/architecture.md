@@ -50,7 +50,9 @@ without an error.
 **A child process per heavy node.** Model families pin conflicting versions of torch, CUDA
 extensions and numpy. One environment per family, reached through a process boundary, means they
 never meet. The same boundary is what makes Stop immediate (the child is killed), and what lets the
-engine close the network and cap the GPU allocator before any model code runs.
+engine close the network to Python code and cap the GPU allocator before any model code runs. The
+closed network guards against accidents (a library fetching weights nobody asked for), not against
+malicious code: native code and DNS lookups go around it.
 
 **Fit before load.** The machines this runs on range from no GPU to cards of 80 GB, and nobody
 should have to run a test to learn what fits. Each node declares a memory model; before it loads,

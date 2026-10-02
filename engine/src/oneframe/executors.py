@@ -86,9 +86,32 @@ def _trace() -> str:
     return traceback.format_exc()[-4000:]
 
 
+# Set in every runtime child, after everything else, so neither the person's environment nor a
+# runtime's definition can turn them off. Hub libraries told they are offline read only what is on
+# disk and fail at once on anything missing, instead of retrying for seconds against a closed
+# network. torch then loads every checkpoint with weights_only, whatever the caller asks for.
+FORCED_ENV = {
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "HF_DATASETS_OFFLINE": "1",
+    "HF_HUB_DISABLE_TELEMETRY": "1",
+    "TORCH_FORCE_WEIGHTS_ONLY_LOAD": "1",
+}
+# Never passed to a runtime child: a run reads only files already on disk, so it needs no hub
+# token or endpoint, and nothing may turn torch's weights_only loading back off.
+SECRET_OR_UNSAFE_ENV = (
+    "HF_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+    "HF_TOKEN_PATH",
+    "HF_ENDPOINT",
+    "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
+)
+
+
 def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, str]:
     """A runtime child's environment: nothing of the engine's own Python leaks in, so the runtime
-    never sees the engine's packages or loads a DLL from the engine's folders."""
+    never sees the engine's packages or loads a DLL from the engine's folders; no hub token or
+    endpoint reaches it; and FORCED_ENV is set last."""
     source = dict(os.environ if base is None else base)
     drop = (
         "PYTHONPATH",
@@ -97,6 +120,7 @@ def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, s
         "CONDA_PREFIX",
         "CONDA_DEFAULT_ENV",
         "UV_PROJECT_ENVIRONMENT",
+        *SECRET_OR_UNSAFE_ENV,
     )
     env = {k: v for k, v in source.items() if k not in drop}
     engine_prefix = os.path.normcase(str(Path(sys.prefix).resolve()))
@@ -106,7 +130,8 @@ def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, s
             for part in env["PATH"].split(os.pathsep)
             if part and not os.path.normcase(str(Path(part).resolve())).startswith(engine_prefix)
         )
-    env.update(extra)
+    env.update({k: v for k, v in extra.items() if k not in SECRET_OR_UNSAFE_ENV})
+    env.update(FORCED_ENV)
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env

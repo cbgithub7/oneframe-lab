@@ -41,8 +41,9 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   converter node. Disparity must never flow silently into a metric port.
 - **Light engine.** Importing `oneframe.server` loads no numpy, Pillow, torch or other model
   library (a test holds this). Heavy code lives in nodes; model code runs in the node's runtime.
-- **No network during a run.** Runtime children block sockets. Everything a node reads is fetched
-  by Download first.
+- **No network during a run.** Runtime children refuse Python-level connections, are told hub
+  libraries are offline, and get no hub token. This stops accidents, not malicious code. Everything
+  a node reads is fetched by Download first.
 - **One door into the page.** The renderer is sandboxed and isolated and reaches the engine only
   through `engine:request` with a method from `ENGINE_METHODS` in `app/main/main.js`. Progress is
   pushed as events; nothing polls.
