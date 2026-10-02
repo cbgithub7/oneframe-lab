@@ -27,6 +27,7 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params and input keys; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; checks every value at every port; carries trust; one retry after `oom` |
 | Memory | `oneframe/memory.py` | A node's memory model; the estimate; the margins and the person's settings; the fit (pure); what each machine learns |
+| Errors | `oneframe/errors.py` | Whose fault a failure is: a node that broke its manifest, or the engine |
 | Executors | `oneframe/executors.py`, `oneframe/child.py` | In-process or child-process runs; one `NodeContext` either way |
 | Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
 | Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, system memory (total and available), free disk |
@@ -87,8 +88,11 @@ node; not for a node without a memory model, tried anyway, or with the fit off),
 fits on any device; the message says what would help), `fetch` (something tried to download),
 `missing` (an import the runtime lacks), `runtime` (the runtime cannot run yet; `reason` says
 whether it is not installed, out of date, being installed, blocked on this machine, or unknown),
-`contract` (a node broke its manifest), `node` (the node explained), `error`, `died` (the process
-ended without a word; it says when the exit code means the system ran out of memory).
+`contract` (a node broke its manifest: an output it did not declare or put outside its run folder,
+or a value whose facets do not fit the port it reaches), `node` (the node explained), `error`,
+`died` (the process ended without a word; it says when the exit code means the system ran out of
+memory). A bug in the engine itself is never blamed on a node: the run ends with `run.failed` of
+kind `engine`, with its trace.
 
 `nodes.fit` answers the fit a node would get now, and `nodes.forget` clears what this machine
 learned about a node. Neither is on the page's method list yet.

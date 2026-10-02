@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.child import Value
+from oneframe.errors import ContractError
 from oneframe.manifest import Manifest
 
 KEY_VERSION = 1
@@ -100,7 +101,7 @@ class Cache:
             try:
                 relative = value.path.resolve().relative_to(work.resolve())
             except ValueError as exc:
-                raise ValueError(f"output {port} is outside the run folder: {value.path}") from exc
+                raise ContractError(f"output {port} is outside the run folder: {value.path}") from exc
             rows[port] = dict(value.to_json(), path=relative.as_posix())
         (work / "outputs.json").write_text(
             json.dumps({"key": key, "outputs": rows, "record": record}, indent=2, default=str),
