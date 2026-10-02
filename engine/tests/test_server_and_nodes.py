@@ -113,6 +113,9 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path) -> None:
         image = done["outputs"]["p"]["image"]
         assert image["facets"] == {"alpha": "none"} and image["trust"] == "measured"
         assert image["meta"]["focal_px_exif"] == round(26 / 36 * 8, 2)
+        # The photo's name travels with the result; its folders, and so the person's user name, do not.
+        assert image["meta"]["source"] == "p.jpg"
+        assert str(tmp_path) not in json.dumps(image["meta"])
     finally:
         client.close()
 
