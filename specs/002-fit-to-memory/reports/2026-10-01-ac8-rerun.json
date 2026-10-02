@@ -113,7 +113,7 @@
   "observations": [
     "Findings 1 to 3 from the first run are fixed in 4f1bc15, each with a regression test; every step now runs as designed.",
     "Only about 64 MiB of the control's 256 MB spill reaches shared memory: the child sees 7,565 MB free and allocates 7,822 MB, so most of the spill fits in memory the driver reported as not free.",
-    "The session could not watch the screen during the deliberate spills (one in the bench, one in the diagnostic)."
+    "Nobody watched the screen during this session's three deliberate spills (one in each bench run, one in the diagnostic). Whether the desktop stuttered or froze is unknown."
   ],
   "local_changes": "4f1bc15 (asked for by the owner in this session): the bench learns nothing between runs, sizes the holder with its own CUDA context to the middle of the window between the node's need after its first change and at its defaults, and its report says when a step did not happen as designed. Three tests added in engine/tests/test_bench_fit.py; none removed."
 }
