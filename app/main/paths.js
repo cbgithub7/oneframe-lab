@@ -50,9 +50,12 @@ export function engineCommand(uv, data) {
     ...process.env,
     ONEFRAME_ROOT: REPO_ROOT,
     // uv keeps its package cache and downloaded Pythons under the data root, so removing the data
-    // root removes them too, and hard links between cache and runtimes stay on one volume.
+    // root removes them too, and hard links between cache and runtimes stay on one volume. It writes
+    // nothing outside it: no python link in the person's bin folder, no Windows registry entry.
     UV_CACHE_DIR: path.join(data, "uv", "cache"),
     UV_PYTHON_INSTALL_DIR: path.join(data, "uv", "python"),
+    UV_PYTHON_INSTALL_BIN: "0",
+    UV_PYTHON_INSTALL_REGISTRY: "0",
   };
   return {
     command: uv,

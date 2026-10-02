@@ -58,6 +58,9 @@ test("the data root is one folder per platform, overridable", () => {
   assert.equal(dataRoot({ XDG_DATA_HOME: "/d" }, "linux"), path.join("/d", "oneframe-lab"));
   const cmd = engineCommand("uv", "/data");
   assert.equal(cmd.env.UV_CACHE_DIR, path.join("/data", "uv", "cache"));
+  // uv writes nothing outside the data root: no python link in a bin folder, no registry entry.
+  assert.equal(cmd.env.UV_PYTHON_INSTALL_BIN, "0");
+  assert.equal(cmd.env.UV_PYTHON_INSTALL_REGISTRY, "0");
   assert.ok(cmd.args.includes("--frozen"), "the engine runs exactly what engine/uv.lock says");
 });
 
