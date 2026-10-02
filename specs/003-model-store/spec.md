@@ -1,6 +1,7 @@
 # 003: Model store
 
-Status: draft (revised 2026-10-02 after the research in [research.md](research.md))
+Status: draft (revised 2026-10-02 after the research in [research.md](research.md); the owner
+answered its questions the same day, below; a second review is under way before approval)
 Owner approval: (date, once approved)
 
 ## Problem
@@ -387,7 +388,7 @@ It logs every request.
     - a second request is queued with its position, and one file transfers at a time;
     - planning a graph reports the bytes to download per node;
     - each failure reason of requirement 8 is produced by at least one test above;
-    - the methods the owner allows (open question 7) are in `ENGINE_METHODS`, and no other model
+    - the methods the owner allows (decision 7) are in `ENGINE_METHODS`, and no other model
       method is.
 - [ ] AC13 (local, needs the real hosts, no GPU): on the owner's Windows PC, with the network:
     - a test node is pinned with `npm run models:pin` and downloaded with
@@ -400,7 +401,7 @@ It logs every request.
       longest path;
     - the report is committed under `specs/003-model-store/reports/`.
 
-  This proves the test server matches the real hosts. Its speeds decide open question 3.
+  This proves the test server matches the real hosts. Its speeds decide decision 3.
 
 ## Out of scope
 
@@ -412,10 +413,10 @@ It logs every request.
       page (workspace UI spec). This spec gives them the data.
     - Moving the store with a button. The setting in requirement 2 is enough here; a move (copy,
       verify, switch) comes with the UI.
-    - Tokens for gated repositories (open question 5).
+    - Tokens for gated repositories (decision 5).
     - Passing Electron's system proxy (PAC, proxy authentication) to the engine (packaging spec).
 - **Left out of the downloader for now:**
-    - several connections per file (open question 3);
+    - several connections per file (decision 3);
     - a bandwidth limit;
     - resuming the queue after a restart.
 - **Not attempted:**
@@ -435,13 +436,13 @@ It logs every request.
   for the memory it takes, because of precision casts, tied weights and extra tensors kept in
   checkpoints. The memory model keeps its declared and measured figures.
 
-## Open questions
+## Decisions
 
-Answered by the owner before approval. Each has a recommendation; the evidence is in
-[research.md](research.md).
+Answered by the owner on 2026-10-02, who accepted each recommendation. Decision 2 stands
+subject to a second check. The evidence is in [research.md](research.md).
 
 1. **The store's shape.**
-   *Recommended:* one copy per sha256, with a view in the Hugging Face layout per runtime, made
+   *Decided:* one copy per sha256, with a view in the Hugging Face layout per runtime, made
    of hard links (requirement 2).
     - It shares files across nodes, repositories and commits, so a new pin moves only the files
       that changed.
@@ -458,27 +459,27 @@ Answered by the owner before approval. Each has a recommendation; the evidence i
       another node's library lookup, or feed it the wrong bytes.
     - **A folder per node** (the handoff's first idea). The simplest, but every shared file is
       stored twice.
-2. **Our own downloader, or `huggingface_hub` in the engine?** *Recommended:* our own, in the
+2. **Our own downloader, or `huggingface_hub` in the engine?** *Decided:* our own, in the
    engine, on urllib.
     - The research settled it: Hugging Face's own client can no longer resume after a Stop or a
       crash, never checks a sha256, and only warns about disk space.
     - Electron's downloader was also considered. It discards bytes on resume unless the server
       sends both an ETag and a Last-Modified, it reuses expired URLs, and the engine would still
       have to verify every file.
-3. **One connection per file, or several?** *Recommended:* one, with the retries above, keeping
+3. **One connection per file, or several?** *Decided:* one, with the retries above, keeping
    the partial's form open to several later.
     - Many of Hugging Face's CDN edges cap one connection at 8.7 MB/s (xet-core #821): about 19
       minutes for 10 GB instead of 2.5.
     - Several connections need sparse files on NTFS, state per part, and a second hashing pass.
     - AC13 measures the speed on the owner's line. If it shows the cap, a follow-up adds parallel
       ranges.
-4. **The store's location and import: now, or with the UI?** *Recommended:* now, both.
+4. **The store's location and import: now, or with the UI?** *Decided:* now, both.
     - Every app surveyed lets the models live on another drive, while `<data>` is on C:.
     - Import is cheap.
     - Import is the only path for an offline machine, a gated file, or a source that has gone.
     - A path for import reaches the engine from the command line, or later from a file dialog
       in the main process, never typed into the page.
-5. **Tokens for gated repositories: now or later?** *Recommended:* later, in the spec that adds
+5. **Tokens for gated repositories: now or later?** *Decided:* later, in the spec that adds
    the first gated node. Import covers gated files meanwhile.
     - Of the first models planned, SAM 2.1 and TripoSR are confirmed not gated. Spec 005 checks
       the rest when pinning them.
@@ -487,18 +488,18 @@ Answered by the owner before approval. Each has a recommendation; the evidence i
         - keep it with Electron's `safeStorage` in the main process;
         - send it only to the Hub's own host, never with a redirect;
         - never write it to a file or an environment variable.
-6. **Pickles and torch.** *Recommended:*
+6. **Pickles and torch.** *Decided:*
     - Flag pickles by content in `models.list`.
     - Force `weights_only` in every run (requirement 7).
     - **Raise the runtime manager's torch floor from 2.6 to 2.10 now, as a small fix of its own**
       (CVE-2026-24747, which lets a crafted file corrupt memory through `weights_only` before
       2.10). The torch runtime already pins 2.14.0, so only the floor, its test and the docs
       change.
-7. **The page's allowlist.** *Recommended:* add `models.list`, `models.download`, `models.stop`,
+7. **The page's allowlist.** *Decided:* add `models.list`, `models.download`, `models.stop`,
    `models.remove` and `models.verify` to `ENGINE_METHODS`, as spec 001 added `runtimes.*`.
    `models.import` stays off it until the UI spec gives it a file dialog in the main process. No
    secret passes through the page.
-8. **Certificates.** *Recommended:* take truststore (0.10.4, pure Python, no dependencies, used
+8. **Certificates.** *Decided:* take truststore (0.10.4, pure Python, no dependencies, used
    by pip by default) as an engine dependency. Import it lazily, so the light-engine test still
    holds.
     - As a follow-up, have runtime installs use the system's certificates too, so runtimes and

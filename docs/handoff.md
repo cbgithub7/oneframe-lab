@@ -106,7 +106,7 @@ hold the detail.
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
 | [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; done: AC1–AC7 by tests; AC8's spill clause amended 2026-10-02 (judged by torch's own out-of-memory message, not Windows' shared memory counter) and passed on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); merged in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
-| [003 Model store](../specs/003-model-store/spec.md) | spec drafted 2026-10-02 and revised the same day after the [research](../specs/003-model-store/research.md); waiting on the owner's answers to its eight open questions, then approval |
+| [003 Model store](../specs/003-model-store/spec.md) | spec drafted 2026-10-02 and revised the same day after the [research](../specs/003-model-store/research.md); the owner answered its eight questions 2026-10-02, accepting each recommendation (the downloader to be double-checked); a second review is under way, then approval |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
@@ -127,9 +127,9 @@ hold the detail.
    `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Pin every
    repository revision. The draft, revised after the
    [research](../specs/003-model-store/research.md), recommends one copy per sha256, with a view
-   in the Hugging Face layout per runtime, in place of a folder per node (its open question 1).
+   in the Hugging Face layout per runtime, in place of a folder per node (its decision 1, accepted 2026-10-02).
    The research also found the runtime manager's torch floor out of date: 2.10, not 2.6
-   (CVE-2026-24747); the draft's open question 6 proposes that fix on its own.
+   (CVE-2026-24747); the owner accepted fixing it on its own (decision 6).
 4. **Keep models loaded** (decided 2026-09-30). A long-lived worker per runtime, in place of one
    child process per run: a model loads once and runs many times. The worker stays while idle for
    a set time, is evicted when another runtime needs the device, and is killed on Stop. It
