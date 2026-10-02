@@ -45,7 +45,7 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   libraries are offline, and get no hub token. This stops accidents, not malicious code. Everything
   a node reads is fetched by Download first.
 - **One door into the page.** The renderer is sandboxed and isolated and reaches the engine only
-  through `engine:request` with a method from `ENGINE_METHODS` in `app/main/main.js`. Progress is
+  through `engine:request` with a method from `ENGINE_METHODS` in `app/main/methods.js`. Progress is
   pushed as events; nothing polls.
 - **Versions.** Latest stable everywhere, exact pins, and every exception written in
   `versions.json` with a reason and a review date ([docs/versions.md](docs/versions.md)). Check

@@ -140,8 +140,14 @@ export class EngineClient extends EventEmitter {
       this.emit("log", `engine wrote a line that is not JSON: ${line.slice(0, 200)}`);
       return;
     }
-    if (typeof message.id === "number" && this.pending.has(message.id)) {
-      const pending = /** @type {Pending} */ (this.pending.get(message.id));
+    // A reply carries the id of its request, and an event never does. A reply to a request that
+    // has already timed out is logged, never passed on to the page as an event.
+    if (typeof message.id === "number" && !("event" in message)) {
+      const pending = this.pending.get(message.id);
+      if (!pending) {
+        this.emit("log", `the engine answered request ${message.id} after it had timed out`);
+        return;
+      }
       this.pending.delete(message.id);
       clearTimeout(pending.timer);
       if (message.error) pending.reject(new EngineError(message.error.message, message.error));

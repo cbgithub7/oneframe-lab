@@ -19,4 +19,5 @@ for await (const line of createInterface({ input: process.stdin })) {
     write({ id: msg.id, result: "after noise" });
   } else if (msg.method === "die") process.exit(7);
   else if (msg.method === "silent") { /* never answers */ }
+  else if (msg.method === "late") setTimeout(() => write({ id: msg.id, result: "too late" }), 300);
 }
