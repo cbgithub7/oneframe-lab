@@ -1,6 +1,7 @@
 # 002: Fit to memory
 
-Status: implemented 2026-10-01; AC1–AC7 checked by tests, AC8 pending the owner's hardware run
+Status: done (every acceptance criterion verified 2026-10-02: AC1–AC7 by tests, AC8 by the owner's
+GTX 1070 report [2026-10-02-ac8.md](reports/2026-10-02-ac8.md))
 (approved after a redraft on 2026-09-30, following the owner's review and the research in
 [research.md](research.md); amended 2026-09-30 after a second review, with the owner's approval;
 AC8's spill clause amended 2026-10-02 with the owner's approval, after the AC8 rerun and the

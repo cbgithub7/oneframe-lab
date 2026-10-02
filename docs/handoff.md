@@ -31,7 +31,7 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   the largest cards, and fails with a clear reason when it cannot. Nothing is tuned to the 1070
   (the "Any card that can run it" rule in [AGENTS.md](../AGENTS.md)).
 
-## State (2026-10-01)
+## State (2026-10-02)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
@@ -54,7 +54,7 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     runtime is `runtimes/torch/` (torch 2.14.0; cpu, cu126, cu130); its cpu build installed and
     ran its probe in a cloud session, and its cu126 build passed AC9 on the owner's GTX 1070.
     Locking a runtime needs `download.pytorch.org` and `download-r2.pytorch.org` reachable.
-- **Fit to memory** (spec 002, implemented on its branch; AC8 waits for the owner's card):
+- **Fit to memory** (spec 002, done, in PR #5 until it merges):
     - a node's memory model in its manifest, checked with every problem named, and the
       `precision` param the engine adds from it;
     - the fit before each load: free memory less a margin, upgrades, speed-only changes before
@@ -66,8 +66,10 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
       cache that never serves less than this machine can make, and `<data>/settings.json`;
     - `nodes.fit`, `nodes.forget`, and `npm run bench:fit`.
 
-    Checked by tests on the processor and in the tiny runtime; nothing about a card's behaviour is
-    claimed until AC8's report.
+    Checked by tests on the processor and in the tiny runtime. On the owner's GTX 1070 (AC8,
+    [2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)): estimates within
+    0.1% of the peak at three settings, the fit under another program's load, and the cap refusing
+    an overrun while the card had room, answered by `ctx.fallbacks` and by the engine's retry.
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
     - a sandboxed page that reaches the engine through one IPC door with a method allowlist;
@@ -103,7 +105,7 @@ hold the detail.
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
-| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; implemented (tasks 1–11), AC1–AC7 checked by tests; AC8's spill clause amended 2026-10-02 (task 12: judged by torch's own out-of-memory message, not Windows' shared memory counter); AC8 pending one more run on the owner's card (task 13) |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; done: AC1–AC7 by tests; AC8's spill clause amended 2026-10-02 (judged by torch's own out-of-memory message, not Windows' shared memory counter) and passed on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.

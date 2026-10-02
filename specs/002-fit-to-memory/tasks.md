@@ -1,8 +1,8 @@
 # 002: Tasks
 
-Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
+Status: done (all tasks ticked 2026-10-02)
 
-Tasks 1–12 are done; task 13 is the owner's hardware run (AC8).
+Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
 - [x] 1. **Machine profiles and system memory.** `hardware.py` reads total and available system
   memory (on Windows, the smaller of physical and commit), through a reader passed in;
@@ -48,7 +48,8 @@ Tasks 1–12 are done; task 13 is the owner's hardware run (AC8).
   card's free memory and the cap from it; the counter, the control spill and the test node's
   `spill_mb` are gone. Spec AC8, plan Verification 4, Tests and Risks, and
   [research.md](research.md#the-ac8-spill-check-2026-10-02).
-- [ ] 13. **The owner, on the test card: AC8.** Run the Verification commands in a local session
+- [x] 13. **The owner, on the test card: AC8.** Run the Verification commands in a local session
   and commit the report under `specs/002-fit-to-memory/reports/`. The rerun of 2026-10-01 already
   shows the engine's retry refused by the cap; this run adds `ctx.fallbacks`, whose event carried
   no message before task 12.
+  Done 2026-10-02: [2026-10-02-ac8.md](reports/2026-10-02-ac8.md), passed.
