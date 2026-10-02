@@ -54,7 +54,7 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     runtime is `runtimes/torch/` (torch 2.14.0; cpu, cu126, cu130); its cpu build installed and
     ran its probe in a cloud session, and its cu126 build passed AC9 on the owner's GTX 1070.
     Locking a runtime needs `download.pytorch.org` and `download-r2.pytorch.org` reachable.
-- **Fit to memory** (spec 002, done, in PR #5 until it merges):
+- **Fit to memory** (spec 002, done, merged in PR #5):
     - a node's memory model in its manifest, checked with every problem named, and the
       `precision` param the engine adds from it;
     - the fit before each load: free memory less a margin, upgrades, speed-only changes before
@@ -105,7 +105,8 @@ hold the detail.
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
-| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; done: AC1–AC7 by tests; AC8's spill clause amended 2026-10-02 (judged by torch's own out-of-memory message, not Windows' shared memory counter) and passed on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; done: AC1–AC7 by tests; AC8's spill clause amended 2026-10-02 (judged by torch's own out-of-memory message, not Windows' shared memory counter) and passed on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); merged in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
+| [003 Model store](../specs/003-model-store/spec.md) | spec drafted 2026-10-02; waiting on the owner's answers to its eight open questions, then approval |
 
 1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
     - Python and torch are chosen per family.
@@ -115,16 +116,17 @@ hold the detail.
     - The environment is rebuilt only when its lock file changes.
 
     The scheduler's `runtime_python` hook is where it plugs in.
-2. **Fit to memory** (implemented; AC8 pending hardware). How the best local AI apps do it,
+2. **Fit to memory** (done). How the best local AI apps do it,
    without asking anyone to run a test ([research](../specs/002-fit-to-memory/research.md)):
     - each node declares a memory model: its weights per precision, and its working memory as a
       function of its settings;
     - before loading, the engine measures free memory, keeps a margin, and changes only settings
       the person left alone: speed-only settings first, quality last, and labels the result;
     - one narrow retry on `oom`; measured peaks correct the estimate on each machine.
-3. **Model store.** Download for a node's weights and companion files, into
+3. **Model store** (spec drafted). Download for a node's weights and companion files, into
    `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Pin every
-   repository revision.
+   repository revision. The draft recommends one shared store in the Hugging Face cache layout
+   in place of a folder per node (its open question 1).
 4. **Keep models loaded** (decided 2026-09-30). A long-lived worker per runtime, in place of one
    child process per run: a model loads once and runs many times. The worker stays while idle for
    a set time, is evicted when another runtime needs the device, and is killed on Stop. It
