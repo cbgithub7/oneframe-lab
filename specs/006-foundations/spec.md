@@ -154,6 +154,9 @@ What the app writes, and how it fails, is not yet something a person can trust:
 ## Tests
 
 - Added: one or more per acceptance criterion.
+- Changed: `test_a_store_file_that_cannot_be_read_starts_empty` (test_memory.py) asserted that a
+  learned-memory file in a newer format is replaced; requirement 3 leaves it as it is, so it now
+  asserts that, and still that an unreadable file is replaced.
 - Removed: none.
 
 ## Verification

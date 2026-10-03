@@ -5,7 +5,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 1. The shared root table (JSON) and `layout.py` beside `app/main/paths.js`; the engine's and
   the app's root functions take environment, platform, home and `packaged`; the dev root becomes
   `OneframeLab-dev` (AC1).
-- [ ] 2. One JSON writer (unique temporary name, flush, replace, refuses a newer format) and the
+- [x] 2. One JSON writer (unique temporary name, flush, replace, refuses a newer format) and the
   operating-system locks (`msvcrt.locking` / `fcntl.flock`, files under `logs/locks/`, never
   deleted); move learned memory, settings and the runtime marker onto them (part of AC4, AC5).
 - [ ] 3. Formats: `oneframe-root.json`, settings format 1, learned memory and markers left alone

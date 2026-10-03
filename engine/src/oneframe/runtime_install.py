@@ -37,11 +37,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from oneframe import archives
+from oneframe.files import write_json
 
 if TYPE_CHECKING:
     from oneframe.runtimes import RuntimeDef
 
 MARKER = "oneframe-runtime.json"
+MARKER_FORMAT = 1
 PTH = "oneframe-runtime.pth"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -364,6 +366,7 @@ def install(
 
     step("record", "Writing the marker: the runtime is installed.")
     marker = {
+        "format": MARKER_FORMAT,
         "runtime": runtime.id,
         "build": build,
         **runtime.hashes(),
@@ -376,9 +379,7 @@ def install(
         "size_bytes": size,
         "installed_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
-    part = env / (MARKER + ".part")
-    part.write_text(json.dumps(marker, indent=2), encoding="utf-8")
-    part.replace(env / MARKER)
+    write_json(env / MARKER, marker, indent=2)
     return {
         **base,
         "python": str(python),

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import threading
 from collections.abc import Callable, Mapping
@@ -21,9 +22,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeIs
 
+from oneframe.files import NewerFormat, format_of, write_json
+from oneframe.layout import Layout
+
 if TYPE_CHECKING:
     from oneframe.manifest import Param
     from oneframe.ports import PortSpec
+
+LOGGER = logging.getLogger("oneframe.memory")
 
 PRECISIONS = ("fp32", "fp16", "bf16")
 DEFAULT_BYTES = {"fp32": 4, "fp16": 2, "bf16": 2}
@@ -514,7 +520,7 @@ def read_settings(data_root: Path | None) -> Settings:
     understood is left at its default, and said so in `notes`."""
     if data_root is None:
         return Settings()
-    path = Path(data_root) / SETTINGS_FILE
+    path = Layout(Path(data_root)).settings
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -1225,13 +1231,15 @@ class StoreKey:
 
 class LearnedStore:
     """`<data>/memory/learned.json`: per node and kind of device, the recent working-memory ratios,
-    and the measured need and seconds for recent settings. Written to a temporary file and renamed
-    into place, so an interrupted write leaves the previous file. Without a data root it lives in
-    memory only."""
+    and the measured need and seconds for recent settings. Its `version` is its format. Written
+    with `files.write_json`, so an interrupted write leaves the previous file. A file in a newer
+    format is left as it is and not used: this machine learns in memory until the newer app runs
+    again. Without a data root it lives in memory only."""
 
     def __init__(self, data_root: Path | None) -> None:
-        self.path = None if data_root is None else Path(data_root) / "memory" / "learned.json"
+        self.path = None if data_root is None else Layout(Path(data_root)).learned
         self._data: dict[str, Any] | None = None
+        self.newer: int | None = None  # the format of a newer file left alone
         # A run records while nodes.fit and nodes.forget read and clear, from another thread.
         self._lock = threading.RLock()
 
@@ -1243,17 +1251,22 @@ class LearnedStore:
                     data = json.loads(self.path.read_text(encoding="utf-8"))
                 except OSError, ValueError:
                     data = None
-                if isinstance(data, dict) and data.get("version") == STORE_VERSION:
+                found = format_of(data, "version")
+                if found == STORE_VERSION and isinstance(data, dict):
                     self._data = data
+                elif found is not None and found > STORE_VERSION:
+                    self.newer = found
+                    LOGGER.warning("%s is in format %s, newer than this app's; left alone", self.path, found)
         return self._data
 
     def _save(self) -> None:
-        if self.path is None or self._data is None:
+        if self.path is None or self._data is None or self.newer is not None:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(self.path.name + ".tmp")
-        temporary.write_text(json.dumps(self._data, separators=(",", ":")), encoding="utf-8")
-        temporary.replace(self.path)
+        try:
+            write_json(self.path, self._data, key="version")
+        except NewerFormat as exc:  # a newer app wrote it since this one read it
+            self.newer = exc.found
+            LOGGER.warning("%s", exc)
 
     def view(self, key: StoreKey) -> Learned:
         with self._lock:
