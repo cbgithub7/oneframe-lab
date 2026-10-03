@@ -872,6 +872,10 @@ class Runtimes:
             env.setdefault("CUDA_VISIBLE_DEVICES", str(card.get("index", 0)))
         return env
 
+    def caches_for(self, runtime_id: str) -> Path:
+        """Where a node in this runtime keeps its libraries' caches: `cache/runtime/<id>/`."""
+        return Layout(self.data).runtime_caches / runtime_id
+
     def device_target(self, runtime_id: str) -> Target:
         """What a node in this runtime can use, for the fit: the card the plan's build was made
         for (none for a processor build, or a machine without one), and the lock it was built from,

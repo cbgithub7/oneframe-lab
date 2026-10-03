@@ -50,8 +50,18 @@ MARKER_FORMAT = 1
 PTH = "oneframe-runtime.pth"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-# Variables that would point uv, or a Python it starts, at the engine's own environment.
-DROP_ENV = ("VIRTUAL_ENV", "CONDA_PREFIX", "PYTHONPATH", "PYTHONHOME", "UV_PROJECT_ENVIRONMENT", "UV_PYTHON")
+# Variables that would point uv, or a Python it starts, at the engine's own environment. With the
+# engine's PYTHONPYCACHEPREFIX, the bytecode an install compiles would land there, not in the runtime.
+DROP_ENV = (
+    "VIRTUAL_ENV",
+    "CONDA_PREFIX",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "UV_PROJECT_ENVIRONMENT",
+    "UV_PYTHON",
+    "PYTHONPYCACHEPREFIX",
+    "PYTHONDONTWRITEBYTECODE",
+)
 
 Emit = Callable[[dict[str, Any]], None]
 ShouldStop = Callable[[], bool]

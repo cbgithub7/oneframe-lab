@@ -124,6 +124,7 @@ class Scheduler:
         learned: LearnedStore | None = None,
         on_pid: Callable[[int], None] | None = None,
         tmp_root: Path | None = None,
+        runtime_caches: Callable[[str], Path | None] = lambda _runtime: None,
     ):
         self.registry = registry
         self.cache = cache
@@ -139,6 +140,7 @@ class Scheduler:
         self.learned = learned or LearnedStore(None)
         self.on_pid = on_pid
         self.tmp_root = tmp_root  # where a runtime node's job folder is made
+        self.runtime_caches = runtime_caches  # where its libraries keep their caches
         self.engine = EngineExecutor()
 
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
@@ -152,6 +154,7 @@ class Scheduler:
             log_dir=self.log_dir,
             on_pid=self.on_pid,
             tmp_root=self.tmp_root,
+            caches=self.runtime_caches(runtime),
         )
 
     def run(

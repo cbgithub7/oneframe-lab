@@ -47,7 +47,7 @@ from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
 from oneframe.cache import Cache
 from oneframe.executors import NodeError, ProcessExecutor, child_env
 from oneframe.graph import Graph
-from oneframe.layout import Layout, RootRefused, claim_root, default_root
+from oneframe.layout import Layout, RootRefused, claim_root, default_root, keep_bytecode_under
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
 from oneframe.registry import Registry, discover
@@ -184,7 +184,10 @@ def make_scheduler(
     kw: dict[str, Any] = {}
     if manager is not None:
         kw.update(
-            runtime_python=manager.python_for, runtime_env=manager.env_for, target=manager.device_target
+            runtime_python=manager.python_for,
+            runtime_env=manager.env_for,
+            target=manager.device_target,
+            runtime_caches=manager.caches_for,
         )
     if runtime_python is not None:
         kw["runtime_python"] = runtime_python
@@ -332,9 +335,9 @@ def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
             "device": "cpu",  # no cap: the probe starts CUDA itself, after its first reading
         }
         try:
-            done = ProcessExecutor(python, env=manager.env_for("torch")).execute(
-                job, lambda _e: None, lambda: False
-            )
+            done = ProcessExecutor(
+                python, env=manager.env_for("torch"), caches=manager.caches_for("torch")
+            ).execute(job, lambda _e: None, lambda: False)
         except NodeError as exc:
             return {"why": f"{exc.kind}: {exc}"}
     return dict(done.get("stats") or {})
@@ -348,7 +351,12 @@ def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True,
-        env=child_env(None, manager.env_for("torch")),
+        env=child_env(
+            None,
+            manager.env_for("torch"),
+            caches=manager.caches_for("torch"),
+            tmp=Path(tempfile.gettempdir()),
+        ),
     )
     try:
         assert proc.stdout is not None
@@ -720,6 +728,7 @@ def main(argv: list[str] | None = None) -> int:
     except RootRefused as exc:
         print(exc, file=sys.stderr)
         return 1
+    keep_bytecode_under(data)
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     record: dict[str, Any] = {"date": datetime.now(UTC).isoformat(timespec="seconds"), "engine": __version__}
     # The tool's temporary files, its runs' cache and their jobs, all in its folder under the root.

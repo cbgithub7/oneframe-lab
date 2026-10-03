@@ -209,6 +209,12 @@ starts Electron. In a local session after the merge:
   folder, so one sweep covers both.
 - **`bench:fit` writes its report to `<data>/reports/` unless `--out` names a place** (task 4), as
   `bench:runtime` does; it wrote to the working folder, the repo when run through npm.
+- **The variables that keep a child under the root are reserved** (task 5): a runtime's definition
+  cannot set them, as it cannot set the forced ones. Each library cache has a folder of its own in
+  `cache/runtime/<id>/` (`huggingface/`, `torch/`, `triton/`, ...); a child's temporary folder is
+  its job's folder. The app also sets `PYTHONPYCACHEPREFIX`, so the engine's own modules, imported
+  before `sys.pycache_prefix` is set, keep their bytecode under the root; it is kept from uv and
+  from children, whose runtime's bytecode lies beside each module.
 
 ## Out of scope
 

@@ -108,8 +108,33 @@ SECRET_OR_UNSAFE_ENV = (
     "HF_ENDPOINT",
     "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
 )
-_RESERVED = {name.upper() for name in (*FORCED_ENV, *SECRET_OR_UNSAFE_ENV)}
-_ENGINE_PYTHON = {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"}
+# Where the libraries a node uses keep their caches: each under the data root, in
+# `cache/runtime/<id>/`, never in the person's home folder, where nothing would remove them.
+LIBRARY_CACHES = {
+    "HF_HOME": "huggingface",
+    "TORCH_HOME": "torch",
+    "TORCH_EXTENSIONS_DIR": "torch_extensions",
+    "TORCHINDUCTOR_CACHE_DIR": "torchinductor",
+    "TRITON_HOME": "triton",
+    "CUDA_CACHE_PATH": "cuda",
+    "XDG_CACHE_HOME": "xdg",
+    "MPLCONFIGDIR": "matplotlib",
+}
+TEMP_ENV = ("TMP", "TEMP", "TMPDIR")
+# A child reads the bytecode its runtime's install compiled and writes none: not beside a node's
+# code, and not into the runtime, which an install alone changes.
+ROOT_ENV = (*LIBRARY_CACHES, *TEMP_ENV, "PYTHONDONTWRITEBYTECODE")
+_RESERVED = {name.upper() for name in (*FORCED_ENV, *SECRET_OR_UNSAFE_ENV, *ROOT_ENV)}
+# PYTHONPYCACHEPREFIX is the engine's own (the app sets it): a child given it would look for its
+# runtime's bytecode there instead of beside each module, and never find it.
+_ENGINE_PYTHON = {
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "VIRTUAL_ENV",
+    "CONDA_PREFIX",
+    "CONDA_DEFAULT_ENV",
+    "PYTHONPYCACHEPREFIX",
+}
 
 
 def reserved_env(name: str) -> bool:
@@ -118,10 +143,17 @@ def reserved_env(name: str) -> bool:
     return name.upper() in _RESERVED
 
 
-def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, str]:
+def child_env(
+    base: dict[str, str] | None,
+    extra: dict[str, str],
+    caches: Path | None = None,
+    tmp: Path | None = None,
+) -> dict[str, str]:
     """A runtime child's environment: nothing of the engine's own Python leaks in, so the runtime
     never sees the engine's packages or loads a DLL from the engine's folders; no hub token or
-    endpoint reaches it; and FORCED_ENV is set last. Names are compared without case."""
+    endpoint reaches it; and FORCED_ENV is set last. Then what keeps a run's writes under the data
+    root: the library caches in `caches` (the runtime's folder in `cache/runtime/`), the temporary
+    folder in `tmp` (the job's own), and no bytecode written. Names are compared without case."""
     source = dict(os.environ if base is None else base)
     drop = {*_ENGINE_PYTHON, "UV_PROJECT_ENVIRONMENT"}
     env = {k: v for k, v in source.items() if k.upper() not in drop and not reserved_env(k)}
@@ -134,6 +166,11 @@ def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, s
         )
     env.update({k: v for k, v in extra.items() if not reserved_env(k)})
     env.update(FORCED_ENV)
+    if caches is not None:
+        env.update({name: str(caches / folder) for name, folder in LIBRARY_CACHES.items()})
+    if tmp is not None:
+        env.update(dict.fromkeys(TEMP_ENV, str(tmp)))
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env
@@ -172,8 +209,10 @@ class ProcessExecutor:
         log_dir: Path | None = None,
         on_pid: Callable[[int], None] | None = None,
         tmp_root: Path | None = None,
+        caches: Path | None = None,
     ):
         self.python = Path(python)
+        self.caches = caches  # the runtime's folder for library caches, under the data root
         # Where each job's own folder is made: the process's folder under cache/tmp/, or, when not
         # given, the process's temporary folder (which an engine or bench tool points there too).
         self.tmp_root = tmp_root
@@ -204,7 +243,9 @@ class ProcessExecutor:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=child_env(self.base_env, {**self.env, **(job.get("env") or {})}),
+                env=child_env(
+                    self.base_env, {**self.env, **(job.get("env") or {})}, caches=self.caches, tmp=tmp
+                ),
                 cwd=tmp,
                 text=True,
                 encoding="utf-8",

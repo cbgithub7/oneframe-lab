@@ -158,6 +158,9 @@ export function engineCommand(uv, data, packaged = false) {
     UV_PYTHON_INSTALL_DIR: layout(data).uv_python,
     UV_PYTHON_INSTALL_BIN: "0",
     UV_PYTHON_INSTALL_REGISTRY: "0",
+    // The engine's bytecode goes under the root, not beside its source in the install folder or in
+    // nodes/. The engine keeps it from uv and from runtime children, which read their own.
+    PYTHONPYCACHEPREFIX: layout(data).pycache,
   };
   return {
     command: uv,

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
-import { REPO_ROOT, absolute, dataRoot, layout } from "../../app/main/paths.js";
+import { REPO_ROOT, absolute, dataRoot, engineCommand, layout } from "../../app/main/paths.js";
 
 /** @type {{ roots: { case: string, platform: string, home: string, packaged: boolean,
  *   env: Record<string, string>, root: string }[], paths: Record<string, string> }} */
@@ -44,4 +44,11 @@ test("the layout names the paths the table names", () => {
   for (const [name, relative] of Object.entries(TABLE.paths)) {
     assert.equal(named[/** @type {keyof typeof named} */ (name)], path.join(root, ...relative.split("/")), name);
   }
+});
+
+test("the engine keeps its bytecode under the root, and is told which app started it", () => {
+  const dev = engineCommand("uv", path.join("/data"));
+  assert.equal(dev.env.PYTHONPYCACHEPREFIX, path.join("/data", "cache", "pycache"));
+  assert.ok(!dev.args.includes("--packaged"));
+  assert.ok(engineCommand("uv", path.join("/data"), true).args.includes("--packaged"));
 });

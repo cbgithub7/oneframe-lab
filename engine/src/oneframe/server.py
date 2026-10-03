@@ -34,7 +34,7 @@ from typing import Any
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
 from oneframe.graph import Graph, GraphError, Step, plan, step_params
-from oneframe.layout import Layout, RootRefused, claim_root, default_root
+from oneframe.layout import Layout, RootRefused, claim_root, default_root, keep_bytecode_under
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
@@ -83,6 +83,7 @@ class Engine:
             settings=lambda: read_settings(data),
             learned=self.learned,
             tmp_root=self.scratch.folder,
+            runtime_caches=self.runtimes.caches_for,
         )
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
@@ -335,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     except RootRefused as exc:
         say({"event": "engine.failed", "kind": "root", "reason": exc.reason, "message": str(exc)})
         return 2
+    keep_bytecode_under(data)
     scratch = Scratch.claim(Layout(data))
     scratch.use_for_process()  # the engine's temporary files, and uv's, stay under the root
     engine = Engine(

@@ -25,7 +25,7 @@ from typing import Any
 
 from oneframe import __version__, runtime_install, scratch
 from oneframe.executors import NodeError, ProcessExecutor
-from oneframe.layout import Layout, RootRefused, claim_root, default_root
+from oneframe.layout import Layout, RootRefused, claim_root, default_root, keep_bytecode_under
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
 
@@ -47,7 +47,12 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
             "out_dir": out,
             "device": "cuda" if build is not None and build.vendor == "nvidia" else "cpu",
         }
-        executor = ProcessExecutor(python, env=manager.env_for(runtime_id), log_dir=manager.data / "logs")
+        executor = ProcessExecutor(
+            python,
+            env=manager.env_for(runtime_id),
+            log_dir=Layout(manager.data).logs,
+            caches=manager.caches_for(runtime_id),
+        )
         try:
             done = executor.execute(job, lambda _e: None, lambda: False)
         except NodeError as exc:
@@ -227,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     except RootRefused as exc:
         print(exc, file=sys.stderr)
         return 1
+    keep_bytecode_under(data)
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     try:
         with scratch.for_tool(Layout(data)):  # its temporary files, and uv's, stay under the root

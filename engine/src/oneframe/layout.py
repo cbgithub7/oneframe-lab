@@ -25,6 +25,12 @@ from pathlib import Path
 from oneframe.files import format_of, write_json
 
 ROOT_FILE = "oneframe-root.json"
+# https://bford.info/cachedir/: backup tools that honour it skip the cache, which can be rebuilt.
+CACHEDIR_TAG = (
+    "Signature: 8a477f597d28d172789f06886806bc55\n"
+    "# This file is a cache directory tag created by Oneframe Lab.\n"
+    "# For information about cache directory tags, see https://bford.info/cachedir/\n"
+)
 # 0: a root from before spec 006, without a root file. 1: the root file, and the folders Layout names.
 LAYOUT_FORMAT = 1
 KINDS = ("dev", "packaged")
@@ -98,6 +104,13 @@ def data_root(env: Mapping[str, str], platform: str, home: str, packaged: bool) 
 def default_root() -> Path:
     """The engine's own default: the dev root on this machine. The app passes `--data`."""
     return Path(data_root(os.environ, sys.platform, str(Path.home()), packaged=False))
+
+
+def keep_bytecode_under(root: Path) -> None:
+    """Write the bytecode of every module imported from now on (the nodes' own code among them)
+    under the root's `cache/pycache/`, not beside its source. The app sets PYTHONPYCACHEPREFIX as
+    well, so the engine's own modules, imported before this runs, are kept there too."""
+    sys.pycache_prefix = str(Layout(root).pycache)
 
 
 @dataclass(frozen=True)
@@ -227,6 +240,10 @@ def claim_root(root: Path, packaged: bool, version: str = "") -> list[str]:
             f"this version knows {LAYOUT_FORMAT}). Use the newer version, or another data root.",
             "newer_layout",
         )
+    tag = Layout(root).cachedir_tag
+    if not tag.exists():
+        tag.parent.mkdir(parents=True, exist_ok=True)
+        tag.write_text(CACHEDIR_TAG, encoding="utf-8")
     warnings: list[str] = []
     made_by = data.get("kind") if isinstance(data, dict) else None
     if made_by in KINDS and made_by != kind:
