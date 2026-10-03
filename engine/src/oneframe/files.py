@@ -20,9 +20,13 @@ import contextlib
 import json
 import os
 import re
+import shutil
+import stat
 import sys
 import time
 import uuid
+import weakref
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -98,6 +102,16 @@ def _replace(source: Path, target: Path) -> None:
             time.sleep(0.05)
 
 
+def _clear_readonly(func: Callable[..., Any], path: str, _exc: BaseException) -> None:
+    Path(path).chmod(stat.S_IWRITE)
+    func(path)
+
+
+def remove_tree(path: Path) -> None:
+    """rmtree that also removes read-only files, which Windows refuses to delete otherwise."""
+    shutil.rmtree(path, onexc=_clear_readonly)
+
+
 class FileLock:
     """A lock on one file, held by this object until `release`, or until the process ends. Never
     waits: `acquire` says at once whether it got the lock. A second FileLock on the same file is
@@ -106,6 +120,7 @@ class FileLock:
     def __init__(self, path: Path):
         self.path = Path(path)
         self._fd: int | None = None
+        self._closer: weakref.finalize[[int], FileLock] | None = None
 
     @property
     def held(self) -> bool:
@@ -130,12 +145,17 @@ class FileLock:
             os.close(fd)
             return False
         self._fd = fd
+        # A lock dropped without release (a test's engine, say) is closed when it is collected.
+        self._closer = weakref.finalize(self, os.close, fd)
         return True
 
     def release(self) -> None:
         fd, self._fd = self._fd, None
         if fd is None:
             return
+        if self._closer is not None:
+            self._closer.detach()
+            self._closer = None
         try:
             if sys.platform == "win32":
                 import msvcrt

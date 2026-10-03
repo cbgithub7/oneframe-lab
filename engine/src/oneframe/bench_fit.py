@@ -47,12 +47,13 @@ from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
 from oneframe.cache import Cache
 from oneframe.executors import NodeError, ProcessExecutor, child_env
 from oneframe.graph import Graph
-from oneframe.layout import RootRefused, claim_root, default_root
+from oneframe.layout import Layout, RootRefused, claim_root, default_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
+from oneframe.scratch import for_tool
 
 HARDWARE_NODES = Path(__file__).resolve().parents[2] / "tests" / "hardware"
 AC8_FILE = "ac8.json"
@@ -700,7 +701,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--set", action="append", nargs="+", default=[], metavar="K=V", help="one run's params"
     )
-    parser.add_argument("--out", type=Path, default=Path(), help="a report file, or a folder for it")
+    parser.add_argument(
+        "--out", type=Path, default=None, help="a report file, or a folder for it (default: <data>/reports/)"
+    )
     parser.add_argument("--data", type=Path, default=None, help="data root (default: the dev root)")
     parser.add_argument(
         "--nodes", type=Path, action="append", default=None, help="node folders (default: nodes/)"
@@ -719,9 +722,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     record: dict[str, Any] = {"date": datetime.now(UTC).isoformat(timespec="seconds"), "engine": __version__}
-    with tempfile.TemporaryDirectory(prefix="oneframe-bench-fit-") as scratch:
+    # The tool's temporary files, its runs' cache and their jobs, all in its folder under the root.
+    with for_tool(Layout(data)) as mine:
+        work = mine.make("bench-fit-")
         if args.node is None:
-            record.update(bench_ac8(manager, Path(scratch) / "cache"))
+            record.update(bench_ac8(manager, work / "cache"))
         else:
             registry = discover(args.nodes or [BUILTIN_NODES_DIR])
             if args.node not in registry.nodes:
@@ -733,9 +738,9 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 print(str(exc), file=sys.stderr)
                 return 2
-            scheduler = make_scheduler(registry, manager, Path(scratch) / "cache")
+            scheduler = make_scheduler(registry, manager, work / "cache")
             record.update(bench_node(scheduler, args.node, groups))
-    path = report_path(args.out, record)
+    path = report_path(args.out or Layout(data).reports, record)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(record), encoding="utf-8")
     print(path)

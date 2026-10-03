@@ -123,6 +123,7 @@ class Scheduler:
         settings: Callable[[], Settings] = Settings,
         learned: LearnedStore | None = None,
         on_pid: Callable[[int], None] | None = None,
+        tmp_root: Path | None = None,
     ):
         self.registry = registry
         self.cache = cache
@@ -137,6 +138,7 @@ class Scheduler:
         self.settings = settings
         self.learned = learned or LearnedStore(None)
         self.on_pid = on_pid
+        self.tmp_root = tmp_root  # where a runtime node's job folder is made
         self.engine = EngineExecutor()
 
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
@@ -145,7 +147,11 @@ class Scheduler:
         runtime = str(manifest.run.runtime)
         python = self.runtime_python(runtime)
         return ProcessExecutor(
-            python, env=self.runtime_env(runtime), log_dir=self.log_dir, on_pid=self.on_pid
+            python,
+            env=self.runtime_env(runtime),
+            log_dir=self.log_dir,
+            on_pid=self.on_pid,
+            tmp_root=self.tmp_root,
         )
 
     def run(

@@ -7,12 +7,13 @@ so changing one node re-runs only what comes after it, and two recipes that star
 share the start.
 
 Writes are atomic: a run writes into a private folder and renames it into place, so a crash or a
-Stop never leaves half an output that a later run would trust.
+Stop never leaves half an output that a later run would trust. The private folders live in the
+process's own folder under `cache/tmp/` (scratch.py), on the cache's volume, so the rename is one
+step, and a process that dies leaves them to the next start's sweep.
 """
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import shutil
@@ -36,10 +37,12 @@ def file_digest(path: Path) -> str:
 
 
 class Cache:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, work: Path | None = None):
         self.root = Path(root)
         self.objects = self.root / "objects"
-        self.tmp = self.root / "tmp"
+        # Where runs write before their folder is moved into place: the engine gives its own
+        # folder under cache/tmp/; a cache made on its own (a test) writes in <root>/tmp.
+        self.tmp = Path(work) if work is not None else self.root / "tmp"
         self._digests: dict[tuple[str, int, int], str] = {}
 
     def _file_key(self, value: str) -> str:
@@ -126,7 +129,3 @@ class Cache:
 
     def abandon(self, work: Path) -> None:
         shutil.rmtree(work, ignore_errors=True)
-
-    def clear_tmp(self) -> None:
-        with contextlib.suppress(OSError):
-            shutil.rmtree(self.tmp)

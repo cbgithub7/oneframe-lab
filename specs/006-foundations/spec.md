@@ -200,6 +200,15 @@ starts Electron. In a local session after the merge:
 - **A runtime marker without `format` is format 1, and one without `env` is never `moved`** (task
   3): markers written before this spec say neither. Installing over a `moved` environment deletes
   it first, since its scripts and links point into the root it was built in.
+- **A process's folder is `cache/tmp/<n>/`, locked by `logs/locks/tmp-<n>.lock`** (task 4). It takes
+  the first free number, so numbers are reused and the lock files, never deleted, stay as few as
+  the processes that ever ran at once. Its runs' private folders (`runs/`), its job folders and its
+  bench scratch are inside; the engine and the bench tools make it their temporary folder too.
+  Anything in `cache/tmp/` that is not a numbered folder is from before this spec and is removed.
+  Design's `cache/jobs/` is therefore not made: requirement 4 puts job folders in each process's
+  folder, so one sweep covers both.
+- **`bench:fit` writes its report to `<data>/reports/` unless `--out` names a place** (task 4), as
+  `bench:runtime` does; it wrote to the working folder, the repo when run through npm.
 
 ## Out of scope
 

@@ -10,7 +10,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   deleted); move learned memory, settings and the runtime marker onto them (part of AC4, AC5).
 - [x] 3. Formats: `oneframe-root.json`, settings format 1, learned memory and markers left alone
   when newer, the marker's `format` and environment path, `newer_format` and `moved` (AC4).
-- [ ] 4. Per-process temporary folders under `cache/tmp/`, locked while the process lives; job and
+- [x] 4. Per-process temporary folders under `cache/tmp/`, locked while the process lives; job and
   bench scratch folders inside them; the start-up sweep removes only unlocked ones; runtime
   install and remove take that runtime's lock (AC5).
 - [ ] 5. `child_env` puts every library cache, temp and `PYTHONDONTWRITEBYTECODE` under the root;

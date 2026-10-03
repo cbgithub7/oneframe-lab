@@ -32,6 +32,8 @@ from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.executors import reserved_env
+from oneframe.files import FileLock, lock_file
+from oneframe.layout import Layout
 from oneframe.memory import Target
 
 DEFINITION = "runtime.json"
@@ -666,7 +668,12 @@ class RuntimeMissing(RuntimeError):
 
 
 class InstallRefused(ValueError):
-    """An install or remove that cannot start, with the reason a person reads."""
+    """An install or remove that cannot start, with the reason a person reads. `reason` is
+    `locked` when another process is installing or removing the same runtime."""
+
+    def __init__(self, message: str, reason: str | None = None):
+        super().__init__(message)
+        self.reason = reason
 
 
 def find_uv(explicit: str | None = None, env: dict[str, str] | None = None) -> str | None:
@@ -703,6 +710,7 @@ class Runtimes:
         self._profile: dict[str, Any] | None = None
         self._lock = threading.Lock()
         self._busy: tuple[str, threading.Event] | None = None
+        self._held: FileLock | None = None  # the busy runtime's lock, across processes
 
     # reading
 
@@ -879,6 +887,17 @@ class Runtimes:
 
     # changing
 
+    def _runtime_lock(self, runtime_id: str) -> FileLock:
+        """Held across processes while a runtime is installed or removed; a second is refused."""
+        lock = FileLock(lock_file(Layout(self.data).locks, f"runtime-{runtime_id}"))
+        if not lock.acquire():
+            raise InstallRefused(
+                f"{runtime_id} is being installed or removed by another process on this data root; "
+                "try again when it is done.",
+                reason="locked",
+            )
+        return lock
+
     def begin_install(
         self, runtime_id: str, build: str | None = None
     ) -> tuple[RuntimeDef, str, threading.Event] | None:
@@ -903,16 +922,23 @@ class Runtimes:
                 raise InstallRefused(
                     f"{self._busy[0]} is being installed; runtimes are installed one at a time."
                 )
-            state = self.status(runtime, the_plan)["status"]
+            held = self._runtime_lock(runtime_id)
+            try:
+                state = self.status(runtime, the_plan)["status"]
+                if state == "newer_format":
+                    raise InstallRefused(
+                        f"The runtime {runtime_id!r} was installed by a newer version of the app; it "
+                        "is left as it is."
+                    )
+            except BaseException:
+                held.release()
+                raise
             if state == "installed":
+                held.release()
                 return None
-            if state == "newer_format":
-                raise InstallRefused(
-                    f"The runtime {runtime_id!r} was installed by a newer version of the app; it is "
-                    "left as it is."
-                )
             stop = threading.Event()
             self._busy = (runtime_id, stop)
+            self._held = held
         return runtime, planned, stop
 
     def run_install(
@@ -950,6 +976,9 @@ class Runtimes:
         finally:
             with self._lock:
                 self._busy = None
+                held, self._held = self._held, None
+                if held is not None:
+                    held.release()
         emit({**base, "event": "runtime.done", **done})
         return done
 
@@ -974,6 +1003,10 @@ class Runtimes:
         self.get(runtime_id)
         if self.installing() == runtime_id:
             raise InstallRefused(f"{runtime_id} is being installed; stop the install before removing it.")
+        with self._runtime_lock(runtime_id):
+            return self._remove(runtime_id)
+
+    def _remove(self, runtime_id: str) -> dict[str, Any]:
         root = (self.data / "runtimes").resolve()
         target = runtime_install.runtime_dir(self.data, runtime_id)
         if not target.exists():

@@ -39,6 +39,7 @@ from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
+from oneframe.scratch import Scratch
 
 LOGGER = logging.getLogger("oneframe.server")
 
@@ -54,16 +55,18 @@ class Engine:
         uv_home: Path | None = None,
         profile: Callable[[], dict[str, Any]] | None = None,
         packaged: bool = False,
+        scratch: Scratch | None = None,
     ):
         self.data = data
         self.layout = Layout(data)
         # Before anything is written under the root: a newer layout stops the engine here.
         self.warnings = claim_root(data, packaged, __version__)
+        # This process's own folder under cache/tmp/; the start sweeps only dead processes' folders.
+        self.scratch = scratch or Scratch.claim(self.layout)
         self.node_roots = node_roots
         self.say = say
         self.registry: Registry = discover(node_roots)
-        self.cache = Cache(self.layout.cache)
-        self.cache.clear_tmp()
+        self.cache = Cache(self.layout.cache, work=self.scratch.folder / "runs")
         self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
         self.learned = LearnedStore(data)
         # A fit reads the machine fresh, since free memory changes; a test passes its own profile.
@@ -79,6 +82,7 @@ class Engine:
             target=self.runtimes.device_target,
             settings=lambda: read_settings(data),
             learned=self.learned,
+            tmp_root=self.scratch.folder,
         )
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
@@ -257,6 +261,7 @@ class Engine:
             run_thread.join(max(deadline - time.monotonic(), 0))
         if self._install is not None:
             self._install.join(max(deadline - time.monotonic(), 0))
+        self.scratch.release()
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         req_id = message.get("id")
@@ -269,7 +274,10 @@ class Engine:
         except GraphError as exc:
             return {"id": req_id, "error": {"message": "The graph cannot run.", "problems": exc.problems}}
         except (InstallRefused, RuntimeMissing) as exc:  # a sentence for a person, not a bug
-            return {"id": req_id, "error": {"message": str(exc)}}
+            error: dict[str, Any] = {"message": str(exc)}
+            if exc.reason:
+                error["reason"] = exc.reason
+            return {"id": req_id, "error": error}
         except Exception as exc:
             LOGGER.exception("%s failed", method)
             return {"id": req_id, "error": {"message": f"{type(exc).__name__}: {exc}"}}
@@ -323,18 +331,22 @@ def main(argv: list[str] | None = None) -> int:
             out.flush()
 
     try:
-        engine = Engine(
-            data,
-            args.nodes or [BUILTIN_NODES_DIR],
-            say,
-            args.runtimes,
-            args.uv,
-            args.uv_home,
-            packaged=args.packaged,
-        )
+        claim_root(data, args.packaged, __version__)  # before the scratch folder is written
     except RootRefused as exc:
         say({"event": "engine.failed", "kind": "root", "reason": exc.reason, "message": str(exc)})
         return 2
+    scratch = Scratch.claim(Layout(data))
+    scratch.use_for_process()  # the engine's temporary files, and uv's, stay under the root
+    engine = Engine(
+        data,
+        args.nodes or [BUILTIN_NODES_DIR],
+        say,
+        args.runtimes,
+        args.uv,
+        args.uv_home,
+        packaged=args.packaged,
+        scratch=scratch,
+    )
     say({"event": "engine.ready", **engine.hello({})})
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:

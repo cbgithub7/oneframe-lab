@@ -28,7 +28,6 @@ import os
 import queue
 import shutil
 import signal
-import stat
 import subprocess
 import sys
 import threading
@@ -41,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from oneframe import archives
-from oneframe.files import format_of, write_json
+from oneframe.files import format_of, remove_tree, write_json
 
 if TYPE_CHECKING:
     from oneframe.runtimes import RuntimeDef
@@ -210,16 +209,6 @@ def _output(argv: list[str], env: dict[str, str]) -> str:
             f"{Path(argv[0]).name} {argv[1]} failed (exit {done.returncode}).", done.stderr[-4000:]
         )
     return done.stdout
-
-
-def _clear_readonly(func: Callable[..., Any], path: str, _exc: BaseException) -> None:
-    Path(path).chmod(stat.S_IWRITE)
-    func(path)
-
-
-def remove_tree(path: Path) -> None:
-    """rmtree that also removes read-only files, which Windows refuses to delete otherwise."""
-    shutil.rmtree(path, onexc=_clear_readonly)
 
 
 def folder_size(path: Path) -> int:

@@ -171,8 +171,12 @@ class ProcessExecutor:
         poll: float = 0.2,
         log_dir: Path | None = None,
         on_pid: Callable[[int], None] | None = None,
+        tmp_root: Path | None = None,
     ):
         self.python = Path(python)
+        # Where each job's own folder is made: the process's folder under cache/tmp/, or, when not
+        # given, the process's temporary folder (which an engine or bench tool points there too).
+        self.tmp_root = tmp_root
         self.env = dict(env or {})
         self.base_env = base_env
         self.poll = poll
@@ -184,7 +188,7 @@ class ProcessExecutor:
         # to stop it (an engine, a bench tool), so no orphan keeps holding the card. It watches
         # the stdin pipe this process holds, and closes.
         job = {**job, "exit_with_parent": True}
-        tmp = Path(tempfile.mkdtemp(prefix="oneframe-job-"))
+        tmp = Path(tempfile.mkdtemp(prefix="job-", dir=self.tmp_root))
         stderr_tail: deque[str] = deque(maxlen=80)
         done: dict[str, Any] | None = None
         failed: dict[str, Any] | None = None

@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from oneframe import __version__, runtime_install
+from oneframe import __version__, runtime_install, scratch
 from oneframe.executors import NodeError, ProcessExecutor
 from oneframe.layout import Layout, RootRefused, claim_root, default_root
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
@@ -229,7 +229,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     try:
-        record = bench(manager, args.runtime)
+        with scratch.for_tool(Layout(data)):  # its temporary files, and uv's, stay under the root
+            record = bench(manager, args.runtime)
     except RuntimeMissing as exc:  # no such runtime: nothing to report on
         print(exc, file=sys.stderr)
         return 1
