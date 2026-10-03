@@ -41,6 +41,9 @@ jobs:
 
   versions:
     name: versions are current
+    # On main only: a release that lands upstream must not turn an unrelated branch or PR red.
+    # versions-weekly.yml runs the same check every Monday.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

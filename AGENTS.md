@@ -45,6 +45,9 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   decides on a card's name: hardware decisions come from what the machine reports (compute
   capability, total and free memory, driver). A test of a hardware decision covers a range of
   machines, not one card. A report from the 1070 proves a mechanism works; it tunes nothing.
+  For v1, "any machine" means Windows or Linux on x86-64, with an NVIDIA card or the processor;
+  macOS and AMD or Intel GPUs are out for now. A Linux-only node may run in WSL, decided by the
+  Improve-loop spike.
 - **Ports are typed, facets included.** Never connect values whose facets differ without a
   converter node. Disparity must never flow silently into a metric port.
 - **Light engine.** Importing `oneframe.server` loads no numpy, Pillow, torch or other model
@@ -55,7 +58,9 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 - **One door into the page.** The renderer is sandboxed and isolated and reaches the engine only
   through `engine:request` with a method from `ENGINE_METHODS` in `app/main/methods.js`. Progress is
   pushed as events; nothing polls.
-- **Versions.** Latest stable everywhere, exact pins, and every exception written in
+- **Versions.** Latest stable for the app, the engine and the tools, with exact pins. A runtime
+  pins the newest release its family's code and wheels support, backed by a bench report; a build
+  may keep an older torch line for cards a newer one drops. Every exception is written in
   `versions.json` with a reason and a review date ([docs/versions.md](docs/versions.md)). Check
   the latest release before adding any dependency.
 - **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
