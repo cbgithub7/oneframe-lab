@@ -1,6 +1,6 @@
 # 006: Foundations
 
-Status: approved (drafted and agent-reviewed 2026-10-03)
+Status: implemented 2026-10-03, in review (every task ticked; the local checks below wait for the merge)
 Owner approval: 2026-10-03
 
 Comes before spec 003's core, which builds on it. It answers [the review of 2026-10-02](../../docs/reviews/2026-10-02.md),
@@ -171,7 +171,23 @@ starts Electron. In a local session after the merge:
   on Linux, `~/.local/share/oneframe-lab` and `~/.config/oneframe-lab`. `OneframeLab` becomes the
   packaged app's name;
 - the torch runtime is installed into the dev root with `npm run bench:runtime -- torch`;
-- the local-session skill's mention of the old root is updated (a task).
+- the local-session skill's mention of the old root is updated (a task; done in task 11).
+
+The exact steps, on Windows (`/local-session`), each one's output kept for the report
+`specs/006-foundations/reports/<date>-local.md`:
+
+1. Note what exists: `dir %APPDATA%`, `dir %LOCALAPPDATA%`, `dir %USERPROFILE%`, and
+   `reg query HKCU\Software\Python /s` and `reg query HKCU\Environment /v Path`.
+2. `npm start`; wait for the node list; close the app. Then `dir %LOCALAPPDATA%\OneframeLab-dev`
+   shows `electron`, `cache`, `logs`, `oneframe-root.json`, and `%APPDATA%\oneframe-lab` does not
+   exist (delete it first if an older app made it).
+3. `npm run bench:runtime -- torch`: the report names the dev root, and the install's journal is in
+   `%LOCALAPPDATA%\OneframeLab-dev\logs\journal\`.
+4. `npm run diagnose`; open the file it names in `reports\`, and search it for the Windows user
+   name: it appears only as an ordinary word, never in a path.
+5. Repeat step 1 and compare: nothing new at the top of the three profile folders, and the two
+   registry values unchanged.
+6. Delete the old roots by hand (above).
 
 ## Decisions taken
 

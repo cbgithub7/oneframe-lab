@@ -67,8 +67,8 @@ Record, for the report:
   If there is no `nvidia-smi`, record "no NVIDIA GPU".
 - **Other GPU users:** the `nvidia-smi` process list. Ask the owner to close anything heavy, and the
   Oneframe Lab app itself, which holds the card. Note what was still running.
-- **Free disk** on the data root (`%LOCALAPPDATA%\OneframeLab` unless `ONEFRAME_DATA` says
-  otherwise).
+- **Free disk** on the data root: a dev checkout's is `%LOCALAPPDATA%\OneframeLab-dev`
+  (`~/.local/share/oneframe-lab-dev` on Linux), unless `ONEFRAME_DATA` says otherwise.
 - **Tools,** checked against the versions the updated checkout pins (cloud sessions raise them
   often):
     - `node --version` against `.node-version`;

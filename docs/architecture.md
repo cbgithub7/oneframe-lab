@@ -24,7 +24,7 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Manifests | `oneframe/manifest.py` | Read and check `node.json`; every problem reported at once |
 | Registry | `oneframe/registry.py` | Find nodes by looking in folders; a broken node never hides the others |
 | Graph | `oneframe/graph.py` | Recipes (graphs as JSON); `plan()` checks them, inserts converters, orders them |
-| Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params and input keys; atomic writes |
+| Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params, input keys, the node's code and its runtime's build; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; checks every value at every port; carries trust; one retry after `oom` |
 | Memory | `oneframe/memory.py` | A node's memory model; the estimate; the margins and the person's settings; the fit (pure); what each machine learns |
 | Errors | `oneframe/errors.py` | Every kind and reason of failure, declared once, and whose fault each is ([Failures](#failures)) |
@@ -32,6 +32,11 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
 | Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, system memory (total and available), free disk |
 | Archives | `oneframe/archives.py` | Pinned downloads kept only when their sha256 matches; unpacking that stays inside its folder |
+| Layout | `oneframe/layout.py`, `app/main/paths.js`, `contracts/layout.json` | The data root, defined once, and every path under it; the root file and its format |
+| Files | `oneframe/files.py` | The one JSON writer, which never replaces a newer format; operating-system locks |
+| Scratch | `oneframe/scratch.py` | Each process's locked folder under `cache/tmp/`; a start removes only dead processes' folders |
+| Journal | `oneframe/journal.py` | Every event of a run or an install, kept in a journal; journals and step logs pruned |
+| Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
 | Server | `oneframe/server.py` | The engine's NDJSON protocol |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py` | The reports a hardware claim needs: a runtime's install, and a node's memory on a card |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
@@ -67,6 +72,12 @@ name.
 **A cache keyed by content.** Exploring means changing one thing and looking again. With every
 output keyed by what produced it, changing a parameter re-runs only what follows it, and two
 recipes that start the same way share their start.
+
+**One data root.** Everything the app, the engine, a runtime child or a tool writes lies under one
+folder a person can see and remove: library caches, temporary files, bytecode and Electron's
+folders included, which a test proves by pointing every home and temporary folder into a sandbox.
+Every kept file says its format, and an older app leaves a newer one alone. Processes on one root
+lock what they work on, and the operating system releases a lock when its holder dies.
 
 **One door into the page.** The page is sandboxed, has no Node, and can call only the engine
 methods `ENGINE_METHODS` lists. A compromised page can ask the engine to run a graph; it cannot

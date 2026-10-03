@@ -26,5 +26,5 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `npm run diagnose` with its redaction (AC7).
 - [x] 10. Cache keys from the node's folder and the runtime's build and marker hashes;
   `KEY_VERSION` 2 (AC8).
-- [ ] 11. Docs: AGENTS.md drops "today's code still breaks this"; architecture and runtimes docs;
+- [x] 11. Docs: AGENTS.md drops "today's code still breaks this"; architecture and runtimes docs;
   the local-session skill's old root; the handoff.

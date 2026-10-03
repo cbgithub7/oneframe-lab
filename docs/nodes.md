@@ -185,7 +185,8 @@ npm run bench:fit -- <node> --set resolution=512 --set resolution=1024 --set res
 ```
 
 runs the node once per `--set` group (from an empty cache, with nothing learned) and writes a
-report of each run's estimate, measured peak, ratio, seconds and the free memory before. Measure a
+report of each run's estimate, measured peak, ratio, seconds and the free memory before, to the
+data root's `reports/` unless `--out` names a file or folder. Measure a
 model's memory model at several settings this way, and name the report in its `source`. With no
 node, it runs spec 002's hardware check (AC8) on this machine's card.
 

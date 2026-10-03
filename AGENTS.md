@@ -69,8 +69,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   report with `--out`) and a dev checkout's engine environment. Every file the app keeps says its
   format; a newer one is never overwritten, and a change of format ships with its migration.
   Deletes stay inside a folder marked as the root's or the store's, and never touch the person's
-  own work. A dev checkout and a packaged app never share a root. Today's code still breaks this
-  in the places [spec 006](specs/006-foundations/spec.md) lists.
+  own work. A dev checkout and a packaged app never share a root. `oneframe/layout.py` names every
+  path under it and `app/main/paths.js` mirrors it; `contracts/layout.json` holds the two equal.
 - **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
   generated result measured.
 - `encoding="utf-8"` on every text open in Python; Windows defaults to cp1252.
