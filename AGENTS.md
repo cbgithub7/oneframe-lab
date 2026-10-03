@@ -63,6 +63,13 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   may keep an older torch line for cards a newer one drops. Every exception is written in
   `versions.json` with a reason and a review date ([docs/versions.md](docs/versions.md)). Check
   the latest release before adding any dependency.
+- **One data root.** Everything the app, the engine, a runtime child or a command-line tool writes
+  goes under the data root (or the model store), in the folder for its kind: nothing in the install
+  folder, the repo, temp, Roaming, the registry or `PATH`. Every file the app keeps says its
+  format; a newer one is never overwritten, and a change of format ships with its migration.
+  Deletes stay inside a folder marked as the root's or the store's, and never touch the person's
+  own work. A dev checkout and a packaged app never share a root. Today's code still breaks this
+  in the places [spec 006](specs/006-foundations/spec.md) lists.
 - **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
   generated result measured.
 - `encoding="utf-8"` on every text open in Python; Windows defaults to cp1252.

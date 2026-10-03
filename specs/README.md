@@ -52,7 +52,8 @@ section gives the exact commands; the owner runs them in a local session with `/
 ## Numbering and status
 
 Folders are `NNN-short-name`, numbered as they are created; [docs/handoff.md](../docs/handoff.md)
-lists the order they are worked in. `Status:` at the top of `spec.md` is one of: draft, approved,
+lists the order they are worked in. Numbers that earlier specs already name are kept for what they
+name: 004 keeps models loaded, and 005 brings the first real model nodes. `Status:` at the top of `spec.md` is one of: draft, approved,
 in progress, done, dropped.
 
 Copy `_template/` to start one.
