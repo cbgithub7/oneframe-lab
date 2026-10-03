@@ -40,7 +40,8 @@ if (rel.startsWith("..") || /(^|[\\/])(node_modules|\.venv)[\\/]/.test(rel)) pro
 const problems = [];
 if (rel.endsWith(".py")) {
   run("uv", ["run", "--project", "engine", "--frozen", "ruff", "format", rel]);
-  const check = run("uv", ["run", "--project", "engine", "--frozen", "ruff", "check", "--fix", rel]);
+  // An import added one edit before the code that uses it is reported, not deleted (F401).
+  const check = run("uv", ["run", "--project", "engine", "--frozen", "ruff", "check", "--fix", "--unfixable", "F401", rel]);
   if (!check.ok) problems.push(check.out);
 } else if (/\.(c|m)?js$/.test(rel)) {
   const eslint = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint");

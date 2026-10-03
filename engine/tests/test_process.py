@@ -3,6 +3,9 @@ network stays closed, failures keep their kind, and Stop kills the child."""
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 import textwrap
 import time
@@ -10,9 +13,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, MakeNode, wait_gone
 
-from oneframe.executors import NodeError, ProcessExecutor, died_message
+from oneframe.executors import CHILD, NodeError, ProcessExecutor, child_env, died_message
 from oneframe.graph import Graph
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
@@ -89,12 +92,13 @@ def test_a_child_that_dies_is_reported_with_its_stderr(
     assert "last words" in result.error["detail"]
 
 
+HANG = "import os, time\ndef run(ctx):\n    ctx.stage('hang', str(os.getpid()))\n    time.sleep(60)\n"
+
+
 def test_stop_kills_a_runtime_child(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
-    _runtime_node(
-        make_node, "test.hang", "import time\ndef run(ctx):\n    ctx.stage('hang')\n    time.sleep(60)\n"
-    )
+    _runtime_node(make_node, "test.hang", HANG)
     started = time.monotonic()
 
     def stop_when_hanging() -> bool:
@@ -103,6 +107,54 @@ def test_stop_kills_a_runtime_child(
     result = scheduler_for().run(_one("test.hang"), events.append, stop_when_hanging)
     assert result.status == "stopped"
     assert time.monotonic() - started < 20
+    # The interpreter itself, not only the process the engine started (on Windows a venv's
+    # python.exe is a launcher that starts the interpreter as another process).
+    assert wait_gone(int(events.of("stage")[0]["message"]))
+
+
+def test_a_runtime_child_is_told_to_end_with_the_engine(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    _runtime_node(
+        make_node,
+        "test.told",
+        "def run(ctx):\n    ctx.stage('told', str(ctx.job.get('exit_with_parent')))\n" + WRITE,
+    )
+    result = scheduler_for().run(_one("test.told"), events.append)
+    assert result.status == "done", result.error
+    assert events.of("stage")[0]["message"] == "True"
+
+
+def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
+    """A killed engine cannot stop its children; the child sees its stdin close and ends itself."""
+    job = _executor_job(tmp_path, "ctx.stage('hang', str(os.getpid()))\nimport time\ntime.sleep(60)\n")
+    job["exit_with_parent"] = True
+    job_path = tmp_path / "job.json"
+    job_path.write_text(json.dumps(job), encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-u", str(CHILD), str(job_path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        env=child_env(None, {}),
+        text=True,
+        encoding="utf-8",
+    )
+    try:
+        assert proc.stdout is not None and proc.stdin is not None
+        pid = None
+        for line in proc.stdout:
+            event = json.loads(line)
+            if event.get("event") == "stage":
+                pid = int(event["message"])
+                break
+        assert pid is not None
+        proc.stdin.close()  # what the engine's death looks like from here
+        assert proc.wait(timeout=10) == 1
+        assert wait_gone(pid)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 def test_a_missing_runtime_is_its_own_failure(
@@ -186,6 +238,64 @@ def test_a_job_brings_its_own_environment(tmp_path: Path) -> None:
     )
     executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
     assert [e["message"] for e in seen] == ["-1", "0"]  # a processor job sees no card; the next is unchanged
+
+
+def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) -> None:
+    """Hub libraries read only what is on disk, no token or endpoint reaches a run, and torch loads
+    with weights_only: whatever the person's environment or the runtime's definition says."""
+    names = (
+        "HF_HUB_OFFLINE",
+        "TRANSFORMERS_OFFLINE",
+        "TORCH_FORCE_WEIGHTS_ONLY_LOAD",
+        "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
+        "HF_TOKEN",
+        "hf_token",
+        "HF_TOKEN_PATH",
+        "HUGGING_FACE_HUB_TOKEN",
+        "HF_ENDPOINT",
+        "KEEP",
+    )
+    body = f"ctx.stage('env', json.dumps({{n: os.environ.get(n) for n in {names!r}}}))\n"
+    person = {
+        **os.environ,
+        "HF_HUB_OFFLINE": "0",
+        "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": "1",
+        "HF_TOKEN": "hf_secret",
+        "HUGGING_FACE_HUB_TOKEN": "hf_secret",
+        "HF_ENDPOINT": "http://127.0.0.1:9",
+        "HF_TOKEN_PATH": "/home/someone/.cache/huggingface/token",
+        "hf_token": "hf_secret",  # one variable on Windows, whatever its case
+        "KEEP": "1",
+    }
+    seen: list[dict[str, object]] = []
+    executor = ProcessExecutor(
+        Path(sys.executable),
+        env={"TRANSFORMERS_OFFLINE": "0", "HF_TOKEN": "hf_runtime", "hf_hub_offline": "0"},
+        base_env=person,
+    )
+    executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    assert json.loads(str(seen[0]["message"])) == {
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "TORCH_FORCE_WEIGHTS_ONLY_LOAD": "1",
+        "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": None,
+        "HF_TOKEN": None,
+        "hf_token": None,
+        "HF_TOKEN_PATH": os.devnull,  # a token file that holds nothing, not the person's own
+        "HUGGING_FACE_HUB_TOKEN": None,
+        "HF_ENDPOINT": None,
+        "KEEP": "1",
+    }
+
+
+def test_a_node_that_reads_stdin_gets_end_of_file_at_once(tmp_path: Path) -> None:
+    """The child's stdin is the pipe it watches to end with its parent; node code must not wait on it."""
+    body = "try:\n    input()\nexcept EOFError:\n    ctx.stage('stdin', 'eof')\n"
+    seen: list[dict[str, object]] = []
+    started = time.monotonic()
+    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    assert seen[0]["message"] == "eof"
+    assert time.monotonic() - started < 20
 
 
 def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:

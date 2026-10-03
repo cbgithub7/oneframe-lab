@@ -17,7 +17,7 @@ Each criterion from the spec, ticked only with how it was checked.
 
 ## Tests removed
 
-None, or each one named in the spec's plan with the reason.
+None, or each one listed under "- Removed" in the spec's Tests section, with the reason.
 
 ## Unverified
 

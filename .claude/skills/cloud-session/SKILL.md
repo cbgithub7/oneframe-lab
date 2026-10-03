@@ -5,9 +5,9 @@ description: Start of every Oneframe Lab session in Claude Code on the web (a cl
 
 # Cloud session
 
-A cloud session writes specs, plans and code, and proves everything a CPU can prove. It cannot
+A cloud session writes specs and code, and proves everything a CPU can prove. It cannot
 prove anything that needs a GPU, and it may be unable to reach Hugging Face. Work that needs real
-hardware is handed to a local session (`/local-session`) through the spec's plan.
+hardware is handed to a local session (`/local-session`) through the spec's Verification section.
 
 Do these steps in order, then report. Change nothing until step 5 is done.
 
@@ -34,7 +34,7 @@ a broken environment by installing other versions.
 ## 3. Git
 
 - `git fetch origin`, then `git status -sb` and `git log --oneline -5`.
-- Work never happens on `main` (it is protected). If the harness named a branch for this session,
+- Work never happens on `main` (treat it as protected, whether or not GitHub enforces it). If the harness named a branch for this session,
   use it. Otherwise make one from `origin/main`: `spec/NNN-short-name` for spec work, or
   `fix/short-name` for a small fix with no spec.
 - If the branch is behind `origin/main`, merge `origin/main` into it before starting. Never
@@ -48,14 +48,14 @@ Its stage decides the next action:
 
 | What you find | Next action |
 | --- | --- |
-| `spec.md` Status: draft | Help the owner finish it: open questions answered, acceptance criteria that can fail. Do not plan or code. |
-| Spec approved; `plan.md` is a placeholder | Write `plan.md` and `tasks.md` from the templates in `specs/_template/`, then stop for the owner's approval. |
-| Plan written, not approved | Wait. Answer questions about it and revise it on request. |
-| Plan approved; tasks left | Implement from the first unticked task in `tasks.md`. |
+| No folder yet for the next step in `docs/handoff.md` | Draft `spec.md` from `specs/_template/`, design and verification included, and have an agent review it. Then stop for the owner's approval. |
+| `spec.md` Status: draft | Finish it with the owner: open questions answered, acceptance criteria that can fail, reversible choices logged under "Decisions taken". Do not code. |
+| Spec approved; tasks left or `tasks.md` still the template | Write `tasks.md` if needed, then implement from the first unticked task. |
 | All tasks ticked | Validate against every acceptance criterion, then open the PR (step 7). |
 
-A plan counts as approved only when the owner says so in this session or `plan.md` says
-`Status: approved` with a date. Never approve your own plan.
+A spec counts as approved only when the owner says so in this session or `spec.md` says
+`Status: approved` with a date. Never approve your own spec. Specs 001 and 002 also have a
+`plan.md`, from the earlier process; read it with the spec.
 
 ## 5. Baseline checks
 
@@ -80,8 +80,10 @@ Then do the next action. While working:
   compacted, or you are re-reading settled things), stop at a clean point: tasks ticked, work
   committed and pushed, and a line under the last ticked task saying where to pick up. Tell the
   owner to continue in a fresh session.
-- **New ambiguity.** Stop and add it to the spec's open questions rather than guessing.
-- **No GPU here.** For every acceptance criterion marked hardware, make sure the plan's
+- **New ambiguity.** If the choice is reversible, make it and log it under "Decisions taken"; if it
+  is the owner's (product behaviour, licences, platforms, hard-to-change data formats, the rules),
+  stop and add it to the spec's open questions rather than guessing.
+- **No GPU here.** For every acceptance criterion marked hardware, make sure the spec's
   Verification section gives the exact commands for `/local-session` and the report they write.
   Mark those criteria "pending hardware" in the PR, never as passed.
 

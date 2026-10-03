@@ -87,10 +87,14 @@ def uv_environment(
     uv_home: Path, env: Path | None = None, base: dict[str, str] | None = None
 ) -> dict[str, str]:
     """uv's cache and Pythons under the data root, where removing the data root removes them, and
-    where the cache and the environments share a volume, so uv links files instead of copying."""
+    where the cache and the environments share a volume, so uv links files instead of copying.
+    uv writes nothing outside it: no `python3.x` link in the person's bin folder, and no entry in
+    the Windows registry, either of which would outlive the data root and point at nothing."""
     out = {k: v for k, v in (os.environ if base is None else base).items() if k not in DROP_ENV}
     out["UV_CACHE_DIR"] = str(uv_home / "cache")
     out["UV_PYTHON_INSTALL_DIR"] = str(uv_home / "python")
+    out["UV_PYTHON_INSTALL_BIN"] = "0"
+    out["UV_PYTHON_INSTALL_REGISTRY"] = "0"
     out["PYTHONIOENCODING"] = "utf-8"
     if env is not None:
         out["UV_PROJECT_ENVIRONMENT"] = str(env)

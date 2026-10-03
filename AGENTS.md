@@ -11,20 +11,28 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 
 ## How work is done
 
-1. **Spec first.** Anything larger than a small fix has a folder in `specs/` with `spec.md`,
-   `plan.md` and `tasks.md` ([specs/README.md](specs/README.md)). The owner approves the spec and
-   the plan before code is written. The spec, not the chat, is the source of truth.
-2. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
-3. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
+1. **Spec first, in one document.** Anything larger than a small fix has a folder in `specs/` with
+   `spec.md`, which holds the plan too, and `tasks.md` ([specs/README.md](specs/README.md)). Aim
+   for about 150 lines and at most 8 acceptance criteria: mechanisms belong in code and tests, not
+   written twice. An agent reviews the draft; the owner approves it once, before code is written.
+   The spec, not the chat, is the source of truth.
+2. **Agents decide what can be undone.** An agent makes reversible choices itself and logs each
+   under "Decisions taken" in the spec. The owner decides product behaviour, licences and money,
+   the platform matrix, data formats that are hard to change, and these rules.
+3. **Spikes answer feasibility.** A question such as "does this model run on Windows" is a spike:
+   time-boxed, no spec, a throwaway branch, ending in a report the owner reads.
+4. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
+5. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
    and before a PR. Acceptance criteria in the spec are checked one by one in the PR.
-4. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test may
-   be removed only when the spec's plan lists it under "Tests removed", with the reason.
+6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test may
+   be removed only when the spec lists it under "- Removed", with the reason.
    `node scripts/test-guard.js` enforces this in the hooks and in CI.
-5. **The PR is where the owner decides.** An agent's job ends when it opens the pull request.
+7. **The PR is where the owner decides.** An agent's job ends when it opens the pull request.
    Nothing merges to `main` except through a PR with green CI.
-6. **Hardware claims need a report.** Nothing is called tested or working on a GPU without
-   numbers from a real run on real hardware (seconds, peak VRAM, the fit that finished).
-   Cloud sessions have no GPU; say plainly what is unverified.
+8. **Hardware claims need a report.** Nothing is called tested or working on a GPU without
+   numbers from a real run on real hardware (seconds, peak VRAM, the fit that finished). A report
+   from any real machine counts, the owner's or a rented one, and names it. Cloud sessions have no
+   GPU; say plainly what is unverified.
 
 ## Rules
 
@@ -37,18 +45,32 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   decides on a card's name: hardware decisions come from what the machine reports (compute
   capability, total and free memory, driver). A test of a hardware decision covers a range of
   machines, not one card. A report from the 1070 proves a mechanism works; it tunes nothing.
+  For v1, "any machine" means Windows or Linux on x86-64, with an NVIDIA card or the processor;
+  macOS and AMD or Intel GPUs are out for now. A Linux-only node may run in WSL, decided by the
+  Improve-loop spike.
 - **Ports are typed, facets included.** Never connect values whose facets differ without a
   converter node. Disparity must never flow silently into a metric port.
 - **Light engine.** Importing `oneframe.server` loads no numpy, Pillow, torch or other model
   library (a test holds this). Heavy code lives in nodes; model code runs in the node's runtime.
-- **No network during a run.** Runtime children block sockets. Everything a node reads is fetched
-  by Download first.
+- **No network during a run.** Runtime children refuse Python-level connections, are told hub
+  libraries are offline, and get no hub token. This stops accidents, not malicious code. Everything
+  a node reads is fetched by Download first.
 - **One door into the page.** The renderer is sandboxed and isolated and reaches the engine only
-  through `engine:request` with a method from `ENGINE_METHODS` in `app/main/main.js`. Progress is
+  through `engine:request` with a method from `ENGINE_METHODS` in `app/main/methods.js`. Progress is
   pushed as events; nothing polls.
-- **Versions.** Latest stable everywhere, exact pins, and every exception written in
+- **Versions.** Latest stable for the app, the engine and the tools, with exact pins. A runtime
+  pins the newest release its family's code and wheels support, backed by a bench report; a build
+  may keep an older torch line for cards a newer one drops. Every exception is written in
   `versions.json` with a reason and a review date ([docs/versions.md](docs/versions.md)). Check
   the latest release before adding any dependency.
+- **One data root.** Everything the app, the engine, a runtime child or a command-line tool writes
+  goes under the data root (or the model store), in the folder for its kind: nothing in the install
+  folder, the repo, temp, Roaming, the registry or `PATH`, except a file the person names (a bench
+  report with `--out`) and a dev checkout's engine environment. Every file the app keeps says its
+  format; a newer one is never overwritten, and a change of format ships with its migration.
+  Deletes stay inside a folder marked as the root's or the store's, and never touch the person's
+  own work. A dev checkout and a packaged app never share a root. Today's code still breaks this
+  in the places [spec 006](specs/006-foundations/spec.md) lists.
 - **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
   generated result measured.
 - `encoding="utf-8"` on every text open in Python; Windows defaults to cp1252.

@@ -64,6 +64,22 @@ Every output in the manifest must be declared with `ctx.output` before `run` ret
 writes only into `ctx.path(...)`. A run is cached by its inputs and output-affecting params, so it
 must be deterministic for them (seed any randomness from a `seed` parameter).
 
+**Loading weights.** Prefer `.safetensors`. A `.pt`, `.pth`, `.ckpt` or `.bin` file is a pickle, and
+the engine runs every runtime child with torch's `weights_only` loading forced on, so loading one
+can unpickle tensors and plain containers only. A checkpoint that also holds other objects (a config
+class, an enum) needs exactly those types allowed, in the node's own folder:
+
+```python
+import torch
+from upstream.config import ModelConfig  # the one class this checkpoint holds besides tensors
+
+torch.serialization.add_safe_globals([ModelConfig])
+state = torch.load(checkpoint, map_location="cpu")  # checkpoint: the file's path
+```
+
+Never turn `weights_only` off: the engine removes the variable that would, and a runtime may not
+set it.
+
 ## The memory model
 
 A node that loads a model declares what it needs, as data in `node.json`, so the engine can fit it

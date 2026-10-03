@@ -19,9 +19,12 @@ person presses Download.
 
 ## Status
 
-Phase 0 and the start of phase 1: the engine (node manifests, typed ports, graph planning, a
-content-addressed cache, a scheduler that runs nodes in-process or in their own runtime), the
-Electron shell, and the checks. No model nodes yet; those come with the runtime manager.
+The engine (node manifests, typed ports, graph planning, a content-addressed cache, and a scheduler
+that runs nodes in-process or in their own runtime), the runtime manager (spec 001), fitting each
+node to the memory a machine has (spec 002), the Electron shell, and the checks. No real model has
+run yet: the only nodes are a photo source and a depth-to-points converter. The model store (spec
+003) is being specified, and the first real models follow it. [docs/handoff.md](docs/handoff.md)
+has the state and what comes next.
 
 ## Layout
 
@@ -66,3 +69,9 @@ and writes a report of what it did.
 - [docs/nodes.md](docs/nodes.md): writing a node
 - [docs/runtimes.md](docs/runtimes.md): writing a runtime
 - [docs/versions.md](docs/versions.md): the version policy
+
+## Licence
+
+The app's own code is under the [MIT licence](LICENSE). Each model a node runs keeps its own
+licence for its code and its weights, which the node's manifest states and the app shows; some
+are for non-commercial use only.

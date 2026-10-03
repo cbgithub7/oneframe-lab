@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { EngineClient, EngineError, LineSplitter } from "../../app/main/engine.js";
 import { RotatingLog } from "../../app/main/log.js";
+import { ENGINE_METHODS } from "../../app/main/methods.js";
 import { dataRoot, engineCommand, findUv } from "../../app/main/paths.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,8 @@ test("requests are answered by id, and events and logs arrive on their own chann
   assert.equal(await client.request("split"), "ok");
   assert.ok(events.some((e) => e.event === "run.start"));
   assert.equal(await client.request("noise"), "after noise");
+  assert.equal(await client.request("null"), "after null"); // a JSON line that is not an object
+  assert.ok(logs.some((l) => l.includes("not an object")));
   await assert.rejects(client.request("fail"), (/** @type {any} */ error) =>
     error instanceof EngineError && error.problems[0].node === "x");
   await client.stop();
@@ -51,6 +54,24 @@ test("pending requests fail when the engine dies, and silence times out", async 
   await assert.rejects(client.request("echo"), /not running/);
 });
 
+test("a reply after its request timed out is logged, never passed on as an event", async () => {
+  const client = new EngineClient({ command: process.execPath, args: [path.join(here, "fixtures", "fake-engine.js")],
+    requestTimeoutMs: 100 });
+  const logs = /** @type {string[]} */ ([]);
+  const events = /** @type {any[]} */ ([]);
+  client.on("log", (line) => logs.push(line));
+  client.on("event", (e) => events.push(e));
+  await client.start();
+  try {
+    await assert.rejects(client.request("late"), /did not answer late within 100 ms/);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.deepEqual(events.filter((e) => "id" in e), []);
+    assert.ok(logs.some((l) => l.includes("after it had timed out")));
+  } finally {
+    await client.stop();
+  }
+});
+
 test("the data root is one folder per platform, overridable", () => {
   assert.equal(dataRoot({ ONEFRAME_DATA: "/x/y" }, "linux"), path.resolve("/x/y"));
   assert.equal(dataRoot({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "win32"),
@@ -58,6 +79,9 @@ test("the data root is one folder per platform, overridable", () => {
   assert.equal(dataRoot({ XDG_DATA_HOME: "/d" }, "linux"), path.join("/d", "oneframe-lab"));
   const cmd = engineCommand("uv", "/data");
   assert.equal(cmd.env.UV_CACHE_DIR, path.join("/data", "uv", "cache"));
+  // uv writes nothing outside the data root: no python link in a bin folder, no registry entry.
+  assert.equal(cmd.env.UV_PYTHON_INSTALL_BIN, "0");
+  assert.equal(cmd.env.UV_PYTHON_INSTALL_REGISTRY, "0");
   assert.ok(cmd.args.includes("--frozen"), "the engine runs exactly what engine/uv.lock says");
 });
 
@@ -81,11 +105,17 @@ test("the real engine starts from its lock file and lists the built-in nodes", {
     const data = mkdtempSync(path.join(tmpdir(), "oneframe-data-"));
     try {
       const client = new EngineClient({ ...engineCommand(/** @type {string} */ (uv), data), requestTimeoutMs: 120_000 });
-      const ready = await client.start();
-      assert.match(ready.python, /^3\.14\./);
-      const { nodes } = await client.request("nodes.list");
-      assert.ok(nodes.some((/** @type {any} */ n) => n.id === "source.image"));
-      await client.stop();
+      try {
+        const ready = await client.start();
+        assert.match(ready.python, /^3\.14\./);
+        const { nodes } = await client.request("nodes.list");
+        assert.ok(nodes.some((/** @type {any} */ n) => n.id === "source.image"));
+        // Every method the page may call is one the engine has.
+        const missing = [...ENGINE_METHODS].filter((m) => !ready.methods.includes(m));
+        assert.deepEqual(missing, [], "the page's allowlist names methods the engine does not have");
+      } finally {
+        await client.stop();
+      }
     } finally {
       rmSync(data, { recursive: true, force: true });
     }

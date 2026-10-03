@@ -18,6 +18,7 @@ import sys
 import tarfile
 import textwrap
 import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,45 @@ def _write(root: Path, manifest: dict[str, Any], code: str) -> Path:
     (folder / "node.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     (folder / "node.py").write_text(textwrap.dedent(code), encoding="utf-8")
     return folder
+
+
+def process_alive(pid: int) -> bool:
+    """Whether a process is still running. A killed child not yet reaped counts as gone; on
+    Windows this asks without touching the process (os.kill there would end it)."""
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[0]
+    except OSError, IndexError:
+        return True
+    return state != "Z"
+
+
+def wait_gone(pid: int, seconds: float = 10) -> bool:
+    """True once the process is gone, False if it is still running after `seconds`."""
+    end = time.monotonic() + seconds
+    while process_alive(pid):
+        if time.monotonic() > end:
+            return False
+        time.sleep(0.05)
+    return True
 
 
 @pytest.fixture

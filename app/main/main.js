@@ -2,8 +2,9 @@
 // Electron's main process: one window, one engine, and a single narrow door between them.
 //
 // The renderer is sandboxed and isolated, and can do exactly two things: ask the engine one of the
-// methods listed in ENGINE_METHODS, and listen to the engine's events. It cannot read files, start
-// processes or open windows. Every argument it sends is checked here before the engine sees it.
+// methods listed in ENGINE_METHODS (methods.js), and listen to the engine's events. It cannot read
+// files, start processes or open windows. The method and the shape of its arguments are checked
+// here; the engine checks their values.
 
 import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import path from "node:path";
@@ -11,23 +12,8 @@ import { pathToFileURL } from "node:url";
 
 import { EngineClient } from "./engine.js";
 import { RotatingLog } from "./log.js";
+import { ENGINE_METHODS } from "./methods.js";
 import { REPO_ROOT, dataRoot, engineCommand, findUv } from "./paths.js";
-
-/** What the renderer may ask the engine. Anything else is refused here. */
-export const ENGINE_METHODS = new Set([
-  "engine.hello",
-  "nodes.list",
-  "nodes.reload",
-  "ports.list",
-  "graph.validate",
-  "graph.run",
-  "run.stop",
-  "runtimes.list",
-  "runtimes.plan",
-  "runtimes.install",
-  "runtimes.stop",
-  "runtimes.remove",
-]);
 
 const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");
 const RENDERER_URL = pathToFileURL(RENDERER).href;

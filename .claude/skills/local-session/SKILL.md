@@ -1,6 +1,6 @@
 ---
 name: local-session
-description: Start of an Oneframe Lab session on the owner's own PC, used to run what a cloud session cannot -- GPU runs, Windows-only behaviour, real model weights -- and to record the evidence as a report. Brings the checkout up to date with the cloud's work first, then checks the machine, finds the hardware steps a spec's plan asks for, runs exactly those, and commits a report. Use at the start of any local session, and when asked to verify a spec or PR on real hardware.
+description: Start of an Oneframe Lab session on the owner's own PC, used to run what a cloud session cannot -- GPU runs, Windows-only behaviour, real model weights -- and to record the evidence as a report. Brings the checkout up to date with the cloud's work first, then checks the machine, finds the hardware steps a spec asks for, runs exactly those, and commits a report. Use at the start of any local session, and when asked to verify a spec or PR on real hardware.
 ---
 
 # Local session (real hardware)
@@ -12,7 +12,7 @@ happened, failures included.
 
 The rules in `AGENTS.md` apply here too. Two differ from a cloud session:
 
-- **Verify, don't develop.** Run the steps the spec's plan lists. If something fails, record it
+- **Verify, don't develop.** Run the steps the spec's Verification section lists. If something fails, record it
   and report it. Change code only when the owner asks, on the PR's branch, with the checks green,
   and name the change in the report.
 - **Network is real here.** Downloads (runtimes, weights) happen only when a step calls for them,
@@ -22,7 +22,7 @@ Do these steps in order.
 
 ## 1. Get up to date
 
-This machine is always behind: specs, plans and code are written in the cloud. Update before
+This machine is always behind: specs and code are written in the cloud. Update before
 reading anything else, because the rules, the spec, and this skill itself may have changed.
 
 1. **Tree clean?** Run `git status --porcelain`. If anything is listed, show it to the owner and ask
@@ -51,11 +51,12 @@ reading anything else, because the rules, the spec, and this skill itself may ha
 
 ## 2. Rules and target
 
-Read `AGENTS.md`. Read the chosen spec's `spec.md` (the acceptance criteria marked hardware) and its
-`plan.md` (the Verification section: the exact commands and the report each writes).
+Read `AGENTS.md`. Read the chosen spec's `spec.md`: the acceptance criteria marked hardware, and its
+Verification section, with the exact commands and the report each writes. (Specs 001 and 002 keep
+their Verification section in `plan.md`.)
 
-If the plan gives no command for a hardware criterion, stop and say so. Do not invent a
-procedure: the cloud session that wrote the plan owes one.
+If the spec gives no command for a hardware criterion, stop and say so. Do not invent a
+procedure: the cloud session that wrote the spec owes one.
 
 ## 3. The machine and its tools
 
@@ -87,10 +88,10 @@ Record, for the report:
 
 ## 5. Run the hardware steps
 
-For each hardware acceptance criterion, in the plan's order:
+For each hardware acceptance criterion, in the spec's order:
 
 1. Tell the owner what is about to run, and what it will download (with size) if anything.
-2. Run the plan's command exactly. Keep its full output.
+2. Run the spec's command exactly. Keep its full output.
 3. Watch for the failures a GPU run can have: out of memory (the allocator ceiling should turn it
    into an error, not a frozen desktop, and if the desktop froze, that is a finding), driver
    errors, a download attempted during a run.
@@ -102,7 +103,7 @@ reason you name (the app was still holding the card); the report lists both.
 ## 6. The report
 
 Write `specs/<id>/reports/<YYYY-MM-DD>-<short-step-name>.json`, plus a `.md` of the same name for
-people, unless the plan's command already wrote the JSON (then add only the `.md`). The JSON
+people, unless the spec's command already wrote the JSON (then add only the `.md`). The JSON
 carries:
 
 ```json

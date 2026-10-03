@@ -95,7 +95,9 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
       the package and `needs`. Prebuilt wheels will be added per runtime when a node needs one.
 - `sources`: upstream code that is not on an index, as a pinned archive. Its sha256 is checked,
   every file in it must stay inside its folder, and `paths` inside it are made importable.
-- `env`: variables set for every node run in this runtime.
+- `env`: variables set for every node run in this runtime. It may not set what the engine sets or
+  removes for every run: the hub libraries' offline flags, hub tokens and endpoints, and torch's
+  `weights_only` switches.
 - `probe`: a function the runtime report runs inside the runtime.
 
 ## Checks
@@ -105,8 +107,9 @@ runtimes that are fine:
 
 - the id matches the folder, and the three files are there;
 - every build is an extra, and all of them are one conflict set;
-- every torch in `uv.lock` is 2.6 or newer. Older torch can run code from a crafted weights file
-  (CVE-2025-32434), so a lock that holds one is refused;
+- every torch in `uv.lock` is 2.10 or newer. Older torch can run code from a crafted weights file,
+  even with `weights_only` (CVE-2025-32434 before 2.6, CVE-2026-24747 before 2.10), so a lock that
+  holds one is refused;
 - each extension, source and variable is well formed.
 
 ## Locking

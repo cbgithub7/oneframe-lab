@@ -50,8 +50,17 @@ PROBE = (
 
 
 def test_a_runtime_installs_under_the_data_root_from_its_lock(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, source_server: SourceServer
+    tmp_path: Path,
+    tiny: Path,
+    uv_exe: str,
+    uv_home: Path,
+    source_server: SourceServer,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Where uv would put a python link for the person (~/.local/bin by default): it must stay empty,
+    # even when the session's Python is already installed, because uv links it again each time.
+    bin_dir = tmp_path / "person-bin"
+    monkeypatch.setenv("UV_PYTHON_BIN_DIR", str(bin_dir))
     archive = upstream_archive()
     source_server.files["/up.tar.gz"] = archive
     add_source(tiny, source_server.url("/up.tar.gz"), archive)
@@ -68,6 +77,7 @@ def test_a_runtime_installs_under_the_data_root_from_its_lock(
         and done["python"] == str(runtime_install.interpreter(env))
     )
     assert events.kinds()[0] == "runtime.start" and events.kinds()[-1] == "runtime.done"
+    assert not bin_dir.exists(), "uv wrote outside the data root"
     assert [e["step"] for e in events.of("runtime.step")] == list(runtime_install.STEPS)
     assert events.of("runtime.progress")[-1]["done"] == len(archive)
 

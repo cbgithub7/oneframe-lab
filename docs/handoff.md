@@ -30,6 +30,11 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   on, never the design target: the app runs on any machine that can run a model, from no GPU to
   the largest cards, and fails with a clear reason when it cannot. Nothing is tuned to the 1070
   (the "Any card that can run it" rule in [AGENTS.md](../AGENTS.md)).
+- **How work is done** (2026-10-02). One spec document, plan included, with one owner approval;
+  agents make reversible choices and log them; feasibility questions are spikes. A hardware report
+  from any real machine counts, the owner's or a rented one. v1 is Windows or Linux on x86-64,
+  NVIDIA or the processor. Storage: one data root, versioned formats, safe deletes, dev and
+  packaged roots apart ([AGENTS.md](../AGENTS.md)).
 
 ## State (2026-10-02)
 
@@ -54,7 +59,7 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     runtime is `runtimes/torch/` (torch 2.14.0; cpu, cu126, cu130); its cpu build installed and
     ran its probe in a cloud session, and its cu126 build passed AC9 on the owner's GTX 1070.
     Locking a runtime needs `download.pytorch.org` and `download-r2.pytorch.org` reachable.
-- **Fit to memory** (spec 002, done, in PR #5 until it merges):
+- **Fit to memory** (spec 002, done, merged in PR #5):
     - a node's memory model in its manifest, checked with every problem named, and the
       `precision` param the engine adds from it;
     - the fit before each load: free memory less a margin, upgrades, speed-only changes before
@@ -67,9 +72,13 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - `nodes.fit`, `nodes.forget`, and `npm run bench:fit`.
 
     Checked by tests on the processor and in the tiny runtime. On the owner's GTX 1070 (AC8,
-    [2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)): estimates within
-    0.1% of the peak at three settings, the fit under another program's load, and the cap refusing
-    an overrun while the card had room, answered by `ctx.fallbacks` and by the engine's retry.
+    [2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)):
+    - measured peaks within 0.1% of the estimates at three settings. The test node allocates
+      exactly what its memory model says, so this proves the measuring and the cap work, not that a
+      formula predicts a real model; no real model's memory model has been measured yet;
+    - the fit under another program's load;
+    - the cap refusing an overrun while the card had room, answered by `ctx.fallbacks` and by the
+      engine's retry.
 - **Built-in nodes:** `source.image` and `convert.depth_to_points`.
 - **Electron 44 shell:**
     - a sandboxed page that reaches the engine through one IPC door with a method allowlist;
@@ -91,61 +100,55 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
     - `scripts/check-docs.js` catches docs that name missing files;
     - the PR template checks the acceptance criteria.
 
-Not started: model store, any model node, workspace UI, viewer, installer.
+Not started: any model node, workspace UI, viewer, installer. The model store is specified (its core).
 
 Follow-up: `npm run versions` does not read runtime locks yet, so a runtime's torch pin is checked by
 hand.
 
 ## Next, in order
 
-Each step becomes a spec in `specs/` ([specs/README.md](../specs/README.md)): spec, owner
-approval, plan, owner approval, tasks, implementation, PR. The list below is the order; the specs
-hold the detail.
+The order and the process were decided by the owner on 2026-10-02, after the
+[review of the project as a whole](reviews/2026-10-02.md): build one real vertical slice before
+more infrastructure. Each step is one spec document in `specs/` ([specs/README.md](../specs/README.md))
+with one owner approval, or a time-boxed spike that ends in a report.
+
+| # | Step | Spec | Status |
+| --- | --- | --- | --- |
+| 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
+| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | approved 2026-10-03; next to implement |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); after 006 |
+| 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog | 005 (first part) | not started |
+| 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
+| 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
+| 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times measured in steps 3 and 4 | 004 | not started |
+| 6 | Improve-loop spike: one view synthesiser and one reconstructor on some machine, and whether WSL is needed | spike | not started |
+| 7 | Workspace UI, grown from step 3's page: variants, a graph editor, the three.js and Spark viewer | new | not started |
+| 8 | The rest of 003 (import, a movable store, a queue, the page's part) and packaging (installer, two-tier uninstaller, signing, updates) | 003, new | not started |
+
+Done before this order:
 
 | Spec | Status |
 | --- | --- |
 | [001 Runtime manager](../specs/001-runtime-manager/spec.md) | done: every acceptance criterion verified, AC9 by the owner's GTX 1070 report ([2026-09-29-gtx1070.md](../specs/001-runtime-manager/reports/2026-09-29-gtx1070.md)); merged in [PR #3](https://github.com/cbgithub7/oneframe-lab/pull/3) |
-| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | spec approved 2026-09-30 after the review and [research](../specs/002-fit-to-memory/research.md), plan approved 2026-10-01; done: AC1–AC7 by tests; AC8's spill clause amended 2026-10-02 (judged by torch's own out-of-memory message, not Windows' shared memory counter) and passed on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
+| [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | done: AC1–AC7 by tests; AC8 on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); merged in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
 
-1. **Runtime manager.** A node family's uv environment, built from a committed lock file:
-    - Python and torch are chosen per family.
-    - The torch build is chosen by compute capability and driver: cu126 below compute 7.5 or on a
-      driver older than 580, otherwise cu130. The floor is torch 2.6.
-    - Compiled extensions are classed as stand-in, optional or required.
-    - The environment is rebuilt only when its lock file changes.
+Known from the review, to be settled by the specs above or later ones:
 
-    The scheduler's `runtime_python` hook is where it plugs in.
-2. **Fit to memory** (implemented; AC8 pending hardware). How the best local AI apps do it,
-   without asking anyone to run a test ([research](../specs/002-fit-to-memory/research.md)):
-    - each node declares a memory model: its weights per precision, and its working memory as a
-      function of its settings;
-    - before loading, the engine measures free memory, keeps a margin, and changes only settings
-      the person left alone: speed-only settings first, quality last, and labels the result;
-    - one narrow retry on `oom`; measured peaks correct the estimate on each machine.
-3. **Model store.** Download for a node's weights and companion files, into
-   `<data>/models/<node>`, with resume and sha256, and a Hugging Face snapshot layout. Pin every
-   repository revision.
-4. **Keep models loaded** (decided 2026-09-30). A long-lived worker per runtime, in place of one
-   child process per run: a model loads once and runs many times. The worker stays while idle for
-   a set time, is evicted when another runtime needs the device, and is killed on Stop. It
-   changes the executors, Stop and the node API (loading separate from running).
-5. **First model nodes,** enough for both loops:
-    - depth: Depth Pro and MoGe-2;
-    - segmentation: SAM 2.1;
-    - one object generator: TripoSR or Hunyuan3D-2mini, first because they can be verified on the
-      test card (the catalogue is not limited to what fits it);
-    - one view synthesiser and one reconstructor: pick from the proposal's catalogue by what runs
-      locally;
-    - render: an asset to a ViewSet along a CameraPath;
-    - evaluate: agreement with the source photo from the input camera.
+- **Precision has no speed model.** The fit can pick fp16 on a card that runs it far slower than
+  fp32. The rate per precision and compute capability is published data, so it can be added
+  without naming a card. The margin (1.5 GiB or 10%) should be derived again from real runs.
+- **The cache has no size cap**, and no spec defines a recipe format yet.
+- **A public release is a goal** (the owner, 2026-10-03; review decision 8). That makes real
+  work of:
+    - a licence: the app's own code is MIT (the owner, 2026-10-03; `LICENSE`), and notices for
+      third-party code are still to come;
+    - signing;
+    - a cleared product name;
+    - documentation for users, apart from these docs for agents;
+    - an accessibility baseline.
 
-    Each gets a CPU or tiny path for CI, and says plainly what is unverified.
-6. **Workspace UI.**
-    - Variants side by side per photo, then a graph editor (Drawflow or a hand-written SVG editor).
-    - A three.js plus Spark 2 viewer for meshes, splats and the 2.5D photo, with clay, wireframe
-      and trust shading.
-7. **Packaging** (phase 2 of the roadmap):
-    - an NSIS per-user installer with a bundled, pinned uv;
-    - a first-run wizard with preflight checks;
-    - a two-tier uninstaller;
-    - signing, electron-updater, and a diagnostics bundle.
+  The packaging and UI steps carry them.
+- **Waiting on the owner:** `main` has no branch protection today (GitHub reports
+  `protected: false`), so "only through a PR with green CI" is a convention, not enforced.
+  Protecting it, with the two CI checks required, comes before Dependabot's minor updates may merge
+  themselves.

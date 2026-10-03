@@ -24,6 +24,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import traceback
 import uuid
 from collections.abc import Callable
@@ -77,6 +78,7 @@ class Engine:
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
         self._run: tuple[str, threading.Event, set[str]] | None = None
+        self._run_thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self.methods: dict[str, Callable[[dict[str, Any]], Any]] = {
             "engine.hello": self.hello,
@@ -158,12 +160,8 @@ class Engine:
         graph = Graph.from_json(params["graph"])
         the_plan = plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
         used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
-        with self._lock:
-            if self._run is not None:
-                raise RuntimeError(f"Run {self._run[0]} is still going; stop it first.")
-            run_id = uuid.uuid4().hex[:12]
-            stop = threading.Event()
-            self._run = (run_id, stop, used)
+        run_id = uuid.uuid4().hex[:12]
+        stop = threading.Event()
 
         def work() -> None:
             try:
@@ -183,7 +181,13 @@ class Engine:
                 with self._lock:
                     self._run = None
 
-        threading.Thread(target=work, name=f"run-{run_id}", daemon=True).start()
+        thread = threading.Thread(target=work, name=f"run-{run_id}", daemon=True)
+        with self._lock:  # the run and its thread are recorded together, so shutdown sees both
+            if self._run is not None:
+                raise RuntimeError(f"Run {self._run[0]} is still going; stop it first.")
+            self._run = (run_id, stop, used)
+            self._run_thread = thread
+        thread.start()
         return {"run": run_id}
 
     def run_stop(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -232,12 +236,21 @@ class Engine:
         return self.runtimes.remove(runtime_id)
 
     def shutdown(self, timeout: float = 30) -> None:
-        """Stop an install that is still going, so that its uv does not outlive the engine."""
+        """Stop a run and an install that are still going, and wait for them, so that no node
+        process holding the card and no uv outlives the engine."""
+        with self._lock:
+            running = self._run
+            run_thread = self._run_thread
+        if running is not None:
+            running[1].set()  # the executor sees it within a poll and kills the node's process
         installing = self.runtimes.installing()
         if installing is not None:
             self.runtimes.stop(installing)
+        deadline = time.monotonic() + timeout  # one budget for both, not one each
+        if run_thread is not None:
+            run_thread.join(max(deadline - time.monotonic(), 0))
         if self._install is not None:
-            self._install.join(timeout)
+            self._install.join(max(deadline - time.monotonic(), 0))
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         req_id = message.get("id")

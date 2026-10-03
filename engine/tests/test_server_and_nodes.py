@@ -4,10 +4,12 @@ import json
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from conftest import Events, MakeNode, wait_gone
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR
@@ -15,6 +17,7 @@ from oneframe.cache import Cache
 from oneframe.graph import Graph
 from oneframe.registry import discover
 from oneframe.scheduler import Scheduler
+from oneframe.server import Engine
 
 
 def test_importing_the_server_loads_no_numeric_or_model_library() -> None:
@@ -110,6 +113,9 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path) -> None:
         image = done["outputs"]["p"]["image"]
         assert image["facets"] == {"alpha": "none"} and image["trust"] == "measured"
         assert image["meta"]["focal_px_exif"] == round(26 / 36 * 8, 2)
+        # The photo's name travels with the result; its folders, and so the person's user name, do not.
+        assert image["meta"]["source"] == "p.jpg"
+        assert str(tmp_path) not in json.dumps(image["meta"])
     finally:
         client.close()
 
@@ -159,3 +165,40 @@ def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
     # pixel (u=3, v=1) has centre (3.5, 1.5): X = (3.5 - 2) * 2 / 2, Y = (1.5 - 1) * 2 / 2, Z = 2
     assert np.allclose(points[1, 3], [1.5, 0.5, 2.0])
     assert result.outputs["u"]["points"].facets == {"frame": "camera", "scale": "metric"}
+
+
+def test_shutdown_stops_a_running_graph_and_its_node_process(
+    tmp_path: Path, make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """The app quitting closes the engine's stdin, and the engine shuts down: a node still loading
+    a model must not outlive it holding the card."""
+    make_node(
+        {
+            "id": "test.hang",
+            "version": "1",
+            "title": "hang",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "run": {"where": "runtime", "runtime": "test", "entry": "node.py:run"},
+        },
+        "import os, time\ndef run(ctx):\n    ctx.stage('hang', str(os.getpid()))\n    time.sleep(60)\n",
+    )
+    engine = Engine(tmp_path / "data", [tmp_path / "nodes"], events.append, runtime_roots=[])
+    engine.scheduler = scheduler_for()  # runtime nodes run in this test's own Python
+    graph = {"version": 1, "nodes": {"h": {"node": "test.hang"}}, "edges": []}
+    try:
+        reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
+        assert reply is not None and "result" in reply, reply
+        end = time.monotonic() + 30
+        while not events.of("stage"):
+            assert time.monotonic() < end, events
+            time.sleep(0.05)
+        pid = int(events.of("stage")[0]["message"])
+
+        started = time.monotonic()
+        engine.shutdown(timeout=20)
+        assert time.monotonic() - started < 15
+        assert events.of("run.stopped")
+        assert wait_gone(pid)
+    finally:
+        engine.shutdown(timeout=20)  # nothing left running if an assertion above failed

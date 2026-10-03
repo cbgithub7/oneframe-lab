@@ -6,6 +6,7 @@ pixels it is a usable starting guess for a depth model that accepts intrinsics.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from PIL import ExifTags, Image, ImageOps
@@ -19,7 +20,10 @@ def run(ctx: Any) -> dict[str, Any]:
         image = ImageOps.exif_transpose(src)
         alpha = "A" in image.getbands()
         image = image.convert("RGBA" if alpha else "RGB")
-    meta: dict[str, Any] = {"width": image.width, "height": image.height, "source": ctx.params["path"]}
+    # The file's name, not its path: a path carries the person's user name and folders into every
+    # result made from this photo, and into anything exported from them.
+    name = Path(ctx.params["path"]).name
+    meta: dict[str, Any] = {"width": image.width, "height": image.height, "source": name}
     focal_35 = exif.get_ifd(ExifTags.IFD.Exif).get(FOCAL_35MM) or exif.get(FOCAL_35MM)
     if focal_35:
         # 35 mm film is 36 mm wide; scale by the long side, which is what the equivalent refers to.

@@ -38,6 +38,7 @@ from typing import Any
 from oneframe import memory, ports
 from oneframe.cache import Cache
 from oneframe.child import Value
+from oneframe.errors import ContractError
 from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
 from oneframe.manifest import Manifest
@@ -174,7 +175,7 @@ class Scheduler:
                 result.status = "stopped"
                 say({"event": "run.stopped", "step": step.id})
                 return result
-            except (NodeError, RuntimeMissing, ValueError) as exc:
+            except (NodeError, RuntimeMissing, ContractError) as exc:
                 kind = (
                     exc.kind
                     if isinstance(exc, NodeError)
@@ -216,7 +217,7 @@ class Scheduler:
             value = done[src][src_port]
             why = ports.value_mismatch(value.facets, step.manifest.inputs[port])
             if why:
-                raise ValueError(f"{step.id}.{port}: {why} (from {src}.{src_port})")
+                raise ContractError(f"{step.id}.{port}: {why} (from {src}.{src_port})")
             inputs[port] = value
         return inputs
 

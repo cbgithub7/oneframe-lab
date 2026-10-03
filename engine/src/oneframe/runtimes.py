@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
+from oneframe.executors import reserved_env
 from oneframe.memory import Target
 
 DEFINITION = "runtime.json"
@@ -39,8 +40,9 @@ LOCK = "uv.lock"
 VENDORS = ("nvidia", "amd", "intel", "none")
 OSES = ("windows", "linux", "macos")
 EXTENSION_CLASSES = ("stand-in", "optional", "required")
-# torch.load on a crafted file could run code before 2.6, weights_only or not (CVE-2025-32434).
-TORCH_FLOOR = (2, 6)
+# torch.load on a crafted file could run code before 2.6, weights_only or not (CVE-2025-32434), and
+# its weights_only unpickler could corrupt memory, and possibly run code, before 2.10 (CVE-2026-24747).
+TORCH_FLOOR = (2, 10)
 
 _ID = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _BUILD = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -356,7 +358,8 @@ def _check_lock(folder: Path, problems: list[str]) -> None:
             floor = ".".join(map(str, TORCH_FLOOR))
             problems.append(
                 f"{LOCK} holds torch {version}; every runtime needs torch {floor} or newer "
-                "(older torch can run code from a crafted weights file, CVE-2025-32434)"
+                "(older torch can run code from a crafted weights file, even with weights_only: "
+                "CVE-2025-32434, CVE-2026-24747)"
             )
 
 
@@ -382,6 +385,12 @@ def parse(data: dict[str, Any], folder: Path, source: str = DEFINITION) -> Runti
     ):
         problems.append("env should map names to strings")
         env = {}
+    reserved = sorted(name for name in env if reserved_env(name))
+    if reserved:
+        problems.append(
+            f"env sets {', '.join(reserved)}, which the engine sets or removes for every run "
+            "(hub libraries offline, no hub token or endpoint, torch's weights_only loading on)"
+        )
     probe = data.get("probe")
     if probe is not None:
         file, _, function = str(probe).partition(":")

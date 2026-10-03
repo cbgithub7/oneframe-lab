@@ -86,19 +86,45 @@ def _trace() -> str:
     return traceback.format_exc()[-4000:]
 
 
+# Set in every runtime child, after everything else, so neither the person's environment nor a
+# runtime's definition can turn them off. Hub libraries told they are offline read only what is on
+# disk and fail at once on anything missing, instead of retrying for seconds against a closed
+# network. torch then loads every checkpoint with weights_only, whatever the caller asks for.
+FORCED_ENV = {
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "HF_DATASETS_OFFLINE": "1",
+    "HF_HUB_DISABLE_TELEMETRY": "1",
+    # A token file that holds nothing: with HF_TOKEN unset, the hub library would otherwise read the
+    # person's own (~/.cache/huggingface/token) and send it with every request.
+    "HF_TOKEN_PATH": os.devnull,
+    "TORCH_FORCE_WEIGHTS_ONLY_LOAD": "1",
+}
+# Never passed to a runtime child: a run reads only files already on disk, so it needs no hub
+# token or endpoint, and nothing may turn torch's weights_only loading back off.
+SECRET_OR_UNSAFE_ENV = (
+    "HF_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+    "HF_ENDPOINT",
+    "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
+)
+_RESERVED = {name.upper() for name in (*FORCED_ENV, *SECRET_OR_UNSAFE_ENV)}
+_ENGINE_PYTHON = {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"}
+
+
+def reserved_env(name: str) -> bool:
+    """Whether the engine sets or removes this variable for every run. Compared without case:
+    Windows treats HF_TOKEN and hf_token as one variable."""
+    return name.upper() in _RESERVED
+
+
 def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, str]:
     """A runtime child's environment: nothing of the engine's own Python leaks in, so the runtime
-    never sees the engine's packages or loads a DLL from the engine's folders."""
+    never sees the engine's packages or loads a DLL from the engine's folders; no hub token or
+    endpoint reaches it; and FORCED_ENV is set last. Names are compared without case."""
     source = dict(os.environ if base is None else base)
-    drop = (
-        "PYTHONPATH",
-        "PYTHONHOME",
-        "VIRTUAL_ENV",
-        "CONDA_PREFIX",
-        "CONDA_DEFAULT_ENV",
-        "UV_PROJECT_ENVIRONMENT",
-    )
-    env = {k: v for k, v in source.items() if k not in drop}
+    drop = {*_ENGINE_PYTHON, "UV_PROJECT_ENVIRONMENT"}
+    env = {k: v for k, v in source.items() if k.upper() not in drop and not reserved_env(k)}
     engine_prefix = os.path.normcase(str(Path(sys.prefix).resolve()))
     if env.get("PATH"):
         env["PATH"] = os.pathsep.join(
@@ -106,7 +132,8 @@ def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, s
             for part in env["PATH"].split(os.pathsep)
             if part and not os.path.normcase(str(Path(part).resolve())).startswith(engine_prefix)
         )
-    env.update(extra)
+    env.update({k: v for k, v in extra.items() if not reserved_env(k)})
+    env.update(FORCED_ENV)
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env
@@ -153,6 +180,10 @@ class ProcessExecutor:
         self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
     def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
+        # Every child ends when the process that started it does, even one killed without a chance
+        # to stop it (an engine, a bench tool), so no orphan keeps holding the card. It watches
+        # the stdin pipe this process holds, and closes.
+        job = {**job, "exit_with_parent": True}
         tmp = Path(tempfile.mkdtemp(prefix="oneframe-job-"))
         stderr_tail: deque[str] = deque(maxlen=80)
         done: dict[str, Any] | None = None
@@ -166,7 +197,7 @@ class ProcessExecutor:
             job_path.write_text(json.dumps(job, default=str), encoding="utf-8")
             proc = subprocess.Popen(
                 [str(self.python), "-u", str(CHILD), str(job_path)],
-                stdin=subprocess.PIPE if job.get("exit_with_parent") else subprocess.DEVNULL,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=child_env(self.base_env, {**self.env, **(job.get("env") or {})}),
@@ -210,7 +241,14 @@ class ProcessExecutor:
             finally:
                 if proc.poll() is None:
                     proc.kill()
-                    proc.wait(timeout=10)
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:  # never hide why the run ended behind this
+                        LOGGER.warning("node child %s did not end within 10 s of being killed", proc.pid)
+                if proc.stdin is not None:
+                    # The child's own interpreter, behind a launcher that a kill does not take down
+                    # with it, sees its stdin close and ends.
+                    proc.stdin.close()
             if done is not None:
                 return done
             if failed is not None:

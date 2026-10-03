@@ -13,10 +13,12 @@ code is imported:
 - **The protocol gets its own descriptor.** Model code prints freely -- timers, tqdm, C extensions
   writing straight to fd 1. The NDJSON channel is a duplicate of stdout taken first; fd 1 itself
   is pointed at stderr, so nothing anybody prints can land in the middle of an event.
-- **The network is closed.** Hub libraries are also told they are offline, but only the ones that
-  read those flags listen. Connecting anywhere but this machine raises NetworkForbidden naming the
-  host, so a run fails with that name instead of fetching gigabytes nobody asked for. Downloads
-  happen when a person presses Download, never during a run.
+- **The network is closed to Python code.** The engine tells hub libraries they are offline and
+  passes no hub token (executors.FORCED_ENV), so they read only what is on disk. Connecting through
+  Python's sockets anywhere but this machine raises NetworkForbidden naming the host, so a run fails
+  with that name instead of fetching gigabytes nobody asked for. This stops accidents, not malicious
+  code: native code, DNS lookups and anything that undoes the patch go around it. Downloads happen
+  when a person presses Download, never during a run.
 - **tqdm reports progress.** Most model loops run through tqdm; patching its update() makes any
   loop, imported under any alias, a progress event.
 - **The allocator has a ceiling.** On Windows an overrun would spill into system memory and freeze
@@ -114,12 +116,20 @@ def forbid_network() -> None:
 def _exit_with_parent() -> None:
     """End this process when stdin closes. The parent never writes, so end of file means it has
     gone. os._exit, not sys.exit: the main thread may be inside a CUDA kernel, and the driver hands
-    the card back only when the process is gone. Used for runtimes inside WSL, where ending
-    wsl.exe would leave the Linux process running."""
+    the card back only when the process is gone. Every run asks for it, so a node outlives neither
+    an engine that was killed nor, later, a wsl.exe that was ended."""
+
+    # The watcher reads its own copy of the pipe; node code gets an empty stdin, so input() or a
+    # library's prompt ends at once with EOFError instead of waiting on a pipe nobody writes to.
+    watched = os.dup(0)
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)
+    os.close(null)
+    sys.stdin = Path(os.devnull).open(encoding="utf-8")  # noqa: SIM115
 
     def watch() -> None:
         try:
-            while os.read(0, 65536):
+            while os.read(watched, 65536):
                 pass
         except OSError:
             pass

@@ -10,7 +10,11 @@ decision someone made for a stated reason, not something that happened because n
    exactly what is committed.
 2. **Latest stable, checked by a machine.** `npm run versions` compares every pin with its latest
    release: npm packages, the engine's Python packages, the engine's Python minor version, uv,
-   the Node LTS line, and every GitHub Action. It runs on every push and every Monday.
+   the Node LTS line, and every GitHub Action. It runs in full on every push to `main` and every
+   Monday. On other branches and pull requests it runs with `--rules-only`: the rules a change can
+   break (exact pins, actions pinned by commit, Node and `engines` agreeing, exceptions naming what
+   is pinned) still fail, but being behind the latest release does not, so an upstream release
+   never turns unrelated work red. Run it yourself before adding a dependency.
 3. **Fourteen days of grace.** A new release has 14 days for Dependabot's pull request to be merged.
    After that the check fails. Releases without a date (a new Python minor, an action tag) get no
    grace: the check fails at once and someone decides.
@@ -27,7 +31,7 @@ decision someone made for a stated reason, not something that happened because n
 | Part | Latest means | Why |
 | --- | --- | --- |
 | Engine Python | The newest stable CPython minor that uv can install | The engine imports no model libraries, so nothing holds it back |
-| Model runtimes | The newest Python and torch each family's wheels support, per runtime | 3D research code often ships compiled wheels for older Pythons only; each runtime states its reason |
+| Model runtimes | The newest Python and torch each family's code and wheels support, per runtime, backed by a `bench:runtime` report. A build may keep an older torch line for cards a newer one drops | 3D research code often ships compiled wheels for older Pythons and torch lines only, and a new torch line can drop older cards; each runtime states its reason |
 | Node | The current LTS line (`.node-version`, `engines.node`) | Electron's bundled Node follows the LTS line |
 | `@types/node` | The newest release for the Node major the app runs on | Types must describe the Node the code actually runs on, not a newer one |
 | Electron | The newest stable release | Electron supports only its three newest majors; staying current is the main security measure |
@@ -35,8 +39,9 @@ decision someone made for a stated reason, not something that happened because n
 
 ## Floors that are never crossed
 
-- **torch ≥ 2.6** in every runtime. Earlier versions let a crafted weight file run code even with
-  `weights_only=True` (CVE-2025-32434).
+- **torch ≥ 2.10** in every runtime. Earlier versions let a crafted weight file run code even with
+  `weights_only=True`: CVE-2025-32434 before 2.6, and CVE-2026-24747 (memory corruption in the
+  `weights_only` unpickler) before 2.10.
 - **No end-of-life Python** anywhere, runtimes included.
 - **Electron within its supported majors.**
 

@@ -126,6 +126,24 @@ def test_every_problem_in_a_definition_is_listed_at_once(
     assert problems == expected
 
 
+def test_a_runtime_cannot_set_what_the_engine_sets_or_removes_for_a_run(
+    make_runtime: MakeRuntime, runtime_root: Path
+) -> None:
+    make_runtime(_definition(env={"HF_HUB_OFFLINE": "0", "HF_TOKEN": "x", "OMP_NUM_THREADS": "4"}))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems == [
+        "env sets HF_HUB_OFFLINE, HF_TOKEN, which the engine sets or removes for every run "
+        "(hub libraries offline, no hub token or endpoint, torch's weights_only loading on)"
+    ]
+
+
+def test_a_reserved_name_is_refused_in_any_case(make_runtime: MakeRuntime, runtime_root: Path) -> None:
+    """Windows treats hf_token and HF_TOKEN as one variable."""
+    make_runtime(_definition(env={"torch_force_no_weights_only_load": "1"}))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems[0].startswith("env sets torch_force_no_weights_only_load, which the engine sets")
+
+
 def test_a_runtime_id_must_match_its_folder(make_runtime: MakeRuntime, runtime_root: Path) -> None:
     folder = make_runtime(_definition())
     data = json.loads((folder / "runtime.json").read_text(encoding="utf-8"))
@@ -154,14 +172,26 @@ def test_a_lock_holding_torch_older_than_2_6_is_refused(
     make_runtime: MakeRuntime, runtime_root: Path
 ) -> None:
     make_runtime(_definition(), lock=_lock_with_torch("2.14.0", "2.5.1"))
-    make_runtime(_definition(id="fine"), lock=_lock_with_torch("2.6.0+cu126", "2.14.0"))
+    make_runtime(_definition(id="fine"), lock=_lock_with_torch("2.10.0+cu126", "2.14.0"))
     found = runtimes.discover([runtime_root])
     assert list(found.runtimes) == ["fine"]
     [problems] = found.problems.values()
     assert problems == [
-        "uv.lock holds torch 2.5.1; every runtime needs torch 2.6 or newer "
-        "(older torch can run code from a crafted weights file, CVE-2025-32434)"
+        "uv.lock holds torch 2.5.1; every runtime needs torch 2.10 or newer "
+        "(older torch can run code from a crafted weights file, even with weights_only: "
+        "CVE-2025-32434, CVE-2026-24747)"
     ]
+
+
+def test_a_lock_holding_torch_older_than_2_10_is_refused(
+    make_runtime: MakeRuntime, runtime_root: Path
+) -> None:
+    """CVE-2026-24747: before 2.10, torch's weights_only unpickler could corrupt memory."""
+    make_runtime(_definition(), lock=_lock_with_torch("2.9.1+cu126"))
+    found = runtimes.discover([runtime_root])
+    assert found.runtimes == {}
+    [problems] = found.problems.values()
+    assert problems[0].startswith("uv.lock holds torch 2.9.1+cu126; every runtime needs torch 2.10")
 
 
 def test_two_runtimes_cannot_share_an_id(tmp_path: Path) -> None:
@@ -424,7 +454,7 @@ def test_the_torch_runtime_follows_the_owners_rule(
     capability: str | None, driver: str | None, build: str
 ) -> None:
     """Spec 001: cu126 below compute 7.5 or on a driver older than 580, otherwise cu130. The floor
-    is torch 2.6, and every build is locked at the same torch."""
+    is torch 2.10, and every build is locked at the same torch."""
     torch = runtimes.discover([RUNTIMES_DIR]).runtimes["torch"]
     assert runtimes.plan(torch, _machine(capability, driver)).build == build
     lock = tomllib.loads(torch.lock_path.read_text(encoding="utf-8"))

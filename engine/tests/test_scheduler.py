@@ -10,6 +10,7 @@ import pytest
 from conftest import Events, MakeNode
 from fixtures import fit_node, machines
 
+from oneframe.cache import Cache
 from oneframe.graph import Graph
 from oneframe.memory import Learned, LearnedStore, Settings, StoreKey, Target
 from oneframe.scheduler import Scheduler
@@ -114,6 +115,14 @@ def test_a_file_param_is_keyed_by_content_not_name(
             "    ctx.output('depth', p, facets={'kind': 'metric', 'measure': 'range'})\n",
             "contract",
             "contradicts",
+        ),
+        (
+            # In the test's cache folder: outside the run, and nothing left in the system's temp.
+            "def run(ctx):\n"
+            "    p = ctx.path('d.npz').parents[2] / 'outside.npz'; p.write_bytes(b'x')\n"
+            "    ctx.output('depth', p, facets={'kind': 'metric'})\n",
+            "contract",
+            "outside the run folder",
         ),
         (
             "def run(ctx):\n    raise RuntimeError('CUDA out of memory. Tried to allocate')\n",
@@ -773,3 +782,25 @@ def test_a_card_with_no_room_left_is_capped_at_its_free_memory_not_at_a_budget_b
     assert fitted["device"] == "cuda" and fitted["devices"]["cuda"]["budget"] < 0
     (ceiling,) = events.of("ceiling")
     assert ceiling["budget_mb"] is None  # the child caps at the free memory it measures instead
+
+
+def test_an_engine_bug_is_not_blamed_on_the_node(
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a node that breaks its manifest fails with kind contract. A ValueError from the engine's
+    own code goes up as the engine's bug (the server reports run.failed with kind engine)."""
+    make_node(
+        {"id": "test.fine", "version": "1", "title": "fine", "category": "test", "outputs": {"text": "Text"}},
+        "def run(ctx):\n    p = ctx.path('t.json')\n    p.write_text('1')\n    ctx.output('text', p)\n",
+    )
+
+    def broken(*_args: object, **_kwargs: object) -> str:
+        raise ValueError("a bug in the engine")
+
+    monkeypatch.setattr(Cache, "key", broken)
+    with pytest.raises(ValueError, match="a bug in the engine"):
+        scheduler_for().run(_graph({"f": {"node": "test.fine"}}, []), events.append)
+    assert not events.of("node.failed")

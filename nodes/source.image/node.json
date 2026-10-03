@@ -1,6 +1,6 @@
 {
   "id": "source.image",
-  "version": "1",
+  "version": "2",
   "title": "Photo",
   "category": "source",
   "summary": "Brings a photo into the graph. The copy handed on is an sRGB PNG with its orientation applied; the EXIF focal length, when the camera recorded one, rides along as metadata.",
