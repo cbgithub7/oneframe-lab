@@ -137,6 +137,13 @@ def test_a_runtime_cannot_set_what_the_engine_sets_or_removes_for_a_run(
     ]
 
 
+def test_a_reserved_name_is_refused_in_any_case(make_runtime: MakeRuntime, runtime_root: Path) -> None:
+    """Windows treats hf_token and HF_TOKEN as one variable."""
+    make_runtime(_definition(env={"torch_force_no_weights_only_load": "1"}))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems[0].startswith("env sets torch_force_no_weights_only_load, which the engine sets")
+
+
 def test_a_runtime_id_must_match_its_folder(make_runtime: MakeRuntime, runtime_root: Path) -> None:
     folder = make_runtime(_definition())
     data = json.loads((folder / "runtime.json").read_text(encoding="utf-8"))

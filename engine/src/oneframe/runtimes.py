@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
-from oneframe.executors import FORCED_ENV, SECRET_OR_UNSAFE_ENV
+from oneframe.executors import reserved_env
 from oneframe.memory import Target
 
 DEFINITION = "runtime.json"
@@ -385,7 +385,7 @@ def parse(data: dict[str, Any], folder: Path, source: str = DEFINITION) -> Runti
     ):
         problems.append("env should map names to strings")
         env = {}
-    reserved = sorted(set(env) & (set(FORCED_ENV) | set(SECRET_OR_UNSAFE_ENV)))
+    reserved = sorted(name for name in env if reserved_env(name))
     if reserved:
         problems.append(
             f"env sets {', '.join(reserved)}, which the engine sets or removes for every run "

@@ -249,6 +249,8 @@ def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) ->
         "TORCH_FORCE_WEIGHTS_ONLY_LOAD",
         "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
         "HF_TOKEN",
+        "hf_token",
+        "HF_TOKEN_PATH",
         "HUGGING_FACE_HUB_TOKEN",
         "HF_ENDPOINT",
         "KEEP",
@@ -261,11 +263,15 @@ def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) ->
         "HF_TOKEN": "hf_secret",
         "HUGGING_FACE_HUB_TOKEN": "hf_secret",
         "HF_ENDPOINT": "http://127.0.0.1:9",
+        "HF_TOKEN_PATH": "/home/someone/.cache/huggingface/token",
+        "hf_token": "hf_secret",  # one variable on Windows, whatever its case
         "KEEP": "1",
     }
     seen: list[dict[str, object]] = []
     executor = ProcessExecutor(
-        Path(sys.executable), env={"TRANSFORMERS_OFFLINE": "0", "HF_TOKEN": "hf_runtime"}, base_env=person
+        Path(sys.executable),
+        env={"TRANSFORMERS_OFFLINE": "0", "HF_TOKEN": "hf_runtime", "hf_hub_offline": "0"},
+        base_env=person,
     )
     executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
     assert json.loads(str(seen[0]["message"])) == {
@@ -274,10 +280,22 @@ def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) ->
         "TORCH_FORCE_WEIGHTS_ONLY_LOAD": "1",
         "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": None,
         "HF_TOKEN": None,
+        "hf_token": None,
+        "HF_TOKEN_PATH": os.devnull,  # a token file that holds nothing, not the person's own
         "HUGGING_FACE_HUB_TOKEN": None,
         "HF_ENDPOINT": None,
         "KEEP": "1",
     }
+
+
+def test_a_node_that_reads_stdin_gets_end_of_file_at_once(tmp_path: Path) -> None:
+    """The child's stdin is the pipe it watches to end with its parent; node code must not wait on it."""
+    body = "try:\n    input()\nexcept EOFError:\n    ctx.stage('stdin', 'eof')\n"
+    seen: list[dict[str, object]] = []
+    started = time.monotonic()
+    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    assert seen[0]["message"] == "eof"
+    assert time.monotonic() - started < 20
 
 
 def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:

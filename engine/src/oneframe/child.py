@@ -119,9 +119,17 @@ def _exit_with_parent() -> None:
     the card back only when the process is gone. Every run asks for it, so a node outlives neither
     an engine that was killed nor, later, a wsl.exe that was ended."""
 
+    # The watcher reads its own copy of the pipe; node code gets an empty stdin, so input() or a
+    # library's prompt ends at once with EOFError instead of waiting on a pipe nobody writes to.
+    watched = os.dup(0)
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)
+    os.close(null)
+    sys.stdin = Path(os.devnull).open(encoding="utf-8")  # noqa: SIM115
+
     def watch() -> None:
         try:
-            while os.read(0, 65536):
+            while os.read(watched, 65536):
                 pass
         except OSError:
             pass
