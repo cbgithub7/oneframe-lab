@@ -13,14 +13,21 @@ command-line tools use, is the dev root, so a dev checkout and a packaged app ne
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
+from oneframe.files import format_of, write_json
+
 ROOT_FILE = "oneframe-root.json"
+# 0: a root from before spec 006, without a root file. 1: the root file, and the folders Layout names.
+LAYOUT_FORMAT = 1
+KINDS = ("dev", "packaged")
 NAMES = {
     # platform family: (dev root, packaged root)
     "win32": ("OneframeLab-dev", "OneframeLab"),
@@ -188,3 +195,54 @@ class Layout:
     @classmethod
     def names(cls) -> list[str]:
         return sorted(name for name, value in vars(cls).items() if isinstance(value, property))
+
+
+class RootRefused(RuntimeError):
+    """The engine cannot use this data root: its layout is newer than this engine knows
+    (`newer_layout`), or its root file cannot be read (`unreadable`). Nothing under it changed."""
+
+    def __init__(self, message: str, reason: str):
+        super().__init__(message)
+        self.reason = reason
+
+
+def claim_root(root: Path, packaged: bool, version: str = "") -> list[str]:
+    """Check the root's layout before anything is written under it, and write its root file when
+    it has none (format 0) or an older one. Raises RootRefused for a newer layout. Returns the
+    warnings a person should see: a root the other kind of app made is used, but said so."""
+    path = Layout(root).root_file
+    kind = KINDS[1 if packaged else 0]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        data = None
+    except (OSError, ValueError) as exc:
+        raise RootRefused(f"{path} cannot be read ({exc}); nothing was changed.", "unreadable") from exc
+    found = 0 if data is None else format_of(data)
+    if found is None:
+        raise RootRefused(f"{path} does not say its format; nothing was changed.", "unreadable")
+    if found > LAYOUT_FORMAT:
+        raise RootRefused(
+            f"The data root {root} was laid out by a newer version of Oneframe Lab (layout {found}; "
+            f"this version knows {LAYOUT_FORMAT}). Use the newer version, or another data root.",
+            "newer_layout",
+        )
+    warnings: list[str] = []
+    made_by = data.get("kind") if isinstance(data, dict) else None
+    if made_by in KINDS and made_by != kind:
+        warnings.append(
+            f"The data root {root} belongs to the {made_by} app; this {kind} app is using it, as "
+            "ONEFRAME_DATA asked."
+        )
+    if found < LAYOUT_FORMAT:
+        write_json(
+            path,
+            {
+                "format": LAYOUT_FORMAT,
+                "kind": made_by if made_by in KINDS else kind,
+                "created": datetime.now(UTC).isoformat(timespec="seconds"),
+                "engine": version,
+            },
+            indent=2,
+        )
+    return warnings

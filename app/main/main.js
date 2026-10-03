@@ -10,7 +10,7 @@ import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { EngineClient } from "./engine.js";
+import { EngineClient, EngineError } from "./engine.js";
 import { RotatingLog } from "./log.js";
 import { ENGINE_METHODS } from "./methods.js";
 import { REPO_ROOT, defaultDataRoot, engineCommand, findUv } from "./paths.js";
@@ -47,7 +47,7 @@ async function startEngine() {
     send({ event: "engine.failed", message: "uv was not found. Install uv, or set ONEFRAME_UV to its path." });
     return;
   }
-  const spec = engineCommand(uv, data);
+  const spec = engineCommand(uv, data, app.isPackaged);
   const client = new EngineClient({ ...spec, requestTimeoutMs: 60_000 });
   engine = client;
   client.on("log", (line) => log.write("engine", line));
@@ -62,7 +62,8 @@ async function startEngine() {
     send(ready);
   } catch (error) {
     log.write("main", `engine failed to start: ${String(error)}`);
-    send({ event: "engine.failed", message: String(error) });
+    // An engine that said why it refused has already sent its own engine.failed to the page.
+    if (!(error instanceof EngineError)) send({ event: "engine.failed", message: String(error) });
   }
 }
 

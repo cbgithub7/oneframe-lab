@@ -658,7 +658,7 @@ def plan(runtime: RuntimeDef, profile: dict[str, Any], installed: Collection[str
 
 class RuntimeMissing(RuntimeError):
     """A node's runtime cannot run yet. `reason` is one of unknown, blocked, installing,
-    not installed or out of date; the message says what to do about it."""
+    not installed, out of date, newer_format or moved; the message says what to do about it."""
 
     def __init__(self, message: str, reason: str = "not installed"):
         super().__init__(message)
@@ -740,7 +740,8 @@ class Runtimes:
         return busy[0] if busy else None
 
     def status(self, runtime: RuntimeDef, the_plan: Plan | None = None) -> dict[str, Any]:
-        """installing, installed, out of date or not installed, for the build the plan picks."""
+        """installing, installed, out of date, not installed, newer_format (its marker is from a
+        newer app) or moved (built in another root), for the build the plan picks."""
         the_plan = the_plan or self.plan_for(runtime)
         markers = self._markers(runtime)
         build = the_plan.build
@@ -748,11 +749,18 @@ class Runtimes:
             b.name for b in runtime.builds if runtime_install.env_dir(self.data, runtime.id, b.name).is_dir()
         ]
         marker = markers.get(build) if build else None
+        problem = (
+            runtime_install.marker_problem(runtime_install.env_dir(self.data, runtime.id, str(build)), marker)
+            if marker is not None
+            else None
+        )
         hashes = runtime.hashes()
         if self.installing() == runtime.id:
             state = "installing"
         elif marker is None:
             state = "not installed"
+        elif problem is not None:
+            state = problem
         elif {k: marker.get(k) for k in hashes} != hashes:
             state = "out of date"
         elif not runtime_install.interpreter(
@@ -812,6 +820,18 @@ class Runtimes:
         if state == "installing":
             raise RuntimeMissing(
                 f"The runtime {runtime_id!r} is being installed; run again when it is done.", "installing"
+            )
+        if state == "newer_format":
+            raise RuntimeMissing(
+                f"The runtime {runtime_id!r} was installed by a newer version of the app, and is left "
+                "as it is. Use that version, or another data root.",
+                reason="newer_format",
+            )
+        if state == "moved":
+            raise RuntimeMissing(
+                f"The runtime {runtime_id!r} was built in another data root and moved here; install "
+                "it again to rebuild it.",
+                reason="moved",
             )
         if state == "out of date":
             raise RuntimeMissing(
@@ -883,8 +903,14 @@ class Runtimes:
                 raise InstallRefused(
                     f"{self._busy[0]} is being installed; runtimes are installed one at a time."
                 )
-            if self.status(runtime, the_plan)["status"] == "installed":
+            state = self.status(runtime, the_plan)["status"]
+            if state == "installed":
                 return None
+            if state == "newer_format":
+                raise InstallRefused(
+                    f"The runtime {runtime_id!r} was installed by a newer version of the app; it is "
+                    "left as it is."
+                )
             stop = threading.Event()
             self._busy = (runtime_id, stop)
         return runtime, planned, stop
@@ -952,6 +978,13 @@ class Runtimes:
         target = runtime_install.runtime_dir(self.data, runtime_id)
         if not target.exists():
             return {"runtime": runtime_id, "removed": None}
+        for env in (p for p in target.iterdir() if p.is_dir()):
+            marker = runtime_install.read_marker(env)
+            if marker is not None and runtime_install.marker_problem(env, marker) == "newer_format":
+                raise InstallRefused(
+                    f"The {env.name} build of {runtime_id!r} was installed by a newer version of the "
+                    "app; it is left as it is."
+                )
         if target.is_symlink() or target.resolve().parent != root or target.name != runtime_id:
             raise InstallRefused(f"Refusing to delete {target}: it is not a runtime folder in {root}.")
         runtime_install.remove_tree(target)

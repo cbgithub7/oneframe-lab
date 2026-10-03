@@ -8,10 +8,14 @@
     <data>/uv/cache/, <data>/uv/python/                  uv's cache and the Pythons it fetches
 
 A runtime counts as installed only once the marker exists, and the marker is the last thing
-written: it holds the hashes of the lock and definition it was built from, the build, and what
-arrived (a freeze of every package). An install that stops for any reason -- Stop, a failure, the
-engine killed -- leaves no marker, and installing again picks up where it was: uv sync finishes
-a half-built environment, and an archive already downloaded with the right hash is kept.
+written: it holds its format, the hashes of the lock and definition it was built from, the build,
+the environment's own path, and what arrived (a freeze of every package). A marker in a newer
+format is left alone, and its runtime is neither installed over nor removed; one whose path is not
+where it now lies (a root moved or copied) says the environment must be built again.
+
+An install that stops for any reason -- Stop, a failure, the engine killed -- leaves no marker,
+and installing again picks up where it was: uv sync finishes a half-built environment, and an
+archive already downloaded with the right hash is kept.
 
 Only this module fetches anything, and only when a person asked for the install.
 """
@@ -37,7 +41,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from oneframe import archives
-from oneframe.files import write_json
+from oneframe.files import format_of, write_json
 
 if TYPE_CHECKING:
     from oneframe.runtimes import RuntimeDef
@@ -83,6 +87,25 @@ def read_marker(env: Path) -> dict[str, Any] | None:
     except OSError, ValueError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def same_path(a: Path | str, b: Path | str) -> bool:
+    """Whether two paths name the same place: both resolved, and their case normalised where the
+    system ignores case."""
+    return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
+
+
+def marker_problem(env: Path, marker: dict[str, Any]) -> str | None:
+    """`newer_format` for a marker this engine cannot read (a newer one, or one whose format is not
+    a number); `moved` for one written for an environment somewhere else; None when it is usable.
+    A marker from before formats were recorded is format 1 and says no path."""
+    found = format_of(marker, missing=MARKER_FORMAT)
+    if found is None or found > MARKER_FORMAT:
+        return "newer_format"
+    recorded = marker.get("env")
+    if isinstance(recorded, str) and not same_path(recorded, env):
+        return "moved"
+    return None
 
 
 def uv_environment(
@@ -255,6 +278,12 @@ def install(
             raise InstallFailed(f"{what} failed (exit {code}).", "\n".join(tail))
 
     step("marker", "Clearing the old marker: until the last step, this runtime is not installed.")
+    old = read_marker(env)
+    problem = marker_problem(env, old) if old is not None else None
+    if problem == "newer_format":
+        raise InstallFailed(f"{env} was installed by a newer version of the app; it is left as it is.")
+    if problem == "moved":
+        remove_tree(env)  # its scripts and links point into the root it was built in
     (env / MARKER).unlink(missing_ok=True)
 
     step("python", f"Python {runtime.python}, fetched by uv into the data root if it is not there yet.")
@@ -369,6 +398,7 @@ def install(
         "format": MARKER_FORMAT,
         "runtime": runtime.id,
         "build": build,
+        "env": str(env.resolve()),
         **runtime.hashes(),
         "python": python_version,
         "uv": uv_version,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -160,6 +161,30 @@ def test_a_changed_lock_makes_a_runtime_out_of_date(
     stand_in = tiny / "stand-ins" / "tinyext" / "__init__.py"
     stand_in.write_text(stand_in.read_text(encoding="utf-8") + "FIXED = True\n", encoding="utf-8")
     assert manager.list()["runtimes"][0]["status"] == "out of date"
+
+
+def test_a_runtime_copied_to_another_root_reads_as_moved_and_installs_again(
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path
+) -> None:
+    first = tmp_path / "first"
+    _manager(first, tiny, uv_exe, uv_home).install("tiny")
+    marker = runtime_install.read_marker(first / "runtimes" / "tiny" / "cpu") or {}
+    assert marker["format"] == runtime_install.MARKER_FORMAT
+    assert marker["env"] == str((first / "runtimes" / "tiny" / "cpu").resolve())
+
+    second = tmp_path / "second"
+    shutil.copytree(first / "runtimes", second / "runtimes", symlinks=True)
+    manager = _manager(second, tiny, uv_exe, uv_home)
+    assert manager.list()["runtimes"][0]["status"] == "moved"
+    with pytest.raises(runtimes.RuntimeMissing) as caught:
+        manager.python_for("tiny")
+    assert caught.value.reason == "moved"
+
+    done = manager.install("tiny")  # rebuilt where it now lies
+    assert done is not None and manager.list()["runtimes"][0]["status"] == "installed"
+    python = manager.python_for("tiny")
+    prefix = _run(python, "import json, sys; print(json.dumps({'prefix': sys.prefix}))")["prefix"]
+    assert runtime_install.same_path(prefix, second / "runtimes" / "tiny" / "cpu")
 
 
 def test_remove_deletes_only_that_runtime(tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path) -> None:

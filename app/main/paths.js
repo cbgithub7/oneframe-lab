@@ -144,8 +144,10 @@ export function findUv(env = process.env, platform = process.platform) {
  * interpreter and every package are exactly what engine/uv.lock says.
  * @param {string} uv
  * @param {string} data
+ * @param {boolean} [packaged] the engine records which kind of app made a root, and warns when the
+ *   other kind uses it
  */
-export function engineCommand(uv, data) {
+export function engineCommand(uv, data, packaged = false) {
   const env = {
     ...process.env,
     ONEFRAME_ROOT: REPO_ROOT,
@@ -160,7 +162,7 @@ export function engineCommand(uv, data) {
   return {
     command: uv,
     args: ["run", "--project", path.join(REPO_ROOT, "engine"), "--frozen", "python", "-m", "oneframe.server",
-      "--data", data],
+      "--data", data, ...(packaged ? ["--packaged"] : [])],
     cwd: REPO_ROOT,
     env,
   };

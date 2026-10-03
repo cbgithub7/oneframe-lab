@@ -25,7 +25,7 @@ from typing import Any
 
 from oneframe import __version__, runtime_install
 from oneframe.executors import NodeError, ProcessExecutor
-from oneframe.layout import Layout, default_root
+from oneframe.layout import Layout, RootRefused, claim_root, default_root
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
 
@@ -222,6 +222,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     data = args.data or default_root()
     data.mkdir(parents=True, exist_ok=True)
+    try:
+        claim_root(data, packaged=False, version=__version__)
+    except RootRefused as exc:
+        print(exc, file=sys.stderr)
+        return 1
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     try:
         record = bench(manager, args.runtime)

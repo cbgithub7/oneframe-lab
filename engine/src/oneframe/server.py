@@ -34,7 +34,7 @@ from typing import Any
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
 from oneframe.graph import Graph, GraphError, Step, plan, step_params
-from oneframe.layout import Layout, default_root
+from oneframe.layout import Layout, RootRefused, claim_root, default_root
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
@@ -53,9 +53,12 @@ class Engine:
         uv: str | None = None,
         uv_home: Path | None = None,
         profile: Callable[[], dict[str, Any]] | None = None,
+        packaged: bool = False,
     ):
         self.data = data
         self.layout = Layout(data)
+        # Before anything is written under the root: a newer layout stops the engine here.
+        self.warnings = claim_root(data, packaged, __version__)
         self.node_roots = node_roots
         self.say = say
         self.registry: Registry = discover(node_roots)
@@ -104,6 +107,7 @@ class Engine:
             "engine": __version__,
             "python": sys.version.split()[0],
             "data": str(self.data),
+            "warnings": self.warnings,
             "nodes": len(self.registry.nodes),
             "methods": sorted(self.methods),
         }
@@ -294,6 +298,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--uv-home", type=Path, default=None, help="uv's cache and Pythons (default: <data>/uv)"
     )
+    parser.add_argument(
+        "--packaged", action="store_true", help="started by the packaged app (it passes --data too)"
+    )
     args = parser.parse_args(argv)
     data = args.data or default_root()
     data.mkdir(parents=True, exist_ok=True)
@@ -315,7 +322,19 @@ def main(argv: list[str] | None = None) -> int:
             out.write(line + "\n")
             out.flush()
 
-    engine = Engine(data, args.nodes or [BUILTIN_NODES_DIR], say, args.runtimes, args.uv, args.uv_home)
+    try:
+        engine = Engine(
+            data,
+            args.nodes or [BUILTIN_NODES_DIR],
+            say,
+            args.runtimes,
+            args.uv,
+            args.uv_home,
+            packaged=args.packaged,
+        )
+    except RootRefused as exc:
+        say({"event": "engine.failed", "kind": "root", "reason": exc.reason, "message": str(exc)})
+        return 2
     say({"event": "engine.ready", **engine.hello({})})
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:

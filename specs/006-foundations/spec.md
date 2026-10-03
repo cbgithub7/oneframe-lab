@@ -190,6 +190,16 @@ starts Electron. In a local session after the merge:
   the paths under the root, and both suites check both. The paths are cleaned (`.`, `..`, repeated
   and trailing separators) by a rule written out the same way in Python and JavaScript, because
   `ntpath` and Node's `path.win32` disagree on shares and leading double slashes.
+- **Learned memory keeps `version` as the key for its format** (task 2), as it already was, so no
+  migration is needed. Every other kept file uses `format`.
+- **The root file holds `format`, `kind` (`dev` or `packaged`), `created` and `engine`** (task 3).
+  The app passes `--packaged` when it is packaged. A root file that cannot be read, or that does not
+  say its format, stops the engine as a newer layout does (`reason`: `unreadable`), since it might
+  be one: nothing is overwritten that the engine does not understand. The engine's `engine.failed`
+  carries `kind: root` and the reason; the app's client rejects its start with them.
+- **A runtime marker without `format` is format 1, and one without `env` is never `moved`** (task
+  3): markers written before this spec say neither. Installing over a `moved` environment deletes
+  it first, since its scripts and links point into the root it was built in.
 
 ## Out of scope
 

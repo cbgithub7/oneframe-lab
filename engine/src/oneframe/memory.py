@@ -494,6 +494,7 @@ def model_hash(raw: Mapping[str, Any]) -> str:
 MARGIN_FLOOR_MB = 1611  # 1.5 GiB, in MB of 10^6 bytes
 MARGIN_SHARE = 0.10  # of the device's total, when that is larger
 SETTINGS_FILE = "settings.json"
+SETTINGS_FORMAT = 1  # a file that does not say is format 1
 FIT_MODES = ("on", "off")
 
 
@@ -517,7 +518,8 @@ class Settings:
 
 def read_settings(data_root: Path | None) -> Settings:
     """The settings, read again at each fit. A missing file is the defaults; a value that is not
-    understood is left at its default, and said so in `notes`."""
+    understood is left at its default, and said so in `notes`. A file in a newer format is read as
+    the defaults, with a note, and left as it is."""
     if data_root is None:
         return Settings()
     path = Layout(Path(data_root)).settings
@@ -527,6 +529,14 @@ def read_settings(data_root: Path | None) -> Settings:
         return Settings()
     except (OSError, ValueError) as exc:
         return Settings(notes=(f"{SETTINGS_FILE} could not be read ({exc}); the defaults are used",))
+    found = format_of(data, missing=SETTINGS_FORMAT)
+    if found != SETTINGS_FORMAT:
+        why = (
+            f"is in format {found}, newer than this version of the app knows ({SETTINGS_FORMAT})"
+            if found is not None and found > SETTINGS_FORMAT
+            else "does not say a format this version of the app knows"
+        )
+        return Settings(notes=(f"{SETTINGS_FILE} {why}; the defaults are used",))
     row = data.get("memory") if isinstance(data, dict) else None
     if row is None:
         return Settings()

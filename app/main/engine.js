@@ -18,12 +18,15 @@ import { EventEmitter } from "node:events";
 export class EngineError extends Error {
   /**
    * @param {string} message
-   * @param {{ problems?: Array<{node?: string, port?: string, message: string}> }} [detail]
+   * @param {{ problems?: Array<{node?: string, port?: string, message: string}>, kind?: string,
+   *   reason?: string }} [detail]
    */
   constructor(message, detail = {}) {
     super(message);
     this.name = "EngineError";
     this.problems = detail.problems ?? [];
+    this.kind = detail.kind;
+    this.reason = detail.reason;
   }
 }
 
@@ -55,7 +58,11 @@ export class EngineClient extends EventEmitter {
     this.ready = false;
   }
 
-  /** Start the process. Resolves with the engine's `engine.ready` event. */
+  /**
+   * Start the process. Resolves with the engine's `engine.ready` event; rejects with an EngineError
+   * when the engine says it cannot start (`engine.failed`, such as a data root laid out by a newer
+   * version), or with an Error when it exits without a word.
+   */
   start() {
     if (this.child) throw new Error("The engine is already running.");
     const spawn = this.options.spawn ?? nodeSpawn;
@@ -79,8 +86,11 @@ export class EngineClient extends EventEmitter {
     child.on("exit", (code, signal) => this.#onExit(code, signal));
     child.on("error", (error) => this.#onExit(null, null, error));
     return new Promise((resolve, reject) => {
+      /** @type {EngineError | null} */
+      let refused = null;
       /** @param {any} event */
       const onEvent = (event) => {
+        if (event.event === "engine.failed") refused = new EngineError(String(event.message), event);
         if (event.event !== "engine.ready") return;
         this.off("event", onEvent);
         this.off("exit", onExit);
@@ -90,7 +100,7 @@ export class EngineClient extends EventEmitter {
       /** @param {{ code: number | null, error?: Error }} info */
       const onExit = (info) => {
         this.off("event", onEvent);
-        reject(info.error ?? new Error(`The engine exited before it was ready (code ${info.code}).`));
+        reject(info.error ?? refused ?? new Error(`The engine exited before it was ready (code ${info.code}).`));
       };
       this.on("event", onEvent);
       this.once("exit", onExit);

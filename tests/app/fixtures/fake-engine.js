@@ -4,6 +4,10 @@ import { createInterface } from "node:readline";
 
 const write = (/** @type {unknown} */ obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 process.stderr.write("fake engine starting\n");
+if (process.argv.includes("--refuse")) {
+  write({ event: "engine.failed", kind: "root", reason: "newer_layout", message: "laid out by a newer version" });
+  process.exit(2);
+}
 write({ event: "engine.ready", engine: "fake", python: "none", nodes: 0 });
 
 for await (const line of createInterface({ input: process.stdin })) {

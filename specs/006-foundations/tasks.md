@@ -8,7 +8,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 2. One JSON writer (unique temporary name, flush, replace, refuses a newer format) and the
   operating-system locks (`msvcrt.locking` / `fcntl.flock`, files under `logs/locks/`, never
   deleted); move learned memory, settings and the runtime marker onto them (part of AC4, AC5).
-- [ ] 3. Formats: `oneframe-root.json`, settings format 1, learned memory and markers left alone
+- [x] 3. Formats: `oneframe-root.json`, settings format 1, learned memory and markers left alone
   when newer, the marker's `format` and environment path, `newer_format` and `moved` (AC4).
 - [ ] 4. Per-process temporary folders under `cache/tmp/`, locked while the process lives; job and
   bench scratch folders inside them; the start-up sweep removes only unlocked ones; runtime

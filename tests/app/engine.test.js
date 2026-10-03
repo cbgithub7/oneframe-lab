@@ -44,6 +44,16 @@ test("requests are answered by id, and events and logs arrive on their own chann
   assert.ok(logs.some((l) => l.includes("not JSON")));
 });
 
+test("an engine that refuses to start says why, and the start fails with its reason", async () => {
+  const client = new EngineClient({ command: process.execPath,
+    args: [path.join(here, "fixtures", "fake-engine.js"), "--refuse"] });
+  const events = /** @type {any[]} */ ([]);
+  client.on("event", (e) => events.push(e));
+  await assert.rejects(client.start(), (/** @type {any} */ error) =>
+    error instanceof EngineError && error.reason === "newer_layout" && /newer version/.test(error.message));
+  assert.equal(events[0].event, "engine.failed"); // the page sees it too
+});
+
 test("pending requests fail when the engine dies, and silence times out", async () => {
   const client = fake();
   await client.start();
