@@ -40,10 +40,7 @@ jobs:
         run: node scripts/test-guard.js --base origin/${{ github.base_ref || 'main' }}
 
   versions:
-    name: versions are current
-    # On main only: a release that lands upstream must not turn an unrelated branch or PR red.
-    # versions-weekly.yml runs the same check every Monday.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: versions follow the policy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,4 +50,13 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.12.20"
-      - run: npm run versions
+      # Everywhere: the rules a change can break (exact pins, actions pinned by commit, Node and
+      # engines agreeing, exceptions naming what is pinned).
+      - name: Pins follow the rules
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+        run: npm run versions -- --rules-only
+      # On main only, and every Monday (versions-weekly.yml): every pin is the latest release or has
+      # a dated reason, so an upstream release never turns an unrelated branch or PR red.
+      - name: Pins are current
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npm run versions

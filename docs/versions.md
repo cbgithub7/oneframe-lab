@@ -10,9 +10,11 @@ decision someone made for a stated reason, not something that happened because n
    exactly what is committed.
 2. **Latest stable, checked by a machine.** `npm run versions` compares every pin with its latest
    release: npm packages, the engine's Python packages, the engine's Python minor version, uv,
-   the Node LTS line, and every GitHub Action. It runs on every push to `main` and every Monday,
-   not on other branches or pull requests: a release that lands upstream does not turn unrelated
-   work red. Run it yourself before adding a dependency.
+   the Node LTS line, and every GitHub Action. It runs in full on every push to `main` and every
+   Monday. On other branches and pull requests it runs with `--rules-only`: the rules a change can
+   break (exact pins, actions pinned by commit, Node and `engines` agreeing, exceptions naming what
+   is pinned) still fail, but being behind the latest release does not, so an upstream release
+   never turns unrelated work red. Run it yourself before adding a dependency.
 3. **Fourteen days of grace.** A new release has 14 days for Dependabot's pull request to be merged.
    After that the check fails. Releases without a date (a new Python minor, an action tag) get no
    grace: the check fails at once and someone decides.

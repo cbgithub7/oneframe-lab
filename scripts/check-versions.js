@@ -10,6 +10,11 @@
 // Checked: npm devDependencies, the engine's direct Python dependencies (as locked), the engine's
 // Python minor version, the uv the engine requires, the Node LTS the project targets and the
 // matching @types/node, and every GitHub Action (pinned by commit, with the version in a comment).
+//
+// With --rules-only, only the rules a change can break fail the check: exact pins, actions pinned
+// by commit, .node-version matching engines.node, and exceptions that name what is pinned. Being
+// behind the latest release, or an exception's date passing, is left to the run on main and the
+// weekly run, so an upstream release never turns an unrelated pull request red.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
@@ -45,7 +50,7 @@ async function json(url) {
 
 /**
  * @param {{ pinned: string, latest: string, released?: string, exception?: any, now: number }} v
- * @returns {{ status: string, note?: string }}
+ * @returns {{ status: string, note?: string, rule?: boolean }}
  */
 export function judge({ pinned, latest, released, exception, now }) {
   if (exception) {
@@ -54,7 +59,7 @@ export function judge({ pinned, latest, released, exception, now }) {
       return { status: "fail", note: `exception expired ${exception.review_by}: ${exception.reason}` };
     }
     if (exception.pin && exception.pin !== pinned) {
-      return { status: "fail", note: `exception is for ${exception.pin}, pinned is ${pinned}` };
+      return { status: "fail", rule: true, note: `exception is for ${exception.pin}, pinned is ${pinned}` };
     }
     return { status: "excepted", note: `${exception.reason} (review by ${exception.review_by})` };
   }
@@ -152,7 +157,19 @@ function actionRows() {
   return rows;
 }
 
+/**
+ * How many failures count. Rules-only counts the rules a change can break (`rule` failures and
+ * exceptions for names pinned nowhere), not pins behind their latest release.
+ * @param {Array<{ status: string, rule?: boolean }>} rows
+ * @param {number} strayExceptions
+ * @param {boolean} rulesOnly
+ */
+export function failureCount(rows, strayExceptions, rulesOnly) {
+  return rows.filter((r) => r.status === "fail" && (!rulesOnly || r.rule)).length + strayExceptions;
+}
+
 async function main() {
+  const rulesOnly = process.argv.includes("--rules-only");
   const policy = JSON.parse(read("versions.json"));
   const exceptions = new Map((policy.exceptions ?? []).map((/** @type {any} */ e) => [e.name, e]));
   const now = Date.now();
@@ -167,8 +184,9 @@ async function main() {
   for (const name of exceptions.keys()) {
     if (!rows.some((r) => r.name === name)) console.log(` FAIL   versions.json has an exception for ${name}, which is not pinned anywhere.`);
   }
-  const failed = rows.filter((r) => r.status === "fail").length
-    + [...exceptions.keys()].filter((n) => !rows.some((r) => r.name === n)).length;
+  const stray = [...exceptions.keys()].filter((n) => !rows.some((r) => r.name === n)).length;
+  const failed = failureCount(rows, stray, rulesOnly);
+  if (rulesOnly && !failed) console.log("\nrules only: pins follow the rules (being behind is judged on main and weekly).");
   if (failed) {
     console.log(`\n${failed} pin(s) are behind with no current reason. Update them, or add a dated exception with a reason to versions.json.`);
     process.exitCode = 1;

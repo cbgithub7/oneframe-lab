@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { compareVersions, judge } from "../../scripts/check-versions.js";
+import { compareVersions, failureCount, judge } from "../../scripts/check-versions.js";
 
 const now = Date.parse("2026-09-29T00:00:00Z");
 const daysAgo = (/** @type {number} */ n) => new Date(now - n * 86_400_000).toISOString();
@@ -26,4 +26,13 @@ test("an exception needs a live review date and must match the pin", () => {
   assert.equal(judge({ pinned: "1.0.1", latest: "2.0.0", exception, now }).status, "fail");
   const expired = { ...exception, review_by: "2026-09-01" };
   assert.match(judge({ pinned: "1.0.0", latest: "2.0.0", exception: expired, now }).note ?? "", /expired/);
+});
+
+test("on a pull request only broken rules fail, not pins behind their latest release", () => {
+  const behind = judge({ pinned: "1.0.0", latest: "1.1.0", released: daysAgo(30), now });
+  const wrongPin = judge({ pinned: "1.0.1", latest: "2.0.0", exception: { name: "x", pin: "1.0.0", reason: "r", review_by: "2026-11-01" }, now });
+  assert.equal(wrongPin.rule, true);
+  assert.equal(failureCount([behind, wrongPin], 1, false), 3);
+  assert.equal(failureCount([behind, wrongPin], 1, true), 2, "the stray exception and the wrong pin, not the age");
+  assert.equal(failureCount([behind], 0, true), 0);
 });
