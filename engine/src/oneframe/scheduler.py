@@ -131,6 +131,7 @@ class Scheduler:
         tmp_root: Path | None = None,
         runtime_caches: Callable[[str], Path | None] = lambda _runtime: None,
         journal_dir: Path | None = None,
+        runtime_key: Callable[[str], dict[str, str] | None] = lambda _runtime: None,
     ):
         self.registry = registry
         self.cache = cache
@@ -148,7 +149,12 @@ class Scheduler:
         self.tmp_root = tmp_root  # where a runtime node's job folder is made
         self.runtime_caches = runtime_caches  # where its libraries keep their caches
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
+        self.runtime_key = runtime_key  # a runtime node's build and marker hashes, for its cache key
         self.engine = EngineExecutor()
+
+    def _key(self, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]) -> str:
+        runtime = self.runtime_key(str(manifest.run.runtime)) if manifest.run.where == "runtime" else None
+        return self.cache.key(manifest, values, inputs, runtime)
 
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
         if manifest.run.where == "engine":
@@ -243,7 +249,7 @@ class Scheduler:
     ) -> tuple[dict[str, Value], dict[str, Any]]:
         manifest = step.manifest
         inputs = self._gather(step, done)
-        key = self.cache.key(manifest, step.params, inputs)
+        key = self._key(manifest, step.params, inputs)
         cached = self.cache.get(key)
         if cached is not None:
             say(
@@ -361,7 +367,7 @@ class Scheduler:
             values.update(change.set)
             if change.costs != "quality":
                 continue
-            key = self.cache.key(step.manifest, values, inputs)
+            key = self._key(step.manifest, values, inputs)
             cached = self.cache.get(key)
             if cached is not None:
                 say(
@@ -404,7 +410,7 @@ class Scheduler:
         manifest = step.manifest
         values = dict(found.values) if found is not None else dict(step.params)
         device = (found.device if found is not None else None) or manifest.devices[0]
-        key = self.cache.key(manifest, values, inputs)
+        key = self._key(manifest, values, inputs)
         executor = self._executor(manifest)
         say(
             {

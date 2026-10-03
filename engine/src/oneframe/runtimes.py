@@ -883,6 +883,14 @@ class Runtimes:
             env.setdefault("CUDA_VISIBLE_DEVICES", str(card.get("index", 0)))
         return env
 
+    def key_for(self, runtime_id: str) -> dict[str, str]:
+        """What a node's cache key takes from its runtime: the build this machine runs, and the
+        hashes of the lock, definition and stand-ins that build was installed from."""
+        runtime = self.get(runtime_id)
+        build = str(self.plan_for(runtime).build)
+        marker = self._markers(runtime).get(build) or {}
+        return {"build": build, **{k: str(marker.get(k, "")) for k in runtime.hashes()}}
+
     def caches_for(self, runtime_id: str) -> Path:
         """Where a node in this runtime keeps its libraries' caches: `cache/runtime/<id>/`."""
         return Layout(self.data).runtime_caches / runtime_id

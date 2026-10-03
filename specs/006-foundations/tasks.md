@@ -24,7 +24,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   own kind, reported against the edge rather than blamed on the node that receives it.
 - [x] 9. The journal around `Scheduler.run` and `Runtimes.run_install`, pruning, and
   `npm run diagnose` with its redaction (AC7).
-- [ ] 10. Cache keys from the node's folder and the runtime's build and marker hashes;
+- [x] 10. Cache keys from the node's folder and the runtime's build and marker hashes;
   `KEY_VERSION` 2 (AC8).
 - [ ] 11. Docs: AGENTS.md drops "today's code still breaks this"; architecture and runtimes docs;
   the local-session skill's old root; the handoff.

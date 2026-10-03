@@ -241,6 +241,10 @@ starts Electron. In a local session after the merge:
   serialised, so the JSON-escaped spelling of a path is caught with the others. A user's segment is
   matched only as a whole path segment right after the users folder, in any case, with or without
   the drive; a longer name (`database` for `data`) and a word elsewhere are left alone.
+- **A node's code hash covers every file in its folder by its bytes**, bytecode left out (task 10),
+  and is read again only when a file's size or time changes. The runtime part is the build the plan
+  picks and the hashes its marker records, so a key follows what is installed, not a definition
+  edited since (which makes the runtime `out_of_date`, and the run fails before any key matters).
 - **The page receives a failed request as a rejected plain object** (task 8): main.js answers
   every request with `{ok, result}` or `{ok, error}` (`app/main/door.js`), and the preload turns
   the second into a rejection with the failure itself, since Electron passes on only the message of

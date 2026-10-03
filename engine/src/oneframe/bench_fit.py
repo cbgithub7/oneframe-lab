@@ -188,6 +188,7 @@ def make_scheduler(
             runtime_env=manager.env_for,
             target=manager.device_target,
             runtime_caches=manager.caches_for,
+            runtime_key=manager.key_for,
         )
     if runtime_python is not None:
         kw["runtime_python"] = runtime_python

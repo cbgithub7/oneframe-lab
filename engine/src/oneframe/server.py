@@ -86,6 +86,7 @@ class Engine:
             learned=self.learned,
             tmp_root=self.scratch.folder,
             runtime_caches=self.runtimes.caches_for,
+            runtime_key=self.runtimes.key_for,
         )
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
