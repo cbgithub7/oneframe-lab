@@ -29,6 +29,12 @@ test("a removed test fails unless a plan names it, and a moved test is fine", ()
   assert.deepEqual(removedTests(before, after, allowed), ["a/test_x.py::test_gone"]);
 });
 
+test("only the Tests section can allow a removal", () => {
+  const spec = "## Decisions taken\n\n- Removed `test_elsewhere` handling from the API\n\n"
+    + "## Tests\n\n- Removed:\n  - `test_listed`: replaced\n\n## Out of scope\n\n- Removed `test_after`\n";
+  assert.deepEqual([...allowedRemovals(spec)], ["test_listed"]);
+});
+
 test("the docs check reads paths, placeholders and links", () => {
   assert.deepEqual(backtickPaths("see `app/main/main.js`, `oneframe/ports.py` and `npm run check` or `package.json`."),
     ["app/main/main.js", "engine/src/oneframe/ports.py", "package.json"]);

@@ -30,14 +30,22 @@ export function testNames(file, text) {
 
 /**
  * Names listed as removed in a spec: backticked names on a line starting "- Removed", and on the
- * indented list items under it.
+ * indented list items under it, inside the "## Tests" section only, so that a "- Removed" bullet
+ * elsewhere in a spec (a removed feature, a decision) never allows a test to go.
  * @param {string} text
  * @returns {Set<string>}
  */
 export function allowedRemovals(text) {
   const allowed = new Set();
   let inside = false;
+  let tests = false;
   for (const line of text.split(/\r?\n/)) {
+    if (/^##\s/.test(line)) {
+      tests = /^##\s+Tests\b/.test(line);
+      inside = false;
+      continue;
+    }
+    if (!tests) continue;
     if (/^\s*-\s*Removed\b/i.test(line)) inside = true;
     else if (inside && !/^\s{2,}\S/.test(line)) inside = false;
     if (inside) for (const m of line.matchAll(/`([^`]+)`/g)) allowed.add(m[1]);
