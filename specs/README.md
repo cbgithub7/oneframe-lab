@@ -17,7 +17,7 @@ One gate: the owner approves the spec once, design included. Aim for about 150 l
 8 acceptance criteria. Retry counts, edge cases and the like belong in code and tests; writing them
 in the spec as well only makes two places to keep true.
 
-Specs 001 to 003 were written under the earlier process, with a separate `plan.md` approved after
+Specs 001 and 002 were written under the earlier process, with a separate `plan.md` approved after
 the spec. The test guard reads "- Removed" lists from both files.
 
 ## Who decides

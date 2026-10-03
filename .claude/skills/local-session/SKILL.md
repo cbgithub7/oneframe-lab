@@ -52,7 +52,7 @@ reading anything else, because the rules, the spec, and this skill itself may ha
 ## 2. Rules and target
 
 Read `AGENTS.md`. Read the chosen spec's `spec.md`: the acceptance criteria marked hardware, and its
-Verification section, with the exact commands and the report each writes. (Specs 001 to 003 keep
+Verification section, with the exact commands and the report each writes. (Specs 001 and 002 keep
 their Verification section in `plan.md`.)
 
 If the spec gives no command for a hardware criterion, stop and say so. Do not invent a

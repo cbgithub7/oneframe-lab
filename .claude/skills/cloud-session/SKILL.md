@@ -54,7 +54,7 @@ Its stage decides the next action:
 | All tasks ticked | Validate against every acceptance criterion, then open the PR (step 7). |
 
 A spec counts as approved only when the owner says so in this session or `spec.md` says
-`Status: approved` with a date. Never approve your own spec. Specs 001 to 003 also have a
+`Status: approved` with a date. Never approve your own spec. Specs 001 and 002 also have a
 `plan.md`, from the earlier process; read it with the spec.
 
 ## 5. Baseline checks
