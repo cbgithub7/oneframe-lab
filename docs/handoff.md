@@ -116,8 +116,9 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
 | 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | drafted 2026-10-03; agent review, then owner approval |
-| 2 | Model store, core: pinned files, the store and its views, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | rewritten to its core 2026-10-03 ([research](../specs/003-model-store/research.md)); agent review, then owner approval |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | rewritten to its core 2026-10-03 ([research](../specs/003-model-store/research.md)) and agent-reviewed; owner approval |
 | 3 | First light: Depth Pro and MoGe-2 run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog | 005 (first part) | not started |
+| 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
 | 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times measured in steps 3 and 4 | 004 | not started |
 | 6 | Improve-loop spike: one view synthesiser and one reconstructor on some machine, and whether WSL is needed | spike | not started |
