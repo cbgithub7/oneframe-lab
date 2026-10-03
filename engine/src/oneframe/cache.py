@@ -1,18 +1,22 @@
 """Every node output, stored by what produced it.
 
 A node's key is a hash of: the node's id and version, its output-affecting parameters (a file
-parameter by the file's content, not its name), and the keys of the values it was given. The same
-node with the same inputs and settings therefore has the same key on any run, from any recipe --
-so changing one node re-runs only what comes after it, and two recipes that start the same way
-share the start.
+parameter by the file's content, not its name), the keys of the values it was given, the code in
+its folder (every file but bytecode), and for a node that runs in a runtime, the build this machine
+runs and what that build was installed from (the hashes its marker records: lock, definition and
+stand-ins). The same node with the same inputs, settings, code and runtime therefore has the same
+key on any run, from any recipe -- so changing one node re-runs only what comes after it, two
+recipes that start the same way share the start, and a changed node or runtime is never served a
+result from before the change.
 
 Writes are atomic: a run writes into a private folder and renames it into place, so a crash or a
-Stop never leaves half an output that a later run would trust.
+Stop never leaves half an output that a later run would trust. The private folders live in the
+process's own folder under `cache/tmp/` (scratch.py), on the cache's volume, so the rename is one
+step, and a process that dies leaves them to the next start's sweep.
 """
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import shutil
@@ -24,7 +28,10 @@ from oneframe.child import Value
 from oneframe.errors import ContractError
 from oneframe.manifest import Manifest
 
-KEY_VERSION = 1
+# 2: the node's code and its runtime joined the key (spec 006). Older entries are never served;
+# they stay on disk until a later spec evicts them.
+KEY_VERSION = 2
+BYTECODE = (".pyc", ".pyo")
 
 
 def file_digest(path: Path) -> str:
@@ -35,12 +42,33 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def code_digest(folder: Path) -> str:
+    """A hash of every file in a node's folder, by its path in the folder and its bytes; bytecode
+    (`__pycache__/`, `.pyc`) is left out, since it follows from the source and differs by Python."""
+    digest = hashlib.sha256()
+    for path in sorted(_code_files(folder), key=lambda p: p.relative_to(folder).as_posix()):
+        digest.update(path.relative_to(folder).as_posix().encode("utf-8") + b"\0")
+        digest.update(file_digest(path).encode("ascii"))
+    return digest.hexdigest()
+
+
+def _code_files(folder: Path) -> list[Path]:
+    return [
+        p
+        for p in folder.rglob("*")
+        if p.is_file() and "__pycache__" not in p.relative_to(folder).parts and p.suffix not in BYTECODE
+    ]
+
+
 class Cache:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, work: Path | None = None):
         self.root = Path(root)
         self.objects = self.root / "objects"
-        self.tmp = self.root / "tmp"
+        # Where runs write before their folder is moved into place: the engine gives its own
+        # folder under cache/tmp/; a cache made on its own (a test) writes in <root>/tmp.
+        self.tmp = Path(work) if work is not None else self.root / "tmp"
         self._digests: dict[tuple[str, int, int], str] = {}
+        self._code: dict[str, tuple[tuple[tuple[str, int, int], ...], str]] = {}
 
     def _file_key(self, value: str) -> str:
         path = Path(value)
@@ -50,7 +78,30 @@ class Cache:
             self._digests[memo] = file_digest(path)
         return self._digests[memo]
 
-    def key(self, manifest: Manifest, params: dict[str, Any], inputs: dict[str, Value]) -> str:
+    def code_key(self, folder: Path) -> str:
+        """code_digest, read again only when a file in the folder changed."""
+        try:
+            rows = []
+            for path in _code_files(folder):
+                stat = path.stat()  # once per file: size and time together
+                rows.append((path.relative_to(folder).as_posix(), stat.st_size, stat.st_mtime_ns))
+            stamp = tuple(sorted(rows))
+        except OSError:
+            return code_digest(folder)
+        memo = self._code.get(str(folder))
+        if memo is None or memo[0] != stamp:
+            memo = (stamp, code_digest(folder))
+            self._code[str(folder)] = memo
+        return memo[1]
+
+    def key(
+        self,
+        manifest: Manifest,
+        params: dict[str, Any],
+        inputs: dict[str, Value],
+        runtime: dict[str, str] | None = None,
+    ) -> str:
+        """`runtime`: for a runtime node, the build this machine runs and its marker's hashes."""
         affecting: dict[str, Any] = {}
         for name, value in sorted(params.items()):
             param = manifest.params.get(name)
@@ -63,6 +114,8 @@ class Cache:
             "version": manifest.version,
             "params": affecting,
             "inputs": {port: value.key for port, value in sorted(inputs.items())},
+            "code": self.code_key(manifest.folder),
+            "runtime": runtime,
         }
         text = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -126,7 +179,3 @@ class Cache:
 
     def abandon(self, work: Path) -> None:
         shutil.rmtree(work, ignore_errors=True)
-
-    def clear_tmp(self) -> None:
-        with contextlib.suppress(OSError):
-            shutil.rmtree(self.tmp)

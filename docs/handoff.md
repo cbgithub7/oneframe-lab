@@ -36,9 +36,23 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   NVIDIA or the processor. Storage: one data root, versioned formats, safe deletes, dev and
   packaged roots apart ([AGENTS.md](../AGENTS.md)).
 
-## State (2026-10-02)
+## State (2026-10-03)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
+
+- **Foundations** (spec 006, implemented 2026-10-03; in review, its local checks pending):
+    - one data root, computed alike by the engine (`oneframe/layout.py`) and the app
+      (`app/main/paths.js`) from a shared table; the dev root is `OneframeLab-dev`
+      (`oneframe-lab-dev` on Linux), and only the app chooses the packaged one;
+    - nothing written outside it, proved by a footprint test on both systems: library caches,
+      temporary files and bytecode included, and Electron's folders (`app/main/boot.js`);
+    - every kept file says its format (`oneframe-root.json`, settings, learned memory, the runtime
+      marker), and a newer one is left alone; a runtime moved to another root reads as `moved`;
+    - a locked folder per process under `cache/tmp/`, and a lock per runtime install or remove;
+    - one failure model (`oneframe/errors.py`, its table in [architecture.md](architecture.md#failures)),
+      answered to the page as values;
+    - a journal per run and install, pruned, and `npm run diagnose`;
+    - cache keys that follow a node's code and its runtime's build (`KEY_VERSION` 2).
 
 - **Engine** (`engine/src/oneframe/`):
     - port types with facets, manifests and the registry;
@@ -115,8 +129,8 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
-| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | approved 2026-10-03; next to implement |
-| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); after 006 |
+| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | implemented 2026-10-03, in review; local checks after the merge (its Verification), and one open question for the owner |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); next to implement, once 006 is merged |
 | 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog | 005 (first part) | not started |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |

@@ -981,11 +981,16 @@ def test_a_store_file_that_cannot_be_read_starts_empty(tmp_path: Path) -> None:
     path.parent.mkdir()
     path.write_text("{half a file", encoding="utf-8")
     assert LearnedStore(tmp_path).view(KEY) == Learned()
-    path.write_text(json.dumps({"version": 99, "entries": {"x": {}}}), encoding="utf-8")
-    assert LearnedStore(tmp_path).view(KEY) == Learned()
     store = LearnedStore(tmp_path)
     _run(store, 1.2)
     assert json.loads(path.read_text(encoding="utf-8"))["version"] == mem.STORE_VERSION
+    # A newer format is not read either, and since spec 006 it is left as it is, not replaced.
+    path.write_text(json.dumps({"version": 99, "entries": {"x": {}}}), encoding="utf-8")
+    before = path.read_bytes()
+    assert LearnedStore(tmp_path).view(KEY) == Learned()
+    store = LearnedStore(tmp_path)
+    _run(store, 1.2)
+    assert path.read_bytes() == before
 
 
 def test_a_store_without_a_data_root_lives_in_memory(tmp_path: Path) -> None:

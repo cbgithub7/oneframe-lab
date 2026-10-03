@@ -4,16 +4,18 @@
 // The renderer is sandboxed and isolated, and can do exactly two things: ask the engine one of the
 // methods listed in ENGINE_METHODS (methods.js), and listen to the engine's events. It cannot read
 // files, start processes or open windows. The method and the shape of its arguments are checked
-// here; the engine checks their values.
+// in door.js; the engine checks their values. Every answer is a value, a failure included.
 
 import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { EngineClient } from "./engine.js";
+import { PAGE_PARTITION, boot } from "./boot.js";
+import { answer } from "./door.js";
+import { EngineClient, EngineError } from "./engine.js";
+import { appFailure } from "./failures.js";
 import { RotatingLog } from "./log.js";
-import { ENGINE_METHODS } from "./methods.js";
-import { REPO_ROOT, dataRoot, engineCommand, findUv } from "./paths.js";
+import { REPO_ROOT, engineCommand, findUv, layout } from "./paths.js";
 
 const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");
 const RENDERER_URL = pathToFileURL(RENDERER).href;
@@ -23,10 +25,12 @@ const EXTERNAL_HOSTS = new Set(["github.com"]);
 // OS-level sandbox cannot start. It never applies otherwise; the page stays isolated either way.
 if (process.env.ONEFRAME_NO_SANDBOX === "1") app.commandLine.appendSwitch("no-sandbox");
 else app.enableSandbox();
-if (!app.requestSingleInstanceLock()) app.quit();
 
-const data = dataRoot();
-const log = new RotatingLog(path.join(data, "logs", "app.log"));
+// Electron's folders under the data root first (the dev root in a checkout, the app's own root once
+// packaged; ONEFRAME_DATA overrides either), then the single-instance lock, which is one per root.
+const { root: data, first } = boot(app);
+if (!first) app.quit();
+const log = new RotatingLog(path.join(layout(data).logs, "app.log"));
 /** @type {EngineClient | null} */
 let engine = null;
 /** @type {BrowserWindow | null} */
@@ -43,25 +47,30 @@ function send(payload) {
 async function startEngine() {
   const uv = findUv();
   if (!uv) {
-    send({ event: "engine.failed", message: "uv was not found. Install uv, or set ONEFRAME_UV to its path." });
+    send({ event: "engine.failed", ...appFailure("no_uv", "uv was not found.", "Install uv, or set ONEFRAME_UV to its path.") });
     return;
   }
-  const spec = engineCommand(uv, data);
+  const spec = engineCommand(uv, data, app.isPackaged);
   const client = new EngineClient({ ...spec, requestTimeoutMs: 60_000 });
   engine = client;
   client.on("log", (line) => log.write("engine", line));
   client.on("event", (event) => send(event));
+  let started = false;
   client.on("exit", (info) => {
     log.write("main", `engine exited: ${JSON.stringify(info)}`);
-    send({ event: "engine.exit", code: info.code });
+    // An engine that never started has said why (engine.failed, from it or from the catch below);
+    // a bare "the engine stopped" sent after it would hide the reason and what to do.
+    if (started) send({ event: "engine.exit", code: info.code });
   });
   try {
     const ready = await client.start();
+    started = true;
     log.write("main", `engine ready: ${JSON.stringify(ready)}`);
     send(ready);
   } catch (error) {
     log.write("main", `engine failed to start: ${String(error)}`);
-    send({ event: "engine.failed", message: String(error) });
+    // An engine that said why it refused has already sent its own engine.failed to the page.
+    if (!(error instanceof EngineError)) send({ event: "engine.failed", ...appFailure("start_failed", String(error)) });
   }
 }
 
@@ -78,6 +87,7 @@ function createWindow() {
       nodeIntegration: false,
       webSecurity: true,
       spellcheck: false,
+      partition: PAGE_PARTITION,
     },
   });
   win.removeMenu();
@@ -101,18 +111,14 @@ app.on("web-contents-created", (_event, contents) => {
   });
 });
 
-ipcMain.handle("engine:request", async (event, method, params) => {
-  if (event.senderFrame?.url !== RENDERER_URL) throw new Error("Refused: request from an unknown page.");
-  if (typeof method !== "string" || !ENGINE_METHODS.has(method)) throw new Error(`Refused: ${String(method)}`);
-  if (params !== undefined && (params === null || typeof params !== "object" || Array.isArray(params))) {
-    throw new Error("Refused: params must be an object.");
-  }
-  if (!engine || !engine.ready) throw new Error("The engine is not running.");
-  return engine.request(method, params ?? {});
-});
+// Answered with a value, a failure included, so its kind, reason and next reach the page (door.js).
+ipcMain.handle("engine:request", (event, method, params) =>
+  answer(engine, event.senderFrame?.url, RENDERER_URL, method, params));
 
 app.whenReady().then(() => {
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  for (const each of [session.defaultSession, session.fromPartition(PAGE_PARTITION)]) {
+    each.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  }
   createWindow();
   startEngine();
 });

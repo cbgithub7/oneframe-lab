@@ -23,8 +23,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from oneframe import __version__, runtime_install
+from oneframe import __version__, runtime_install, scratch
 from oneframe.executors import NodeError, ProcessExecutor
+from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
 
@@ -46,7 +47,12 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
             "out_dir": out,
             "device": "cuda" if build is not None and build.vendor == "nvidia" else "cpu",
         }
-        executor = ProcessExecutor(python, env=manager.env_for(runtime_id), log_dir=manager.data / "logs")
+        executor = ProcessExecutor(
+            python,
+            env=manager.env_for(runtime_id),
+            log_dir=Layout(manager.data).step_logs,
+            caches=manager.caches_for(runtime_id),
+        )
         try:
             done = executor.execute(job, lambda _e: None, lambda: False)
         except NodeError as exc:
@@ -209,27 +215,31 @@ def render(record: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from oneframe.server import default_data_dir
-
     parser = argparse.ArgumentParser(
         prog="bench:runtime", description="Install a runtime and report what it did."
     )
     parser.add_argument("runtime", help="the runtime's id, a folder in runtimes/")
     parser.add_argument("--out", type=Path, default=None, help="the report (default: <data>/reports/)")
-    parser.add_argument("--data", type=Path, default=None, help="the data root (default: the app's)")
+    parser.add_argument("--data", type=Path, default=None, help="the data root (default: the dev root)")
     parser.add_argument("--runtimes", type=Path, action="append", default=None, help="a folder of runtimes")
     parser.add_argument("--uv", default=None)
     parser.add_argument("--uv-home", type=Path, default=None)
     args = parser.parse_args(argv)
-    data = args.data or default_data_dir()
-    data.mkdir(parents=True, exist_ok=True)
+    try:
+        data, warnings = open_root(args.data, version=__version__)
+    except RootRefused as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    for warning in warnings:
+        print(warning, file=sys.stderr)
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     try:
-        record = bench(manager, args.runtime)
+        with scratch.for_tool(Layout(data)):  # its temporary files, and uv's, stay under the root
+            record = bench(manager, args.runtime)
     except RuntimeMissing as exc:  # no such runtime: nothing to report on
         print(exc, file=sys.stderr)
         return 1
-    out = args.out or data / "reports" / f"runtime-{args.runtime}-{record['date'][:10]}.md"
+    out = args.out or Layout(data).reports / f"runtime-{args.runtime}-{record['date'][:10]}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render(record), encoding="utf-8")
     print(f"The report is at {out}", file=sys.stderr)

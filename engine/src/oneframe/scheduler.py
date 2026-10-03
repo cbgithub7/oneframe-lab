@@ -11,8 +11,11 @@ Events, in order, for the app (all carry `run`):
     node.step_oom  step, stage, way, next, message (ctx.fallbacks moved to its next way)
     node.done      step, seconds, peaks, made_with, fit, outputs
     node.oom       step, attempt, peaks, message  (before the one retry, or the failure)
-    node.failed    step, kind, message, fits
+    node.failed    step, node, kind, reason, message, next, retry, detail, fits, peaks
     run.done | run.failed | run.stopped
+
+A failure carries a declared kind and reason (errors.py). A value whose facets do not fit the port
+it reaches is no node's fault: there is no node.failed, and run.failed names the edge.
 
 Before a node's model loads, the engine fits it to the memory this machine has free (memory.py):
 the device, the precision and the settings the person left alone. Out of memory is answered once,
@@ -20,7 +23,8 @@ with a fit strictly smaller than the one that ran out, in a new process for a ru
 
 Values are checked where they cross a port: a node's declared outputs against its manifest
 (every output present, every facet stated, each from the allowed values), and each input against
-what the consumer accepts, because an output that leaves a facet open is only known at run time.
+what the consumer accepts, because an output that leaves a facet open is only known at run time
+(kind `edge`).
 Trust flows with the value: an output that does not state its trust inherits the weakest trust of
 its inputs, so a mesh built from synthetic views never comes out labelled measured.
 """
@@ -38,9 +42,10 @@ from typing import Any
 from oneframe import memory, ports
 from oneframe.cache import Cache
 from oneframe.child import Value
-from oneframe.errors import ContractError
+from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
+from oneframe.journal import journalled, prune_step_logs
 from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
 from oneframe.registry import Registry
@@ -123,6 +128,10 @@ class Scheduler:
         settings: Callable[[], Settings] = Settings,
         learned: LearnedStore | None = None,
         on_pid: Callable[[int], None] | None = None,
+        tmp_root: Path | None = None,
+        runtime_caches: Callable[[str], Path | None] = lambda _runtime: None,
+        journal_dir: Path | None = None,
+        runtime_key: Callable[[str], dict[str, str] | None] = lambda _runtime: None,
     ):
         self.registry = registry
         self.cache = cache
@@ -137,7 +146,21 @@ class Scheduler:
         self.settings = settings
         self.learned = learned or LearnedStore(None)
         self.on_pid = on_pid
+        self.tmp_root = tmp_root  # where a runtime node's job folder is made
+        self.runtime_caches = runtime_caches  # where its libraries keep their caches
+        self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
+        self.runtime_key = runtime_key  # a runtime node's build and marker hashes, for its cache key
+        self._runtime_keys: dict[str, dict[str, str] | None] = {}
         self.engine = EngineExecutor()
+
+    def _key(self, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]) -> str:
+        runtime = None
+        if manifest.run.where == "runtime":
+            name = str(manifest.run.runtime)
+            if name not in self._runtime_keys:
+                self._runtime_keys[name] = self.runtime_key(name)
+            runtime = self._runtime_keys[name]
+        return self.cache.key(manifest, values, inputs, runtime)
 
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
         if manifest.run.where == "engine":
@@ -145,7 +168,12 @@ class Scheduler:
         runtime = str(manifest.run.runtime)
         python = self.runtime_python(runtime)
         return ProcessExecutor(
-            python, env=self.runtime_env(runtime), log_dir=self.log_dir, on_pid=self.on_pid
+            python,
+            env=self.runtime_env(runtime),
+            log_dir=self.log_dir,
+            on_pid=self.on_pid,
+            tmp_root=self.tmp_root,
+            caches=self.runtime_caches(runtime),
         )
 
     def run(
@@ -156,6 +184,12 @@ class Scheduler:
         run_id: str | None = None,
     ) -> RunResult:
         run_id = run_id or uuid.uuid4().hex[:12]
+        prune_step_logs(self.log_dir)
+        self._runtime_keys = {}  # read once per run: a runtime does not change under a run
+        with journalled(emit, self.journal_dir, f"run-{run_id}") as kept:
+            return self._run(graph, kept, should_stop, run_id)
+
+    def _run(self, graph: Graph, emit: Emit, should_stop: Callable[[], bool], run_id: str) -> RunResult:
         result = RunResult(run=run_id, status="done")
 
         def say(event: dict[str, Any]) -> None:
@@ -175,21 +209,13 @@ class Scheduler:
                 result.status = "stopped"
                 say({"event": "run.stopped", "step": step.id})
                 return result
+            except EdgeMismatch as exc:  # no node's fault: reported against the edge, not the step
+                result.status = "failed"
+                result.error = exc.to_json(edge=exc.edge)
+                say(dict(result.error, event="run.failed"))
+                return result
             except (NodeError, RuntimeMissing, ContractError) as exc:
-                kind = (
-                    exc.kind
-                    if isinstance(exc, NodeError)
-                    else ("runtime" if isinstance(exc, RuntimeMissing) else "contract")
-                )
-                error = {
-                    "step": step.id,
-                    "node": step.manifest.id,
-                    "kind": kind,
-                    "message": str(exc),
-                    "detail": getattr(exc, "detail", ""),
-                }
-                if isinstance(exc, RuntimeMissing):
-                    error["reason"] = exc.reason  # unknown, blocked, installing, not installed, out of date
+                error = exc.to_json(step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""))
                 if trail.fits:
                     error["fits"] = [f.to_json() for f in trail.fits]
                 if trail.peaks:
@@ -197,7 +223,7 @@ class Scheduler:
                 result.status = "failed"
                 result.error = error
                 say(dict(error, event="node.failed"))
-                say({"event": "run.failed", "step": step.id, "kind": kind, "message": str(exc)})
+                say({"event": "run.failed", **exc.to_json(step=step.id)})
                 return result
             result.outputs[step.id] = outputs
             result.records[step.id] = record
@@ -217,7 +243,8 @@ class Scheduler:
             value = done[src][src_port]
             why = ports.value_mismatch(value.facets, step.manifest.inputs[port])
             if why:
-                raise ContractError(f"{step.id}.{port}: {why} (from {src}.{src_port})")
+                source, target = f"{src}.{src_port}", f"{step.id}.{port}"
+                raise EdgeMismatch(f"{source} -> {target}: {why}", source, target)
             inputs[port] = value
         return inputs
 
@@ -232,7 +259,7 @@ class Scheduler:
     ) -> tuple[dict[str, Value], dict[str, Any]]:
         manifest = step.manifest
         inputs = self._gather(step, done)
-        key = self.cache.key(manifest, step.params, inputs)
+        key = self._key(manifest, step.params, inputs)
         cached = self.cache.get(key)
         if cached is not None:
             say(
@@ -350,7 +377,7 @@ class Scheduler:
             values.update(change.set)
             if change.costs != "quality":
                 continue
-            key = self.cache.key(step.manifest, values, inputs)
+            key = self._key(step.manifest, values, inputs)
             cached = self.cache.get(key)
             if cached is not None:
                 say(
@@ -393,7 +420,7 @@ class Scheduler:
         manifest = step.manifest
         values = dict(found.values) if found is not None else dict(step.params)
         device = (found.device if found is not None else None) or manifest.devices[0]
-        key = self.cache.key(manifest, values, inputs)
+        key = self._key(manifest, values, inputs)
         executor = self._executor(manifest)
         say(
             {

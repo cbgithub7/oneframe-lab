@@ -1,6 +1,6 @@
 # 006: Foundations
 
-Status: approved (drafted and agent-reviewed 2026-10-03)
+Status: implemented 2026-10-03, in review (every task ticked; the local checks below wait for the merge)
 Owner approval: 2026-10-03
 
 Comes before spec 003's core, which builds on it. It answers [the review of 2026-10-02](../../docs/reviews/2026-10-02.md),
@@ -154,6 +154,11 @@ What the app writes, and how it fails, is not yet something a person can trust:
 ## Tests
 
 - Added: one or more per acceptance criterion.
+- Changed: `test_a_store_file_that_cannot_be_read_starts_empty` (test_memory.py) asserted that a
+  learned-memory file in a newer format is replaced; requirement 3 leaves it as it is, so it now
+  asserts that, and still that an unreadable file is replaced.
+- Changed: the runtime tests in test_runtime_install.py and test_runtime_server.py compare statuses
+  and reasons with the snake_case spellings requirement 5 sets (`not_installed`, `out_of_date`).
 - Removed: none.
 
 ## Verification
@@ -166,7 +171,23 @@ starts Electron. In a local session after the merge:
   on Linux, `~/.local/share/oneframe-lab` and `~/.config/oneframe-lab`. `OneframeLab` becomes the
   packaged app's name;
 - the torch runtime is installed into the dev root with `npm run bench:runtime -- torch`;
-- the local-session skill's mention of the old root is updated (a task).
+- the local-session skill's mention of the old root is updated (a task; done in task 11).
+
+The exact steps, on Windows (`/local-session`), each one's output kept for the report
+`specs/006-foundations/reports/<date>-local.md`:
+
+1. Note what exists: `dir %APPDATA%`, `dir %LOCALAPPDATA%`, `dir %USERPROFILE%`, and
+   `reg query HKCU\Software\Python /s` and `reg query HKCU\Environment /v Path`.
+2. `npm start`; wait for the node list; close the app. Then `dir %LOCALAPPDATA%\OneframeLab-dev`
+   shows `electron`, `cache`, `logs`, `oneframe-root.json`, and `%APPDATA%\oneframe-lab` does not
+   exist (delete it first if an older app made it).
+3. `npm run bench:runtime -- torch`: the report names the dev root, and the install's journal is in
+   `%LOCALAPPDATA%\OneframeLab-dev\logs\journal\`.
+4. `npm run diagnose`; open the file it names in `reports\`, and search it for the Windows user
+   name: it appears only as an ordinary word, never in a path.
+5. Repeat step 1 and compare: nothing new at the top of the three profile folders, and the two
+   registry values unchanged.
+6. Delete the old roots by hand (above).
 
 ## Decisions taken
 
@@ -179,6 +200,80 @@ starts Electron. In a local session after the merge:
 - **Cache records get no format of their own.** `KEY_VERSION` already makes an old record a miss.
 - **A root of the other kind,** reached through `ONEFRAME_DATA`, is used, with a warning in
   `engine.ready`.
+- **Every variable that names the root's folder must be absolute** (2026-10-03, task 1).
+  `ONEFRAME_DATA` and `LOCALAPPDATA` are treated as the XDG spec treats `XDG_DATA_HOME`: an empty or
+  relative value is ignored, since the root functions take no working folder to resolve it against.
+  On Windows, absolute means a drive and a separator, or a share (`\\server\share`).
+- **The shared table is `contracts/layout.json`** (task 1). It holds the root cases and the names of
+  the paths under the root, and both suites check both. The paths are cleaned (`.`, `..`, repeated
+  and trailing separators) by a rule written out the same way in Python and JavaScript, because
+  `ntpath` and Node's `path.win32` disagree on shares and leading double slashes.
+- **Learned memory keeps `version` as the key for its format** (task 2), as it already was, so no
+  migration is needed. Every other kept file uses `format`.
+- **The root file holds `format`, `kind` (`dev` or `packaged`), `created` and `engine`** (task 3).
+  The app passes `--packaged` when it is packaged. A root file that cannot be read, or that does not
+  say its format, stops the engine as a newer layout does (`reason`: `unreadable`), since it might
+  be one: nothing is overwritten that the engine does not understand. The engine's `engine.failed`
+  carries `kind: root` and the reason; the app's client rejects its start with them.
+- **A runtime marker without `format` is format 1, and one without `env` is never `moved`** (task
+  3): markers written before this spec say neither. Installing over a `moved` environment deletes
+  it first, since its scripts and links point into the root it was built in.
+- **A process's folder is `cache/tmp/<n>/`, locked by `logs/locks/tmp-<n>.lock`** (task 4). It takes
+  the first free number, so numbers are reused and the lock files, never deleted, stay as few as
+  the processes that ever ran at once. Its runs' private folders (`runs/`), its job folders and its
+  bench scratch are inside; the engine and the bench tools make it their temporary folder too.
+  Anything in `cache/tmp/` that is not a numbered folder is from before this spec and is removed.
+  Design's `cache/jobs/` is therefore not made: requirement 4 puts job folders in each process's
+  folder, so one sweep covers both.
+- **`bench:fit` writes its report to `<data>/reports/` unless `--out` names a place** (task 4), as
+  `bench:runtime` does; it wrote to the working folder, the repo when run through npm.
+- **The variables that keep a child under the root are reserved** (task 5): a runtime's definition
+  cannot set them, as it cannot set the forced ones. Each library cache has a folder of its own in
+  `cache/runtime/<id>/` (`huggingface/`, `torch/`, `triton/`, ...); a child's temporary folder is
+  its job's folder. The app also sets `PYTHONPYCACHEPREFIX`, so the engine's own modules, imported
+  before `sys.pycache_prefix` is set, keep their bytecode under the root; it is kept from uv and
+  from children, whose runtime's bytecode lies beside each module.
+- **Electron's temporary folder, and that of the uv that starts the engine, is `cache/electron/tmp/`**
+  (task 6), named `app_tmp` in the layout. It is not in `cache/tmp/`, whose unlocked folders an
+  engine's start removes. Without it, `uv run` left its lock file in the system temporary folder,
+  as a run of the real app in a cloud session showed.
+- **The page's session is in memory** (task 6): the window uses a partition without `persist:`, so
+  the page keeps nothing on disk; the engine holds all state.
+- **The kinds beyond the review's list** (task 8): `edge` (a facet mismatch found at run time),
+  `graph` (a graph that cannot run, or a second run), `root` (the data root refused), `request`
+  (refused before any work, timed out, or the engine not running) and `app` (the app could not start
+  the engine). Runtime refusals to install or remove share kind `runtime` and its reasons, with
+  `busy`, `in_use`, `no_uv`, `wrong_build`, `unsafe_path` and `install_failed` added.
+- **`next` is a sentence for a person, and `retry` belongs to the reason** (task 8), or to the kind
+  when there is none. The page decides what to offer from the kind and reason; it does not parse
+  `next`.
+- **An `edge` failure has no `node.failed` and no `step`** (task 8): `run.failed` carries
+  `edge: {from, to}` instead, so the page can mark the connection.
+- **Journals are `logs/journal/<time>-<run|install>-<id>.ndjson`, and per-step logs move to
+  `logs/steps/`** (task 9), so each is pruned as a folder and the app's own `app.log` is never
+  touched. The bounds: 100 journals and 64 MiB; 200 step logs and 128 MiB; one journal stops at
+  16 MiB with a last line that says so. The newest is always kept.
+- **The diagnostics file is JSON** (task 9), `reports/diagnose-<time>.json`, redacted after it is
+  serialised, so the JSON-escaped spelling of a path is caught with the others. A user's segment is
+  matched only as a whole path segment right after the users folder, in any case, with or without
+  the drive; a longer name (`database` for `data`) and a word elsewhere are left alone.
+- **A node's code hash covers every file in its folder by its bytes**, bytecode left out (task 10),
+  and is read again only when a file's size or time changes. The runtime part is the build the plan
+  picks and the hashes its marker records, so a key follows what is installed, not a definition
+  edited since (which makes the runtime `out_of_date`, and the run fails before any key matters).
+- **From the code review** (2026-10-03): a lock error other than "held" (a share without locking)
+  is an error, not a busy lock, and a process takes one of at most 256 folders; a dead process's
+  folder that cannot be removed yet is passed over; a journal that cannot be written never fails a
+  run or holds an install's lock, keeps one handle open, and starts with a line that says its
+  format; `diagnose` reads the root as it is, so it reports on a root the engine refuses and writes
+  only `reports/`; a missing or unknown parameter is `request`/`bad_params`, not an engine bug; a
+  child's undeclared kind is reported as `error`; a node in the engine's process re-imports its
+  helpers, as its key says; the tools' npm scripts run Python with `-B`, so they write no bytecode
+  into the checkout.
+- **The page receives a failed request as a rejected plain object** (task 8): main.js answers
+  every request with `{ok, result}` or `{ok, error}` (`app/main/door.js`), and the preload turns
+  the second into a rejection with the failure itself, since Electron passes on only the message of
+  a thrown error.
 
 ## Out of scope
 
@@ -187,6 +282,15 @@ starts Electron. In a local session after the merge:
 - **Cache eviction**, and a size cap.
 - **Splitting the child into setup and per-job code,** before spec 004.
 - **A machine-readable protocol contract.**
+
+## Open questions
+
+1. **Chromium's single-instance socket on Linux** (found in task 6, by running the app). While the
+   app runs, Chromium keeps the socket behind the single-instance lock in a folder it makes in the
+   system temporary folder (`scoped_dir*`), linked from `electron/`, and removes it at exit. It
+   cannot move under the root: a Unix socket's path must be short (108 bytes), and a root's may be
+   longer. Windows uses no file for this. Is this an accepted exception to "nothing in temp"? Until
+   answered, the code leaves it as Chromium does.
 
 ## Owner's decisions
 

@@ -44,6 +44,16 @@ test("requests are answered by id, and events and logs arrive on their own chann
   assert.ok(logs.some((l) => l.includes("not JSON")));
 });
 
+test("an engine that refuses to start says why, and the start fails with its reason", async () => {
+  const client = new EngineClient({ command: process.execPath,
+    args: [path.join(here, "fixtures", "fake-engine.js"), "--refuse"] });
+  const events = /** @type {any[]} */ ([]);
+  client.on("event", (e) => events.push(e));
+  await assert.rejects(client.start(), (/** @type {any} */ error) =>
+    error instanceof EngineError && error.reason === "newer_layout" && /newer version/.test(error.message));
+  assert.equal(events[0].event, "engine.failed"); // the page sees it too
+});
+
 test("pending requests fail when the engine dies, and silence times out", async () => {
   const client = fake();
   await client.start();
@@ -73,16 +83,22 @@ test("a reply after its request timed out is logged, never passed on as an event
 });
 
 test("the data root is one folder per platform, overridable", () => {
-  assert.equal(dataRoot({ ONEFRAME_DATA: "/x/y" }, "linux"), path.resolve("/x/y"));
-  assert.equal(dataRoot({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "win32"),
-    path.join("C:\\Users\\a\\AppData\\Local", "OneframeLab"));
-  assert.equal(dataRoot({ XDG_DATA_HOME: "/d" }, "linux"), path.join("/d", "oneframe-lab"));
-  const cmd = engineCommand("uv", "/data");
-  assert.equal(cmd.env.UV_CACHE_DIR, path.join("/data", "uv", "cache"));
-  // uv writes nothing outside the data root: no python link in a bin folder, no registry entry.
-  assert.equal(cmd.env.UV_PYTHON_INSTALL_BIN, "0");
-  assert.equal(cmd.env.UV_PYTHON_INSTALL_REGISTRY, "0");
-  assert.ok(cmd.args.includes("--frozen"), "the engine runs exactly what engine/uv.lock says");
+  // Every case is in contracts/layout.json (layout.test.js); these are the everyday ones.
+  assert.equal(dataRoot({ ONEFRAME_DATA: "/x/y" }, "linux", "/home/a", false), "/x/y");
+  assert.equal(dataRoot({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "win32", "C:\\Users\\a", true),
+    "C:\\Users\\a\\AppData\\Local\\OneframeLab");
+  assert.equal(dataRoot({ XDG_DATA_HOME: "/d" }, "linux", "/home/a", false), "/d/oneframe-lab-dev");
+  const data = mkdtempSync(path.join(tmpdir(), "oneframe-data-"));
+  try {
+    const cmd = engineCommand("uv", data);
+    assert.equal(cmd.env.UV_CACHE_DIR, path.join(data, "uv", "cache"));
+    // uv writes nothing outside the data root: no python link in a bin folder, no registry entry.
+    assert.equal(cmd.env.UV_PYTHON_INSTALL_BIN, "0");
+    assert.equal(cmd.env.UV_PYTHON_INSTALL_REGISTRY, "0");
+    assert.ok(cmd.args.includes("--frozen"), "the engine runs exactly what engine/uv.lock says");
+  } finally {
+    rmSync(data, { recursive: true, force: true });
+  }
 });
 
 test("the log rolls over and keeps a bounded number of files", () => {

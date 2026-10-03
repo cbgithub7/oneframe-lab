@@ -41,7 +41,8 @@ the code it names. The folder is named after the node's id.
 - **run.where** is `engine` for light nodes that ship with the app, and `runtime` for anything
   that imports a model library; `runtime` names the environment it runs in, a folder in
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
-  node fails with kind `runtime` and the reason: not installed, out of date, or blocked here.
+  node fails with kind `runtime` and a reason such as `not_installed`, `out_of_date` or `blocked`
+  (every reason is in [architecture.md](architecture.md#failures)).
 - **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
   repair, texture, convert, evaluate, export.
 
@@ -184,7 +185,8 @@ npm run bench:fit -- <node> --set resolution=512 --set resolution=1024 --set res
 ```
 
 runs the node once per `--set` group (from an empty cache, with nothing learned) and writes a
-report of each run's estimate, measured peak, ratio, seconds and the free memory before. Measure a
+report of each run's estimate, measured peak, ratio, seconds and the free memory before, to the
+data root's `reports/` unless `--out` names a file or folder. Measure a
 model's memory model at several settings this way, and name the report in its `source`. With no
 node, it runs spec 002's hardware check (AC8) on this machine's card.
 

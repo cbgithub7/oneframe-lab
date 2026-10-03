@@ -4,6 +4,10 @@ import { createInterface } from "node:readline";
 
 const write = (/** @type {unknown} */ obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 process.stderr.write("fake engine starting\n");
+if (process.argv.includes("--refuse")) {
+  write({ event: "engine.failed", kind: "root", reason: "newer_layout", message: "laid out by a newer version" });
+  process.exit(2);
+}
 write({ event: "engine.ready", engine: "fake", python: "none", nodes: 0 });
 
 for await (const line of createInterface({ input: process.stdin })) {
@@ -13,6 +17,9 @@ for await (const line of createInterface({ input: process.stdin })) {
     const text = JSON.stringify({ event: "run.start", run: "r1" }) + "\n" + JSON.stringify({ id: msg.id, result: "ok" }) + "\n";
     process.stdout.write(text.slice(0, 7));
     setTimeout(() => process.stdout.write(text.slice(7)), 20);
+  } else if (msg.method === "runtimes.install") {
+    write({ id: msg.id, error: { kind: "runtime", reason: "not_installed", message: "The runtime 'tiny' is not installed.",
+      next: "Install the runtime tiny.", retry: false } });
   } else if (msg.method === "fail") write({ id: msg.id, error: { message: "The graph cannot run.", problems: [{ node: "x", port: "", message: "bad" }] } });
   else if (msg.method === "noise") {
     process.stdout.write("not json at all\n");

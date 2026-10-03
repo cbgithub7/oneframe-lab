@@ -58,7 +58,7 @@ api.onEvent((event) => {
     setStatus("ready", `Engine ${event.engine} · Python ${event.python} · ${event.nodes} nodes`);
     loadNodes().catch((error) => setStatus("failed", `Could not list nodes: ${error.message}`));
   } else if (event.event === "engine.failed") {
-    setStatus("failed", event.message);
+    setStatus("failed", [event.message, event.next].filter(Boolean).join(" "));
   } else if (event.event === "engine.exit") {
     setStatus("failed", `The engine stopped (code ${event.code}).`);
   }
