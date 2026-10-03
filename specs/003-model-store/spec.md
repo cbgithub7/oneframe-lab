@@ -11,7 +11,7 @@ Built on [spec 006](../006-foundations/spec.md): its layout module, failure mode
 A model node reads files that are not in its folder or its runtime: weights, configs and the like,
 hosted on Hugging Face or a vendor's server, often gigabytes each. A run has no network, so they
 must be on disk first, and today nothing declares, fetches, checks or removes them. This core is
-what the first two models need: Depth Pro (one `.pt` from Apple's server) and MoGe-2 (one
+what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-2 and MoGe-3 (one
 `model.pt` per variant, on Hugging Face).
 
 ## Requirements
@@ -169,9 +169,13 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
     - a changed value under the same pin is reported and left.
 - [ ] AC8 (local, real hosts, no GPU): on the owner's Windows PC, with manifests that pin only
   files, kept in `specs/003-model-store/live/`:
-    - Depth Pro's `depth_pro.pt` from Apple's server, and MoGe-2's `model.pt` from
-      `Ruicheng/moge-2-vitl-normal`, are pinned with `npm run models:pin` and fetched with
-      `npm run models:download -- --all`;
+    - these are pinned with `npm run models:pin` and fetched with
+      `npm run models:download -- --all`:
+        - Depth Pro's `depth_pro.pt` from Apple's server;
+        - MoGe-2's `model.pt` from `Ruicheng/moge-2-vitl-normal`;
+        - MoGe-3's `model.pt` from `Ruicheng/moge-3-vitl` and `Ruicheng/moge-3-vitg`, as two
+          checkpoints of one manifest. The 1.25B-parameter `vitg` is the large file this test
+          needs;
     - each download is stopped midway, resumed, and completes and verifies;
     - one GitHub release asset is resumed more than 300 s later, past its redirect token's life;
     - the report gives each file's bytes, seconds and MB/s on one connection, the hosts reached,
@@ -213,7 +217,7 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
   handoff's order.** This keeps the owner's decision 1 and changes only when it lands. The view
   includes `refs/main`, hard links, `ctx.snapshot` and `ctx.revision`, the per-runtime commit
   rule, the hub lookup tests, and the pin tool's folder expansion and code report. TripoSR is
-  the first model that needs it; Depth Pro and MoGe-2 load one local file each. Until then,
+  the first model that needs it; Depth Pro, MoGe-2 and MoGe-3 load one local file each. Until then,
   `ctx.file` gives the stored file's own path.
 - **No file hashes in the cache key.** Spec 006 hashes the node's folder, so a changed pin in
   `node.json` already changes it.

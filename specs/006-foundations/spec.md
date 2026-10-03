@@ -188,11 +188,8 @@ starts Electron. In a local session after the merge:
 - **Splitting the child into setup and per-job code,** before spec 004.
 - **A machine-readable protocol contract.**
 
-## Open questions
+## Owner's decisions
 
-1. **The storage rule says "nothing in the repo",** but two things write there today:
-   `bench:fit --out` puts reports into `specs/<id>/reports/`, and a dev checkout keeps its engine
-   environment in `engine/.venv`.
-
-   *Recommended:* add an exception to the rule: "except a file the person names, and a dev
-   checkout's engine environment."
+1. **The storage rule's exceptions** (2026-10-03). "Nothing in the repo" is kept, except a file the
+   person names (such as a bench report written with `--out` into `specs/<id>/reports/`) and a dev
+   checkout's engine environment (`engine/.venv`). [AGENTS.md](../../AGENTS.md) says so.

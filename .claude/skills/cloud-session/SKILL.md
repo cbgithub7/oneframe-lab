@@ -34,7 +34,7 @@ a broken environment by installing other versions.
 ## 3. Git
 
 - `git fetch origin`, then `git status -sb` and `git log --oneline -5`.
-- Work never happens on `main` (it is protected). If the harness named a branch for this session,
+- Work never happens on `main` (treat it as protected, whether or not GitHub enforces it). If the harness named a branch for this session,
   use it. Otherwise make one from `origin/main`: `spec/NNN-short-name` for spec work, or
   `fix/short-name` for a small fix with no spec.
 - If the branch is behind `origin/main`, merge `origin/main` into it before starting. Never

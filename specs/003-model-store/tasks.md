@@ -24,5 +24,7 @@ spec; the order may change when spec 006 lands.
   (AC5).
 - [ ] 7. `models.list` and `models.remove` (AC6).
 - [ ] 8. The pin tool and both command-line tools (AC7).
-- [ ] 9. The live manifests under `specs/003-model-store/live/` for AC8, and its local-session
-  commands.
+- [ ] 9. The live manifests under `specs/003-model-store/live/` for AC8 (Depth Pro, MoGe-2, and
+  MoGe-3 with checkpoints `vitl` and `vitg`), and its local-session commands. MoGe-2 and MoGe-3 load
+  the same way: one `model.pt` per repository, read with `torch.load(..., weights_only=True)`
+  (microsoft/MoGe, `moge/model/v2.py`).

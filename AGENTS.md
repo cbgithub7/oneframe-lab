@@ -65,7 +65,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   the latest release before adding any dependency.
 - **One data root.** Everything the app, the engine, a runtime child or a command-line tool writes
   goes under the data root (or the model store), in the folder for its kind: nothing in the install
-  folder, the repo, temp, Roaming, the registry or `PATH`. Every file the app keeps says its
+  folder, the repo, temp, Roaming, the registry or `PATH`, except a file the person names (a bench
+  report with `--out`) and a dev checkout's engine environment. Every file the app keeps says its
   format; a newer one is never overwritten, and a change of format ships with its migration.
   Deletes stay inside a folder marked as the root's or the store's, and never touch the person's
   own work. A dev checkout and a packaged app never share a root. Today's code still breaks this

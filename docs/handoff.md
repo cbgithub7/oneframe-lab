@@ -138,7 +138,17 @@ Known from the review, to be settled by the specs above or later ones:
   fp32. The rate per precision and compute capability is published data, so it can be added
   without naming a card. The margin (1.5 GiB or 10%) should be derived again from real runs.
 - **The cache has no size cap**, and no spec defines a recipe format yet.
-- **Open for the owner:** whether a public release is a goal (review decision 8, asked again).
-  If so: a licence, signing, a cleared name, user docs and an accessibility baseline.
-- **Waiting on the owner:** Dependabot's minor updates can merge themselves once the branch
-  protection on `main` is known to require the CI checks.
+- **A public release is a goal** (the owner, 2026-10-03; review decision 8). That makes real
+  work of:
+    - a licence for the app's own code (MIT proposed; the owner chooses), with notices for
+      third-party code;
+    - signing;
+    - a cleared product name;
+    - documentation for users, apart from these docs for agents;
+    - an accessibility baseline.
+
+  The packaging and UI steps carry them.
+- **Waiting on the owner:** `main` has no branch protection today (GitHub reports
+  `protected: false`), so "only through a PR with green CI" is a convention, not enforced.
+  Protecting it, with the two CI checks required, comes before Dependabot's minor updates may merge
+  themselves.
