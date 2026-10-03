@@ -1,8 +1,8 @@
 # 003: Model store (core)
 
-Status: draft (core, 2026-10-03; evidence in [research.md](research.md), the owner's decisions in
-[the review](../../docs/reviews/2026-10-02.md))
-Owner approval: (date, once approved)
+Status: approved (core, 2026-10-03; evidence in [research.md](research.md), the owner's decisions
+in [the review](../../docs/reviews/2026-10-02.md))
+Owner approval: 2026-10-03
 
 Built on [spec 006](../006-foundations/spec.md): its layout module, failure model, locks and journal.
 

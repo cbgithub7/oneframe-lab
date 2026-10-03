@@ -2,6 +2,7 @@
   "name": "oneframe-lab",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "A local playground for making 3D content from a single photo, from plug-and-play model nodes.",
   "type": "module",
   "main": "app/main/main.js",

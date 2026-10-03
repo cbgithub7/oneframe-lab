@@ -69,3 +69,9 @@ and writes a report of what it did.
 - [docs/nodes.md](docs/nodes.md): writing a node
 - [docs/runtimes.md](docs/runtimes.md): writing a runtime
 - [docs/versions.md](docs/versions.md): the version policy
+
+## Licence
+
+The app's own code is under the [MIT licence](LICENSE). Each model a node runs keeps its own
+licence for its code and its weights, which the node's manifest states and the app shows; some
+are for non-commercial use only.

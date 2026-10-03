@@ -1,7 +1,7 @@
 # 006: Foundations
 
-Status: draft (2026-10-03, after its agent review)
-Owner approval: (date, once approved)
+Status: approved (drafted and agent-reviewed 2026-10-03)
+Owner approval: 2026-10-03
 
 Comes before spec 003's core, which builds on it. It answers [the review of 2026-10-02](../../docs/reviews/2026-10-02.md),
 sections 4, 5 and 8B.
