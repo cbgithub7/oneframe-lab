@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import { EngineClient } from "./engine.js";
 import { RotatingLog } from "./log.js";
 import { ENGINE_METHODS } from "./methods.js";
-import { REPO_ROOT, dataRoot, engineCommand, findUv } from "./paths.js";
+import { REPO_ROOT, defaultDataRoot, engineCommand, findUv } from "./paths.js";
 
 const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");
 const RENDERER_URL = pathToFileURL(RENDERER).href;
@@ -25,7 +25,8 @@ if (process.env.ONEFRAME_NO_SANDBOX === "1") app.commandLine.appendSwitch("no-sa
 else app.enableSandbox();
 if (!app.requestSingleInstanceLock()) app.quit();
 
-const data = dataRoot();
+// The dev root in a checkout, the app's own root once packaged; ONEFRAME_DATA overrides either.
+const data = defaultDataRoot(app.isPackaged);
 const log = new RotatingLog(path.join(data, "logs", "app.log"));
 /** @type {EngineClient | null} */
 let engine = null;

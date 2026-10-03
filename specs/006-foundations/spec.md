@@ -179,6 +179,14 @@ starts Electron. In a local session after the merge:
 - **Cache records get no format of their own.** `KEY_VERSION` already makes an old record a miss.
 - **A root of the other kind,** reached through `ONEFRAME_DATA`, is used, with a warning in
   `engine.ready`.
+- **Every variable that names the root's folder must be absolute** (2026-10-03, task 1).
+  `ONEFRAME_DATA` and `LOCALAPPDATA` are treated as the XDG spec treats `XDG_DATA_HOME`: an empty or
+  relative value is ignored, since the root functions take no working folder to resolve it against.
+  On Windows, absolute means a drive and a separator, or a share (`\\server\share`).
+- **The shared table is `contracts/layout.json`** (task 1). It holds the root cases and the names of
+  the paths under the root, and both suites check both. The paths are cleaned (`.`, `..`, repeated
+  and trailing separators) by a rule written out the same way in Python and JavaScript, because
+  `ntpath` and Node's `path.win32` disagree on shares and leading double slashes.
 
 ## Out of scope
 

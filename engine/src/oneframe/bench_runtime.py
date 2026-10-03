@@ -25,6 +25,7 @@ from typing import Any
 
 from oneframe import __version__, runtime_install
 from oneframe.executors import NodeError, ProcessExecutor
+from oneframe.layout import Layout, default_root
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
 
@@ -209,19 +210,17 @@ def render(record: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from oneframe.server import default_data_dir
-
     parser = argparse.ArgumentParser(
         prog="bench:runtime", description="Install a runtime and report what it did."
     )
     parser.add_argument("runtime", help="the runtime's id, a folder in runtimes/")
     parser.add_argument("--out", type=Path, default=None, help="the report (default: <data>/reports/)")
-    parser.add_argument("--data", type=Path, default=None, help="the data root (default: the app's)")
+    parser.add_argument("--data", type=Path, default=None, help="the data root (default: the dev root)")
     parser.add_argument("--runtimes", type=Path, action="append", default=None, help="a folder of runtimes")
     parser.add_argument("--uv", default=None)
     parser.add_argument("--uv-home", type=Path, default=None)
     args = parser.parse_args(argv)
-    data = args.data or default_data_dir()
+    data = args.data or default_root()
     data.mkdir(parents=True, exist_ok=True)
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     try:
@@ -229,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeMissing as exc:  # no such runtime: nothing to report on
         print(exc, file=sys.stderr)
         return 1
-    out = args.out or data / "reports" / f"runtime-{args.runtime}-{record['date'][:10]}.md"
+    out = args.out or Layout(data).reports / f"runtime-{args.runtime}-{record['date'][:10]}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render(record), encoding="utf-8")
     print(f"The report is at {out}", file=sys.stderr)

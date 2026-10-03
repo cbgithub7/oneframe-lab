@@ -34,6 +34,7 @@ from typing import Any
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
 from oneframe.graph import Graph, GraphError, Step, plan, step_params
+from oneframe.layout import Layout, default_root
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
@@ -54,10 +55,11 @@ class Engine:
         profile: Callable[[], dict[str, Any]] | None = None,
     ):
         self.data = data
+        self.layout = Layout(data)
         self.node_roots = node_roots
         self.say = say
         self.registry: Registry = discover(node_roots)
-        self.cache = Cache(data / "cache")
+        self.cache = Cache(self.layout.cache)
         self.cache.clear_tmp()
         self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
         self.learned = LearnedStore(data)
@@ -68,8 +70,8 @@ class Engine:
             self.cache,
             runtime_python=self.runtimes.python_for,
             runtime_env=self.runtimes.env_for,
-            models_dir=data / "models",
-            log_dir=data / "logs",
+            models_dir=self.layout.models,
+            log_dir=self.layout.logs,
             machine=self._machine,
             target=self.runtimes.device_target,
             settings=lambda: read_settings(data),
@@ -269,17 +271,9 @@ class Engine:
             return {"id": req_id, "error": {"message": f"{type(exc).__name__}: {exc}"}}
 
 
-def default_data_dir() -> Path:
-    if os.environ.get("ONEFRAME_DATA"):
-        return Path(os.environ["ONEFRAME_DATA"])
-    if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "OneframeLab"
-    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "oneframe-lab"
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="oneframe.server")
-    parser.add_argument("--data", type=Path, default=None, help="data root (cache, models, logs)")
+    parser.add_argument("--data", type=Path, default=None, help="data root (default: the dev root)")
     parser.add_argument(
         "--nodes",
         type=Path,
@@ -301,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
         "--uv-home", type=Path, default=None, help="uv's cache and Pythons (default: <data>/uv)"
     )
     args = parser.parse_args(argv)
-    data = args.data or default_data_dir()
+    data = args.data or default_root()
     data.mkdir(parents=True, exist_ok=True)
 
     # The protocol gets its own copy of stdout; fd 1 goes to stderr, so a node run in this process

@@ -47,12 +47,12 @@ from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
 from oneframe.cache import Cache
 from oneframe.executors import NodeError, ProcessExecutor, child_env
 from oneframe.graph import Graph
+from oneframe.layout import default_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
-from oneframe.server import default_data_dir
 
 HARDWARE_NODES = Path(__file__).resolve().parents[2] / "tests" / "hardware"
 AC8_FILE = "ac8.json"
@@ -701,7 +701,7 @@ def main(argv: list[str] | None = None) -> int:
         "--set", action="append", nargs="+", default=[], metavar="K=V", help="one run's params"
     )
     parser.add_argument("--out", type=Path, default=Path(), help="a report file, or a folder for it")
-    parser.add_argument("--data", type=Path, default=None, help="data root (runtimes, logs)")
+    parser.add_argument("--data", type=Path, default=None, help="data root (default: the dev root)")
     parser.add_argument(
         "--nodes", type=Path, action="append", default=None, help="node folders (default: nodes/)"
     )
@@ -710,7 +710,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--uv-home", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    data = (args.data or default_data_dir()).resolve()
+    data = (args.data or default_root()).resolve()
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     record: dict[str, Any] = {"date": datetime.now(UTC).isoformat(timespec="seconds"), "engine": __version__}
     with tempfile.TemporaryDirectory(prefix="oneframe-bench-fit-") as scratch:

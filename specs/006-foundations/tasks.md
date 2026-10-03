@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-- [ ] 1. The shared root table (JSON) and `layout.py` beside `app/main/paths.js`; the engine's and
+- [x] 1. The shared root table (JSON) and `layout.py` beside `app/main/paths.js`; the engine's and
   the app's root functions take environment, platform, home and `packaged`; the dev root becomes
   `OneframeLab-dev` (AC1).
 - [ ] 2. One JSON writer (unique temporary name, flush, replace, refuses a newer format) and the

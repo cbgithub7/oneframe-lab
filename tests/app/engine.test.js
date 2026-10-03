@@ -73,10 +73,11 @@ test("a reply after its request timed out is logged, never passed on as an event
 });
 
 test("the data root is one folder per platform, overridable", () => {
-  assert.equal(dataRoot({ ONEFRAME_DATA: "/x/y" }, "linux"), path.resolve("/x/y"));
-  assert.equal(dataRoot({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "win32"),
-    path.join("C:\\Users\\a\\AppData\\Local", "OneframeLab"));
-  assert.equal(dataRoot({ XDG_DATA_HOME: "/d" }, "linux"), path.join("/d", "oneframe-lab"));
+  // Every case is in contracts/layout.json (layout.test.js); these are the everyday ones.
+  assert.equal(dataRoot({ ONEFRAME_DATA: "/x/y" }, "linux", "/home/a", false), "/x/y");
+  assert.equal(dataRoot({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "win32", "C:\\Users\\a", true),
+    "C:\\Users\\a\\AppData\\Local\\OneframeLab");
+  assert.equal(dataRoot({ XDG_DATA_HOME: "/d" }, "linux", "/home/a", false), "/d/oneframe-lab-dev");
   const cmd = engineCommand("uv", "/data");
   assert.equal(cmd.env.UV_CACHE_DIR, path.join("/data", "uv", "cache"));
   // uv writes nothing outside the data root: no python link in a bin folder, no registry entry.
