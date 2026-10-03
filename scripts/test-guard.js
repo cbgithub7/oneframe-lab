@@ -3,8 +3,8 @@
 //
 // Compares the tests that exist now (working tree, committed or not) with the tests at the merge
 // base of HEAD and <ref> (default origin/main). A test that existed there and exists nowhere now
-// fails the check -- unless a spec's plan.md names it under "Removed", which is where the reason
-// is written. Moving a test to another file is fine; its name still exists.
+// fails the check -- unless a spec names it under "Removed", which is where the reason is written:
+// in spec.md, or in plan.md for the specs written before spec and plan became one document. Moving a test to another file is fine; its name still exists.
 //
 // Test names are read from the source, not by running the suites, so the check is fast and
 // works with or without the engine environment: `def test_*` in Python test files and
@@ -29,7 +29,7 @@ export function testNames(file, text) {
 }
 
 /**
- * Names listed as removed in a plan: backticked names on a line starting "- Removed", and on the
+ * Names listed as removed in a spec: backticked names on a line starting "- Removed", and on the
  * indented list items under it.
  * @param {string} text
  * @returns {Set<string>}
@@ -88,10 +88,10 @@ function main() {
     }
   }
   const allowed = new Set();
-  for (const plan of git("ls-files", "--cached", "--others", "--exclude-standard", "specs").split("\n")) {
-    if (!plan.endsWith("plan.md")) continue;
+  for (const doc of git("ls-files", "--cached", "--others", "--exclude-standard", "specs").split("\n")) {
+    if (!/(^|\/)(spec|plan)\.md$/.test(doc)) continue;
     try {
-      for (const name of allowedRemovals(readFileSync(path.join(ROOT, plan), "utf8"))) allowed.add(name);
+      for (const name of allowedRemovals(readFileSync(path.join(ROOT, doc), "utf8"))) allowed.add(name);
     } catch {
       // deleted
     }
@@ -99,9 +99,9 @@ function main() {
   const removed = removedTests(before, after, allowed);
   const count = (/** @type {Map<string, string[]>} */ m) => [...m.values()].flat().length;
   if (removed.length) {
-    console.log(`test-guard: ${removed.length} test(s) that exist at ${baseRef} are gone, with no reason in a spec plan:`);
+    console.log(`test-guard: ${removed.length} test(s) that exist at ${baseRef} are gone, with no reason in a spec:`);
     for (const r of removed) console.log(`  ${r}`);
-    console.log("Restore them, or list each under \"- Removed:\" in the spec's plan.md with the reason.");
+    console.log("Restore them, or list each under \"- Removed:\" in the spec's Tests section with the reason.");
     process.exitCode = 1;
     return;
   }

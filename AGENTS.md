@@ -11,20 +11,28 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 
 ## How work is done
 
-1. **Spec first.** Anything larger than a small fix has a folder in `specs/` with `spec.md`,
-   `plan.md` and `tasks.md` ([specs/README.md](specs/README.md)). The owner approves the spec and
-   the plan before code is written. The spec, not the chat, is the source of truth.
-2. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
-3. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
+1. **Spec first, in one document.** Anything larger than a small fix has a folder in `specs/` with
+   `spec.md`, which holds the plan too, and `tasks.md` ([specs/README.md](specs/README.md)). Aim
+   for about 150 lines and at most 8 acceptance criteria: mechanisms belong in code and tests, not
+   written twice. An agent reviews the draft; the owner approves it once, before code is written.
+   The spec, not the chat, is the source of truth.
+2. **Agents decide what can be undone.** An agent makes reversible choices itself and logs each
+   under "Decisions taken" in the spec. The owner decides product behaviour, licences and money,
+   the platform matrix, data formats that are hard to change, and these rules.
+3. **Spikes answer feasibility.** A question such as "does this model run on Windows" is a spike:
+   time-boxed, no spec, a throwaway branch, ending in a report the owner reads.
+4. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
+5. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
    and before a PR. Acceptance criteria in the spec are checked one by one in the PR.
-4. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test may
-   be removed only when the spec's plan lists it under "Tests removed", with the reason.
+6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test may
+   be removed only when the spec lists it under "- Removed", with the reason.
    `node scripts/test-guard.js` enforces this in the hooks and in CI.
-5. **The PR is where the owner decides.** An agent's job ends when it opens the pull request.
+7. **The PR is where the owner decides.** An agent's job ends when it opens the pull request.
    Nothing merges to `main` except through a PR with green CI.
-6. **Hardware claims need a report.** Nothing is called tested or working on a GPU without
-   numbers from a real run on real hardware (seconds, peak VRAM, the fit that finished).
-   Cloud sessions have no GPU; say plainly what is unverified.
+8. **Hardware claims need a report.** Nothing is called tested or working on a GPU without
+   numbers from a real run on real hardware (seconds, peak VRAM, the fit that finished). A report
+   from any real machine counts, the owner's or a rented one, and names it. Cloud sessions have no
+   GPU; say plainly what is unverified.
 
 ## Rules
 
