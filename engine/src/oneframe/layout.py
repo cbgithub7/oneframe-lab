@@ -285,3 +285,15 @@ def claim_root(root: Path, packaged: bool, version: str = "") -> list[str]:
             indent=2,
         )
     return warnings
+
+
+def open_root(data: Path | None, packaged: bool = False, version: str = "") -> tuple[Path, list[str]]:
+    """What the engine and each command-line tool do first with their root: the dev root unless
+    one is given, made if it is not there, claimed (RootRefused for a newer layout, before anything
+    else is written), and the process's bytecode kept under it. Returns the root and the warnings
+    a person should see."""
+    root = data or default_root()
+    root.mkdir(parents=True, exist_ok=True)
+    warnings = claim_root(root, packaged, version)
+    keep_bytecode_under(root)
+    return root, warnings

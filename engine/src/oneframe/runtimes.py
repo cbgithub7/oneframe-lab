@@ -982,43 +982,38 @@ class Runtimes:
         """Carry out a claimed install, reporting it as runtime.* events. Returns the result, or
         None when it stopped or failed (the events say which)."""
         base = {"runtime": runtime.id, "build": build}
-        emit = journalled(emit, Layout(self.data).journals, f"install-{runtime.id}")
-        emit({**base, "event": "runtime.start"})
         extra: dict[str, Any] = {"opener": opener} if opener is not None else {}
-        try:
-            done = runtime_install.install(
-                runtime, build, self.data, str(self.uv), emit, stop.is_set, self.uv_home, **extra
-            )
-        except Stopped:
-            emit(
-                {
-                    **base,
-                    "event": "runtime.stopped",
-                    "message": "Install stopped. Installing again picks up where it was.",
-                }
-            )
-            return None
-        except runtime_install.InstallFailed as exc:
-            emit({**base, "event": "runtime.failed", **exc.to_json(detail=exc.detail)})
-            return None
-        except Exception as exc:
-            trace = traceback.format_exc()[-4000:]
-            emit(
-                {
-                    **base,
-                    "event": "runtime.failed",
-                    **failure("engine", f"{type(exc).__name__}: {exc}", detail=trace),
-                }
-            )
-            raise
-        finally:
-            with self._lock:
-                self._busy = None
-                held, self._held = self._held, None
-                if held is not None:
-                    held.release()
-        emit({**base, "event": "runtime.done", **done})
-        return done
+        with journalled(emit, Layout(self.data).journals, f"install-{runtime.id}") as emit:
+            try:
+                emit({**base, "event": "runtime.start"})
+                done = runtime_install.install(
+                    runtime, build, self.data, str(self.uv), emit, stop.is_set, self.uv_home, **extra
+                )
+            except Stopped:
+                emit(
+                    {
+                        **base,
+                        "event": "runtime.stopped",
+                        "message": "Install stopped. Installing again picks up where it was.",
+                    }
+                )
+                return None
+            except runtime_install.InstallFailed as exc:
+                emit({**base, "event": "runtime.failed", **exc.to_json(detail=exc.detail)})
+                return None
+            except Exception as exc:
+                trace = traceback.format_exc()[-4000:]
+                crashed = failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)
+                emit({**base, "event": "runtime.failed", **crashed})
+                raise
+            finally:  # the slot and the lock go before runtime.done, so a next install may start at once
+                with self._lock:
+                    self._busy = None
+                    held, self._held = self._held, None
+                    if held is not None:
+                        held.release()
+            emit({**base, "event": "runtime.done", **done})
+            return done
 
     def install(
         self, runtime_id: str, build: str | None = None, emit: Emit = lambda _e: None

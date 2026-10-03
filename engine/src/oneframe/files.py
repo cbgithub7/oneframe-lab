@@ -17,6 +17,7 @@ the same name).
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import re
@@ -31,6 +32,8 @@ from pathlib import Path
 from typing import Any
 
 _LOCK_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+# What flock and msvcrt.locking say when another holder has the lock; anything else is a failure.
+_BUSY = {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK}
 
 
 class NewerFormat(RuntimeError):
@@ -141,9 +144,11 @@ class FileLock:
                 import fcntl
 
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
+        except OSError as exc:
             os.close(fd)
-            return False
+            if exc.errno in _BUSY:
+                return False
+            raise  # locking itself failed (a share without locks, say): not the same as busy
         self._fd = fd
         # A lock dropped without release (a test's engine, say) is closed when it is collected.
         self._closer = weakref.finalize(self, os.close, fd)

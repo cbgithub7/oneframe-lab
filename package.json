@@ -17,9 +17,9 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run docs:check",
     "engine:sync": "uv sync --project engine --frozen",
     "engine:check": "uv run --project engine --frozen ruff check && uv run --project engine --frozen ruff format --check && uv run --project engine --frozen pyright && uv run --project engine --frozen pytest engine",
-    "bench:runtime": "uv run --project engine --frozen python -m oneframe.bench_runtime",
-    "bench:fit": "uv run --project engine --frozen python -m oneframe.bench_fit",
-    "diagnose": "uv run --project engine --frozen python -m oneframe.diagnose",
+    "bench:runtime": "uv run --project engine --frozen python -B -m oneframe.bench_runtime",
+    "bench:fit": "uv run --project engine --frozen python -B -m oneframe.bench_fit",
+    "diagnose": "uv run --project engine --frozen python -B -m oneframe.diagnose",
     "versions": "node scripts/check-versions.js",
     "docs:check": "node scripts/check-docs.js",
     "test:guard": "node scripts/test-guard.js"

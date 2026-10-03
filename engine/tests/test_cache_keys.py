@@ -148,3 +148,27 @@ def test_a_runtime_node_runs_again_when_its_runtime_changes(
     assert ran() and not ran()  # the second comes from the cache
     built["lock_sha256"] = "b"  # the runtime was rebuilt from another lock
     assert ran()
+
+
+def test_an_engine_node_runs_its_helpers_as_they_are_now(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
+) -> None:
+    folder = make_node(
+        {**NODE, "id": "test.with_helper"},
+        "import fresh_helper_for_keys as helper\n\n"
+        "def run(ctx):\n"
+        "    p = ctx.path('t.txt')\n"
+        "    p.write_text(helper.WORD, encoding='utf-8')\n    ctx.output('text', p)\n",
+    )
+    (folder / "fresh_helper_for_keys.py").write_text('WORD = "old"\n', encoding="utf-8")
+    scheduler = scheduler_for()
+    graph = Graph.from_json({"version": 1, "nodes": {"n": {"node": "test.with_helper"}}, "edges": []})
+
+    def word() -> str:
+        result = scheduler.run(graph, lambda _e: None)
+        assert result.status == "done", result.error
+        return result.outputs["n"]["text"].path.read_text(encoding="utf-8")
+
+    assert word() == "old"
+    (folder / "fresh_helper_for_keys.py").write_text('WORD = "new, and longer"\n', encoding="utf-8")
+    assert word() == "new, and longer"  # a new key, and the new helper, not the one still imported

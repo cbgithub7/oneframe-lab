@@ -92,7 +92,9 @@ export class EngineClient extends EventEmitter {
     child.stderr.on("data", (chunk) => {
       for (const line of err.push(chunk)) this.emit("log", line);
     });
-    child.on("exit", (code, signal) => this.#onExit(code, signal));
+    // "close", not "exit": it comes once stdout is drained, so a last line the engine wrote before
+    // it ended (engine.failed, saying why) is read before the client decides how it ended.
+    child.on("close", (code, signal) => this.#onExit(code, signal));
     child.on("error", (error) => this.#onExit(null, null, error));
     return new Promise((resolve, reject) => {
       /** @type {EngineError | null} */

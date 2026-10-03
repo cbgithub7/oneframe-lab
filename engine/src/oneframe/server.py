@@ -35,7 +35,7 @@ from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
 from oneframe.errors import Failure, failure
 from oneframe.graph import Graph, Step, plan, step_params
-from oneframe.layout import Layout, RootRefused, claim_root, default_root, keep_bytecode_under
+from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, Runtimes, find_uv
@@ -43,6 +43,17 @@ from oneframe.scheduler import Scheduler
 from oneframe.scratch import Scratch
 
 LOGGER = logging.getLogger("oneframe.server")
+
+
+def _bad_params(message: str) -> Failure:
+    return Failure(message, "bad_params", kind="request")
+
+
+def _required(params: dict[str, Any], name: str) -> Any:
+    """A parameter the method cannot do without: its absence is the request's fault, not a bug."""
+    if params.get(name) is None:
+        raise _bad_params(f"The request needs {name!r}.")
+    return params[name]
 
 
 class Engine:
@@ -57,11 +68,13 @@ class Engine:
         profile: Callable[[], dict[str, Any]] | None = None,
         packaged: bool = False,
         scratch: Scratch | None = None,
+        warnings: list[str] | None = None,
     ):
+        """`warnings`: the root's, when the caller has already claimed it (layout.open_root)."""
         self.data = data
         self.layout = Layout(data)
         # Before anything is written under the root: a newer layout stops the engine here.
-        self.warnings = claim_root(data, packaged, __version__)
+        self.warnings = warnings if warnings is not None else claim_root(data, packaged, __version__)
         # This process's own folder under cache/tmp/; the start sweeps only dead processes' folders.
         self.scratch = scratch or Scratch.claim(self.layout)
         self.node_roots = node_roots
@@ -140,11 +153,14 @@ class Engine:
         """The fit a node would get on this machine now: `{node, params?, inputs?}`, where `inputs`
         maps a port to its value's `meta` (an image's width and height). It starts no runtime and
         loads no model library."""
-        manifest = self.registry.get(str(params.get("node")))
+        node = str(_required(params, "node"))
+        if node not in self.registry.nodes:
+            raise _bad_params(f"No node called {node!r} is installed.")
+        manifest = self.registry.get(node)
         given = dict(params.get("params") or {})
         values, problems = step_params(manifest, given)
         if problems:
-            raise ValueError("; ".join(problems))
+            raise _bad_params("; ".join(problems))
         sizes = dict(params.get("inputs") or {})
         meta: dict[str, dict[str, Any] | None] = {
             port: None for port, spec in manifest.inputs.items() if spec.optional and port not in sizes
@@ -167,11 +183,11 @@ class Engine:
         }
 
     def graph_validate(self, params: dict[str, Any]) -> dict[str, Any]:
-        the_plan = plan(Graph.from_json(params["graph"]), self.registry)
+        the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry)
         return {"order": the_plan.order, "notes": the_plan.notes}
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
-        graph = Graph.from_json(params["graph"])
+        graph = Graph.from_json(_required(params, "graph"))
         the_plan = plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
         used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
         run_id = uuid.uuid4().hex[:12]
@@ -221,7 +237,7 @@ class Engine:
             )
 
     def runtimes_install(self, params: dict[str, Any]) -> dict[str, Any]:
-        runtime_id = str(params["runtime"])
+        runtime_id = str(_required(params, "runtime"))
         self._refuse_if_running(runtime_id, "installing")
         claimed = self.runtimes.begin_install(runtime_id, params.get("build"))
         if claimed is None:
@@ -239,10 +255,10 @@ class Engine:
         return {"runtime": runtime_id, "build": build}
 
     def runtimes_stop(self, params: dict[str, Any]) -> dict[str, Any]:
-        return {"stopping": self.runtimes.stop(str(params["runtime"]))}
+        return {"stopping": self.runtimes.stop(str(_required(params, "runtime")))}
 
     def runtimes_remove(self, params: dict[str, Any]) -> dict[str, Any]:
-        runtime_id = str(params["runtime"])
+        runtime_id = str(_required(params, "runtime"))
         self._refuse_if_running(runtime_id, "removing")
         return self.runtimes.remove(runtime_id)
 
@@ -310,9 +326,6 @@ def main(argv: list[str] | None = None) -> int:
         "--packaged", action="store_true", help="started by the packaged app (it passes --data too)"
     )
     args = parser.parse_args(argv)
-    data = args.data or default_root()
-    data.mkdir(parents=True, exist_ok=True)
-
     # The protocol gets its own copy of stdout; fd 1 goes to stderr, so a node run in this process
     # that prints cannot corrupt an event.
     out = os.fdopen(os.dup(1), "w", encoding="utf-8", buffering=1)
@@ -331,11 +344,10 @@ def main(argv: list[str] | None = None) -> int:
             out.flush()
 
     try:
-        claim_root(data, args.packaged, __version__)  # before the scratch folder is written
+        data, warnings = open_root(args.data, args.packaged, __version__)  # before anything is written
     except RootRefused as exc:
         say({"event": "engine.failed", **exc.to_json()})
         return 2
-    keep_bytecode_under(data)
     scratch = Scratch.claim(Layout(data))
     scratch.use_for_process()  # the engine's temporary files, and uv's, stay under the root
     engine = Engine(
@@ -347,6 +359,7 @@ def main(argv: list[str] | None = None) -> int:
         args.uv_home,
         packaged=args.packaged,
         scratch=scratch,
+        warnings=warnings,
     )
     say({"event": "engine.ready", **engine.hello({})})
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115

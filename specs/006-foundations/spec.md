@@ -261,6 +261,15 @@ The exact steps, on Windows (`/local-session`), each one's output kept for the r
   and is read again only when a file's size or time changes. The runtime part is the build the plan
   picks and the hashes its marker records, so a key follows what is installed, not a definition
   edited since (which makes the runtime `out_of_date`, and the run fails before any key matters).
+- **From the code review** (2026-10-03): a lock error other than "held" (a share without locking)
+  is an error, not a busy lock, and a process takes one of at most 256 folders; a dead process's
+  folder that cannot be removed yet is passed over; a journal that cannot be written never fails a
+  run or holds an install's lock, keeps one handle open, and starts with a line that says its
+  format; `diagnose` reads the root as it is, so it reports on a root the engine refuses and writes
+  only `reports/`; a missing or unknown parameter is `request`/`bad_params`, not an engine bug; a
+  child's undeclared kind is reported as `error`; a node in the engine's process re-imports its
+  helpers, as its key says; the tools' npm scripts run Python with `-B`, so they write no bytecode
+  into the checkout.
 - **The page receives a failed request as a rejected plain object** (task 8): main.js answers
   every request with `{ok, result}` or `{ok, error}` (`app/main/door.js`), and the preload turns
   the second into a rejection with the failure itself, since Electron passes on only the message of

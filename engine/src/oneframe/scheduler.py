@@ -150,10 +150,16 @@ class Scheduler:
         self.runtime_caches = runtime_caches  # where its libraries keep their caches
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
         self.runtime_key = runtime_key  # a runtime node's build and marker hashes, for its cache key
+        self._runtime_keys: dict[str, dict[str, str] | None] = {}
         self.engine = EngineExecutor()
 
     def _key(self, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]) -> str:
-        runtime = self.runtime_key(str(manifest.run.runtime)) if manifest.run.where == "runtime" else None
+        runtime = None
+        if manifest.run.where == "runtime":
+            name = str(manifest.run.runtime)
+            if name not in self._runtime_keys:
+                self._runtime_keys[name] = self.runtime_key(name)
+            runtime = self._runtime_keys[name]
         return self.cache.key(manifest, values, inputs, runtime)
 
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
@@ -178,9 +184,13 @@ class Scheduler:
         run_id: str | None = None,
     ) -> RunResult:
         run_id = run_id or uuid.uuid4().hex[:12]
-        result = RunResult(run=run_id, status="done")
-        emit = journalled(emit, self.journal_dir, f"run-{run_id}")
         prune_step_logs(self.log_dir)
+        self._runtime_keys = {}  # read once per run: a runtime does not change under a run
+        with journalled(emit, self.journal_dir, f"run-{run_id}") as kept:
+            return self._run(graph, kept, should_stop, run_id)
+
+    def _run(self, graph: Graph, emit: Emit, should_stop: Callable[[], bool], run_id: str) -> RunResult:
+        result = RunResult(run=run_id, status="done")
 
         def say(event: dict[str, Any]) -> None:
             emit(dict(event, run=run_id))

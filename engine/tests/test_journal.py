@@ -25,7 +25,8 @@ def _journal_events(folder: Path) -> list[dict[str, Any]]:
     [path] = list(folder.glob("*.ndjson"))
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert all("at" in row for row in rows)
-    return [{k: v for k, v in row.items() if k != "at"} for row in rows]
+    assert (rows[0]["event"], rows[0]["format"]) == ("journal", journal.JOURNAL_FORMAT)  # it says its format
+    return [{k: v for k, v in row.items() if k != "at"} for row in rows[1:]]
 
 
 @pytest.mark.usefixtures("basic_nodes")
@@ -91,11 +92,14 @@ def test_a_new_journal_prunes_the_old_and_a_full_one_stops(
     monkeypatch.setattr(journal, "JOURNALS_KEEP", 3)
     monkeypatch.setattr(journal, "JOURNAL_MAX_BYTES", 300)
     for i in range(5):
-        Journal(tmp_path, f"run-{i}").write({"event": "run.start", "i": i})
+        one = Journal(tmp_path, f"run-{i}")
+        one.write({"event": "run.start", "i": i})
+        one.close()
     assert len(list(tmp_path.glob("*.ndjson"))) == 3
     full = Journal(tmp_path, "talkative")
     for i in range(50):
         full.write({"event": "runtime.log", "line": f"line {i}"})
+    full.close()
     lines = full.path.read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[-1])["event"] == "journal.full"
     assert full.path.stat().st_size < 400
@@ -170,3 +174,25 @@ def test_npm_run_diagnose_writes_one_file_to_reports(tmp_path: Path) -> None:
     assert json.loads(text)["format"] == diagnose.REPORT_FORMAT
     if Path(home).name not in ("", "root"):  # a container's home may be /root, a word everywhere
         assert home not in text
+
+
+def test_a_journal_that_cannot_be_written_never_fails_the_run(tmp_path: Path) -> None:
+    blocked = tmp_path / "journal"
+    blocked.write_text("a file where the folder should be", encoding="utf-8")
+    seen: list[dict[str, Any]] = []
+    with journal.journalled(seen.append, blocked, "run-x") as emit:
+        emit({"event": "run.start"})
+    assert seen == [{"event": "run.start"}]
+
+
+def test_diagnose_reports_on_a_root_the_engine_refuses_and_changes_nothing(tmp_path: Path) -> None:
+    data = tmp_path / "root"
+    data.mkdir()
+    (data / "oneframe-root.json").write_text('{"format": 99}', encoding="utf-8")
+    before = sorted(p.relative_to(data) for p in data.rglob("*"))
+    assert diagnose.main(["--data", str(data)]) == 0
+    [written] = list(Layout(data).reports.iterdir())
+    assert json.loads(written.read_text(encoding="utf-8"))["root_file"] == {"format": 99}
+    reports = Layout(data).reports
+    after = sorted(p.relative_to(data) for p in data.rglob("*") if reports not in (p, *p.parents))
+    assert after == before  # only reports/ was written

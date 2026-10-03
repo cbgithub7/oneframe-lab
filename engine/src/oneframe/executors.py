@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import child
-from oneframe.errors import Failure, Stopped
+from oneframe.errors import KINDS, Failure, Stopped
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(child.__file__).resolve()
@@ -80,8 +80,14 @@ class EngineExecutor:
         except Stopped:
             raise
         except Exception as exc:
-            kind = child.classify(exc)
+            kind = declared_kind(child.classify(exc))
             raise NodeError(kind, f"{type(exc).__name__}: {exc}", _trace()) from exc
+
+
+def declared_kind(kind: str) -> str:
+    """A child's word for its failure, as a declared kind: one errors.py does not know (a newer
+    child, or a node writing on the protocol stream) is reported as `error`, never lost."""
+    return kind if kind in KINDS else "error"
 
 
 def _trace() -> str:
@@ -304,7 +310,7 @@ class ProcessExecutor:
                 raise Stopped()  # the node stopped itself, as ctx.stopped() told it to
             if failed is not None:
                 raise NodeError(
-                    str(failed.get("kind") or "error"),
+                    declared_kind(str(failed.get("kind") or "error")),
                     str(failed.get("message")),
                     str(failed.get("trace") or ""),
                     {k: failed.get(k) for k in PEAKS},

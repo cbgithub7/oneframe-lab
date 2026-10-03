@@ -25,7 +25,7 @@ from typing import Any
 
 from oneframe import __version__, runtime_install, scratch
 from oneframe.executors import NodeError, ProcessExecutor
-from oneframe.layout import Layout, RootRefused, claim_root, default_root, keep_bytecode_under
+from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
 
@@ -225,14 +225,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--uv", default=None)
     parser.add_argument("--uv-home", type=Path, default=None)
     args = parser.parse_args(argv)
-    data = args.data or default_root()
-    data.mkdir(parents=True, exist_ok=True)
     try:
-        claim_root(data, packaged=False, version=__version__)
+        data, warnings = open_root(args.data, version=__version__)
     except RootRefused as exc:
         print(exc, file=sys.stderr)
         return 1
-    keep_bytecode_under(data)
+    for warning in warnings:
+        print(warning, file=sys.stderr)
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     try:
         with scratch.for_tool(Layout(data)):  # its temporary files, and uv's, stay under the root

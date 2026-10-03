@@ -61,3 +61,10 @@ test("the engine keeps its bytecode under the root, and is told which app starte
     rmSync(data, { recursive: true, force: true });
   }
 });
+
+test("the command-line tools write no bytecode into the checkout", () => {
+  const scripts = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")).scripts;
+  for (const [name, command] of Object.entries(/** @type {Record<string, string>} */ (scripts))) {
+    if (/python\b.*-m oneframe\./.test(command)) assert.match(command, /python -B -m oneframe\./, name);
+  }
+});

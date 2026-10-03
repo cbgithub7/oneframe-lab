@@ -15,7 +15,7 @@ import { answer } from "./door.js";
 import { EngineClient, EngineError } from "./engine.js";
 import { appFailure } from "./failures.js";
 import { RotatingLog } from "./log.js";
-import { REPO_ROOT, engineCommand, findUv } from "./paths.js";
+import { REPO_ROOT, engineCommand, findUv, layout } from "./paths.js";
 
 const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");
 const RENDERER_URL = pathToFileURL(RENDERER).href;
@@ -30,7 +30,7 @@ else app.enableSandbox();
 // packaged; ONEFRAME_DATA overrides either), then the single-instance lock, which is one per root.
 const { root: data, first } = boot(app);
 if (!first) app.quit();
-const log = new RotatingLog(path.join(data, "logs", "app.log"));
+const log = new RotatingLog(path.join(layout(data).logs, "app.log"));
 /** @type {EngineClient | null} */
 let engine = null;
 /** @type {BrowserWindow | null} */
@@ -55,12 +55,16 @@ async function startEngine() {
   engine = client;
   client.on("log", (line) => log.write("engine", line));
   client.on("event", (event) => send(event));
+  let started = false;
   client.on("exit", (info) => {
     log.write("main", `engine exited: ${JSON.stringify(info)}`);
-    send({ event: "engine.exit", code: info.code });
+    // An engine that never started has said why (engine.failed, from it or from the catch below);
+    // a bare "the engine stopped" sent after it would hide the reason and what to do.
+    if (started) send({ event: "engine.exit", code: info.code });
   });
   try {
     const ready = await client.start();
+    started = true;
     log.write("main", `engine ready: ${JSON.stringify(ready)}`);
     send(ready);
   } catch (error) {

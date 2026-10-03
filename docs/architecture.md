@@ -145,6 +145,7 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `root` | `unreadable` | no | Its root file cannot be read, or does not say its format. |
 | `request` |  | no | The request was refused before any work began. |
 | `request` | `unknown_method` | no | The engine has no such method. |
+| `request` | `bad_params` | no | A parameter is missing, or names something that does not exist. |
 | `request` | `refused` | no | The app refused it: an unknown page, or a method or params not allowed. |
 | `request` | `not_running` | yes | The engine is not running, or stopped while answering. |
 | `request` | `timed_out` | yes | The engine did not answer in time. |

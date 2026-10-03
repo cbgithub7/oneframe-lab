@@ -12,9 +12,10 @@ import textwrap
 import time
 from pathlib import Path
 
+import pytest
 from conftest import NO_GPU
 
-from oneframe import BUILTIN_NODES_DIR
+from oneframe import BUILTIN_NODES_DIR, scratch
 from oneframe.files import is_free, lock_file
 from oneframe.layout import Layout
 from oneframe.scratch import Scratch, for_tool, sweep
@@ -140,3 +141,17 @@ def test_ac5_two_processes_on_one_root(tmp_path: Path, tiny: Path, uv_exe: str, 
         assert is_free(lock_file(layout.locks, "runtime-tiny"))  # released when the install ended
     finally:
         engine.shutdown()
+
+
+def test_a_dead_processs_folder_that_cannot_be_removed_is_passed_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    layout = Layout(tmp_path)
+    stuck = layout.tmp / "0"
+    (stuck / "job-x").mkdir(parents=True)  # its lock is free: its process died
+    real_remove = scratch._remove
+    monkeypatch.setattr(scratch, "_remove", lambda entry: False if entry == stuck else real_remove(entry))
+    mine = Scratch.claim(layout)  # Windows refuses to delete a folder something still holds open
+    assert mine.folder == layout.tmp / "1"
+    assert stuck.exists() and is_free(lock_file(layout.locks, "tmp-0"))
+    mine.release()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import subprocess
 import sys
@@ -124,3 +125,24 @@ def test_a_dead_holder_releases_its_lock(tmp_path: Path) -> None:
     while not is_free(path):
         assert time.monotonic() < deadline, "the lock outlived its holder"
         time.sleep(0.1)
+
+
+def test_a_lock_that_cannot_be_taken_at_all_is_an_error_not_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A share without locking says so with another error than a held lock; reading it as busy
+    would make every slot look taken and every install look locked."""
+
+    def unsupported(*_args: object) -> None:
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    if sys.platform == "win32":
+        import msvcrt
+
+        monkeypatch.setattr(msvcrt, "locking", unsupported)
+    else:
+        import fcntl
+
+        monkeypatch.setattr(fcntl, "flock", unsupported)
+    with pytest.raises(OSError, match="No locks available"):
+        FileLock(lock_file(tmp_path, "nfs")).acquire()

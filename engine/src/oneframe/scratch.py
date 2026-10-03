@@ -26,6 +26,7 @@ from oneframe.layout import Layout
 LOGGER = logging.getLogger(__name__)
 _SLOT = re.compile(r"^[0-9]+$")
 TEMP_VARIABLES = ("TMP", "TEMP", "TMPDIR")
+MAX_PROCESSES = 256  # more than ever run at once on one root; a bound, so a fault cannot loop forever
 
 
 def _lock(layout: Layout, slot: str) -> FileLock:
@@ -75,19 +76,24 @@ class Scratch:
 
     @classmethod
     def claim(cls, layout: Layout) -> Scratch:
-        """Sweep, then take the first free number."""
+        """Sweep, then take the first free number whose folder is empty or can be emptied. A dead
+        process's folder that something still holds open (Windows refuses to delete it) is passed
+        over, and the next sweep tries it again."""
         sweep(layout)
-        n = 0
-        while True:
+        for n in range(MAX_PROCESSES):
             lock = _lock(layout, str(n))
-            if lock.acquire():
-                break
-            n += 1
-        folder = layout.tmp / str(n)
-        if folder.exists():  # left by a process that ended after the sweep looked
-            remove_tree(folder)
-        folder.mkdir(parents=True)
-        return cls(folder, lock)
+            if not lock.acquire():
+                continue
+            folder = layout.tmp / str(n)
+            if folder.exists() and not _remove(folder):
+                lock.release()
+                continue
+            folder.mkdir(parents=True)
+            return cls(folder, lock)
+        raise RuntimeError(
+            f"{MAX_PROCESSES} processes already hold a folder in {layout.tmp}, or their folders cannot be "
+            "removed; close some of them, or remove the folders by hand."
+        )
 
     @property
     def held(self) -> bool:

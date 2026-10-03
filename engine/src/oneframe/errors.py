@@ -86,6 +86,7 @@ KINDS: dict[str, Kind] = {
         "The request was refused before any work began.",
         reasons={
             "unknown_method": (False, "The engine has no such method."),
+            "bad_params": (False, "A parameter is missing, or names something that does not exist."),
             "refused": (False, "The app refused it: an unknown page, or a method or params not allowed."),
             "not_running": (True, "The engine is not running, or stopped while answering."),
             "timed_out": (True, "The engine did not answer in time."),

@@ -3,7 +3,8 @@
     npm run diagnose [-- --data <root>] [--out <file>]
 
 It holds the versions, the machine profile, the runtimes and their state, the settings, what this
-machine learned, and the latest journals and logs, and is written to the root's `reports/`. It holds
+machine learned, and the latest journals and logs, and is written to the root's `reports/`, the
+only thing it writes: the root is read as it is, even one the engine refuses to start on. It holds
 no environment variable. Before it is written, the user's own segment of every path under the
 users folder is removed, in every spelling a path takes on its way into a log (backslashes, forward
 slashes, JSON-escaped, any case, the 8.3 short name), so a user name that is also a word elsewhere
@@ -24,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import __version__, hardware
-from oneframe.layout import Layout, RootRefused, claim_root, default_root
+from oneframe.layout import Layout, default_root
 from oneframe.runtimes import Runtimes, find_uv
 
 REPORT_FORMAT = 1
@@ -104,8 +105,16 @@ def _uv_version(uv: str | None) -> str | None:
     if not uv:
         return None
     try:
-        done = subprocess.run([uv, "--version"], capture_output=True, text=True, timeout=30, check=False)
-    except OSError as exc:
+        done = subprocess.run(
+            [uv, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
         return f"(could not be run: {exc})"
     return done.stdout.strip() or done.stderr.strip()
 
@@ -155,13 +164,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=None, help="the file (default: <data>/reports/)")
     parser.add_argument("--runtimes", type=Path, action="append", default=None, help="a folder of runtimes")
     args = parser.parse_args(argv)
-    data = args.data or default_root()
-    data.mkdir(parents=True, exist_ok=True)
-    try:
-        claim_root(data, packaged=False, version=__version__)
-    except RootRefused as exc:
-        print(exc, file=sys.stderr)
-        return 1
+    # The root is read as it is, never claimed or upgraded: a root the engine refuses is exactly
+    # the one worth a report, and the report must not change what it describes. Only reports/ is
+    # written.
+    data = (args.data or default_root()).resolve()
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = args.out or Layout(data).reports / f"diagnose-{stamp}.json"
     home = Path.home()

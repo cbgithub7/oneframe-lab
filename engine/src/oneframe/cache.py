@@ -81,12 +81,11 @@ class Cache:
     def code_key(self, folder: Path) -> str:
         """code_digest, read again only when a file in the folder changed."""
         try:
-            stamp = tuple(
-                sorted(
-                    (p.relative_to(folder).as_posix(), p.stat().st_size, p.stat().st_mtime_ns)
-                    for p in _code_files(folder)
-                )
-            )
+            rows = []
+            for path in _code_files(folder):
+                stat = path.stat()  # once per file: size and time together
+                rows.append((path.relative_to(folder).as_posix(), stat.st_size, stat.st_mtime_ns))
+            stamp = tuple(sorted(rows))
         except OSError:
             return code_digest(folder)
         memo = self._code.get(str(folder))

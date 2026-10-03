@@ -109,8 +109,18 @@ def test_error_replies_carry_the_failure(tmp_path: Path) -> None:
         graph = {"version": 1, "nodes": {"a": {"node": "no.such"}}, "edges": []}
         bad = engine.handle({"id": 3, "method": "graph.validate", "params": {"graph": graph}}) or {}
         assert bad["error"]["kind"] == "graph" and bad["error"]["problems"]
-        crash = engine.handle({"id": 4, "method": "graph.validate", "params": {}}) or {}  # a bug: no graph
+        missing = engine.handle({"id": 4, "method": "graph.validate", "params": {}}) or {}  # no graph
+        assert (missing["error"]["kind"], missing["error"]["reason"]) == ("request", "bad_params")
+        unknown = engine.handle({"id": 5, "method": "nodes.fit", "params": {"node": "no.such"}}) or {}
+        assert unknown["error"]["reason"] == "bad_params" and "no.such" in unknown["error"]["message"]
+
+        def broken(_params: dict[str, object]) -> dict[str, object]:
+            raise KeyError("an engine bug")
+
+        engine.methods["ports.list"] = broken
+        crash = engine.handle({"id": 6, "method": "ports.list"}) or {}
         assert crash["error"]["kind"] == "engine" and "KeyError" in crash["error"]["message"]
+        assert "Traceback" in crash["error"]["detail"]
     finally:
         engine.shutdown()
 
@@ -158,3 +168,20 @@ def test_a_facet_mismatch_at_run_time_is_the_edges_failure_not_the_nodes(
     [failed] = events.of("run.failed")
     assert failed["kind"] == "edge" and failed["edge"] == {"from": "m.mask", "to": "b.mask"}
     assert "step" not in failed and failed["retry"] is False
+
+
+def test_a_child_that_names_an_undeclared_kind_still_fails_as_a_node(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = tmp_path / "node.py"
+    code.write_text("def run(ctx):\n    raise RuntimeError('boom')\n", encoding="utf-8")
+    job = {
+        "node": "test.x",
+        "entry": {"file": str(code), "function": "run"},
+        "out_dir": str(tmp_path / "out"),
+    }
+    monkeypatch.setattr(child, "classify", lambda _exc: "made_up")  # a kind nobody declared
+    with pytest.raises(NodeError) as caught:
+        executors.EngineExecutor().execute({**job, "device": "cpu"}, lambda _e: None, lambda: False)
+    assert caught.value.kind == "error" and "boom" in str(caught.value)
+    assert executors.declared_kind("made_up") == "error" and executors.declared_kind("oom") == "oom"

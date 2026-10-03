@@ -47,7 +47,7 @@ from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
 from oneframe.cache import Cache
 from oneframe.executors import NodeError, ProcessExecutor, child_env
 from oneframe.graph import Graph
-from oneframe.layout import Layout, RootRefused, claim_root, default_root, keep_bytecode_under
+from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
 from oneframe.registry import Registry, discover
@@ -723,14 +723,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--uv-home", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    data = (args.data or default_root()).resolve()
-    data.mkdir(parents=True, exist_ok=True)
     try:
-        claim_root(data, packaged=False, version=__version__)
+        data, warnings = open_root(args.data.resolve() if args.data else None, version=__version__)
     except RootRefused as exc:
         print(exc, file=sys.stderr)
         return 1
-    keep_bytecode_under(data)
+    data = data.resolve()
+    for warning in warnings:
+        print(warning, file=sys.stderr)
     manager = Runtimes(data, args.runtimes, uv=find_uv(args.uv), uv_home=args.uv_home)
     record: dict[str, Any] = {"date": datetime.now(UTC).isoformat(timespec="seconds"), "engine": __version__}
     # The tool's temporary files, its runs' cache and their jobs, all in its folder under the root.

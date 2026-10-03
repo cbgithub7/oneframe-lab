@@ -548,9 +548,16 @@ class NodeContext:
 
 def load_entry(file: str | Path, function: str) -> Callable[[NodeContext], Any]:
     """Import a node's code by path under a private module name, so two nodes whose files are both
-    called node.py never collide, and the node's own folder is importable for its helpers."""
+    called node.py never collide, and the node's own folder is importable for its helpers. Modules
+    an earlier run imported from that folder are forgotten first, so a node in the engine's process
+    runs its helpers as they are now, as its cache key (the hash of its folder) says it does."""
     path = Path(file).resolve()
     folder = str(path.parent)
+    inside = os.path.normcase(folder) + os.sep
+    for name, module in list(sys.modules.items()):
+        where = getattr(module, "__file__", None)
+        if where and os.path.normcase(str(Path(where).resolve())).startswith(inside):
+            del sys.modules[name]
     if folder not in sys.path:
         sys.path.insert(0, folder)
     name = "oneframe_node_" + "".join(c if c.isalnum() else "_" for c in str(path))
