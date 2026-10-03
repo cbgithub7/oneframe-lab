@@ -46,6 +46,7 @@
     "runtime_caches": "cache/runtime",
     "pycache": "cache/pycache",
     "electron_cache": "cache/electron",
+    "app_tmp": "cache/electron/tmp",
     "electron": "electron",
     "models": "models",
     "runtimes": "runtimes",

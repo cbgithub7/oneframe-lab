@@ -4,7 +4,7 @@
 // and logs. This mirrors the engine's oneframe/layout.py, and contracts/layout.json holds the cases
 // both test suites check, so the two never disagree about where a file is.
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,11 +88,6 @@ export function dataRoot(env, platform, home, packaged) {
   return join(base, platform, name);
 }
 
-/** @param {boolean} packaged */
-export function defaultDataRoot(packaged) {
-  return dataRoot(process.env, process.platform, homedir(), packaged);
-}
-
 /**
  * Every path under one data root, by name, as oneframe/layout.py's Layout names them.
  * @param {string} root
@@ -108,6 +103,7 @@ export function layout(root) {
     runtime_caches: path.join(root, "cache", "runtime"),
     pycache: path.join(root, "cache", "pycache"),
     electron_cache: path.join(root, "cache", "electron"),
+    app_tmp: path.join(root, "cache", "electron", "tmp"),
     electron: path.join(root, "electron"),
     models: path.join(root, "models"),
     runtimes: path.join(root, "runtimes"),
@@ -141,13 +137,16 @@ export function findUv(env = process.env, platform = process.platform) {
 
 /**
  * The command that starts the engine in development: uv runs it from the locked project, so the
- * interpreter and every package are exactly what engine/uv.lock says.
+ * interpreter and every package are exactly what engine/uv.lock says. It makes the app's temporary
+ * folder, which uv uses until the engine takes a folder of its own.
  * @param {string} uv
  * @param {string} data
  * @param {boolean} [packaged] the engine records which kind of app made a root, and warns when the
  *   other kind uses it
  */
 export function engineCommand(uv, data, packaged = false) {
+  const tmp = layout(data).app_tmp;
+  mkdirSync(tmp, { recursive: true });
   const env = {
     ...process.env,
     ONEFRAME_ROOT: REPO_ROOT,
@@ -161,6 +160,10 @@ export function engineCommand(uv, data, packaged = false) {
     // The engine's bytecode goes under the root, not beside its source in the install folder or in
     // nodes/. The engine keeps it from uv and from runtime children, which read their own.
     PYTHONPYCACHEPREFIX: layout(data).pycache,
+    // uv's own lock for the engine's environment, and anything else it makes for a moment.
+    TMP: tmp,
+    TEMP: tmp,
+    TMPDIR: tmp,
   };
   return {
     command: uv,

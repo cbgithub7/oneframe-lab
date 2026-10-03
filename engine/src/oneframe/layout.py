@@ -165,6 +165,12 @@ class Layout:
         return self.root / "cache" / "electron"
 
     @property
+    def app_tmp(self) -> Path:
+        """The app's temporary folder: Electron's, and that of the uv that starts the engine. Not in
+        `tmp`, whose unlocked folders an engine's start removes."""
+        return self.root / "cache" / "electron" / "tmp"
+
+    @property
     def electron(self) -> Path:
         """Electron's user data."""
         return self.root / "electron"

@@ -88,12 +88,17 @@ test("the data root is one folder per platform, overridable", () => {
   assert.equal(dataRoot({ LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "win32", "C:\\Users\\a", true),
     "C:\\Users\\a\\AppData\\Local\\OneframeLab");
   assert.equal(dataRoot({ XDG_DATA_HOME: "/d" }, "linux", "/home/a", false), "/d/oneframe-lab-dev");
-  const cmd = engineCommand("uv", "/data");
-  assert.equal(cmd.env.UV_CACHE_DIR, path.join("/data", "uv", "cache"));
-  // uv writes nothing outside the data root: no python link in a bin folder, no registry entry.
-  assert.equal(cmd.env.UV_PYTHON_INSTALL_BIN, "0");
-  assert.equal(cmd.env.UV_PYTHON_INSTALL_REGISTRY, "0");
-  assert.ok(cmd.args.includes("--frozen"), "the engine runs exactly what engine/uv.lock says");
+  const data = mkdtempSync(path.join(tmpdir(), "oneframe-data-"));
+  try {
+    const cmd = engineCommand("uv", data);
+    assert.equal(cmd.env.UV_CACHE_DIR, path.join(data, "uv", "cache"));
+    // uv writes nothing outside the data root: no python link in a bin folder, no registry entry.
+    assert.equal(cmd.env.UV_PYTHON_INSTALL_BIN, "0");
+    assert.equal(cmd.env.UV_PYTHON_INSTALL_REGISTRY, "0");
+    assert.ok(cmd.args.includes("--frozen"), "the engine runs exactly what engine/uv.lock says");
+  } finally {
+    rmSync(data, { recursive: true, force: true });
+  }
 });
 
 test("the log rolls over and keeps a bounded number of files", () => {

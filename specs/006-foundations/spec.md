@@ -215,6 +215,12 @@ starts Electron. In a local session after the merge:
   its job's folder. The app also sets `PYTHONPYCACHEPREFIX`, so the engine's own modules, imported
   before `sys.pycache_prefix` is set, keep their bytecode under the root; it is kept from uv and
   from children, whose runtime's bytecode lies beside each module.
+- **Electron's temporary folder, and that of the uv that starts the engine, is `cache/electron/tmp/`**
+  (task 6), named `app_tmp` in the layout. It is not in `cache/tmp/`, whose unlocked folders an
+  engine's start removes. Without it, `uv run` left its lock file in the system temporary folder,
+  as a run of the real app in a cloud session showed.
+- **The page's session is in memory** (task 6): the window uses a partition without `persist:`, so
+  the page keeps nothing on disk; the engine holds all state.
 
 ## Out of scope
 
@@ -223,6 +229,15 @@ starts Electron. In a local session after the merge:
 - **Cache eviction**, and a size cap.
 - **Splitting the child into setup and per-job code,** before spec 004.
 - **A machine-readable protocol contract.**
+
+## Open questions
+
+1. **Chromium's single-instance socket on Linux** (found in task 6, by running the app). While the
+   app runs, Chromium keeps the socket behind the single-instance lock in a folder it makes in the
+   system temporary folder (`scoped_dir*`), linked from `electron/`, and removes it at exit. It
+   cannot move under the root: a Unix socket's path must be short (108 bytes), and a root's may be
+   longer. Windows uses no file for this. Is this an accepted exception to "nothing in temp"? Until
+   answered, the code leaves it as Chromium does.
 
 ## Owner's decisions
 

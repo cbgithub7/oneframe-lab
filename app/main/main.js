@@ -10,10 +10,11 @@ import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { PAGE_PARTITION, boot } from "./boot.js";
 import { EngineClient, EngineError } from "./engine.js";
 import { RotatingLog } from "./log.js";
 import { ENGINE_METHODS } from "./methods.js";
-import { REPO_ROOT, defaultDataRoot, engineCommand, findUv } from "./paths.js";
+import { REPO_ROOT, engineCommand, findUv } from "./paths.js";
 
 const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");
 const RENDERER_URL = pathToFileURL(RENDERER).href;
@@ -23,10 +24,11 @@ const EXTERNAL_HOSTS = new Set(["github.com"]);
 // OS-level sandbox cannot start. It never applies otherwise; the page stays isolated either way.
 if (process.env.ONEFRAME_NO_SANDBOX === "1") app.commandLine.appendSwitch("no-sandbox");
 else app.enableSandbox();
-if (!app.requestSingleInstanceLock()) app.quit();
 
-// The dev root in a checkout, the app's own root once packaged; ONEFRAME_DATA overrides either.
-const data = defaultDataRoot(app.isPackaged);
+// Electron's folders under the data root first (the dev root in a checkout, the app's own root once
+// packaged; ONEFRAME_DATA overrides either), then the single-instance lock, which is one per root.
+const { root: data, first } = boot(app);
+if (!first) app.quit();
 const log = new RotatingLog(path.join(data, "logs", "app.log"));
 /** @type {EngineClient | null} */
 let engine = null;
@@ -80,6 +82,7 @@ function createWindow() {
       nodeIntegration: false,
       webSecurity: true,
       spellcheck: false,
+      partition: PAGE_PARTITION,
     },
   });
   win.removeMenu();
@@ -114,7 +117,9 @@ ipcMain.handle("engine:request", async (event, method, params) => {
 });
 
 app.whenReady().then(() => {
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  for (const each of [session.defaultSession, session.fromPartition(PAGE_PARTITION)]) {
+    each.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  }
   createWindow();
   startEngine();
 });

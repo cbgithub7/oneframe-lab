@@ -15,7 +15,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   install and remove take that runtime's lock (AC5).
 - [x] 5. `child_env` puts every library cache, temp and `PYTHONDONTWRITEBYTECODE` under the root;
   the engine's `sys.pycache_prefix`; `cache/CACHEDIR.TAG` (AC2's environment part).
-- [ ] 6. `app/main/boot.js`: Electron's user data, session data, crash dumps and log path under
+- [x] 6. `app/main/boot.js`: Electron's user data, session data, crash dumps and log path under
   the root, before the single-instance lock (AC3).
 - [ ] 7. The footprint test, in CI on Windows and Linux (AC2).
 - [ ] 8. `errors.py` declares every kind and reason; failures carry kind, reason, message, next

@@ -2,7 +2,8 @@
 // The data root and its layout, against contracts/layout.json, the table the engine's tests read
 // too (AC1 of spec 006).
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
@@ -47,8 +48,16 @@ test("the layout names the paths the table names", () => {
 });
 
 test("the engine keeps its bytecode under the root, and is told which app started it", () => {
-  const dev = engineCommand("uv", path.join("/data"));
-  assert.equal(dev.env.PYTHONPYCACHEPREFIX, path.join("/data", "cache", "pycache"));
-  assert.ok(!dev.args.includes("--packaged"));
-  assert.ok(engineCommand("uv", path.join("/data"), true).args.includes("--packaged"));
+  const data = mkdtempSync(path.join(tmpdir(), "oneframe-cmd-"));
+  try {
+    const dev = engineCommand("uv", data);
+    assert.equal(dev.env.PYTHONPYCACHEPREFIX, path.join(data, "cache", "pycache"));
+    // uv's own temporary files, before the engine takes a folder of its own, stay under the root.
+    for (const value of [dev.env.TMP, dev.env.TEMP, dev.env.TMPDIR]) assert.equal(value, layout(data).app_tmp);
+    assert.ok(existsSync(layout(data).app_tmp));
+    assert.ok(!dev.args.includes("--packaged"));
+    assert.ok(engineCommand("uv", data, true).args.includes("--packaged"));
+  } finally {
+    rmSync(data, { recursive: true, force: true });
+  }
 });
