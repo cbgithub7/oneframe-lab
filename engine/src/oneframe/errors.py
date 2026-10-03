@@ -9,5 +9,7 @@ from __future__ import annotations
 
 
 class ContractError(ValueError):
-    """A node broke its manifest: a value whose facets do not fit the port it reaches, or an output
-    written outside the run's own folder."""
+    """A contract between nodes was broken: an output written outside the run's own folder, or a
+    value that reached a port whose facets it does not fit. The second may be no node's fault (a
+    facet the planner could only learn at run time); spec 006 gives it its own kind, naming the
+    edge."""

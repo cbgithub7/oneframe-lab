@@ -88,8 +88,9 @@ node; not for a node without a memory model, tried anyway, or with the fit off),
 fits on any device; the message says what would help), `fetch` (something tried to download),
 `missing` (an import the runtime lacks), `runtime` (the runtime cannot run yet; `reason` says
 whether it is not installed, out of date, being installed, blocked on this machine, or unknown),
-`contract` (a node broke its manifest: an output it did not declare or put outside its run folder,
-or a value whose facets do not fit the port it reaches), `node` (the node explained), `error`,
+`contract` (a node broke its manifest: an output it did not declare or put outside its run folder;
+also, for now, a value that reached a port whose facets it does not fit, which spec 006 gives a kind
+of its own), `node` (the node explained), `error`,
 `died` (the process ended without a word; it says when the exit code means the system ran out of
 memory). A bug in the engine itself is never blamed on a node: the run ends with `run.failed` of
 kind `engine`, with its trace.

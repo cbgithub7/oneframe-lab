@@ -117,8 +117,9 @@ def test_a_file_param_is_keyed_by_content_not_name(
             "contradicts",
         ),
         (
-            "import pathlib, tempfile\ndef run(ctx):\n"
-            "    p = pathlib.Path(tempfile.mkdtemp()) / 'd.npz'; p.write_bytes(b'x')\n"
+            # In the test's cache folder: outside the run, and nothing left in the system's temp.
+            "def run(ctx):\n"
+            "    p = ctx.path('d.npz').parents[2] / 'outside.npz'; p.write_bytes(b'x')\n"
             "    ctx.output('depth', p, facets={'kind': 'metric'})\n",
             "contract",
             "outside the run folder",

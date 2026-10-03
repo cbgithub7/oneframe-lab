@@ -257,7 +257,7 @@ def install(
 
     step("python", f"Python {runtime.python}, fetched by uv into the data root if it is not there yet.")
     run(
-        [uv, "python", "install", "--no-config", "--no-bin", "--no-registry", runtime.python],
+        [uv, "python", "install", "--no-config", runtime.python],
         f"Installing Python {runtime.python}",
         uv_environment(uv_home),
     )
