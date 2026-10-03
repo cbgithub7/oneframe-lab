@@ -50,7 +50,7 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
         executor = ProcessExecutor(
             python,
             env=manager.env_for(runtime_id),
-            log_dir=Layout(manager.data).logs,
+            log_dir=Layout(manager.data).step_logs,
             caches=manager.caches_for(runtime_id),
         )
         try:

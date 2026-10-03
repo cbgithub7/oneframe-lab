@@ -198,7 +198,8 @@ def make_scheduler(
         settings=settings,
         learned=_Unlearned(),
         on_pid=on_pid,
-        log_dir=manager.data / "logs" if manager else None,
+        log_dir=Layout(manager.data).step_logs if manager else None,
+        journal_dir=Layout(manager.data).journals if manager else None,
         **kw,
     )
 

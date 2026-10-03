@@ -22,7 +22,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   and retry; one `Stopped`; runtime reasons in snake_case; `main.js` returns errors as values; the
   architecture doc's table, held equal by a test (AC6). A facet mismatch found at run time gets its
   own kind, reported against the edge rather than blamed on the node that receives it.
-- [ ] 9. The journal around `Scheduler.run` and `Runtimes.run_install`, pruning, and
+- [x] 9. The journal around `Scheduler.run` and `Runtimes.run_install`, pruning, and
   `npm run diagnose` with its redaction (AC7).
 - [ ] 10. Cache keys from the node's folder and the runtime's build and marker hashes;
   `KEY_VERSION` 2 (AC8).

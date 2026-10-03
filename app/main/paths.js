@@ -110,6 +110,8 @@ export function layout(root) {
     uv_cache: path.join(root, "uv", "cache"),
     uv_python: path.join(root, "uv", "python"),
     logs: path.join(root, "logs"),
+    journals: path.join(root, "logs", "journal"),
+    step_logs: path.join(root, "logs", "steps"),
     crashes: path.join(root, "logs", "crashes"),
     locks: path.join(root, "logs", "locks"),
     reports: path.join(root, "reports"),

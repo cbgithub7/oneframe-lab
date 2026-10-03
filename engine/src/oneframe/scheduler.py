@@ -45,6 +45,7 @@ from oneframe.child import Value
 from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
+from oneframe.journal import journalled, prune_step_logs
 from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
 from oneframe.registry import Registry
@@ -129,6 +130,7 @@ class Scheduler:
         on_pid: Callable[[int], None] | None = None,
         tmp_root: Path | None = None,
         runtime_caches: Callable[[str], Path | None] = lambda _runtime: None,
+        journal_dir: Path | None = None,
     ):
         self.registry = registry
         self.cache = cache
@@ -145,6 +147,7 @@ class Scheduler:
         self.on_pid = on_pid
         self.tmp_root = tmp_root  # where a runtime node's job folder is made
         self.runtime_caches = runtime_caches  # where its libraries keep their caches
+        self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
         self.engine = EngineExecutor()
 
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
@@ -170,6 +173,8 @@ class Scheduler:
     ) -> RunResult:
         run_id = run_id or uuid.uuid4().hex[:12]
         result = RunResult(run=run_id, status="done")
+        emit = journalled(emit, self.journal_dir, f"run-{run_id}")
+        prune_step_logs(self.log_dir)
 
         def say(event: dict[str, Any]) -> None:
             emit(dict(event, run=run_id))

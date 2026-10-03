@@ -85,5 +85,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   did (the numbers a hardware claim needs)
 - `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
   its estimates beside the peaks measured; with no node, spec 002's hardware check
+- `npm run diagnose`: one file in the data root's `reports/` to hand over when something failed:
+  versions, machine, runtimes, settings, what was learned, the latest journals and logs, with the
+  user's name taken out of every path and hub tokens scrubbed
 - `node scripts/test-guard.js`: no test removed without a listed reason
 - `npm start`: the app (needs `npm run engine:sync` once)

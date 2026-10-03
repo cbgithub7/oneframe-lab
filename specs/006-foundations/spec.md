@@ -233,6 +233,14 @@ starts Electron. In a local session after the merge:
   `next`.
 - **An `edge` failure has no `node.failed` and no `step`** (task 8): `run.failed` carries
   `edge: {from, to}` instead, so the page can mark the connection.
+- **Journals are `logs/journal/<time>-<run|install>-<id>.ndjson`, and per-step logs move to
+  `logs/steps/`** (task 9), so each is pruned as a folder and the app's own `app.log` is never
+  touched. The bounds: 100 journals and 64 MiB; 200 step logs and 128 MiB; one journal stops at
+  16 MiB with a last line that says so. The newest is always kept.
+- **The diagnostics file is JSON** (task 9), `reports/diagnose-<time>.json`, redacted after it is
+  serialised, so the JSON-escaped spelling of a path is caught with the others. A user's segment is
+  matched only as a whole path segment right after the users folder, in any case, with or without
+  the drive; a longer name (`database` for `data`) and a word elsewhere are left alone.
 - **The page receives a failed request as a rejected plain object** (task 8): main.js answers
   every request with `{ok, result}` or `{ok, error}` (`app/main/door.js`), and the preload turns
   the second into a rejection with the failure itself, since Electron passes on only the message of

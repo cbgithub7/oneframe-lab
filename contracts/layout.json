@@ -53,6 +53,8 @@
     "uv_cache": "uv/cache",
     "uv_python": "uv/python",
     "logs": "logs",
+    "journals": "logs/journal",
+    "step_logs": "logs/steps",
     "crashes": "logs/crashes",
     "locks": "logs/locks",
     "reports": "reports"

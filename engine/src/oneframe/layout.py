@@ -199,6 +199,16 @@ class Layout:
         return self.root / "logs"
 
     @property
+    def journals(self) -> Path:
+        """Every event of each run and install, one file each (journal.py)."""
+        return self.root / "logs" / "journal"
+
+    @property
+    def step_logs(self) -> Path:
+        """What each runtime node's process wrote to stderr, one file per step."""
+        return self.root / "logs" / "steps"
+
+    @property
     def crashes(self) -> Path:
         return self.root / "logs" / "crashes"
 

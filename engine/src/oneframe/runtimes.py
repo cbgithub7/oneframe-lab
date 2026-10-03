@@ -35,6 +35,7 @@ from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.errors import Failure, Stopped, failure
 from oneframe.executors import reserved_env
 from oneframe.files import FileLock, lock_file
+from oneframe.journal import journalled
 from oneframe.layout import Layout
 from oneframe.memory import Target
 
@@ -973,6 +974,7 @@ class Runtimes:
         """Carry out a claimed install, reporting it as runtime.* events. Returns the result, or
         None when it stopped or failed (the events say which)."""
         base = {"runtime": runtime.id, "build": build}
+        emit = journalled(emit, Layout(self.data).journals, f"install-{runtime.id}")
         emit({**base, "event": "runtime.start"})
         extra: dict[str, Any] = {"opener": opener} if opener is not None else {}
         try:
