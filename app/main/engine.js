@@ -140,6 +140,10 @@ export class EngineClient extends EventEmitter {
       this.emit("log", `engine wrote a line that is not JSON: ${line.slice(0, 200)}`);
       return;
     }
+    if (message === null || typeof message !== "object" || Array.isArray(message)) {
+      this.emit("log", `engine wrote a line that is not an object: ${line.slice(0, 200)}`);
+      return;
+    }
     // A reply carries the id of its request, and an event never does. A reply to a request that
     // has already timed out is logged, never passed on to the page as an event.
     if (typeof message.id === "number" && !("event" in message)) {

@@ -35,6 +35,8 @@ test("requests are answered by id, and events and logs arrive on their own chann
   assert.equal(await client.request("split"), "ok");
   assert.ok(events.some((e) => e.event === "run.start"));
   assert.equal(await client.request("noise"), "after noise");
+  assert.equal(await client.request("null"), "after null"); // a JSON line that is not an object
+  assert.ok(logs.some((l) => l.includes("not an object")));
   await assert.rejects(client.request("fail"), (/** @type {any} */ error) =>
     error instanceof EngineError && error.problems[0].node === "x");
   await client.stop();
