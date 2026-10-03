@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from conftest import MakeNode, wait_gone
+from conftest import Events, MakeNode, wait_gone
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR
@@ -168,7 +168,7 @@ def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
 
 
 def test_shutdown_stops_a_running_graph_and_its_node_process(
-    tmp_path: Path, make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
+    tmp_path: Path, make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
     """The app quitting closes the engine's stdin, and the engine shuts down: a node still loading
     a model must not outlive it holding the card."""
@@ -183,20 +183,22 @@ def test_shutdown_stops_a_running_graph_and_its_node_process(
         },
         "import os, time\ndef run(ctx):\n    ctx.stage('hang', str(os.getpid()))\n    time.sleep(60)\n",
     )
-    said: list[dict[str, Any]] = []
-    engine = Engine(tmp_path / "data", [tmp_path / "nodes"], said.append, runtime_roots=[])
+    engine = Engine(tmp_path / "data", [tmp_path / "nodes"], events.append, runtime_roots=[])
     engine.scheduler = scheduler_for()  # runtime nodes run in this test's own Python
     graph = {"version": 1, "nodes": {"h": {"node": "test.hang"}}, "edges": []}
-    reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
-    assert reply is not None and "result" in reply, reply
-    end = time.monotonic() + 30
-    while not any(e.get("event") == "stage" for e in said):
-        assert time.monotonic() < end, said
-        time.sleep(0.05)
-    pid = int(next(e for e in said if e.get("event") == "stage")["message"])
+    try:
+        reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
+        assert reply is not None and "result" in reply, reply
+        end = time.monotonic() + 30
+        while not events.of("stage"):
+            assert time.monotonic() < end, events
+            time.sleep(0.05)
+        pid = int(events.of("stage")[0]["message"])
 
-    started = time.monotonic()
-    engine.shutdown(timeout=20)
-    assert time.monotonic() - started < 15
-    assert any(e.get("event") == "run.stopped" for e in said)
-    assert wait_gone(pid)
+        started = time.monotonic()
+        engine.shutdown(timeout=20)
+        assert time.monotonic() - started < 15
+        assert events.of("run.stopped")
+        assert wait_gone(pid)
+    finally:
+        engine.shutdown(timeout=20)  # nothing left running if an assertion above failed

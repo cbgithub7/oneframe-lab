@@ -24,6 +24,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import traceback
 import uuid
 from collections.abc import Callable
@@ -159,12 +160,8 @@ class Engine:
         graph = Graph.from_json(params["graph"])
         the_plan = plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
         used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
-        with self._lock:
-            if self._run is not None:
-                raise RuntimeError(f"Run {self._run[0]} is still going; stop it first.")
-            run_id = uuid.uuid4().hex[:12]
-            stop = threading.Event()
-            self._run = (run_id, stop, used)
+        run_id = uuid.uuid4().hex[:12]
+        stop = threading.Event()
 
         def work() -> None:
             try:
@@ -185,7 +182,10 @@ class Engine:
                     self._run = None
 
         thread = threading.Thread(target=work, name=f"run-{run_id}", daemon=True)
-        with self._lock:
+        with self._lock:  # the run and its thread are recorded together, so shutdown sees both
+            if self._run is not None:
+                raise RuntimeError(f"Run {self._run[0]} is still going; stop it first.")
+            self._run = (run_id, stop, used)
             self._run_thread = thread
         thread.start()
         return {"run": run_id}
@@ -246,10 +246,11 @@ class Engine:
         installing = self.runtimes.installing()
         if installing is not None:
             self.runtimes.stop(installing)
+        deadline = time.monotonic() + timeout  # one budget for both, not one each
         if run_thread is not None:
-            run_thread.join(timeout)
+            run_thread.join(max(deadline - time.monotonic(), 0))
         if self._install is not None:
-            self._install.join(timeout)
+            self._install.join(max(deadline - time.monotonic(), 0))
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         req_id = message.get("id")
