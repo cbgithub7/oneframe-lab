@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from oneframe.errors import Failure
 from oneframe.files import format_of, write_json
 
 ROOT_FILE = "oneframe-root.json"
@@ -216,13 +217,18 @@ class Layout:
         return sorted(name for name, value in vars(cls).items() if isinstance(value, property))
 
 
-class RootRefused(RuntimeError):
+class RootRefused(Failure):
     """The engine cannot use this data root: its layout is newer than this engine knows
     (`newer_layout`), or its root file cannot be read (`unreadable`). Nothing under it changed."""
 
+    kind = "root"
+
     def __init__(self, message: str, reason: str):
-        super().__init__(message)
-        self.reason = reason
+        nexts = {
+            "newer_layout": "Use the newer version of the app, or another data root.",
+            "unreadable": f"Look at {ROOT_FILE} in the data root, or use another data root.",
+        }
+        super().__init__(message, reason=reason, next=nexts[reason])
 
 
 def claim_root(root: Path, packaged: bool, version: str = "") -> list[str]:

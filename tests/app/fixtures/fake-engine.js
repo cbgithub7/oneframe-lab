@@ -17,6 +17,9 @@ for await (const line of createInterface({ input: process.stdin })) {
     const text = JSON.stringify({ event: "run.start", run: "r1" }) + "\n" + JSON.stringify({ id: msg.id, result: "ok" }) + "\n";
     process.stdout.write(text.slice(0, 7));
     setTimeout(() => process.stdout.write(text.slice(7)), 20);
+  } else if (msg.method === "runtimes.install") {
+    write({ id: msg.id, error: { kind: "runtime", reason: "not_installed", message: "The runtime 'tiny' is not installed.",
+      next: "Install the runtime tiny.", retry: false } });
   } else if (msg.method === "fail") write({ id: msg.id, error: { message: "The graph cannot run.", problems: [{ node: "x", port: "", message: "bad" }] } });
   else if (msg.method === "noise") {
     process.stdout.write("not json at all\n");

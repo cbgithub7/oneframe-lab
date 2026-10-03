@@ -26,6 +26,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from oneframe.errors import Stopped  # raised when Stop is pressed during a download
+
 CHUNK = 1 << 20
 TIMEOUT_S = 60
 _DRIVE = re.compile(r"^[A-Za-z]:")
@@ -35,10 +37,6 @@ Progress = Callable[[int, int | None], None]
 
 class ArchiveError(RuntimeError):
     """An archive that is not the pinned file, or that would write outside its folder."""
-
-
-class Stopped(RuntimeError):
-    """Stop was pressed during a download."""
 
 
 def sha256_of(path: Path) -> str:

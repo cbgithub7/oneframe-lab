@@ -28,18 +28,26 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from oneframe import ports
+from oneframe.errors import Failure, failure
 from oneframe.manifest import Manifest, check_param
 from oneframe.registry import Registry
 
 RECIPE_VERSION = 1
 
 
-class GraphError(ValueError):
+class GraphError(Failure, ValueError):
+    """The graph cannot run: kind `graph`, and every problem, each against its node and port."""
+
+    kind = "graph"
+
     def __init__(self, problems: list[dict[str, str]]):
         self.problems = problems
         super().__init__(
             "; ".join(f"{p.get('node', '')}.{p.get('port', '')}: {p['message']}" for p in problems)
         )
+
+    def to_json(self, **extra: Any) -> dict[str, Any]:
+        return failure("graph", "The graph cannot run.", problems=self.problems, **extra)
 
 
 @dataclass(frozen=True)

@@ -157,6 +157,8 @@ What the app writes, and how it fails, is not yet something a person can trust:
 - Changed: `test_a_store_file_that_cannot_be_read_starts_empty` (test_memory.py) asserted that a
   learned-memory file in a newer format is replaced; requirement 3 leaves it as it is, so it now
   asserts that, and still that an unreadable file is replaced.
+- Changed: the runtime tests in test_runtime_install.py and test_runtime_server.py compare statuses
+  and reasons with the snake_case spellings requirement 5 sets (`not_installed`, `out_of_date`).
 - Removed: none.
 
 ## Verification
@@ -221,6 +223,20 @@ starts Electron. In a local session after the merge:
   as a run of the real app in a cloud session showed.
 - **The page's session is in memory** (task 6): the window uses a partition without `persist:`, so
   the page keeps nothing on disk; the engine holds all state.
+- **The kinds beyond the review's list** (task 8): `edge` (a facet mismatch found at run time),
+  `graph` (a graph that cannot run, or a second run), `root` (the data root refused), `request`
+  (refused before any work, timed out, or the engine not running) and `app` (the app could not start
+  the engine). Runtime refusals to install or remove share kind `runtime` and its reasons, with
+  `busy`, `in_use`, `no_uv`, `wrong_build`, `unsafe_path` and `install_failed` added.
+- **`next` is a sentence for a person, and `retry` belongs to the reason** (task 8), or to the kind
+  when there is none. The page decides what to offer from the kind and reason; it does not parse
+  `next`.
+- **An `edge` failure has no `node.failed` and no `step`** (task 8): `run.failed` carries
+  `edge: {from, to}` instead, so the page can mark the connection.
+- **The page receives a failed request as a rejected plain object** (task 8): main.js answers
+  every request with `{ok, result}` or `{ok, error}` (`app/main/door.js`), and the preload turns
+  the second into a rejection with the failure itself, since Electron passes on only the message of
+  a thrown error.
 
 ## Out of scope
 

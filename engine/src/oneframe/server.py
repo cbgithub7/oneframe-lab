@@ -33,11 +33,12 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
-from oneframe.graph import Graph, GraphError, Step, plan, step_params
+from oneframe.errors import Failure, failure
+from oneframe.graph import Graph, Step, plan, step_params
 from oneframe.layout import Layout, RootRefused, claim_root, default_root, keep_bytecode_under
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
-from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
+from oneframe.runtimes import InstallRefused, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
 from oneframe.scratch import Scratch
 
@@ -179,15 +180,8 @@ class Engine:
                 self.scheduler.run(graph, self.say, stop.is_set, run_id)
             except Exception as exc:  # a bug, not a node failure: say so rather than die silently
                 LOGGER.exception("run %s crashed", run_id)
-                self.say(
-                    {
-                        "event": "run.failed",
-                        "run": run_id,
-                        "kind": "engine",
-                        "message": str(exc),
-                        "detail": traceback.format_exc()[-4000:],
-                    }
-                )
+                trace = traceback.format_exc()[-4000:]
+                self.say({"event": "run.failed", "run": run_id, **failure("engine", str(exc), detail=trace)})
             finally:
                 with self._lock:
                     self._run = None
@@ -195,7 +189,9 @@ class Engine:
         thread = threading.Thread(target=work, name=f"run-{run_id}", daemon=True)
         with self._lock:  # the run and its thread are recorded together, so shutdown sees both
             if self._run is not None:
-                raise RuntimeError(f"Run {self._run[0]} is still going; stop it first.")
+                raise Failure(
+                    f"Run {self._run[0]} is still going; stop it first.", "busy", "Stop it, or wait.", "graph"
+                )
             self._run = (run_id, stop, used)
             self._run_thread = thread
         thread.start()
@@ -218,7 +214,9 @@ class Engine:
         with self._lock:
             run = self._run
         if run is not None and runtime_id in run[2]:
-            raise InstallRefused(f"Run {run[0]} is using {runtime_id}; stop it before {doing} the runtime.")
+            raise InstallRefused(
+                f"Run {run[0]} is using {runtime_id}; stop it before {doing} the runtime.", "in_use"
+            )
 
     def runtimes_install(self, params: dict[str, Any]) -> dict[str, Any]:
         runtime_id = str(params["runtime"])
@@ -269,19 +267,18 @@ class Engine:
         method = message.get("method")
         fn = self.methods.get(str(method))
         if fn is None:
-            return {"id": req_id, "error": {"message": f"Unknown method {method!r}."}}
+            return {
+                "id": req_id,
+                "error": failure("request", f"Unknown method {method!r}.", "unknown_method"),
+            }
         try:
             return {"id": req_id, "result": fn(dict(message.get("params") or {}))}
-        except GraphError as exc:
-            return {"id": req_id, "error": {"message": "The graph cannot run.", "problems": exc.problems}}
-        except (InstallRefused, RuntimeMissing) as exc:  # a sentence for a person, not a bug
-            error: dict[str, Any] = {"message": str(exc)}
-            if exc.reason:
-                error["reason"] = exc.reason
-            return {"id": req_id, "error": error}
+        except Failure as exc:  # a refusal with a declared kind and reason, for a person
+            return {"id": req_id, "error": exc.to_json()}
         except Exception as exc:
             LOGGER.exception("%s failed", method)
-            return {"id": req_id, "error": {"message": f"{type(exc).__name__}: {exc}"}}
+            trace = traceback.format_exc()[-4000:]
+            return {"id": req_id, "error": failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -334,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         claim_root(data, args.packaged, __version__)  # before the scratch folder is written
     except RootRefused as exc:
-        say({"event": "engine.failed", "kind": "root", "reason": exc.reason, "message": str(exc)})
+        say({"event": "engine.failed", **exc.to_json()})
         return 2
     keep_bytecode_under(data)
     scratch = Scratch.claim(Layout(data))

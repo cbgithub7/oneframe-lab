@@ -25,12 +25,14 @@ import re
 import shutil
 import threading
 import tomllib
+import traceback
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
+from oneframe.errors import Failure, Stopped, failure
 from oneframe.executors import reserved_env
 from oneframe.files import FileLock, lock_file
 from oneframe.layout import Layout
@@ -658,22 +660,24 @@ def plan(runtime: RuntimeDef, profile: dict[str, Any], installed: Collection[str
 # -- the manager: status, install, remove, and what the scheduler asks --------------------------
 
 
-class RuntimeMissing(RuntimeError):
-    """A node's runtime cannot run yet. `reason` is one of unknown, blocked, installing,
-    not installed, out of date, newer_format or moved; the message says what to do about it."""
+class RuntimeMissing(Failure, RuntimeError):
+    """A node's runtime cannot run yet: kind `runtime`, with a reason declared in errors.py
+    (not_installed, out_of_date, installing, blocked, unknown, moved, newer_format)."""
 
-    def __init__(self, message: str, reason: str = "not installed"):
-        super().__init__(message)
-        self.reason = reason
+    kind = "runtime"
+
+    def __init__(self, message: str, reason: str = "not_installed", next: str | None = None):
+        super().__init__(message, reason=reason, next=next)
 
 
-class InstallRefused(ValueError):
-    """An install or remove that cannot start, with the reason a person reads. `reason` is
-    `locked` when another process is installing or removing the same runtime."""
+class InstallRefused(Failure, ValueError):
+    """An install or remove that cannot start: kind `runtime`, with a reason declared in
+    errors.py (locked when another process is installing or removing it, busy, blocked, ...)."""
 
-    def __init__(self, message: str, reason: str | None = None):
-        super().__init__(message)
-        self.reason = reason
+    kind = "runtime"
+
+    def __init__(self, message: str, reason: str, next: str | None = None):
+        super().__init__(message, reason=reason, next=next)
 
 
 def find_uv(explicit: str | None = None, env: dict[str, str] | None = None) -> str | None:
@@ -748,7 +752,7 @@ class Runtimes:
         return busy[0] if busy else None
 
     def status(self, runtime: RuntimeDef, the_plan: Plan | None = None) -> dict[str, Any]:
-        """installing, installed, out of date, not installed, newer_format (its marker is from a
+        """installing, installed, out_of_date, not_installed, newer_format (its marker is from a
         newer app) or moved (built in another root), for the build the plan picks."""
         the_plan = the_plan or self.plan_for(runtime)
         markers = self._markers(runtime)
@@ -766,15 +770,15 @@ class Runtimes:
         if self.installing() == runtime.id:
             state = "installing"
         elif marker is None:
-            state = "not installed"
+            state = "not_installed"
         elif problem is not None:
             state = problem
         elif {k: marker.get(k) for k in hashes} != hashes:
-            state = "out of date"
+            state = "out_of_date"
         elif not runtime_install.interpreter(
             runtime_install.env_dir(self.data, runtime.id, str(build))
         ).exists():
-            state = "not installed"
+            state = "not_installed"
         else:
             state = "installed"
         return {
@@ -825,9 +829,12 @@ class Runtimes:
                 f"The runtime {runtime_id!r} cannot run here: {the_plan.blocked}", reason="blocked"
             )
         state = self.status(runtime, the_plan)["status"]
+        install = f"Install the runtime {runtime_id}."
         if state == "installing":
             raise RuntimeMissing(
-                f"The runtime {runtime_id!r} is being installed; run again when it is done.", "installing"
+                f"The runtime {runtime_id!r} is being installed; run again when it is done.",
+                "installing",
+                "Run again when the install is done.",
             )
         if state == "newer_format":
             raise RuntimeMissing(
@@ -840,17 +847,20 @@ class Runtimes:
                 f"The runtime {runtime_id!r} was built in another data root and moved here; install "
                 "it again to rebuild it.",
                 reason="moved",
+                next=install,
             )
-        if state == "out of date":
+        if state == "out_of_date":
             raise RuntimeMissing(
                 f"The runtime {runtime_id!r} is out of date: its lock or definition changed since it "
                 "was installed. Install it again to rebuild it.",
-                reason="out of date",
+                reason="out_of_date",
+                next=install,
             )
         if state != "installed":
             raise RuntimeMissing(
                 f"The runtime {runtime_id!r} is not installed; install its {the_plan.build} build first.",
-                reason="not installed",
+                reason="not_installed",
+                next=install,
             )
         return runtime_install.interpreter(
             runtime_install.env_dir(self.data, runtime.id, str(the_plan.build))
@@ -899,6 +909,7 @@ class Runtimes:
                 f"{runtime_id} is being installed or removed by another process on this data root; "
                 "try again when it is done.",
                 reason="locked",
+                next="Try again when it is done.",
             )
         return lock
 
@@ -909,22 +920,27 @@ class Runtimes:
         runtime = self.get(runtime_id)
         the_plan = self.plan_for(runtime)
         if the_plan.blocked:
-            raise InstallRefused(the_plan.blocked)
+            raise InstallRefused(the_plan.blocked, "blocked")
         planned = str(the_plan.build)
         if build is not None and build != planned:
             if runtime.build(build) is None:
-                raise InstallRefused(f"The runtime {runtime_id!r} has no build called {build!r}.")
+                raise InstallRefused(
+                    f"The runtime {runtime_id!r} has no build called {build!r}.", "wrong_build"
+                )
             why = next((r["why"] for r in the_plan.considered if r["build"] == build), "")
             raise InstallRefused(
                 f"This machine runs the {planned} build of {runtime_id!r}; "
-                f"only the planned build is installed. {why}".strip()
+                f"only the planned build is installed. {why}".strip(),
+                "wrong_build",
             )
         if not uv_available(self.uv):
-            raise InstallRefused("uv was not found. Install uv, or set ONEFRAME_UV to its path.")
+            raise InstallRefused("uv was not found.", "no_uv", "Install uv, or set ONEFRAME_UV to its path.")
         with self._lock:
             if self._busy is not None:
                 raise InstallRefused(
-                    f"{self._busy[0]} is being installed; runtimes are installed one at a time."
+                    f"{self._busy[0]} is being installed; runtimes are installed one at a time.",
+                    "busy",
+                    "Try again when it is done.",
                 )
             held = self._runtime_lock(runtime_id)
             try:
@@ -932,7 +948,8 @@ class Runtimes:
                 if state == "newer_format":
                     raise InstallRefused(
                         f"The runtime {runtime_id!r} was installed by a newer version of the app; it "
-                        "is left as it is."
+                        "is left as it is.",
+                        "newer_format",
                     )
             except BaseException:
                 held.release()
@@ -962,7 +979,7 @@ class Runtimes:
             done = runtime_install.install(
                 runtime, build, self.data, str(self.uv), emit, stop.is_set, self.uv_home, **extra
             )
-        except runtime_install.InstallStopped:
+        except Stopped:
             emit(
                 {
                     **base,
@@ -972,10 +989,17 @@ class Runtimes:
             )
             return None
         except runtime_install.InstallFailed as exc:
-            emit({**base, "event": "runtime.failed", "message": str(exc), "detail": exc.detail})
+            emit({**base, "event": "runtime.failed", **exc.to_json(detail=exc.detail)})
             return None
         except Exception as exc:
-            emit({**base, "event": "runtime.failed", "message": f"{type(exc).__name__}: {exc}", "detail": ""})
+            trace = traceback.format_exc()[-4000:]
+            emit(
+                {
+                    **base,
+                    "event": "runtime.failed",
+                    **failure("engine", f"{type(exc).__name__}: {exc}", detail=trace),
+                }
+            )
             raise
         finally:
             with self._lock:
@@ -1006,7 +1030,9 @@ class Runtimes:
         """Delete `<data>/runtimes/<id>/`, and nothing else."""
         self.get(runtime_id)
         if self.installing() == runtime_id:
-            raise InstallRefused(f"{runtime_id} is being installed; stop the install before removing it.")
+            raise InstallRefused(
+                f"{runtime_id} is being installed; stop the install before removing it.", "installing"
+            )
         with self._runtime_lock(runtime_id):
             return self._remove(runtime_id)
 
@@ -1020,10 +1046,13 @@ class Runtimes:
             if marker is not None and runtime_install.marker_problem(env, marker) == "newer_format":
                 raise InstallRefused(
                     f"The {env.name} build of {runtime_id!r} was installed by a newer version of the "
-                    "app; it is left as it is."
+                    "app; it is left as it is.",
+                    "newer_format",
                 )
         if target.is_symlink() or target.resolve().parent != root or target.name != runtime_id:
-            raise InstallRefused(f"Refusing to delete {target}: it is not a runtime folder in {root}.")
+            raise InstallRefused(
+                f"Refusing to delete {target}: it is not a runtime folder in {root}.", "unsafe_path"
+            )
         runtime_install.remove_tree(target)
         return {"runtime": runtime_id, "removed": str(target)}
 

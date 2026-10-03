@@ -27,7 +27,7 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params and input keys; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; checks every value at every port; carries trust; one retry after `oom` |
 | Memory | `oneframe/memory.py` | A node's memory model; the estimate; the margins and the person's settings; the fit (pure); what each machine learns |
-| Errors | `oneframe/errors.py` | Whose fault a failure is: a node that broke its manifest, or the engine |
+| Errors | `oneframe/errors.py` | Every kind and reason of failure, declared once, and whose fault each is ([Failures](#failures)) |
 | Executors | `oneframe/executors.py`, `oneframe/child.py` | In-process or child-process runs; one `NodeContext` either way |
 | Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
 | Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, system memory (total and available), free disk |
@@ -35,7 +35,7 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Server | `oneframe/server.py` | The engine's NDJSON protocol |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py` | The reports a hardware claim needs: a runtime's install, and a node's memory on a card |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
-| Main | `app/main/main.js` | The window, the engine process, and the one IPC door |
+| Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js` | Electron's folders under the root, the window, the engine process, and the one IPC door, which answers with values |
 
 ## Why it is shaped this way
 
@@ -83,18 +83,6 @@ precision, changes, needs, budgets and any warning: `slow`, `tried_anyway`, `unk
 fit) | `node.oom` and, once, another `node.fit` and `node.start` | `node.failed` (with the fits) →
 `run.done` | `run.failed` | `run.stopped`. An engine node without a memory model gets no `node.fit`.
 
-Failure kinds: `oom` (retried once with a strictly smaller fit, in a new process for a runtime
-node; not for a node without a memory model, tried anyway, or with the fit off), `memory` (nothing
-fits on any device; the message says what would help), `fetch` (something tried to download),
-`missing` (an import the runtime lacks), `runtime` (the runtime cannot run yet; `reason` says
-whether it is not installed, out of date, being installed, blocked on this machine, or unknown),
-`contract` (a node broke its manifest: an output it did not declare or put outside its run folder;
-also, for now, a value that reached a port whose facets it does not fit, which spec 006 gives a kind
-of its own), `node` (the node explained), `error`,
-`died` (the process ended without a word; it says when the exit code means the system ran out of
-memory). A bug in the engine itself is never blamed on a node: the run ends with `run.failed` of
-kind `engine`, with its trace.
-
 `nodes.fit` answers the fit a node would get now, and `nodes.forget` clears what this machine
 learned about a node. Neither is on the page's method list yet.
 
@@ -103,6 +91,62 @@ A runtime install answers `runtimes.install` at once with the build it will inst
 `runtime.start` → per step `runtime.step` (index and total), with `runtime.log` lines from uv and
 `runtime.progress` for source downloads → `runtime.done` | `runtime.failed` | `runtime.stopped`.
 `runtimes.stop` ends an install; one install runs at a time.
+
+## Failures
+
+Every failure the engine reports (`node.failed`, `run.failed`, `runtime.failed`, `engine.failed`,
+and an error reply) carries a `kind`, a snake_case `reason` where it has one, a `message`, `next`
+(what to do) where that is known, and `retry`: whether the same request may succeed later
+unchanged. `oneframe/errors.py` declares them, and nothing undeclared can be raised; this table is
+that declaration, and a test holds the two equal. The app's own failures (`request`, `app`) come
+from `app/main/failures.js`, held to this table too, and the page receives every one as a value.
+
+| Kind | Reason | Retry | Meaning |
+| --- | --- | --- | --- |
+| `oom` |  | yes | The node ran out of memory on its device, after one retry with a smaller fit. |
+| `memory` |  | yes | Nothing fits on any device now; the message says what would help. |
+| `fetch` |  | no | The node tried to download something; a run reads only what Download fetched. |
+| `missing` |  | no | The node imports something its runtime does not have. |
+| `node` |  | no | The node failed, and said why. |
+| `error` |  | no | The node's code raised an error. |
+| `died` |  | no | The node's process ended without a word. |
+| `contract` |  | no | A node broke its manifest: an output it did not declare, or one outside its folder. |
+| `edge` |  | no | A value reached a port whose facets it does not fit; reported against the edge. |
+| `runtime` |  | no | A runtime cannot run, or cannot be installed or removed, now. |
+| `runtime` | `not_installed` | no | It is not installed. |
+| `runtime` | `out_of_date` | no | Its lock or definition changed since it was installed. |
+| `runtime` | `installing` | yes | It is being installed. |
+| `runtime` | `blocked` | no | None of its builds can run on this machine. |
+| `runtime` | `unknown` | no | No runtime by that name is defined. |
+| `runtime` | `moved` | no | It was built in another data root and moved here. |
+| `runtime` | `newer_format` | no | A newer version of the app installed it; it is left as it is. |
+| `runtime` | `locked` | yes | Another process is installing or removing it. |
+| `runtime` | `busy` | yes | Another runtime is being installed; they install one at a time. |
+| `runtime` | `in_use` | yes | A run is using it. |
+| `runtime` | `no_uv` | no | uv was not found. |
+| `runtime` | `wrong_build` | no | Only the build this machine runs is installed. |
+| `runtime` | `unsafe_path` | no | Its folder is not a runtime folder in the data root; nothing was deleted. |
+| `runtime` | `install_failed` | yes | A step of the install failed; installing again resumes it. |
+| `graph` |  | no | The graph cannot run; `problems` says why. |
+| `graph` | `busy` | yes | Another run is going; runs go one at a time. |
+| `root` |  | no | The engine cannot use this data root; nothing under it was changed. |
+| `root` | `newer_layout` | no | A newer version of the app laid it out. |
+| `root` | `unreadable` | no | Its root file cannot be read, or does not say its format. |
+| `request` |  | no | The request was refused before any work began. |
+| `request` | `unknown_method` | no | The engine has no such method. |
+| `request` | `refused` | no | The app refused it: an unknown page, or a method or params not allowed. |
+| `request` | `not_running` | yes | The engine is not running, or stopped while answering. |
+| `request` | `timed_out` | yes | The engine did not answer in time. |
+| `app` |  | no | The app could not start the engine. |
+| `app` | `no_uv` | no | uv was not found. |
+| `app` | `start_failed` | no | The engine exited before it was ready. |
+| `engine` |  | no | A bug in the engine itself, with its trace; never blamed on a node. |
+
+`oom` is retried once with a strictly smaller fit, in a new process for a runtime node; not for a
+node without a memory model, tried anyway, or with the fit off. `died` says when the exit code means
+the system ran out of memory. A value whose facets do not fit the port it reaches is no node's
+fault: there is no `node.failed`, and `run.failed` names the `edge` (`from` and `to`). A bug in the
+engine itself is never blamed on a node: kind `engine`, with its trace in `detail`.
 
 ## What comes next
 

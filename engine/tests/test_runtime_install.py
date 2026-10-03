@@ -143,24 +143,24 @@ def test_a_changed_lock_makes_a_runtime_out_of_date(
     lock.write_bytes(original + b"# changed after the install\n")
 
     [row] = manager.list()["runtimes"]
-    assert row["status"] == "out of date"
+    assert row["status"] == "out_of_date"
     with pytest.raises(runtimes.RuntimeMissing) as caught:
         manager.python_for("tiny")
-    assert caught.value.reason == "out of date"
+    assert caught.value.reason == "out_of_date"
     assert "Install it again to rebuild it" in str(caught.value)
 
     lock.write_bytes(original)
     assert manager.list()["runtimes"][0]["status"] == "installed"
     definition = tiny / "runtime.json"
     definition.write_text(definition.read_text(encoding="utf-8").replace('"on"', '"off"'), encoding="utf-8")
-    assert manager.list()["runtimes"][0]["status"] == "out of date"
+    assert manager.list()["runtimes"][0]["status"] == "out_of_date"
 
     done = manager.install("tiny")  # asked: rebuilt
     assert done is not None and manager.list()["runtimes"][0]["status"] == "installed"
 
     stand_in = tiny / "stand-ins" / "tinyext" / "__init__.py"
     stand_in.write_text(stand_in.read_text(encoding="utf-8") + "FIXED = True\n", encoding="utf-8")
-    assert manager.list()["runtimes"][0]["status"] == "out of date"
+    assert manager.list()["runtimes"][0]["status"] == "out_of_date"
 
 
 def test_a_runtime_copied_to_another_root_reads_as_moved_and_installs_again(
@@ -210,7 +210,7 @@ def test_remove_deletes_only_that_runtime(tmp_path: Path, tiny: Path, uv_exe: st
     assert not (data / "runtimes" / "tiny").exists()
     assert all(path.read_text(encoding="utf-8") == "keep" for path in keep)
     assert sorted(p.name for p in python_home.iterdir()) == pythons_before  # the venv's link was not followed
-    assert manager.list()["runtimes"][0]["status"] == "not installed"
+    assert manager.list()["runtimes"][0]["status"] == "not_installed"
     assert manager.remove("tiny") == {"runtime": "tiny", "removed": None}
     with pytest.raises(runtimes.RuntimeMissing, match="No runtime called 'elsewhere'"):
         manager.remove("elsewhere")
@@ -245,7 +245,7 @@ def test_a_failure_before_the_marker_leaves_no_marker(
     assert failed["message"] == "uv pip freeze failed (exit 2)." and failed["detail"] == "simulated"
     env = tmp_path / "data" / "runtimes" / "tiny" / "cpu"
     assert (env / "pyvenv.cfg").is_file() and not (env / runtime_install.MARKER).exists()
-    assert manager.list()["runtimes"][0]["status"] == "not installed"
+    assert manager.list()["runtimes"][0]["status"] == "not_installed"
 
     monkeypatch.undo()
     assert manager.install("tiny") is not None  # installing again finishes it
@@ -292,7 +292,7 @@ def test_without_uv_an_install_is_refused_and_listing_still_works(tmp_path: Path
     manager = runtimes.Runtimes(tmp_path / "data", [tiny.parent], uv=None, profile=lambda: NO_GPU)
     with pytest.raises(runtimes.InstallRefused, match="uv was not found"):
         manager.begin_install("tiny")
-    assert manager.list()["runtimes"][0]["status"] == "not installed"
+    assert manager.list()["runtimes"][0]["status"] == "not_installed"
 
 
 # A node that runs in the tiny runtime and reports where it is: which Python, which packages, its
@@ -383,9 +383,9 @@ def test_a_node_whose_runtime_is_not_installed_fails_with_the_reason(
     events = Events()
     result = scheduler.run(graph, events.append)
     assert result.status == "failed" and result.error is not None
-    assert (result.error["kind"], result.error["reason"]) == ("runtime", "not installed")
+    assert (result.error["kind"], result.error["reason"]) == ("runtime", "not_installed")
     [failed] = events.of("node.failed")
-    assert failed["reason"] == "not installed"
+    assert failed["reason"] == "not_installed"
     assert "install its cpu build first" in failed["message"]
 
 

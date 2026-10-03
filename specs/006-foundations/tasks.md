@@ -18,7 +18,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 6. `app/main/boot.js`: Electron's user data, session data, crash dumps and log path under
   the root, before the single-instance lock (AC3).
 - [x] 7. The footprint test, in CI on Windows and Linux (AC2).
-- [ ] 8. `errors.py` declares every kind and reason; failures carry kind, reason, message, next
+- [x] 8. `errors.py` declares every kind and reason; failures carry kind, reason, message, next
   and retry; one `Stopped`; runtime reasons in snake_case; `main.js` returns errors as values; the
   architecture doc's table, held equal by a test (AC6). A facet mismatch found at run time gets its
   own kind, reported against the edge rather than blamed on the node that receives it.

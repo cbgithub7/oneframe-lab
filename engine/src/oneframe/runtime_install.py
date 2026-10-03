@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from oneframe import archives
+from oneframe.errors import Failure, Stopped
 from oneframe.files import format_of, remove_tree, write_json
 
 if TYPE_CHECKING:
@@ -68,13 +69,16 @@ ShouldStop = Callable[[], bool]
 STEPS = ("marker", "python", "sync", "sources", "stand-ins", "paths", "freeze", "record")
 
 
-class InstallStopped(RuntimeError):
-    """Stop was pressed. Nothing is lost: installing again resumes."""
+class InstallFailed(Failure):
+    """A step of the install failed (`install_failed`: installing again resumes it), or the
+    environment is one this engine must not touch (`newer_format`). Stop raises Stopped, and
+    nothing is lost then either."""
 
+    kind = "runtime"
 
-class InstallFailed(RuntimeError):
-    def __init__(self, message: str, detail: str = ""):
-        super().__init__(message)
+    def __init__(self, message: str, detail: str = "", reason: str = "install_failed"):
+        nexts = {"install_failed": "Install again: it picks up where it stopped."}
+        super().__init__(message, reason=reason, next=nexts.get(reason))
         self.detail = detail
 
 
@@ -186,7 +190,7 @@ def run_step(
     try:
         while True:
             if should_stop():
-                raise InstallStopped()
+                raise Stopped()
             try:
                 line = lines.get(timeout=0.2)
             except queue.Empty:
@@ -246,7 +250,7 @@ def install(
     uv_home: Path | None = None,
     opener: Callable[..., Any] = urllib.request.urlopen,
 ) -> dict[str, Any]:
-    """Build `runtime`'s `build` under the data root. Raises InstallStopped or InstallFailed; the
+    """Build `runtime`'s `build` under the data root. Raises Stopped or InstallFailed; the
     marker exists only when this returns."""
     started = time.monotonic()
     uv_home = uv_home or data / "uv"
@@ -256,7 +260,7 @@ def install(
 
     def step(name: str, message: str) -> None:
         if should_stop():
-            raise InstallStopped()
+            raise Stopped()
         emit(
             {
                 **base,
@@ -280,7 +284,9 @@ def install(
     old = read_marker(env)
     problem = marker_problem(env, old) if old is not None else None
     if problem == "newer_format":
-        raise InstallFailed(f"{env} was installed by a newer version of the app; it is left as it is.")
+        raise InstallFailed(
+            f"{env} was installed by a newer version of the app; it is left as it is.", reason="newer_format"
+        )
     if problem == "moved":
         remove_tree(env)  # its scripts and links point into the root it was built in
     (env / MARKER).unlink(missing_ok=True)
@@ -340,8 +346,6 @@ def install(
             archive = archives.download(
                 source.url, source.sha256, downloads / source.sha256, progress, should_stop, opener
             )
-        except archives.Stopped as exc:
-            raise InstallStopped() from exc
         except (archives.ArchiveError, OSError) as exc:
             raise InstallFailed(f"The source {source.name} could not be fetched: {exc}") from exc
         if target.exists():

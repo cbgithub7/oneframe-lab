@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import child
+from oneframe.errors import Failure, Stopped
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(child.__file__).resolve()
@@ -36,14 +37,21 @@ Emit = Callable[[dict[str, Any]], None]
 ShouldStop = Callable[[], bool]
 
 
-class NodeError(RuntimeError):
-    """A node ended without its outputs. `kind` is oom / fetch / missing / node / error / died.
-    `peaks` are what the run had used when it ended (`peak_reserved_mb`, `peak_vram_mb`,
-    `peak_ram_mb`), so a failed attempt can be reported and learned from."""
+class NodeError(Failure):
+    """A node ended without its outputs. `kind` is a declared kind (errors.py): oom, memory,
+    fetch, missing, node, error, died or contract. `peaks` are what the run had used when it ended
+    (`peak_reserved_mb`, `peak_vram_mb`, `peak_ram_mb`), so a failed attempt can be reported and
+    learned from."""
 
-    def __init__(self, kind: str, message: str, detail: str = "", peaks: dict[str, Any] | None = None):
-        super().__init__(message)
-        self.kind = kind
+    def __init__(
+        self,
+        kind: str,
+        message: str,
+        detail: str = "",
+        peaks: dict[str, Any] | None = None,
+        next: str | None = None,
+    ):
+        super().__init__(message, next=next, kind=kind)
         self.detail = detail
         self.peaks = dict(peaks or {})
 
@@ -63,18 +71,14 @@ def died_message(code: int | None, platform: str = sys.platform) -> str:
     return text
 
 
-class Stopped(RuntimeError):
-    """Stop was pressed."""
-
-
 class EngineExecutor:
     """Runs a node in the engine's process. Stop is cooperative: the node checks ctx.stopped()."""
 
     def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
         try:
             return child.run_node(job, emit, should_stop)
-        except child.Stopped as exc:
-            raise Stopped() from exc
+        except Stopped:
+            raise
         except Exception as exc:
             kind = child.classify(exc)
             raise NodeError(kind, f"{type(exc).__name__}: {exc}", _trace()) from exc
@@ -296,6 +300,8 @@ class ProcessExecutor:
                     proc.stdin.close()
             if done is not None:
                 return done
+            if failed is not None and failed.get("kind") == "stopped":
+                raise Stopped()  # the node stopped itself, as ctx.stopped() told it to
             if failed is not None:
                 raise NodeError(
                     str(failed.get("kind") or "error"),

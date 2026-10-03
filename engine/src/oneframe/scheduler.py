@@ -11,8 +11,11 @@ Events, in order, for the app (all carry `run`):
     node.step_oom  step, stage, way, next, message (ctx.fallbacks moved to its next way)
     node.done      step, seconds, peaks, made_with, fit, outputs
     node.oom       step, attempt, peaks, message  (before the one retry, or the failure)
-    node.failed    step, kind, message, fits
+    node.failed    step, node, kind, reason, message, next, retry, detail, fits, peaks
     run.done | run.failed | run.stopped
+
+A failure carries a declared kind and reason (errors.py). A value whose facets do not fit the port
+it reaches is no node's fault: there is no node.failed, and run.failed names the edge.
 
 Before a node's model loads, the engine fits it to the memory this machine has free (memory.py):
 the device, the precision and the settings the person left alone. Out of memory is answered once,
@@ -20,7 +23,8 @@ with a fit strictly smaller than the one that ran out, in a new process for a ru
 
 Values are checked where they cross a port: a node's declared outputs against its manifest
 (every output present, every facet stated, each from the allowed values), and each input against
-what the consumer accepts, because an output that leaves a facet open is only known at run time.
+what the consumer accepts, because an output that leaves a facet open is only known at run time
+(kind `edge`).
 Trust flows with the value: an output that does not state its trust inherits the weakest trust of
 its inputs, so a mesh built from synthetic views never comes out labelled measured.
 """
@@ -38,7 +42,7 @@ from typing import Any
 from oneframe import memory, ports
 from oneframe.cache import Cache
 from oneframe.child import Value
-from oneframe.errors import ContractError
+from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
 from oneframe.manifest import Manifest
@@ -184,21 +188,13 @@ class Scheduler:
                 result.status = "stopped"
                 say({"event": "run.stopped", "step": step.id})
                 return result
+            except EdgeMismatch as exc:  # no node's fault: reported against the edge, not the step
+                result.status = "failed"
+                result.error = exc.to_json(edge=exc.edge)
+                say(dict(result.error, event="run.failed"))
+                return result
             except (NodeError, RuntimeMissing, ContractError) as exc:
-                kind = (
-                    exc.kind
-                    if isinstance(exc, NodeError)
-                    else ("runtime" if isinstance(exc, RuntimeMissing) else "contract")
-                )
-                error = {
-                    "step": step.id,
-                    "node": step.manifest.id,
-                    "kind": kind,
-                    "message": str(exc),
-                    "detail": getattr(exc, "detail", ""),
-                }
-                if isinstance(exc, RuntimeMissing):
-                    error["reason"] = exc.reason  # unknown, blocked, installing, not installed, out of date
+                error = exc.to_json(step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""))
                 if trail.fits:
                     error["fits"] = [f.to_json() for f in trail.fits]
                 if trail.peaks:
@@ -206,7 +202,7 @@ class Scheduler:
                 result.status = "failed"
                 result.error = error
                 say(dict(error, event="node.failed"))
-                say({"event": "run.failed", "step": step.id, "kind": kind, "message": str(exc)})
+                say({"event": "run.failed", **exc.to_json(step=step.id)})
                 return result
             result.outputs[step.id] = outputs
             result.records[step.id] = record
@@ -226,7 +222,8 @@ class Scheduler:
             value = done[src][src_port]
             why = ports.value_mismatch(value.facets, step.manifest.inputs[port])
             if why:
-                raise ContractError(f"{step.id}.{port}: {why} (from {src}.{src_port})")
+                source, target = f"{src}.{src_port}", f"{step.id}.{port}"
+                raise EdgeMismatch(f"{source} -> {target}: {why}", source, target)
             inputs[port] = value
         return inputs
 
