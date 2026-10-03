@@ -556,6 +556,6 @@ reversing a decision.
 - nothing names the checkpoint param without `weights_by`;
 - the methods and events were undefined, and slow work blocked the engine.
 
-The review lists them, with the should-fix items and what to cut. The spec is revised once the
-owner settles its scope (the review's decision 2).
+The review lists them, with the should-fix items and what to cut. The owner then cut the spec to
+its core (the review's decision 2), and it was rewritten on 2026-10-03 with the blockers fixed.
 
