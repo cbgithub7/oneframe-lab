@@ -297,3 +297,7 @@ The exact steps, on Windows (`/local-session`), each one's output kept for the r
 1. **The storage rule's exceptions** (2026-10-03). "Nothing in the repo" is kept, except a file the
    person names (such as a bench report written with `--out` into `specs/<id>/reports/`) and a dev
    checkout's engine environment (`engine/.venv`). [AGENTS.md](../../AGENTS.md) says so.
+2. **The two changed tests** (2026-10-04, approved). `test_a_store_file_that_cannot_be_read_starts_empty`
+   now asserts that learned memory in a newer format is left as it is (requirement 3), and still that an
+   unreadable file is replaced; the runtime tests compare the snake_case reasons (requirement 5). Both
+   follow from this spec's requirements, and neither checks less than before.
