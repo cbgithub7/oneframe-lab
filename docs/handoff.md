@@ -46,7 +46,9 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
       (`app/main/paths.js`) from a shared table; the dev root is `OneframeLab-dev`
       (`oneframe-lab-dev` on Linux), and only the app chooses the packaged one;
     - nothing written outside it but the exceptions AGENTS.md names (the graphics driver's shader
-      cache; on Linux, Chromium's single-instance socket in the system temporary folder). The
+      cache; on Linux, Chromium's single-instance socket in the system temporary folder), and two
+      gaps listed below (uv's lock from the npm tools; on Windows, a library cache outside the
+      variables `child_env` sets). The
       engine's side is proved by a footprint test on both systems, library caches, temporary files
       and bytecode included; Electron's folders by a unit test of `app/main/boot.js` and a headless
       run on Linux, with the real app on Windows still to run (spec 006's Verification);
@@ -153,7 +155,7 @@ Done before this order:
 Known from the review, to be settled by the specs above or later ones:
 
 - **Not yet taken on from the [review of 2026-10-02](reviews/2026-10-02.md)** (spec 006 answered
-  section 8B, the storage problems of section 5, and items 4.4 and 4.6 to 4.8):
+  section 8B, section 5's escapes from the root and shared roots, and items 4.4 and 4.6 to 4.8):
     - 4.2 (High): requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop`;
     - the rest of 4.5: two lists of variables kept from children (`executors.py`,
@@ -163,6 +165,13 @@ Known from the review, to be settled by the specs above or later ones:
       (spec 005);
     - before spec 004: an injected executor provider, and node code loaded as a package named for
       the node; today two engine nodes with same-named helpers can run each other's code;
+    - before spec 004 too: split the child into a once-per-process bootstrap and per-job code,
+      joined by a typed job (006's Out of scope);
+    - 4.9: a machine-readable protocol contract, and consistent event names (006's Out of scope);
+    - 4.10 also: `cache.py` imports the child's `Value`;
+    - the low tier: `allow_network` is read and never set; the test guard notices only deleted
+      test names; the docs check proves only that paths exist;
+    - section 5, with packaging: a chosen root is not checked for long paths, OneDrive or FAT32;
     - section 3: the build-versus-adopt decision against ComfyUI, still unwritten.
 - **From the [review of spec 006](reviews/2026-10-04-spec-006.md)**, small and open:
     - the npm tools (`bench:runtime`, `bench:fit`, `diagnose`) leave uv's lock file in the system

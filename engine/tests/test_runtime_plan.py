@@ -137,6 +137,17 @@ def test_a_runtime_cannot_set_what_the_engine_sets_or_removes_for_a_run(
     ]
 
 
+def test_a_runtime_cannot_move_a_runs_caches_out_of_the_data_root(
+    make_runtime: MakeRuntime, runtime_root: Path
+) -> None:
+    make_runtime(_definition(env={"HF_HOME": "/home/ana/hf", "HF_HUB_CACHE": "/home/ana/hub"}))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems == [
+        "env sets HF_HOME, HF_HUB_CACHE, which the engine sets or removes for every run "
+        "(a run's caches, temporary files and bytecode kept under the data root)"
+    ]
+
+
 def test_a_reserved_name_is_refused_in_any_case(make_runtime: MakeRuntime, runtime_root: Path) -> None:
     """Windows treats hf_token and HF_TOKEN as one variable."""
     make_runtime(_definition(env={"torch_force_no_weights_only_load": "1"}))

@@ -248,3 +248,10 @@ def test_redaction_catches_urls_and_wsl_spellings() -> None:
     assert "John%20Smith" not in got and "Users/John Smith" not in got and "USERS/JOHN SMITH" not in got
     assert "Users\\John Smith" not in got
     assert got.count("<user>") == 4 and got.endswith("John Smith himself is kept")
+    # As Node's pathToFileURL writes them: a space and an accent encoded, ' ( ) left as they are
+    for home, url in (
+        ("C:\\Users\\Mary O'Neil", "file:///C:/Users/Mary%20O'Neil/app/main/main.js:39"),
+        ("C:\\Users\\José (Work)", "file:///C:/Users/Jos%C3%A9%20(Work)/app/main/main.js:39"),
+        ("C:\\Users\\José (Work)", "file:///C:/Users/Jos%c3%a9%20%28Work%29/x"),  # all encoded, lower case
+    ):
+        assert diagnose.redact(url, [home]).startswith("file:///C:/Users/<user>/"), url

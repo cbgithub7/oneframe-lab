@@ -73,9 +73,11 @@ name.
 output keyed by what produced it, changing a parameter re-runs only what follows it, and two
 recipes that start the same way share their start.
 
-**One data root.** Everything the app, the engine, a runtime child or a tool writes lies under one
-folder a person can see and remove: library caches, temporary files, bytecode and Electron's
-folders included, which a test proves by pointing every home and temporary folder into a sandbox.
+**One data root.** Everything the app, the engine and a runtime child write lies under one folder a
+person can see and remove, library caches, temporary files, bytecode and Electron's folders
+included, but for the exceptions AGENTS.md names. A footprint test proves the engine's side by
+pointing every home and temporary folder into a sandbox; Electron's folders rest on a unit test of
+`app/main/boot.js` and a headless run. The open gaps are listed in the handoff.
 Every kept file says its format, and an older app leaves a newer one alone. A format goes up only
 when an older app would misread or damage the file, and the change that raises it brings the
 migration; a new file or folder is not a format change. Processes on one root

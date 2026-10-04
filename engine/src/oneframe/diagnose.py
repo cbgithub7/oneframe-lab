@@ -24,7 +24,6 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 from oneframe import __version__, hardware
 from oneframe.layout import Layout, default_root
@@ -55,10 +54,10 @@ def _home_pattern(home: str) -> re.Pattern[str] | None:
         # C:, or the same drive as WSL shows it (/mnt/c), or no drive at all
         drive = f"(?:{re.escape(letter)}|{_SEP}mnt{_SEP}{re.escape(letter[0])})?"
     prefix = _BOUNDARY_BEFORE + drive + "".join(_SEP + re.escape(u) for u in users) + _SEP
-    # The name as written, and as a file:// URL writes it (a stack trace's John%20Smith)
-    names = sorted({user, quote(user, safe=""), quote(user)}, key=len, reverse=True)
-    spelled = "|".join(re.escape(name) for name in names)
-    return re.compile(f"({prefix})(?:{spelled}){_BOUNDARY_AFTER}", re.IGNORECASE)
+    # Each character as written or as its UTF-8 %XX bytes, in any mix: a file:// URL in a stack
+    # trace encodes a space and an accented letter but leaves an apostrophe (Mary%20O'Neil).
+    spelled = "".join(f"(?:{re.escape(c)}|{''.join(f'%{b:02X}' for b in c.encode('utf-8'))})" for c in user)
+    return re.compile(f"({prefix}){spelled}{_BOUNDARY_AFTER}", re.IGNORECASE)
 
 
 def redact(text: str, homes: Iterable[str]) -> str:

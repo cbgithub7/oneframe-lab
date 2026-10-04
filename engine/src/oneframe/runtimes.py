@@ -33,7 +33,7 @@ from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.errors import Failure, Stopped, failure
-from oneframe.executors import reserved_env
+from oneframe.executors import reserved_env, reserved_why
 from oneframe.files import FileLock, lock_file
 from oneframe.journal import journalled
 from oneframe.layout import Layout
@@ -394,7 +394,7 @@ def parse(data: dict[str, Any], folder: Path, source: str = DEFINITION) -> Runti
     if reserved:
         problems.append(
             f"env sets {', '.join(reserved)}, which the engine sets or removes for every run "
-            "(hub libraries offline, no hub token or endpoint, torch's weights_only loading on)"
+            f"({reserved_why(reserved)})"
         )
     probe = data.get("probe")
     if probe is not None:

@@ -62,7 +62,11 @@ async function startEngine() {
   const client = new EngineClient({ ...spec, requestTimeoutMs: 60_000 });
   engine = client;
   client.on("log", (line) => log.write("engine", line));
-  client.on("event", (event) => send(event));
+  client.on("event", (event) => {
+    // Kept before it is sent, so a page that subscribes a moment later still learns why.
+    if (event.event === "engine.failed") down = new EngineError(String(event.message), event).failure;
+    send(event);
+  });
   let started = false;
   client.on("exit", (info) => {
     log.write("main", `engine exited: ${JSON.stringify(info)}`);

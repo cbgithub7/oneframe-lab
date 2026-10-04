@@ -138,6 +138,7 @@ OVERRIDING_CACHES = (
     "HF_HUB_CACHE",
     "HUGGINGFACE_HUB_CACHE",
     "HF_ASSETS_CACHE",
+    "HUGGINGFACE_ASSETS_CACHE",
     "HF_DATASETS_CACHE",
     "HF_MODULES_CACHE",
     "HF_XET_CACHE",
@@ -160,6 +161,16 @@ _ENGINE_PYTHON = {
     "CONDA_DEFAULT_ENV",
     "PYTHONPYCACHEPREFIX",
 }
+
+
+def reserved_why(names: list[str]) -> str:
+    """Why the engine keeps these names to itself, in words for a runtime's author."""
+    why = []
+    if any(name.upper() not in {n.upper() for n in ROOT_ENV} for name in names):
+        why.append("hub libraries offline, no hub token or endpoint, torch's weights_only loading on")
+    if any(name.upper() in {n.upper() for n in ROOT_ENV} for name in names):
+        why.append("a run's caches, temporary files and bytecode kept under the data root")
+    return "; ".join(why)
 
 
 def reserved_env(name: str) -> bool:

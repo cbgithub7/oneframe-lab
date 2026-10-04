@@ -53,9 +53,9 @@ def test_a_persons_own_hub_and_triton_caches_never_reach_a_child(tmp_path: Path)
     person = {**os.environ, **{name: f"/home/ana/elsewhere/{name.lower()}" for name in OVERRIDING_CACHES}}
     defined = {"HF_HUB_CACHE": "/runtime/says/so", "transformers_cache": "/runtime/too"}
     env = child_env(person, defined, caches=tmp_path / "caches", tmp=tmp_path / "job")
-    assert {"HF_HUB_CACHE", "TRANSFORMERS_CACHE", "HF_MODULES_CACHE", "TRITON_CACHE_DIR"} <= set(
-        OVERRIDING_CACHES
-    )
+    named = {"HF_HUB_CACHE", "TRANSFORMERS_CACHE", "HF_MODULES_CACHE", "TRITON_CACHE_DIR"}
+    legacy = {"HUGGINGFACE_HUB_CACHE", "HUGGINGFACE_ASSETS_CACHE", "PYTORCH_TRANSFORMERS_CACHE"}
+    assert named | legacy <= set(OVERRIDING_CACHES)
     assert not [name for name in env if name.upper() in OVERRIDING_CACHES]
     assert env["HF_HOME"] == str(tmp_path / "caches" / "huggingface")
 

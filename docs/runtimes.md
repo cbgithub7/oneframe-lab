@@ -96,8 +96,9 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
 - `sources`: upstream code that is not on an index, as a pinned archive. Its sha256 is checked,
   every file in it must stay inside its folder, and `paths` inside it are made importable.
 - `env`: variables set for every node run in this runtime. It may not set what the engine sets or
-  removes for every run: the hub libraries' offline flags, hub tokens and endpoints, and torch's
-  `weights_only` switches.
+  removes for every run: the hub libraries' offline flags, hub tokens and endpoints, torch's
+  `weights_only` switches, and what keeps a run under the data root (the library caches, the
+  temporary folder, bytecode, and the hub and Triton cache variables that would override them).
 - `probe`: a function the runtime report runs inside the runtime.
 
 ## Checks

@@ -4,9 +4,9 @@ Status: implemented 2026-10-03, in review (every task ticked; the local checks b
 Owner approval: 2026-10-03
 
 Comes before spec 003's core, which builds on it. It answers [the review of 2026-10-02](../../docs/reviews/2026-10-02.md):
-section 8B, the storage problems of section 5, and items 4.4, 4.6 to 4.8 and part of 4.5. The rest
-of section 4 is tracked in the [handoff](../../docs/handoff.md). Reviewed on 2026-10-04
-([review](../../docs/reviews/2026-10-04-spec-006.md)).
+section 8B, section 5's escapes from the root and shared roots, and items 4.4, 4.6 to 4.8 and
+part of 4.5. The rest of section 4 is tracked in the [handoff](../../docs/handoff.md). Reviewed on
+2026-10-04 ([review](../../docs/reviews/2026-10-04-spec-006.md)).
 
 ## Problem
 
@@ -284,5 +284,9 @@ None.
    recommendation; [AGENTS.md](../../AGENTS.md) says so). The GPU process writes the driver's shader
    cache where the driver keeps it (`~/.cache/mesa_shader_cache` with Mesa, `~/.cache/nvidia` or
    `%LOCALAPPDATA%\NVIDIA\DXCache` with NVIDIA, `D3DSCache` on Windows). The driver owns, caps and
-   shares it with every program on the machine, and the app cannot move it: the GPU process starts
-   before the app's code runs.
+   shares it with every program on the machine. The app's own code cannot redirect it: on Linux the
+   GPU process forks from a zygote that starts before `main.js`, so a variable set there never
+   reaches it, and on Windows the driver alone decides where its caches go. On Linux a launcher,
+   or the app relaunching itself, could set `MESA_SHADER_CACHE_DIR` (and, untested, NVIDIA's
+   `__GL_SHADER_DISK_CACHE_PATH`) before Electron starts; the review first said it could not be
+   moved, and this correction is put to the owner.
