@@ -291,4 +291,5 @@ None.
    reaches it, and on Windows the driver alone decides where its caches go. On Linux a launcher,
    or the app relaunching itself, could set `MESA_SHADER_CACHE_DIR` (and, untested, NVIDIA's
    `__GL_SHADER_DISK_CACHE_PATH`) before Electron starts; the review first said it could not be
-   moved, and this correction is put to the owner.
+   moved. Told this, the owner kept the exception (2026-10-04): the driver caps the cache, every
+   program shares it, and a relaunch would cover only part of Linux.
