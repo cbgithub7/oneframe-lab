@@ -270,6 +270,13 @@ The exact steps, on Windows (`/local-session`), each one's output kept for the r
   child's undeclared kind is reported as `error`; a node in the engine's process re-imports its
   helpers, as its key says; the tools' npm scripts run Python with `-B`, so they write no bytecode
   into the checkout.
+- **A `TMPDIR` too long for Chromium's socket is set aside while the lock is asked for**
+  (2026-10-04, with the owner's decision 3). Chromium aborts the app at start, with nothing
+  JavaScript can catch, when `$TMPDIR/scoped_dirXXXXXX/SingletonSocket` reaches 108 bytes, which a
+  `TMPDIR` of 75 bytes did before this. `requestLock` in `app/main/boot.js` gives Chromium `/tmp` for
+  the lock when the inherited `TMPDIR` does not fit with 16 bytes to spare, and gives it back after;
+  a run with an 89-byte `TMPDIR` started, where the old code aborted. An Electron upgrade re-checks
+  the 33-byte suffix ([versions.md](../../docs/versions.md)).
 - **The page receives a failed request as a rejected plain object** (task 8): main.js answers
   every request with `{ok, result}` or `{ok, error}` (`app/main/door.js`), and the preload turns
   the second into a rejection with the failure itself, since Electron passes on only the message of
@@ -285,12 +292,7 @@ The exact steps, on Windows (`/local-session`), each one's output kept for the r
 
 ## Open questions
 
-1. **Chromium's single-instance socket on Linux** (found in task 6, by running the app). While the
-   app runs, Chromium keeps the socket behind the single-instance lock in a folder it makes in the
-   system temporary folder (`scoped_dir*`), linked from `electron/`, and removes it at exit. It
-   cannot move under the root: a Unix socket's path must be short (108 bytes), and a root's may be
-   longer. Windows uses no file for this. Is this an accepted exception to "nothing in temp"? Until
-   answered, the code leaves it as Chromium does.
+None.
 
 ## Owner's decisions
 
@@ -301,3 +303,13 @@ The exact steps, on Windows (`/local-session`), each one's output kept for the r
    now asserts that learned memory in a newer format is left as it is (requirement 3), and still that an
    unreadable file is replaced; the runtime tests compare the snake_case reasons (requirement 5). Both
    follow from this spec's requirements, and neither checks less than before.
+3. **Chromium's files in the system temporary folder on Linux** (2026-10-04, accepted as an
+   exception; [AGENTS.md](../../AGENTS.md) says so). While the app runs, Chromium keeps the socket
+   behind the single-instance lock in a folder it makes in `$TMPDIR` or `/tmp` (`scoped_dir*`, linked
+   from `electron/`), removed at a clean exit and left by a crash until the system cleans its
+   temporary folder; it also makes and deletes one temporary file there. Windows uses no file for the
+   lock. A study on Electron 44.4.5 (task 6's open question, answered with the source and real runs)
+   found the socket *can* be moved, by setting `TMPDIR` before the lock, contrary to what this spec
+   first said; it stays where Chromium puts it because a socket path over 107 bytes aborts the app at
+   start (a root under `cache/electron/tmp` leaves only 55 bytes for the root's own path), and a root
+   on a network file system may not hold a socket at all, which would make the app quit without a word.

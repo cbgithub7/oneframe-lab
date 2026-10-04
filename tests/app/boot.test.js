@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { PAGE_PARTITION, boot } from "../../app/main/boot.js";
+import { PAGE_PARTITION, boot, requestLock, socketFolder } from "../../app/main/boot.js";
 
 /** @param {boolean} isPackaged */
 function recordingApp(isPackaged) {
@@ -71,4 +71,32 @@ test("the packaged app and a dev checkout get different roots, and so different 
 
 test("the page's session lives in memory", () => {
   assert.ok(!PAGE_PARTITION.startsWith("persist:"));
+});
+
+test("the single-instance socket's folder is the inherited TMPDIR only when the socket's path fits", () => {
+  assert.equal(socketFolder("/tmp"), "/tmp");
+  assert.equal(socketFolder("/run/user/1000"), "/run/user/1000");
+  assert.equal(socketFolder("/" + "a".repeat(57)), "/" + "a".repeat(57)); // 58 bytes: fits, with the margin
+  assert.equal(socketFolder("/" + "a".repeat(58)), "/tmp"); // 59 bytes: Chromium would abort at a later length
+  assert.equal(socketFolder("/" + "é".repeat(29)), "/tmp"); // 30 characters, but 59 bytes: bytes count
+  assert.equal(socketFolder("relative/tmp"), "/tmp");
+  assert.equal(socketFolder(undefined), "/tmp");
+});
+
+test("on Linux a TMPDIR too long for the socket is set aside only while the lock is asked for", () => {
+  const long = "/" + "t".repeat(90);
+  for (const [platform, given, during] of [
+    ["linux", long, "/tmp"],
+    ["win32", long, long], // Windows uses no file for the lock
+    ["linux", "/tmp/short", "/tmp/short"],
+    ["linux", undefined, undefined], // Chromium uses /tmp itself
+  ]) {
+    /** @type {NodeJS.ProcessEnv} */
+    const env = given === undefined ? {} : { TMPDIR: given };
+    let seen = "not asked";
+    const app = { requestSingleInstanceLock: () => { seen = /** @type {any} */ (env.TMPDIR); return true; } };
+    assert.equal(requestLock(app, env, String(platform)), true);
+    assert.equal(seen, during, `${platform} ${given}`);
+    assert.equal(env.TMPDIR, given, `${platform} ${given}: given back after the lock`);
+  }
 });
