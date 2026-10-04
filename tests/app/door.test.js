@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 import { answer } from "../../app/main/door.js";
 import { EngineClient } from "../../app/main/engine.js";
-import { APP_FAILURES } from "../../app/main/failures.js";
+import { APP_FAILURES, appFailure } from "../../app/main/failures.js";
 import { REPO_ROOT } from "../../app/main/paths.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +62,9 @@ test("the door refuses what the page may not ask, as values", async () => {
   const down = await answer(null, PAGE, PAGE, "nodes.list", {});
   assert.deepEqual(down, { ok: false, error: { kind: "request", reason: "not_running", retry: true,
     message: "The engine is not running.", next: "Wait for it to start." } });
+  // A page that subscribed after the engine failed to start learns why from its first request.
+  const why = appFailure("no_uv", "uv was not found.", "Install uv, or set ONEFRAME_UV to its path.");
+  assert.deepEqual(await answer(null, PAGE, PAGE, "engine.hello", {}, why), { ok: false, error: why });
 });
 
 test("every failure the app reports is one the declaration names, with the same retry", () => {

@@ -14,6 +14,7 @@ import pytest
 from conftest import NO_GPU, Events
 
 from oneframe import diagnose, journal, runtime_install
+from oneframe.cache import Cache
 from oneframe.graph import Graph
 from oneframe.journal import Journal, prune
 from oneframe.layout import Layout
@@ -196,3 +197,54 @@ def test_diagnose_reports_on_a_root_the_engine_refuses_and_changes_nothing(tmp_p
     reports = Layout(data).reports
     after = sorted(p.relative_to(data) for p in data.rglob("*") if reports not in (p, *p.parents))
     assert after == before  # only reports/ was written
+
+
+@pytest.mark.usefixtures("basic_nodes")
+def test_an_engine_crash_is_the_last_line_of_the_runs_journal(
+    tmp_path: Path, scheduler_for: Callable[..., Scheduler], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*_args: object, **_kwargs: object) -> str:
+        raise ValueError("a bug in the engine")
+
+    monkeypatch.setattr(Cache, "key", broken)
+    folder = tmp_path / "journal"
+    graph = Graph.from_json({"version": 1, "nodes": {"i": {"node": "test.image"}}, "edges": []})
+    with pytest.raises(ValueError, match="a bug in the engine"):  # the server reports it to the page
+        scheduler_for(journal_dir=folder).run(graph, lambda _e: None, run_id="r1")
+    last = _journal_events(folder)[-1]
+    assert (last["event"], last["run"], last["kind"]) == ("run.failed", "r1", "engine")
+    assert last["message"] == "ValueError: a bug in the engine" and "Traceback" in last["detail"]
+
+
+def test_a_full_journal_still_keeps_how_the_run_ended(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(journal, "JOURNAL_MAX_BYTES", 400)
+    monkeypatch.setattr(journal, "ENDINGS_MAX_BYTES", 400)
+    kept = Journal(tmp_path, "run-x")
+    for i in range(50):
+        kept.write({"event": "progress", "done": i})  # a fit that reports every iteration
+    kept.write({"event": "node.failed", "kind": "oom", "message": "out of memory"})
+    kept.write({"event": "progress", "done": 51})
+    kept.write({"event": "run.failed", "kind": "oom"})
+    for _ in range(50):
+        kept.write({"event": "run.failed", "kind": "oom", "message": "x" * 40})  # bounded even so
+    kept.close()
+    events = [json.loads(line)["event"] for line in kept.path.read_text(encoding="utf-8").splitlines()]
+    assert events.count("journal.full") == 1
+    assert events[events.index("journal.full") + 1 :][:2] == ["node.failed", "run.failed"]
+    assert "progress" not in events[events.index("journal.full") :]
+    assert kept.path.stat().st_size <= 400 + 400 + 200
+
+
+def test_redaction_catches_urls_and_wsl_spellings() -> None:
+    home = "C:\\Users\\John Smith"
+    text = (
+        "at file:///C:/Users/John%20Smith/oneframe/app/main/main.js:39 "
+        "and /mnt/c/Users/John Smith/.cache and /MNT/C/USERS/JOHN SMITH/x "
+        "and C:\\Users\\John Smith\\AppData; John Smith himself is kept"
+    )
+    got = diagnose.redact(text, [home])
+    assert "John%20Smith" not in got and "Users/John Smith" not in got and "USERS/JOHN SMITH" not in got
+    assert "Users\\John Smith" not in got
+    assert got.count("<user>") == 4 and got.endswith("John Smith himself is kept")

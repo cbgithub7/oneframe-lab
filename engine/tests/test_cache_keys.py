@@ -5,11 +5,13 @@ definition, stand-ins); bytecode does not change it; the same code and runtime g
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import pytest
 from conftest import AMPERE, NO_GPU, Events, MakeNode
 
 from oneframe import runtime_install
@@ -172,3 +174,28 @@ def test_an_engine_node_runs_its_helpers_as_they_are_now(
     assert word() == "old"
     (folder / "fresh_helper_for_keys.py").write_text('WORD = "new, and longer"\n', encoding="utf-8")
     assert word() == "new, and longer"  # a new key, and the new helper, not the one still imported
+
+
+def test_an_edit_that_keeps_the_size_and_time_still_changes_the_key(tmp_path: Path) -> None:
+    manifest = _node(tmp_path)
+    cache = Cache(tmp_path / "cache")
+    helper = manifest.folder / "helper.py"
+    before = cache.key(manifest, {"n": 1}, {})
+    stamp = helper.stat()
+    helper.write_text("X = 2\n", encoding="utf-8")  # same size as "X = 1"
+    os.utime(helper, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))  # as an archive or a sync tool leaves it
+    assert cache.key(manifest, {"n": 1}, {}) != before
+
+
+@pytest.mark.skipif(os.name == "nt", reason="making a symlink needs a privilege on Windows")
+def test_code_in_a_linked_folder_is_in_the_key_and_a_loop_of_links_ends(tmp_path: Path) -> None:
+    manifest = _node(tmp_path)
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "geometry.py").write_text("SCALE = 1\n", encoding="utf-8")
+    (manifest.folder / "shared").symlink_to(shared, target_is_directory=True)
+    (shared / "back").symlink_to(manifest.folder, target_is_directory=True)  # a loop
+    cache = Cache(tmp_path / "cache")
+    before = cache.key(manifest, {"n": 1}, {})
+    (shared / "geometry.py").write_text("SCALE = 2\n", encoding="utf-8")
+    assert cache.key(manifest, {"n": 1}, {}) != before

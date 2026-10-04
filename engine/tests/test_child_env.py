@@ -15,7 +15,14 @@ import pytest
 from conftest import NO_GPU
 
 from oneframe import BUILTIN_NODES_DIR, runtime_install
-from oneframe.executors import LIBRARY_CACHES, ROOT_ENV, ProcessExecutor, child_env, reserved_env
+from oneframe.executors import (
+    LIBRARY_CACHES,
+    OVERRIDING_CACHES,
+    ROOT_ENV,
+    ProcessExecutor,
+    child_env,
+    reserved_env,
+)
 from oneframe.layout import CACHEDIR_TAG, Layout, claim_root, keep_bytecode_under
 from oneframe.manifest import parse
 from oneframe.server import Engine
@@ -38,6 +45,19 @@ def test_the_child_environment_puts_every_cache_and_temporary_folder_under_the_r
     assert "PYTHONPYCACHEPREFIX" not in env  # the engine's own; the child reads its runtime's
     assert {"HF_HOME", "TORCH_HOME", "TMPDIR", "XDG_CACHE_HOME"} <= set(ROOT_ENV)
     assert all(reserved_env(name.lower()) for name in ROOT_ENV)  # no runtime definition sets them
+
+
+def test_a_persons_own_hub_and_triton_caches_never_reach_a_child(tmp_path: Path) -> None:
+    """Each of these overrides HF_HOME or TRITON_HOME: kept, it would let a run read weights from
+    the person's own cache, which Download never fetched, or write outside the root."""
+    person = {**os.environ, **{name: f"/home/ana/elsewhere/{name.lower()}" for name in OVERRIDING_CACHES}}
+    defined = {"HF_HUB_CACHE": "/runtime/says/so", "transformers_cache": "/runtime/too"}
+    env = child_env(person, defined, caches=tmp_path / "caches", tmp=tmp_path / "job")
+    assert {"HF_HUB_CACHE", "TRANSFORMERS_CACHE", "HF_MODULES_CACHE", "TRITON_CACHE_DIR"} <= set(
+        OVERRIDING_CACHES
+    )
+    assert not [name for name in env if name.upper() in OVERRIDING_CACHES]
+    assert env["HF_HOME"] == str(tmp_path / "caches" / "huggingface")
 
 
 def test_uv_never_sees_the_engines_bytecode_prefix() -> None:
@@ -109,6 +129,9 @@ def test_an_engine_gives_each_runtime_node_its_runtimes_cache_folder(tmp_path: P
         assert isinstance(executor, ProcessExecutor)
         assert executor.caches == Layout(tmp_path).runtime_caches / "tiny"
         assert executor.tmp_root == engine.scratch.folder
+        # A runtime node's cache key takes the build and marker hashes from the engine's runtimes;
+        # the scheduler's default (no runtime part) would serve results from before a reinstall.
+        assert engine.scheduler.runtime_key == engine.runtimes.key_for
     finally:
         engine.shutdown()
 

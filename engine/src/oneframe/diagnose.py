@@ -7,7 +7,8 @@ machine learned, and the latest journals and logs, and is written to the root's 
 only thing it writes: the root is read as it is, even one the engine refuses to start on. It holds
 no environment variable. Before it is written, the user's own segment of every path under the
 users folder is removed, in every spelling a path takes on its way into a log (backslashes, forward
-slashes, JSON-escaped, any case, the 8.3 short name), so a user name that is also a word elsewhere
+slashes, JSON-escaped, any case, the 8.3 short name, percent-encoded in a file:// URL, and WSL's
+/mnt/c), so a user name that is also a word elsewhere
 is kept where it is only a word; and Hugging Face tokens (`hf_...`) are scrubbed.
 """
 
@@ -23,6 +24,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from oneframe import __version__, hardware
 from oneframe.layout import Layout, default_root
@@ -49,9 +51,14 @@ def _home_pattern(home: str) -> re.Pattern[str] | None:
     *users, user = parts
     drive = ""
     if users and re.fullmatch(r"[A-Za-z]:", users[0]):
-        drive = f"(?:{re.escape(users.pop(0))})?"
+        letter = users.pop(0)
+        # C:, or the same drive as WSL shows it (/mnt/c), or no drive at all
+        drive = f"(?:{re.escape(letter)}|{_SEP}mnt{_SEP}{re.escape(letter[0])})?"
     prefix = _BOUNDARY_BEFORE + drive + "".join(_SEP + re.escape(u) for u in users) + _SEP
-    return re.compile(f"({prefix}){re.escape(user)}{_BOUNDARY_AFTER}", re.IGNORECASE)
+    # The name as written, and as a file:// URL writes it (a stack trace's John%20Smith)
+    names = sorted({user, quote(user, safe=""), quote(user)}, key=len, reverse=True)
+    spelled = "|".join(re.escape(name) for name in names)
+    return re.compile(f"({prefix})(?:{spelled}){_BOUNDARY_AFTER}", re.IGNORECASE)
 
 
 def redact(text: str, homes: Iterable[str]) -> str:

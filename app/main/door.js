@@ -18,9 +18,11 @@ import { ENGINE_METHODS } from "./methods.js";
  * @param {string} page the URL of the app's own page
  * @param {unknown} method
  * @param {unknown} params
+ * @param {Failure | null} [down] why the engine is not running, when the app knows: a page that
+ *   subscribed after the engine failed to start learns why from its first request
  * @returns {Promise<Answer>}
  */
-export async function answer(engine, sender, page, method, params) {
+export async function answer(engine, sender, page, method, params, down = null) {
   if (sender !== page) return { ok: false, error: appFailure("refused", "Refused: a request from an unknown page.") };
   if (typeof method !== "string" || !ENGINE_METHODS.has(method)) {
     return { ok: false, error: appFailure("refused", `Refused: ${String(method)}`) };
@@ -29,7 +31,7 @@ export async function answer(engine, sender, page, method, params) {
     return { ok: false, error: appFailure("refused", "Refused: params must be an object.") };
   }
   if (!engine || !engine.ready) {
-    return { ok: false, error: appFailure("not_running", "The engine is not running.", "Wait for it to start.") };
+    return { ok: false, error: down ?? appFailure("not_running", "The engine is not running.", "Wait for it to start.") };
   }
   try {
     return { ok: true, result: await engine.request(method, /** @type {Record<string, unknown>} */ (params ?? {})) };

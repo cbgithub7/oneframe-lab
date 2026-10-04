@@ -40,12 +40,12 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import memory, ports
-from oneframe.cache import Cache
+from oneframe.cache import Cache, code_digest
 from oneframe.child import Value
 from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
-from oneframe.journal import journalled, prune_step_logs
+from oneframe.journal import engine_crash, journalled, prune_step_logs
 from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
 from oneframe.registry import Registry
@@ -151,6 +151,7 @@ class Scheduler:
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
         self.runtime_key = runtime_key  # a runtime node's build and marker hashes, for its cache key
         self._runtime_keys: dict[str, dict[str, str] | None] = {}
+        self._code_keys: dict[Path, str] = {}
         self.engine = EngineExecutor()
 
     def _key(self, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]) -> str:
@@ -160,7 +161,9 @@ class Scheduler:
             if name not in self._runtime_keys:
                 self._runtime_keys[name] = self.runtime_key(name)
             runtime = self._runtime_keys[name]
-        return self.cache.key(manifest, values, inputs, runtime)
+        if manifest.folder not in self._code_keys:
+            self._code_keys[manifest.folder] = code_digest(manifest.folder)
+        return self.cache.key(manifest, values, inputs, runtime, self._code_keys[manifest.folder])
 
     def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
         if manifest.run.where == "engine":
@@ -186,7 +189,12 @@ class Scheduler:
         run_id = run_id or uuid.uuid4().hex[:12]
         prune_step_logs(self.log_dir)
         self._runtime_keys = {}  # read once per run: a runtime does not change under a run
-        with journalled(emit, self.journal_dir, f"run-{run_id}") as kept:
+        self._code_keys = {}  # nor does a node's code
+
+        def crashed(exc: BaseException) -> dict[str, Any]:  # what the server reports to the page
+            return engine_crash(exc, event="run.failed", run=run_id)
+
+        with journalled(emit, self.journal_dir, f"run-{run_id}", crashed) as kept:
             return self._run(graph, kept, should_stop, run_id)
 
     def _run(self, graph: Graph, emit: Emit, should_stop: Callable[[], bool], run_id: str) -> RunResult:

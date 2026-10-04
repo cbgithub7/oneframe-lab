@@ -76,7 +76,9 @@ recipes that start the same way share their start.
 **One data root.** Everything the app, the engine, a runtime child or a tool writes lies under one
 folder a person can see and remove: library caches, temporary files, bytecode and Electron's
 folders included, which a test proves by pointing every home and temporary folder into a sandbox.
-Every kept file says its format, and an older app leaves a newer one alone. Processes on one root
+Every kept file says its format, and an older app leaves a newer one alone. A format goes up only
+when an older app would misread or damage the file, and the change that raises it brings the
+migration; a new file or folder is not a format change. Processes on one root
 lock what they work on, and the operating system releases a lock when its holder dies.
 
 **One door into the page.** The page is sandboxed, has no Node, and can call only the engine

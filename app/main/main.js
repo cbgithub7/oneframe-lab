@@ -39,6 +39,13 @@ let win = null;
 process.on("uncaughtException", (error) => log.write("main", `uncaught: ${error.stack ?? error}`));
 process.on("unhandledRejection", (reason) => log.write("main", `unhandled rejection: ${String(reason)}`));
 
+/**
+ * Why the engine is not running, once that is known: the page may have subscribed too late for
+ * the engine.failed event, so the door answers its requests with this (door.js).
+ * @type {import("./failures.js").Failure | null}
+ */
+let down = null;
+
 /** @param {Record<string, unknown>} payload */
 function send(payload) {
   if (win && !win.isDestroyed()) win.webContents.send("engine:event", payload);
@@ -47,7 +54,8 @@ function send(payload) {
 async function startEngine() {
   const uv = findUv();
   if (!uv) {
-    send({ event: "engine.failed", ...appFailure("no_uv", "uv was not found.", "Install uv, or set ONEFRAME_UV to its path.") });
+    down = appFailure("no_uv", "uv was not found.", "Install uv, or set ONEFRAME_UV to its path.");
+    send({ event: "engine.failed", ...down });
     return;
   }
   const spec = engineCommand(uv, data, app.isPackaged);
@@ -60,7 +68,9 @@ async function startEngine() {
     log.write("main", `engine exited: ${JSON.stringify(info)}`);
     // An engine that never started has said why (engine.failed, from it or from the catch below);
     // a bare "the engine stopped" sent after it would hide the reason and what to do.
-    if (started) send({ event: "engine.exit", code: info.code });
+    if (!started) return;
+    down = appFailure("not_running", `The engine stopped (code ${info.code}).`, "Restart the app.");
+    send({ event: "engine.exit", code: info.code });
   });
   try {
     const ready = await client.start();
@@ -70,7 +80,8 @@ async function startEngine() {
   } catch (error) {
     log.write("main", `engine failed to start: ${String(error)}`);
     // An engine that said why it refused has already sent its own engine.failed to the page.
-    if (!(error instanceof EngineError)) send({ event: "engine.failed", ...appFailure("start_failed", String(error)) });
+    down = error instanceof EngineError ? error.failure : appFailure("start_failed", String(error));
+    if (!(error instanceof EngineError)) send({ event: "engine.failed", ...down });
   }
 }
 
@@ -113,11 +124,18 @@ app.on("web-contents-created", (_event, contents) => {
 
 // Answered with a value, a failure included, so its kind, reason and next reach the page (door.js).
 ipcMain.handle("engine:request", (event, method, params) =>
-  answer(engine, event.senderFrame?.url, RENDERER_URL, method, params));
+  answer(engine, event.senderFrame?.url, RENDERER_URL, method, params, down));
 
 app.whenReady().then(() => {
+  // app.quit() above does not stop this file: a second launch on the same root opens no window and
+  // starts no engine, and the first one comes to the front ("second-instance" below).
+  if (!first) return;
   for (const each of [session.defaultSession, session.fromPartition(PAGE_PARTITION)]) {
     each.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    // Local only: a session would fetch spelling dictionaries from Google at every start. Turning
+    // the spellchecker off does not stop that; an empty list of languages does.
+    each.setSpellCheckerLanguages([]);
+    each.setSpellCheckerEnabled(false);
   }
   createWindow();
   startEngine();

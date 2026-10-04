@@ -35,6 +35,7 @@ from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
 from oneframe.errors import Failure, failure
 from oneframe.graph import Graph, Step, plan, step_params
+from oneframe.journal import engine_crash
 from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
@@ -198,8 +199,7 @@ class Engine:
                 self.scheduler.run(graph, self.say, stop.is_set, run_id)
             except Exception as exc:  # a bug, not a node failure: say so rather than die silently
                 LOGGER.exception("run %s crashed", run_id)
-                trace = traceback.format_exc()[-4000:]
-                self.say({"event": "run.failed", "run": run_id, **failure("engine", str(exc), detail=trace)})
+                self.say(engine_crash(exc, event="run.failed", run=run_id))  # the run's journal has it too
             finally:
                 with self._lock:
                     self._run = None
@@ -345,22 +345,26 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         data, warnings = open_root(args.data, args.packaged, __version__)  # before anything is written
+        scratch = Scratch.claim(Layout(data))
+        scratch.use_for_process()  # the engine's temporary files, and uv's, stay under the root
+        engine = Engine(
+            data,
+            args.nodes or [BUILTIN_NODES_DIR],
+            say,
+            args.runtimes,
+            args.uv,
+            args.uv_home,
+            packaged=args.packaged,
+            scratch=scratch,
+            warnings=warnings,
+        )
     except RootRefused as exc:
         say({"event": "engine.failed", **exc.to_json()})
         return 2
-    scratch = Scratch.claim(Layout(data))
-    scratch.use_for_process()  # the engine's temporary files, and uv's, stay under the root
-    engine = Engine(
-        data,
-        args.nodes or [BUILTIN_NODES_DIR],
-        say,
-        args.runtimes,
-        args.uv,
-        args.uv_home,
-        packaged=args.packaged,
-        scratch=scratch,
-        warnings=warnings,
-    )
+    except Exception as exc:  # a root that cannot be written, a lock that cannot be taken: say why
+        LOGGER.exception("the engine could not start")
+        say(engine_crash(exc, event="engine.failed"))
+        return 1
     say({"event": "engine.ready", **engine.hello({})})
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:

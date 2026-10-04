@@ -36,16 +36,20 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   NVIDIA or the processor. Storage: one data root, versioned formats, safe deletes, dev and
   packaged roots apart ([AGENTS.md](../AGENTS.md)).
 
-## State (2026-10-03)
+## State (2026-10-04)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
-- **Foundations** (spec 006, implemented 2026-10-03; in review, its local checks pending):
+- **Foundations** (spec 006, implemented 2026-10-03; in review, its local checks pending;
+  [reviewed 2026-10-04](reviews/2026-10-04-spec-006.md)):
     - one data root, computed alike by the engine (`oneframe/layout.py`) and the app
       (`app/main/paths.js`) from a shared table; the dev root is `OneframeLab-dev`
       (`oneframe-lab-dev` on Linux), and only the app chooses the packaged one;
-    - nothing written outside it, proved by a footprint test on both systems: library caches,
-      temporary files and bytecode included, and Electron's folders (`app/main/boot.js`);
+    - nothing written outside it but the exceptions AGENTS.md names (the graphics driver's shader
+      cache; on Linux, Chromium's single-instance socket in the system temporary folder). The
+      engine's side is proved by a footprint test on both systems, library caches, temporary files
+      and bytecode included; Electron's folders by a unit test of `app/main/boot.js` and a headless
+      run on Linux, with the real app on Windows still to run (spec 006's Verification);
     - every kept file says its format (`oneframe-root.json`, settings, learned memory, the runtime
       marker), and a newer one is left alone; a runtime moved to another root reads as `moved`;
     - a locked folder per process under `cache/tmp/`, and a lock per runtime install or remove;
@@ -147,6 +151,32 @@ Done before this order:
 | [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | done: AC1–AC7 by tests; AC8 on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); merged in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
 
 Known from the review, to be settled by the specs above or later ones:
+
+- **Not yet taken on from the [review of 2026-10-02](reviews/2026-10-02.md)** (spec 006 answered
+  section 8B, the storage problems of section 5, and items 4.4 and 4.6 to 4.8):
+    - 4.2 (High): requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
+      `nodes.fit` waiting on nvidia-smi, holds up `run.stop`;
+    - the rest of 4.5: two lists of variables kept from children (`executors.py`,
+      `runtime_install.py`), two ways to kill a process, the scheduler assembled in several places;
+    - 4.10: `memory.py` is four modules, and `bench_fit.py` names the runtime `torch`;
+    - 4.11: pyright on the first node that imports torch, and a cached CI job for real torch
+      (spec 005);
+    - before spec 004: an injected executor provider, and node code loaded as a package named for
+      the node; today two engine nodes with same-named helpers can run each other's code;
+    - section 3: the build-versus-adopt decision against ComfyUI, still unwritten.
+- **From the [review of spec 006](reviews/2026-10-04-spec-006.md)**, small and open:
+    - the npm tools (`bench:runtime`, `bench:fit`, `diagnose`) leave uv's lock file in the system
+      temporary folder; the app's own `uv run` does not;
+    - a `memory` failure says `retry` even when this machine can never run the node;
+    - a step log has no bound while its run lasts;
+    - disk and lock errors are reported as engine bugs;
+    - on Windows, a library cache outside the variables `child_env` sets still goes to the person's
+      profile;
+    - a runtime node running in one process is not protected from a remove or reinstall in another,
+      and an install in another process reads as `not_installed` here;
+    - spec 003 lists `stopped` as a download failure reason, but under 006 Stop is not a failure;
+    - spec 004's long-lived worker must keep what 006 assumes of one process per job: node code
+      imported fresh, `child_env` per job, a scratch folder per process.
 
 - **Precision has no speed model.** The fit can pick fp16 on a card that runs it far slower than
   fp32. The rate per precision and compute capability is published data, so it can be added

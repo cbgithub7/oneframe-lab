@@ -198,7 +198,12 @@ def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) ->
     }
     for folder in env_folders.values():
         folder.mkdir(parents=True, exist_ok=True)
-    env = {k: v for k, v in os.environ.items() if k.upper() not in ("ONEFRAME_DATA", "HOMEDRIVE", "HOMEPATH")}
+    # Nothing of the outer uv's own setup (CI's setup-uv exports UV_CACHE_DIR, for one) may stand in
+    # for what the engine sets: each would hide a setting the engine forgot.
+    dropped = ("ONEFRAME_DATA", "HOMEDRIVE", "HOMEPATH")
+    env = {
+        k: v for k, v in os.environ.items() if k.upper() not in dropped and not k.upper().startswith("UV_")
+    }
     env.update({name: str(folder) for name, folder in env_folders.items()})
     root = Path(data_root(env, sys.platform, str(home), packaged=False))
     env["PYTHONPYCACHEPREFIX"] = str(root / "cache" / "pycache")  # as the app starts it
@@ -252,6 +257,7 @@ def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) ->
     )
     assert outside == [], outside
     assert (root / "uv" / "python").is_dir() and any((root / "uv" / "python").iterdir())
+    assert (root / "uv" / "cache").is_dir() and any((root / "uv" / "cache").iterdir())
     assert not (root / "cache" / "tmp").exists() or list((root / "cache" / "tmp").iterdir()) == []
 
     # The real profile, and the registry, are as they were.

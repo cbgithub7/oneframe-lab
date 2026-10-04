@@ -5,7 +5,10 @@ against the edge, not blamed on the node that receives it."""
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -185,3 +188,20 @@ def test_a_child_that_names_an_undeclared_kind_still_fails_as_a_node(
         executors.EngineExecutor().execute({**job, "device": "cpu"}, lambda _e: None, lambda: False)
     assert caught.value.kind == "error" and "boom" in str(caught.value)
     assert executors.declared_kind("made_up") == "error" and executors.declared_kind("oom") == "oom"
+
+
+def test_an_engine_that_cannot_start_says_why_on_its_protocol(tmp_path: Path) -> None:
+    """Any start failure, not only a refused root, reaches the app as engine.failed with a reason."""
+    (tmp_path / "a-file").write_text("not a folder", encoding="utf-8")
+    done = subprocess.run(
+        [sys.executable, "-m", "oneframe.server", "--data", str(tmp_path / "a-file" / "root")],
+        input="",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert done.returncode == 1
+    event = json.loads(done.stdout.splitlines()[0])
+    assert (event["event"], event["kind"], event["retry"]) == ("engine.failed", "engine", False)
+    assert "Error" in event["message"] and "Traceback" in event["detail"]

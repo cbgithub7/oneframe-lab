@@ -3,8 +3,8 @@
 `Scheduler.run` and `Runtimes.run_install` wrap the `emit` they are given, so a run or an install
 started by the app or by a command-line tool leaves the same file: `logs/journal/<when>-<what>.ndjson`,
 one JSON object per line, each with the time it was written, in the order they were emitted, after
-a first line that says the journal's format. A journal stops growing at JOURNAL_MAX_BYTES, saying so
-in its last line.
+a first line that says the journal's format. A journal stops taking progress at JOURNAL_MAX_BYTES,
+saying so, but still takes how the run or install ended (`*.failed`, `*.done`, `*.stopped`).
 
 Journals and the per-step logs (`logs/steps/`) are pruned when a journal opens: the newest are
 kept, up to a count and a total size set here, so evidence never fills the disk.
@@ -17,10 +17,13 @@ import json
 import logging
 import re
 import threading
+import traceback
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
+
+from oneframe.errors import failure
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +31,8 @@ JOURNAL_FORMAT = 1  # the first line: {"event": "journal", "format": 1, "what": 
 JOURNALS_KEEP = 100
 JOURNALS_MAX_BYTES = 64 * 2**20
 JOURNAL_MAX_BYTES = 16 * 2**20  # one journal; uv can be talkative
+ENDINGS = (".failed", ".done", ".stopped")  # node.failed, run.done, runtime.stopped, ...
+ENDINGS_MAX_BYTES = 2**20  # what a full journal may still take of them
 STEP_LOGS_KEEP = 200
 STEP_LOGS_MAX_BYTES = 128 * 2**20
 
@@ -87,12 +92,17 @@ class Journal:
     def write(self, event: dict[str, Any]) -> None:
         row = {"at": datetime.now(UTC).isoformat(timespec="milliseconds"), **event}
         line = json.dumps(row, default=str, ensure_ascii=False) + "\n"
+        # How a run or an install ended is what the journal is kept for: it is written past the cap.
+        ending = str(event.get("event", "")).endswith(ENDINGS)
         with self._lock:
-            if self._full or self._handle is None:
+            if self._handle is None or (self._full and not ending):
                 return
-            if self._written + len(line) > JOURNAL_MAX_BYTES:
+            if self._full and self._written + len(line) > JOURNAL_MAX_BYTES + ENDINGS_MAX_BYTES:
+                return
+            if not self._full and self._written + len(line) > JOURNAL_MAX_BYTES:
                 self._full = True
-                line = json.dumps({"at": row["at"], "event": "journal.full", "bytes": self._written}) + "\n"
+                full = json.dumps({"at": row["at"], "event": "journal.full", "bytes": self._written}) + "\n"
+                line = full + line if ending else full
             try:
                 self._handle.write(line)
                 self._handle.flush()  # a crash a moment later still leaves this line
@@ -116,17 +126,33 @@ class Journal:
 
 
 @contextlib.contextmanager
-def journalled(emit: Emit, folder: Path | None, what: str) -> Iterator[Emit]:
+def journalled(
+    emit: Emit,
+    folder: Path | None,
+    what: str,
+    crashed: Callable[[BaseException], dict[str, Any]] | None = None,
+) -> Iterator[Emit]:
     """`emit`, also writing each event to a new journal in `folder` until the block ends; `emit`
-    itself without a folder."""
+    itself without a folder. When the block raises (an engine bug, which its caller reports to the
+    page), `crashed(exc)` is written to the journal as its last line, so the journal ends with why."""
     if folder is None:
         yield emit
         return
     journal = Journal(folder, what)
     try:
         yield journal.wrap(emit)
+    except Exception as exc:
+        if crashed is not None:
+            journal.write(crashed(exc))
+        raise
     finally:
         journal.close()
+
+
+def engine_crash(exc: BaseException, **fields: Any) -> dict[str, Any]:
+    """The failure an engine bug is reported as, with its trace: call it while handling `exc`."""
+    message = f"{type(exc).__name__}: {exc}"
+    return {**fields, **failure("engine", message, detail=traceback.format_exc()[-4000:])}
 
 
 def prune_step_logs(folder: Path | None) -> None:

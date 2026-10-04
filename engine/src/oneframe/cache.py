@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -44,20 +45,32 @@ def file_digest(path: Path) -> str:
 
 def code_digest(folder: Path) -> str:
     """A hash of every file in a node's folder, by its path in the folder and its bytes; bytecode
-    (`__pycache__/`, `.pyc`) is left out, since it follows from the source and differs by Python."""
+    (`__pycache__/`, `.pyc`) is left out, since it follows from the source and differs by Python.
+    Read from the files every time: a size and a time can stay the same when the bytes do not."""
     digest = hashlib.sha256()
-    for path in sorted(_code_files(folder), key=lambda p: p.relative_to(folder).as_posix()):
-        digest.update(path.relative_to(folder).as_posix().encode("utf-8") + b"\0")
+    for relative, path in sorted(_code_files(folder)):
+        digest.update(relative.encode("utf-8") + b"\0")
         digest.update(file_digest(path).encode("ascii"))
     return digest.hexdigest()
 
 
-def _code_files(folder: Path) -> list[Path]:
-    return [
-        p
-        for p in folder.rglob("*")
-        if p.is_file() and "__pycache__" not in p.relative_to(folder).parts and p.suffix not in BYTECODE
-    ]
+def _code_files(folder: Path) -> list[tuple[str, Path]]:
+    """(path in the folder, file) for every file but bytecode, following linked folders (code shared
+    between nodes, say) but never into one already seen, so a loop of links ends."""
+    out: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for here, dirs, files in os.walk(folder, followlinks=True):
+        real = os.path.realpath(here)
+        if real in seen:
+            dirs[:] = []
+            continue
+        seen.add(real)
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in files:
+            path = Path(here) / name
+            if path.suffix not in BYTECODE and path.is_file():
+                out.append((path.relative_to(folder).as_posix(), path))
+    return out
 
 
 class Cache:
@@ -68,7 +81,6 @@ class Cache:
         # folder under cache/tmp/; a cache made on its own (a test) writes in <root>/tmp.
         self.tmp = Path(work) if work is not None else self.root / "tmp"
         self._digests: dict[tuple[str, int, int], str] = {}
-        self._code: dict[str, tuple[tuple[tuple[str, int, int], ...], str]] = {}
 
     def _file_key(self, value: str) -> str:
         path = Path(value)
@@ -78,30 +90,16 @@ class Cache:
             self._digests[memo] = file_digest(path)
         return self._digests[memo]
 
-    def code_key(self, folder: Path) -> str:
-        """code_digest, read again only when a file in the folder changed."""
-        try:
-            rows = []
-            for path in _code_files(folder):
-                stat = path.stat()  # once per file: size and time together
-                rows.append((path.relative_to(folder).as_posix(), stat.st_size, stat.st_mtime_ns))
-            stamp = tuple(sorted(rows))
-        except OSError:
-            return code_digest(folder)
-        memo = self._code.get(str(folder))
-        if memo is None or memo[0] != stamp:
-            memo = (stamp, code_digest(folder))
-            self._code[str(folder)] = memo
-        return memo[1]
-
     def key(
         self,
         manifest: Manifest,
         params: dict[str, Any],
         inputs: dict[str, Value],
         runtime: dict[str, str] | None = None,
+        code: str | None = None,
     ) -> str:
-        """`runtime`: for a runtime node, the build this machine runs and its marker's hashes."""
+        """`runtime`: for a runtime node, the build this machine runs and its marker's hashes.
+        `code`: the node folder's code_digest when the caller has it (once per run), else read now."""
         affecting: dict[str, Any] = {}
         for name, value in sorted(params.items()):
             param = manifest.params.get(name)
@@ -114,7 +112,7 @@ class Cache:
             "version": manifest.version,
             "params": affecting,
             "inputs": {port: value.key for port, value in sorted(inputs.items())},
-            "code": self.code_key(manifest.folder),
+            "code": code if code is not None else code_digest(manifest.folder),
             "runtime": runtime,
         }
         text = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)

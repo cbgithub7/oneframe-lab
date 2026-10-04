@@ -131,9 +131,24 @@ LIBRARY_CACHES = {
     "MPLCONFIGDIR": "matplotlib",
 }
 TEMP_ENV = ("TMP", "TEMP", "TMPDIR")
+# Variables that point a library past the folders above: each overrides HF_HOME or TRITON_HOME,
+# so the person's own value would let a run read weights Download never fetched, or write outside
+# the root. They are removed; the folders above then decide (spec 003 sets HF_HUB_CACHE itself).
+OVERRIDING_CACHES = (
+    "HF_HUB_CACHE",
+    "HUGGINGFACE_HUB_CACHE",
+    "HF_ASSETS_CACHE",
+    "HF_DATASETS_CACHE",
+    "HF_MODULES_CACHE",
+    "HF_XET_CACHE",
+    "TRANSFORMERS_CACHE",
+    "PYTORCH_TRANSFORMERS_CACHE",
+    "PYTORCH_PRETRAINED_BERT_CACHE",
+    "TRITON_CACHE_DIR",
+)
 # A child reads the bytecode its runtime's install compiled and writes none: not beside a node's
 # code, and not into the runtime, which an install alone changes.
-ROOT_ENV = (*LIBRARY_CACHES, *TEMP_ENV, "PYTHONDONTWRITEBYTECODE")
+ROOT_ENV = (*LIBRARY_CACHES, *TEMP_ENV, *OVERRIDING_CACHES, "PYTHONDONTWRITEBYTECODE")
 _RESERVED = {name.upper() for name in (*FORCED_ENV, *SECRET_OR_UNSAFE_ENV, *ROOT_ENV)}
 # PYTHONPYCACHEPREFIX is the engine's own (the app sets it): a child given it would look for its
 # runtime's bytecode there instead of beside each module, and never find it.
