@@ -269,7 +269,9 @@ None.
 2. **The two changed tests** (2026-10-04, approved). `test_a_store_file_that_cannot_be_read_starts_empty`
    now asserts that learned memory in a newer format is left as it is (requirement 3), and still that an
    unreadable file is replaced; the runtime tests compare the snake_case reasons (requirement 5). Both
-   follow from this spec's requirements, and neither checks less than before.
+   follow from this spec's requirements, and neither checks less than before. A third, in
+   `tests/app/engine.test.js`, was unlisted until the review; it is listed under Changed, with the
+   review's fixes the owner accepted the same day.
 3. **Chromium's files in the system temporary folder on Linux** (2026-10-04, accepted as an
    exception; [AGENTS.md](../../AGENTS.md) says so). While the app runs, Chromium keeps the socket
    behind the single-instance lock in a folder it makes in `$TMPDIR` or `/tmp` (`scoped_dir*`, linked
