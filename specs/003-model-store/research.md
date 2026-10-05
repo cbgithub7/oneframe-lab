@@ -234,7 +234,9 @@ Measured in this container, unless a source is named.
 - **Signed redirects expire.** A GitHub release asset redirects to a signed URL. The first check
   read its token as living 1800 s. The second round (below) found it now carries a token that lives
   **300 s**: reused after that, the URL answered `618 jwt:expired` with a short HTML body. A 10 GB
-  file at 5 MB/s takes 33 minutes.
+  file at 5 MB/s takes 33 minutes. On 2026-10-05 MiDaS v3.1's `dpt_beit_large_512.pt` redirected to
+  `release-assets.githubusercontent.com` with a token living 3600 s; the lifetime changes, the rule
+  below does not.
   - Hugging Face's resolve URL redirects to signed CDN URLs too (lifetime unverified).
   - Hugging Face's client, Ollama and Chromium all reuse the signed URL across retries.
   - The robust rule costs nothing: **every attempt starts from the source URL** and follows its

@@ -1,8 +1,9 @@
 # 003: Model store (core)
 
 Status: approved (core, 2026-10-03; evidence in [research.md](research.md), the owner's decisions
-in [the review](../../docs/reviews/2026-10-02.md))
-Owner approval: 2026-10-03; fitted to spec 006 as built on 2026-10-05 (Decisions taken)
+in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 by an agent to fit spec 006
+as built, acceptance criteria included (Decisions taken); the amendment awaits the owner's approval.
+Owner approval: 2026-10-03
 
 Built on [spec 006](../006-foundations/spec.md): its layout module, failure model, locks and journal.
 
@@ -38,9 +39,12 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
     - files in a node that runs in the engine.
 2. **One copy of each file,** under `<data>/models/`, named by its sha256 and read-only. A file
    already stored is never fetched again, whatever pin names it. The store says its format in
-   `models/oneframe-store.json`, and each record says its own. Neither is ever rewritten by an
-   older app: a newer or unreadable store refuses download, verify, remove and pin, and listing
-   and runs treat its files as not present; a newer record's file counts as not present.
+   `models/oneframe-store.json`, and each record says its own; an older app never rewrites either.
+    - A newer or unreadable store refuses download, verify, remove and pin, and runs treat its files
+      as not present.
+    - A newer record's file is not present to runs, and download, verify and remove refuse it,
+      leaving the record and the file as they are. An unreadable record is rebuilt by hashing its
+      file again.
 3. **Download is a job, and heals itself.**
     - `models.download {node, checkpoints?}` fetches the files every run needs, plus the default
       checkpoint's, or every checkpoint's when asked. It answers at once with a job id, which
@@ -53,7 +57,8 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
 
       Its events go to spec 006's journal.
     - **One job at a time.** One job (download or verify) runs at a time across processes; another
-      is refused. A file that fails does not stop the others.
+      is refused, `busy` in this engine and `locked` from another process. A file that fails does
+      not stop the others.
     - **Stop.** `models.stop` sends `model.stopped` within 2 s of the engine reading it, even on a
       stalled connection, and keeps the partial. A Stop is not a failure (spec 006).
     - **Each attempt starts from the source URL;** redirects are never reused. Dropped, reset or
@@ -79,8 +84,9 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
 
       Hugging Face's `X-Error-Code` decides `gated`, `not_found` (`RepoNotFound`, `EntryNotFound`)
       and `revision_gone`, never the status alone.
-    - **Refusals** of a download, verify, remove or pin carry kind `store` and a reason: `busy`,
-      `locked`, `in_use`, `registry_problems`, `node_root_missing` or `newer_format`.
+    - **The store's own failures** carry kind `store`, for a download, verify, remove or pin:
+      `busy`, `locked`, `in_use`, `registry_problems`, `node_root_missing`, `newer_format`,
+      `unreadable`, and `os_refused` (the system refused a rename or a delete).
 4. **Present means checked.**
     - A file is present once its sha256 matched, and its record holds its size and modification
       time. Each run compares both.
@@ -96,18 +102,18 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
         - The engine never switches checkpoint just because one is on disk.
     - **A node missing a file fails with kind `files`.** Its reason is `not_downloaded`,
       `downloading`, `incomplete` or `changed`, and the failure names the files, the bytes left, and
-      a present checkpoint if there is one. Its `next` names `npm run models:download`, since the
-      page has no `models.*` method yet.
+      a present checkpoint if there is one. When a download would help, its `next` names
+      `npm run models:download`: the page has no `models.*` method yet.
     - **A node reaches its files only through `ctx.file(name)`.** `ctx.models` goes.
 6. **Remove is safe.**
     - `models.remove {node, checkpoint?}` deletes those files and their partials, keeping and
       naming any that another node pins.
     - `models.remove {unpinned: [sha256…]}` deletes exactly the files `models.list` showed as
       pinned by no node. It is refused while the registry has problems or a node root is missing.
-    - Remove is refused while a job runs in any process.
-    - A file a run uses, in this process or another, is kept and named (`in_use`), by remove and
-      by verify's drop: each process lists the files its run reads in its own locked folder under
-      `cache/tmp/` (spec 006). A delete that fails keeps the file and its record and names it.
+    - Remove is refused while a job runs in any process, and for files a graph running in any
+      process uses (`in_use`). Verify drops the record of a failing file a run uses, and its file
+      goes once no run uses it.
+    - A delete that fails keeps the file and its record.
     - Nothing is deleted automatically.
 7. **Status without the network.**
     - `models.list` gives, for each node's shared files and each checkpoint:
@@ -127,8 +133,9 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
         - re-pinning to a new commit rewrites that source's entries and reports each sha256 that
           changed;
         - a value that changed under an unchanged pin is reported and left as it was.
-    - Ctrl+C stops either tool as `models.stop` does. Like every npm script that starts uv, they
-      leave nothing outside the data root, uv's own temporary files included.
+    - Ctrl+C stops either tool as `models.stop` does.
+    - These two and the other tools that open a data root (`bench:runtime`, `bench:fit`, `diagnose`)
+      start uv so that its temporary files stay under the root.
 
 ## Acceptance criteria
 
@@ -162,26 +169,31 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
     - a cached result needs no files;
     - with the runtime missing too, the failure is kind `runtime`;
     - after the download, the node runs and reads through `ctx.file`, under `bench:fit` too;
+    - after a re-pin without a reload, a run's result is stored under the key of the manifest it
+      used;
     - a truncated file, or one with a new modification time, reads as `changed`, and
       `models.verify` catches a change that keeps both the size and the time;
     - with only `small` present, a graph that sets `large`, or a default of `large` with room,
       fails and names `small`;
     - with only `large` present and no room for it, the change to `small` is skipped (said in
       `node.fit`), and the node fails with kind `memory`, naming `small` and its size.
-- [ ] AC6: Remove (tests, Windows included):
+- [ ] AC6: Remove and refusals (tests, Windows included):
     - a file shared with another node is kept and the other node named;
     - a checkpoint's removal deletes only its files and partials;
     - an unpinned list deletes exactly that list;
-    - remove is refused while the registry has problems, while a node root is missing, and during a
-      job in another process, each with its reason;
-    - a file that a graph running in this process or another uses is kept and named;
-    - a store in a newer format is left as it is and refuses download, verify, remove and pin;
+    - remove is refused, each time with its reason, while the registry has problems, while a node
+      root is missing, during a job, and for a file a running graph uses, in this process or another;
+    - a second download or verify is refused, `busy` in this process and `locked` from another;
+    - a store or a record in a newer format is left as it is, and a newer or unreadable store
+      refuses download, verify, remove and pin;
     - nothing outside the store is touched.
 - [ ] AC7: The pin tool, against the test server:
     - it fills in sizes, sha256s, formats (a torch zip archive named `.bin` reads as a pickle),
       `gated` and the canonical id;
     - a re-pin reports the changed sha256s;
-    - a changed value under the same pin is reported and left.
+    - a changed value under the same pin is reported and left;
+    - with TMP, TEMP and TMPDIR pointed at an empty folder, each tool that opens a data root leaves
+      nothing there.
 - [ ] AC8 (local, real hosts, no GPU): on the owner's Windows PC, with manifests whose only job is
   to pin files (runtime nodes with a stub entry, whose runtime need not be installed), kept in
   `specs/003-model-store/live/`:
@@ -194,8 +206,8 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
           needs;
         - MiDaS v3.1's `dpt_beit_large_512.pt` (1.58 GB), a GitHub release asset;
     - each download is stopped midway, resumed, and completes and verifies;
-    - the GitHub asset is resumed after its signed redirect has expired (3600 s on 2026-10-05; 300 s
-      in research.md);
+    - the GitHub asset is resumed more than 3600 s after it was stopped, past its signed redirect's
+      life;
     - the report gives each file's bytes, seconds and MB/s on one connection, the hosts reached,
       and the longest path. It goes under `specs/003-model-store/reports/`.
 
@@ -235,12 +247,11 @@ AC1 to AC7 run in CI. AC8 runs in a local session on the owner's Windows PC (`/l
 from the checkout, for each manifest in `specs/003-model-store/live/`:
 
 1. `npm run models:pin -- --nodes specs/003-model-store/live <node>`, and commit the pins it writes.
-2. `npm run models:download -- --nodes specs/003-model-store/live <node> --all`; press Ctrl+C
-   midway (`model.stopped`, the partial kept), run it again, and let it finish.
-3. For MiDaS: press Ctrl+C midway, wait until its redirect has expired (the `se` time in the URL
-   it logged), and run it again.
-4. Write the report under `specs/003-model-store/reports/`: each file's bytes, seconds and MB/s on
-   one connection, the hosts reached, the redirect's lifetime, and the longest path.
+2. Point `ONEFRAME_DATA` at a new, empty folder, so that nothing the pin stored is present.
+3. `npm run models:download -- --nodes specs/003-model-store/live <node> --all`; press Ctrl+C
+   midway (`model.stopped`, the partial kept), run it again, and let it finish. For MiDaS, wait
+   more than 3600 s before running it again.
+4. Write the report AC8 describes, under `specs/003-model-store/reports/`.
 
 ## Decisions taken
 
@@ -253,29 +264,40 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
 - **No file hashes in the cache key,** since spec 006 hashes the node's folder. But 006 reads the
   folder at each run and parses the manifest only at start or reload, so after a re-pin a run would
   use the old pins under the new key. The key's `node.json` part becomes the digest of the bytes the
-  manifest was parsed from, which closes this for every field, not only pins.
+  manifest was parsed from, which closes this for every field, not only pins (amending spec 006's
+  AC8 and its "Cache keys" decision: `node.json` counts as loaded, not as on disk).
 - **A second job is refused, not queued,** until the UI's part adds a queue.
 - **Fitted to spec 006 as built** (2026-10-05). Once 006 merged, four reviewers checked this
-  spec against its code, and a second reviewer tried to refute each finding: 19 of 51 held. Each
-  change above or below that came from it, with its reason:
-    - Stop is not a failure in 006, so `stopped` left the reasons.
-    - Refusals have their own kind, `store`, as 006 gave install and remove `runtime`; a refused
-      verify no longer reads as a failed download.
-    - The store and each record say their format, and a newer one is left alone, as 006 does for
-      every file it keeps.
+  spec against its code, and a second reviewer tried to refute each finding: 19 of 51 held. Three
+  more reviewed the amendment. The changes, each with its reason:
+    - `stopped` left the reasons: Stop is not a failure in 006.
+    - The store's own failures have kind `store`, as 006 gave install and remove `runtime`, so a
+      refused verify no longer reads as a failed download. AC4 now covers the `download` reasons;
+      the refusals moved to AC6. `unreadable` is apart from `newer_format`, as 006 keeps the root's.
+    - `os_refused` names a rename or delete the system refuses, which would otherwise surface as an
+      engine bug; a lock error other than "held" stays an error, as 006 decided.
+    - The store and each record say their format, as 006's root file, runtime markers and learned
+      memory do; cache records go without one only because a miss costs a recompute, and a store
+      record would cost a rehash. A newer one is left alone; an unreadable record is rebuilt.
     - A job answers with a job id: the protocol's `id` is already the request's.
     - `model.failed` takes the first failed file's kind and reason, since a failure has one of
       each; every file's outcome is listed.
-    - 006 knows only its own process's run, so files in use are listed in each process's locked
-      folder, which 006 already gives every process.
-    - `bench:fit` builds its own scheduler; one factory now serves it and the engine, so
-      `ctx.file` works in both (part of review item 4.5).
-    - Every npm script that starts uv goes through one launcher that keeps uv's temporary files
-      under the root, the three existing ones included (an open item of 006's review).
+    - 006 knows only its own process's run, so each process lists the files its run reads in its
+      own locked folder under `cache/tmp/`. Remove stays refused for a file in use, now in any
+      process; verify drops such a file's record and leaves the file until no run uses it.
+    - A delete that fails keeps the file and its record, so a record never outlives its file.
+    - `bench:fit` builds its own scheduler; one factory serves it and the engine, so `ctx.file`
+      works in both (part of review item 4.5).
+    - The tools that open a data root start uv so its temporary files stay there, the three
+      existing ones included (an open item of 006's review); `engine:sync` and `engine:check` are
+      dev commands with no root.
+    - Ctrl+C is a Stop for the tools, so AC8 can stop and resume from a terminal.
+    - The `files` failure's `next` names the npm command, as the page cannot download yet.
     - A checkpoint param must affect output, or the cache key ignores it.
     - The 2 s Stop counts from when the engine reads it: review item 4.2, still open, can delay that.
     - AC8's live manifests are stub runtime nodes, since 006's manifest check needs an entry and an
-      output; its GitHub asset is named, and the Verification section gives its commands.
+      output. Its GitHub asset is named; its redirect lived 3600 s on 2026-10-05, not the 300 s of
+      research.md, so the wait is longer. The Verification section gives the commands.
 - **The test CA is a committed fixture:** a CA and a leaf for `127.0.0.1` and `localhost`, valid
   for a century and built to pass Python's strict checks. The standard library cannot make
   certificates.
