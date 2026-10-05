@@ -51,3 +51,7 @@ decision someone made for a stated reason, not something that happened because n
   merge.
 - A breaking release: fix the code, or write an exception with a reason and a review date. Both
   are fine; silence is not.
+- **An Electron upgrade** also checks, on Linux, that the single-instance socket still lies at
+  `$TMPDIR/scoped_dirXXXXXX/SingletonSocket` (`SOCKET_SUFFIX` in `app/main/boot.js`): start the app
+  headless with a 70-byte `TMPDIR` and see it run. A longer name in a new Electron would make a long
+  `TMPDIR` crash the app at start.

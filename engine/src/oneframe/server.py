@@ -33,13 +33,28 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
 from oneframe.cache import Cache
-from oneframe.graph import Graph, GraphError, Step, plan, step_params
+from oneframe.errors import Failure, failure
+from oneframe.graph import Graph, Step, plan, step_params
+from oneframe.journal import engine_crash
+from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.registry import Registry, discover
-from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
+from oneframe.runtimes import InstallRefused, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
+from oneframe.scratch import Scratch
 
 LOGGER = logging.getLogger("oneframe.server")
+
+
+def _bad_params(message: str) -> Failure:
+    return Failure(message, "bad_params", kind="request")
+
+
+def _required(params: dict[str, Any], name: str) -> Any:
+    """A parameter the method cannot do without: its absence is the request's fault, not a bug."""
+    if params.get(name) is None:
+        raise _bad_params(f"The request needs {name!r}.")
+    return params[name]
 
 
 class Engine:
@@ -52,13 +67,21 @@ class Engine:
         uv: str | None = None,
         uv_home: Path | None = None,
         profile: Callable[[], dict[str, Any]] | None = None,
+        packaged: bool = False,
+        scratch: Scratch | None = None,
+        warnings: list[str] | None = None,
     ):
+        """`warnings`: the root's, when the caller has already claimed it (layout.open_root)."""
         self.data = data
+        self.layout = Layout(data)
+        # Before anything is written under the root: a newer layout stops the engine here.
+        self.warnings = warnings if warnings is not None else claim_root(data, packaged, __version__)
+        # This process's own folder under cache/tmp/; the start sweeps only dead processes' folders.
+        self.scratch = scratch or Scratch.claim(self.layout)
         self.node_roots = node_roots
         self.say = say
         self.registry: Registry = discover(node_roots)
-        self.cache = Cache(data / "cache")
-        self.cache.clear_tmp()
+        self.cache = Cache(self.layout.cache, work=self.scratch.folder / "runs")
         self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
         self.learned = LearnedStore(data)
         # A fit reads the machine fresh, since free memory changes; a test passes its own profile.
@@ -68,12 +91,16 @@ class Engine:
             self.cache,
             runtime_python=self.runtimes.python_for,
             runtime_env=self.runtimes.env_for,
-            models_dir=data / "models",
-            log_dir=data / "logs",
+            models_dir=self.layout.models,
+            log_dir=self.layout.step_logs,
+            journal_dir=self.layout.journals,
             machine=self._machine,
             target=self.runtimes.device_target,
             settings=lambda: read_settings(data),
             learned=self.learned,
+            tmp_root=self.scratch.folder,
+            runtime_caches=self.runtimes.caches_for,
+            runtime_key=self.runtimes.key_for,
         )
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in
@@ -102,6 +129,7 @@ class Engine:
             "engine": __version__,
             "python": sys.version.split()[0],
             "data": str(self.data),
+            "warnings": self.warnings,
             "nodes": len(self.registry.nodes),
             "methods": sorted(self.methods),
         }
@@ -126,11 +154,14 @@ class Engine:
         """The fit a node would get on this machine now: `{node, params?, inputs?}`, where `inputs`
         maps a port to its value's `meta` (an image's width and height). It starts no runtime and
         loads no model library."""
-        manifest = self.registry.get(str(params.get("node")))
+        node = str(_required(params, "node"))
+        if node not in self.registry.nodes:
+            raise _bad_params(f"No node called {node!r} is installed.")
+        manifest = self.registry.get(node)
         given = dict(params.get("params") or {})
         values, problems = step_params(manifest, given)
         if problems:
-            raise ValueError("; ".join(problems))
+            raise _bad_params("; ".join(problems))
         sizes = dict(params.get("inputs") or {})
         meta: dict[str, dict[str, Any] | None] = {
             port: None for port, spec in manifest.inputs.items() if spec.optional and port not in sizes
@@ -153,11 +184,11 @@ class Engine:
         }
 
     def graph_validate(self, params: dict[str, Any]) -> dict[str, Any]:
-        the_plan = plan(Graph.from_json(params["graph"]), self.registry)
+        the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry)
         return {"order": the_plan.order, "notes": the_plan.notes}
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
-        graph = Graph.from_json(params["graph"])
+        graph = Graph.from_json(_required(params, "graph"))
         the_plan = plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
         used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
         run_id = uuid.uuid4().hex[:12]
@@ -168,15 +199,7 @@ class Engine:
                 self.scheduler.run(graph, self.say, stop.is_set, run_id)
             except Exception as exc:  # a bug, not a node failure: say so rather than die silently
                 LOGGER.exception("run %s crashed", run_id)
-                self.say(
-                    {
-                        "event": "run.failed",
-                        "run": run_id,
-                        "kind": "engine",
-                        "message": str(exc),
-                        "detail": traceback.format_exc()[-4000:],
-                    }
-                )
+                self.say(engine_crash(exc, event="run.failed", run=run_id))  # the run's journal has it too
             finally:
                 with self._lock:
                     self._run = None
@@ -184,7 +207,9 @@ class Engine:
         thread = threading.Thread(target=work, name=f"run-{run_id}", daemon=True)
         with self._lock:  # the run and its thread are recorded together, so shutdown sees both
             if self._run is not None:
-                raise RuntimeError(f"Run {self._run[0]} is still going; stop it first.")
+                raise Failure(
+                    f"Run {self._run[0]} is still going; stop it first.", "busy", "Stop it, or wait.", "graph"
+                )
             self._run = (run_id, stop, used)
             self._run_thread = thread
         thread.start()
@@ -207,10 +232,12 @@ class Engine:
         with self._lock:
             run = self._run
         if run is not None and runtime_id in run[2]:
-            raise InstallRefused(f"Run {run[0]} is using {runtime_id}; stop it before {doing} the runtime.")
+            raise InstallRefused(
+                f"Run {run[0]} is using {runtime_id}; stop it before {doing} the runtime.", "in_use"
+            )
 
     def runtimes_install(self, params: dict[str, Any]) -> dict[str, Any]:
-        runtime_id = str(params["runtime"])
+        runtime_id = str(_required(params, "runtime"))
         self._refuse_if_running(runtime_id, "installing")
         claimed = self.runtimes.begin_install(runtime_id, params.get("build"))
         if claimed is None:
@@ -228,10 +255,10 @@ class Engine:
         return {"runtime": runtime_id, "build": build}
 
     def runtimes_stop(self, params: dict[str, Any]) -> dict[str, Any]:
-        return {"stopping": self.runtimes.stop(str(params["runtime"]))}
+        return {"stopping": self.runtimes.stop(str(_required(params, "runtime")))}
 
     def runtimes_remove(self, params: dict[str, Any]) -> dict[str, Any]:
-        runtime_id = str(params["runtime"])
+        runtime_id = str(_required(params, "runtime"))
         self._refuse_if_running(runtime_id, "removing")
         return self.runtimes.remove(runtime_id)
 
@@ -251,35 +278,30 @@ class Engine:
             run_thread.join(max(deadline - time.monotonic(), 0))
         if self._install is not None:
             self._install.join(max(deadline - time.monotonic(), 0))
+        self.scratch.release()
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         req_id = message.get("id")
         method = message.get("method")
         fn = self.methods.get(str(method))
         if fn is None:
-            return {"id": req_id, "error": {"message": f"Unknown method {method!r}."}}
+            return {
+                "id": req_id,
+                "error": failure("request", f"Unknown method {method!r}.", "unknown_method"),
+            }
         try:
             return {"id": req_id, "result": fn(dict(message.get("params") or {}))}
-        except GraphError as exc:
-            return {"id": req_id, "error": {"message": "The graph cannot run.", "problems": exc.problems}}
-        except (InstallRefused, RuntimeMissing) as exc:  # a sentence for a person, not a bug
-            return {"id": req_id, "error": {"message": str(exc)}}
+        except Failure as exc:  # a refusal with a declared kind and reason, for a person
+            return {"id": req_id, "error": exc.to_json()}
         except Exception as exc:
             LOGGER.exception("%s failed", method)
-            return {"id": req_id, "error": {"message": f"{type(exc).__name__}: {exc}"}}
-
-
-def default_data_dir() -> Path:
-    if os.environ.get("ONEFRAME_DATA"):
-        return Path(os.environ["ONEFRAME_DATA"])
-    if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "OneframeLab"
-    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "oneframe-lab"
+            trace = traceback.format_exc()[-4000:]
+            return {"id": req_id, "error": failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="oneframe.server")
-    parser.add_argument("--data", type=Path, default=None, help="data root (cache, models, logs)")
+    parser.add_argument("--data", type=Path, default=None, help="data root (default: the dev root)")
     parser.add_argument(
         "--nodes",
         type=Path,
@@ -300,10 +322,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--uv-home", type=Path, default=None, help="uv's cache and Pythons (default: <data>/uv)"
     )
+    parser.add_argument(
+        "--packaged", action="store_true", help="started by the packaged app (it passes --data too)"
+    )
     args = parser.parse_args(argv)
-    data = args.data or default_data_dir()
-    data.mkdir(parents=True, exist_ok=True)
-
     # The protocol gets its own copy of stdout; fd 1 goes to stderr, so a node run in this process
     # that prints cannot corrupt an event.
     out = os.fdopen(os.dup(1), "w", encoding="utf-8", buffering=1)
@@ -321,7 +343,28 @@ def main(argv: list[str] | None = None) -> int:
             out.write(line + "\n")
             out.flush()
 
-    engine = Engine(data, args.nodes or [BUILTIN_NODES_DIR], say, args.runtimes, args.uv, args.uv_home)
+    try:
+        data, warnings = open_root(args.data, args.packaged, __version__)  # before anything is written
+        scratch = Scratch.claim(Layout(data))
+        scratch.use_for_process()  # the engine's temporary files, and uv's, stay under the root
+        engine = Engine(
+            data,
+            args.nodes or [BUILTIN_NODES_DIR],
+            say,
+            args.runtimes,
+            args.uv,
+            args.uv_home,
+            packaged=args.packaged,
+            scratch=scratch,
+            warnings=warnings,
+        )
+    except RootRefused as exc:
+        say({"event": "engine.failed", **exc.to_json()})
+        return 2
+    except Exception as exc:  # a root that cannot be written, a lock that cannot be taken: say why
+        LOGGER.exception("the engine could not start")
+        say(engine_crash(exc, event="engine.failed"))
+        return 1
     say({"event": "engine.ready", **engine.hello({})})
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:

@@ -66,11 +66,14 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 - **One data root.** Everything the app, the engine, a runtime child or a command-line tool writes
   goes under the data root (or the model store), in the folder for its kind: nothing in the install
   folder, the repo, temp, Roaming, the registry or `PATH`, except a file the person names (a bench
-  report with `--out`) and a dev checkout's engine environment. Every file the app keeps says its
-  format; a newer one is never overwritten, and a change of format ships with its migration.
-  Deletes stay inside a folder marked as the root's or the store's, and never touch the person's
-  own work. A dev checkout and a packaged app never share a root. Today's code still breaks this
-  in the places [spec 006](specs/006-foundations/spec.md) lists.
+  report with `--out`), a dev checkout's engine environment, the graphics driver's own shader
+  cache, and on Linux what Chromium keeps in the system temporary folder while the app runs (its
+  single-instance socket, which may not fit a root's path or file system, and a moment's temporary
+  file). Every file the app keeps says its format; a newer one is never overwritten, and a change of
+  format ships with its migration. Deletes stay inside a folder marked as the root's or the store's
+  (until packaging adds the mark, inside the folders the layout names), and never touch the
+  person's own work. A dev checkout and a packaged app never share a root. `oneframe/layout.py` names every
+  path under it and `app/main/paths.js` mirrors it; `contracts/layout.json` holds the two equal.
 - **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
   generated result measured.
 - `encoding="utf-8"` on every text open in Python; Windows defaults to cp1252.
@@ -85,5 +88,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   did (the numbers a hardware claim needs)
 - `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
   its estimates beside the peaks measured; with no node, spec 002's hardware check
+- `npm run diagnose`: one file in the data root's `reports/` to hand over when something failed:
+  versions, machine, runtimes, settings, what was learned, the latest journals and logs, with the
+  user's name taken out of every path and hub tokens scrubbed
 - `node scripts/test-guard.js`: no test removed without a listed reason
 - `npm start`: the app (needs `npm run engine:sync` once)

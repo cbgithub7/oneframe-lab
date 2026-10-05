@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import threading
 from collections.abc import Callable, Mapping
@@ -21,9 +22,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeIs
 
+from oneframe.files import NewerFormat, format_of, write_json
+from oneframe.layout import Layout
+
 if TYPE_CHECKING:
     from oneframe.manifest import Param
     from oneframe.ports import PortSpec
+
+LOGGER = logging.getLogger("oneframe.memory")
 
 PRECISIONS = ("fp32", "fp16", "bf16")
 DEFAULT_BYTES = {"fp32": 4, "fp16": 2, "bf16": 2}
@@ -488,6 +494,7 @@ def model_hash(raw: Mapping[str, Any]) -> str:
 MARGIN_FLOOR_MB = 1611  # 1.5 GiB, in MB of 10^6 bytes
 MARGIN_SHARE = 0.10  # of the device's total, when that is larger
 SETTINGS_FILE = "settings.json"
+SETTINGS_FORMAT = 1  # a file that does not say is format 1
 FIT_MODES = ("on", "off")
 
 
@@ -511,16 +518,25 @@ class Settings:
 
 def read_settings(data_root: Path | None) -> Settings:
     """The settings, read again at each fit. A missing file is the defaults; a value that is not
-    understood is left at its default, and said so in `notes`."""
+    understood is left at its default, and said so in `notes`. A file in a newer format is read as
+    the defaults, with a note, and left as it is."""
     if data_root is None:
         return Settings()
-    path = Path(data_root) / SETTINGS_FILE
+    path = Layout(Path(data_root)).settings
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return Settings()
     except (OSError, ValueError) as exc:
         return Settings(notes=(f"{SETTINGS_FILE} could not be read ({exc}); the defaults are used",))
+    found = format_of(data, missing=SETTINGS_FORMAT)
+    if found != SETTINGS_FORMAT:
+        why = (
+            f"is in format {found}, newer than this version of the app knows ({SETTINGS_FORMAT})"
+            if found is not None and found > SETTINGS_FORMAT
+            else "does not say a format this version of the app knows"
+        )
+        return Settings(notes=(f"{SETTINGS_FILE} {why}; the defaults are used",))
     row = data.get("memory") if isinstance(data, dict) else None
     if row is None:
         return Settings()
@@ -1225,13 +1241,15 @@ class StoreKey:
 
 class LearnedStore:
     """`<data>/memory/learned.json`: per node and kind of device, the recent working-memory ratios,
-    and the measured need and seconds for recent settings. Written to a temporary file and renamed
-    into place, so an interrupted write leaves the previous file. Without a data root it lives in
-    memory only."""
+    and the measured need and seconds for recent settings. Its `version` is its format. Written
+    with `files.write_json`, so an interrupted write leaves the previous file. A file in a newer
+    format is left as it is and not used: this machine learns in memory until the newer app runs
+    again. Without a data root it lives in memory only."""
 
     def __init__(self, data_root: Path | None) -> None:
-        self.path = None if data_root is None else Path(data_root) / "memory" / "learned.json"
+        self.path = None if data_root is None else Layout(Path(data_root)).learned
         self._data: dict[str, Any] | None = None
+        self.newer: int | None = None  # the format of a newer file left alone
         # A run records while nodes.fit and nodes.forget read and clear, from another thread.
         self._lock = threading.RLock()
 
@@ -1243,17 +1261,22 @@ class LearnedStore:
                     data = json.loads(self.path.read_text(encoding="utf-8"))
                 except OSError, ValueError:
                     data = None
-                if isinstance(data, dict) and data.get("version") == STORE_VERSION:
+                found = format_of(data, "version")
+                if found == STORE_VERSION and isinstance(data, dict):
                     self._data = data
+                elif found is not None and found > STORE_VERSION:
+                    self.newer = found
+                    LOGGER.warning("%s is in format %s, newer than this app's; left alone", self.path, found)
         return self._data
 
     def _save(self) -> None:
-        if self.path is None or self._data is None:
+        if self.path is None or self._data is None or self.newer is not None:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(self.path.name + ".tmp")
-        temporary.write_text(json.dumps(self._data, separators=(",", ":")), encoding="utf-8")
-        temporary.replace(self.path)
+        try:
+            write_json(self.path, self._data, key="version")
+        except NewerFormat as exc:  # a newer app wrote it since this one read it
+            self.newer = exc.found
+            LOGGER.warning("%s", exc)
 
     def view(self, key: StoreKey) -> Learned:
         with self._lock:

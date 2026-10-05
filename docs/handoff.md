@@ -36,9 +36,29 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   NVIDIA or the processor. Storage: one data root, versioned formats, safe deletes, dev and
   packaged roots apart ([AGENTS.md](../AGENTS.md)).
 
-## State (2026-10-02)
+## State (2026-10-04)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
+
+- **Foundations** (spec 006, implemented 2026-10-03; in review, its local checks pending;
+  [reviewed 2026-10-04](reviews/2026-10-04-spec-006.md)):
+    - one data root, computed alike by the engine (`oneframe/layout.py`) and the app
+      (`app/main/paths.js`) from a shared table; the dev root is `OneframeLab-dev`
+      (`oneframe-lab-dev` on Linux), and only the app chooses the packaged one;
+    - nothing written outside it but the exceptions AGENTS.md names (the graphics driver's shader
+      cache; on Linux, Chromium's single-instance socket in the system temporary folder), and two
+      gaps listed below (uv's lock from the npm tools; on Windows, a library cache outside the
+      variables `child_env` sets). The
+      engine's side is proved by a footprint test on both systems, library caches, temporary files
+      and bytecode included; Electron's folders by a unit test of `app/main/boot.js` and a headless
+      run on Linux, with the real app on Windows still to run (spec 006's Verification);
+    - every kept file says its format (`oneframe-root.json`, settings, learned memory, the runtime
+      marker), and a newer one is left alone; a runtime moved to another root reads as `moved`;
+    - a locked folder per process under `cache/tmp/`, and a lock per runtime install or remove;
+    - one failure model (`oneframe/errors.py`, its table in [architecture.md](architecture.md#failures)),
+      answered to the page as values;
+    - a journal per run and install, pruned, and `npm run diagnose`;
+    - cache keys that follow a node's code and its runtime's build (`KEY_VERSION` 2).
 
 - **Engine** (`engine/src/oneframe/`):
     - port types with facets, manifests and the registry;
@@ -115,8 +135,8 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
-| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | approved 2026-10-03; next to implement |
-| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); after 006 |
+| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | implemented 2026-10-03, in review; local checks after the merge (its Verification) |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); next to implement, once 006 is merged |
 | 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog | 005 (first part) | not started |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
@@ -133,6 +153,39 @@ Done before this order:
 | [002 Fit to memory](../specs/002-fit-to-memory/spec.md) | done: AC1–AC7 by tests; AC8 on the owner's GTX 1070 ([2026-10-02-ac8.md](../specs/002-fit-to-memory/reports/2026-10-02-ac8.md)); merged in [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
 
 Known from the review, to be settled by the specs above or later ones:
+
+- **Not yet taken on from the [review of 2026-10-02](reviews/2026-10-02.md)** (spec 006 answered
+  section 8B, section 5's escapes from the root and shared roots, and items 4.4 and 4.6 to 4.8):
+    - 4.2 (High): requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
+      `nodes.fit` waiting on nvidia-smi, holds up `run.stop`;
+    - the rest of 4.5: two lists of variables kept from children (`executors.py`,
+      `runtime_install.py`), two ways to kill a process, the scheduler assembled in several places;
+    - 4.10: `memory.py` is four modules, and `bench_fit.py` names the runtime `torch`;
+    - 4.11: pyright on the first node that imports torch, and a cached CI job for real torch
+      (spec 005);
+    - before spec 004: an injected executor provider, and node code loaded as a package named for
+      the node; today two engine nodes with same-named helpers can run each other's code;
+    - before spec 004 too: split the child into a once-per-process bootstrap and per-job code,
+      joined by a typed job (006's Out of scope);
+    - 4.9: a machine-readable protocol contract, and consistent event names (006's Out of scope);
+    - 4.10 also: `cache.py` imports the child's `Value`;
+    - the low tier: `allow_network` is read and never set; the test guard notices only deleted
+      test names; the docs check proves only that paths exist;
+    - section 5, with packaging: a chosen root is not checked for long paths, OneDrive or FAT32;
+    - section 3: the build-versus-adopt decision against ComfyUI, still unwritten.
+- **From the [review of spec 006](reviews/2026-10-04-spec-006.md)**, small and open:
+    - the npm tools (`bench:runtime`, `bench:fit`, `diagnose`) leave uv's lock file in the system
+      temporary folder; the app's own `uv run` does not;
+    - a `memory` failure says `retry` even when this machine can never run the node;
+    - a step log has no bound while its run lasts;
+    - disk and lock errors are reported as engine bugs;
+    - on Windows, a library cache outside the variables `child_env` sets still goes to the person's
+      profile;
+    - a runtime node running in one process is not protected from a remove or reinstall in another,
+      and an install in another process reads as `not_installed` here;
+    - spec 003 lists `stopped` as a download failure reason, but under 006 Stop is not a failure;
+    - spec 004's long-lived worker must keep what 006 assumes of one process per job: node code
+      imported fresh, `child_env` per job, a scratch folder per process.
 
 - **Precision has no speed model.** The fit can pick fp16 on a card that runs it far slower than
   fp32. The rate per precision and compute capability is published data, so it can be added

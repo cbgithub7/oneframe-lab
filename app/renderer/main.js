@@ -58,7 +58,7 @@ api.onEvent((event) => {
     setStatus("ready", `Engine ${event.engine} · Python ${event.python} · ${event.nodes} nodes`);
     loadNodes().catch((error) => setStatus("failed", `Could not list nodes: ${error.message}`));
   } else if (event.event === "engine.failed") {
-    setStatus("failed", event.message);
+    setStatus("failed", [event.message, event.next].filter(Boolean).join(" "));
   } else if (event.event === "engine.exit") {
     setStatus("failed", `The engine stopped (code ${event.code}).`);
   }
@@ -68,6 +68,9 @@ api.onEvent((event) => {
 api.request("engine.hello").then((hello) => {
   setStatus("ready", `Engine ${hello.engine} · Python ${hello.python} · ${hello.nodes} nodes`);
   return loadNodes();
-}).catch(() => {
-  // not ready yet: the engine.ready event will arrive
+}).catch((/** @type {any} */ failure) => {
+  // Not ready yet, and the engine.ready event will arrive; or it failed before this page subscribed,
+  // and the app answers with why.
+  if (failure?.kind === "request" && failure?.reason === "not_running" && failure?.retry) return;
+  setStatus("failed", [failure?.message, failure?.next].filter(Boolean).join(" "));
 });

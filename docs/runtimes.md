@@ -96,8 +96,9 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
 - `sources`: upstream code that is not on an index, as a pinned archive. Its sha256 is checked,
   every file in it must stay inside its folder, and `paths` inside it are made importable.
 - `env`: variables set for every node run in this runtime. It may not set what the engine sets or
-  removes for every run: the hub libraries' offline flags, hub tokens and endpoints, and torch's
-  `weights_only` switches.
+  removes for every run: the hub libraries' offline flags, hub tokens and endpoints, torch's
+  `weights_only` switches, and what keeps a run under the data root (the library caches, the
+  temporary folder, bytecode, and the hub and Triton cache variables that would override them).
 - `probe`: a function the runtime report runs inside the runtime.
 
 ## Checks
@@ -133,13 +134,27 @@ Nothing is installed until a person asks. The engine picks the build this machin
 <data>/runtimes/<id>/<build>/oneframe-runtime.json    the marker, written last
 <data>/runtimes/<id>/downloads/                       source archives, by sha256
 <data>/uv/cache/, <data>/uv/python/                   uv's cache and the Pythons it fetched
+<data>/cache/runtime/<id>/                            the caches its libraries keep (HF_HOME, ...)
+<data>/logs/locks/runtime-<id>.lock                   held while it is installed or removed
 ```
 
-- **The marker** holds the hashes of `uv.lock` and `runtime.json` the environment was built from,
-  and a freeze of what arrived. Until it is written, the runtime is not installed: an install that
-  stopped, failed or was killed is resumed by installing again.
-- **Out of date:** when `uv.lock`, `runtime.json` or a stand-in changes, the runtime is out of
-  date. Nodes refuse to run in it, and installing again rebuilds it; nothing rebuilds on its own.
+- **The marker** holds its format, the hashes of `uv.lock`, `runtime.json` and the stand-ins the
+  environment was built from, the environment's own path, and a freeze of what arrived. Until it
+  is written, the runtime is not installed (`not_installed`): an install that stopped, failed or
+  was killed is resumed by installing again.
+- **Out of date** (`out_of_date`): when `uv.lock`, `runtime.json` or a stand-in changes, the
+  runtime is out of date. Nodes refuse to run in it, and installing again rebuilds it; nothing
+  rebuilds on its own.
+- **Moved** (`moved`): an environment whose marker names another path (a root copied or moved)
+  must be built again; installing deletes it first. **Newer** (`newer_format`): one a newer
+  version of the app installed is left as it is, neither installed over nor removed.
+- **One at a time, across processes** (`locked`): installing or removing a runtime holds its lock,
+  so the app and a command-line tool on the same root never build it at once. The operating
+  system releases the lock when its holder dies.
+- **What a run writes** stays under the root: the child's library caches go to
+  `cache/runtime/<id>/`, its temporary files to its job's folder, and it writes no bytecode
+  (`executors.child_env`). A node's cache key includes the build and the marker's hashes, so a
+  rebuilt runtime never serves results from before.
 - **Several cards:** the build is planned for the NVIDIA card with the most memory, and a node's
   child sees only that card (`CUDA_DEVICE_ORDER=PCI_BUS_ID`, `CUDA_VISIBLE_DEVICES`), so its
   `cuda` is the card the build was chosen for. The fit uses that card too (`device_target`), even when

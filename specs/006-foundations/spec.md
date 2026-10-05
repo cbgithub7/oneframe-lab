@@ -1,10 +1,12 @@
 # 006: Foundations
 
-Status: approved (drafted and agent-reviewed 2026-10-03)
+Status: implemented 2026-10-03, in review (every task ticked; the local checks below wait for the merge)
 Owner approval: 2026-10-03
 
-Comes before spec 003's core, which builds on it. It answers [the review of 2026-10-02](../../docs/reviews/2026-10-02.md),
-sections 4, 5 and 8B.
+Comes before spec 003's core, which builds on it. It answers [the review of 2026-10-02](../../docs/reviews/2026-10-02.md):
+section 8B, section 5's escapes from the root and shared roots, and items 4.4, 4.6 to 4.8 and
+part of 4.5. The rest of section 4 is tracked in the [handoff](../../docs/handoff.md). Reviewed on
+2026-10-04 ([review](../../docs/reviews/2026-10-04-spec-006.md)).
 
 ## Problem
 
@@ -154,6 +156,14 @@ What the app writes, and how it fails, is not yet something a person can trust:
 ## Tests
 
 - Added: one or more per acceptance criterion.
+- Changed: `test_a_store_file_that_cannot_be_read_starts_empty` (test_memory.py) asserted that a
+  learned-memory file in a newer format is replaced; requirement 3 leaves it as it is, so it now
+  asserts that, and still that an unreadable file is replaced.
+- Changed: the runtime tests in test_runtime_install.py and test_runtime_server.py compare statuses
+  and reasons with the snake_case spellings requirement 5 sets (`not_installed`, `out_of_date`).
+- Changed: "the data root is one folder per platform, overridable" (tests/app/engine.test.js) calls
+  the root function as requirement 1 defines it and expects the dev root's name; its cases moved,
+  with many more, to layout.test.js, which checks the shared table.
 - Removed: none.
 
 ## Verification
@@ -166,19 +176,78 @@ starts Electron. In a local session after the merge:
   on Linux, `~/.local/share/oneframe-lab` and `~/.config/oneframe-lab`. `OneframeLab` becomes the
   packaged app's name;
 - the torch runtime is installed into the dev root with `npm run bench:runtime -- torch`;
-- the local-session skill's mention of the old root is updated (a task).
+- the local-session skill's mention of the old root is updated (a task; done in task 11).
+
+The exact steps, on Windows (`/local-session`), each one's output kept for the report
+`specs/006-foundations/reports/<date>-local.md`:
+
+1. Note what exists: `dir %APPDATA%`, `dir %LOCALAPPDATA%`, `dir %USERPROFILE%`, and
+   `reg query HKCU\Software\Python /s` and `reg query HKCU\Environment /v Path`.
+2. `npm start`; wait for the node list; close the app. Then `dir %LOCALAPPDATA%\OneframeLab-dev`
+   shows `electron`, `cache`, `logs`, `oneframe-root.json`, and `%APPDATA%\oneframe-lab` does not
+   exist (delete it first if an older app made it).
+3. `npm run bench:runtime -- torch`: the report names the dev root, and the install's journal is in
+   `%LOCALAPPDATA%\OneframeLab-dev\logs\journal\`.
+4. `npm run diagnose`; open the file it names in `reports\`, and search it for the Windows user
+   name: it appears only as an ordinary word, never in a path.
+5. Repeat step 1 and compare: nothing new at the top of the three profile folders, and the two
+   registry values unchanged.
+6. Delete the old roots by hand (above).
 
 ## Decisions taken
 
-- **The dev root is renamed now, not migrated.** The cost is one torch reinstall, and the clean
-  name stays for the packaged app.
-- **The top-level layout stays.** Regrouping it into config, state and cache would need a
-  migration and buy nothing yet: the standard uninstall is "everything but `models/`".
-- **Runtime reasons become snake_case now,** before spec 003 adds more. The page displays them
-  without parsing.
-- **Cache records get no format of their own.** `KEY_VERSION` already makes an old record a miss.
-- **A root of the other kind,** reached through `ONEFRAME_DATA`, is used, with a warning in
-  `engine.ready`.
+Each is reversible; the numbers and names live in the code, which says why beside them.
+
+- **The dev root is renamed now, not migrated**: one torch reinstall, and the clean name stays for
+  the packaged app. **The top-level layout stays**: regrouping it would need a migration and buy
+  nothing yet. **A root of the other kind**, reached through `ONEFRAME_DATA`, is used, with a
+  warning in `engine.ready`.
+- **Every variable that names the root's folder must be absolute** (task 1), as XDG says of its
+  own: the root functions take no working folder. **The shared table is `contracts/layout.json`**,
+  and both languages clean paths by one rule written out twice, because `ntpath` and Node's
+  `path.win32` disagree on shares and leading double slashes.
+- **Formats** (tasks 2, 3): learned memory keeps `version` as its format key, as it was; the root
+  file records `format` and `kind`, and one that cannot be read stops the engine as a newer one
+  does, since it might be one; a marker without `format` is format 1, one without `env` is never
+  `moved`, and installing over a `moved` environment deletes it first. Cache records get no format:
+  `KEY_VERSION` makes an old record a miss. **A format goes up only when an older app would misread
+  or damage the file**; a new file or folder is not a format change
+  ([architecture.md](../../docs/architecture.md)).
+- **Each process's folder is a numbered `cache/tmp/<n>/` with its lock** (task 4): numbers are
+  reused, so the lock files, never deleted, stay few; anything else in `cache/tmp/` predates this
+  spec and is removed. Design's `cache/jobs/` is not made, since requirement 4 puts job folders in
+  the process's own folder. A lock error other than "held" is an error, not busy. `bench:fit`
+  writes its report to `reports/` unless `--out` names a place.
+- **What keeps a child under the root is reserved** (task 5): a runtime's definition cannot set the
+  library-cache, temporary or bytecode variables, and the person's own hub and Triton cache
+  variables, which would override them, never reach a child. The app sets `PYTHONPYCACHEPREFIX`
+  for the engine's own modules; uv and children never see it.
+- **The app's own temporary folder is `cache/electron/tmp/`** (task 6), outside `cache/tmp/`, and the
+  `uv run` that starts the engine uses it too. **The page's session is in memory.** **The
+  spellchecker is off with no languages**, found by running the real app: otherwise each start
+  fetched dictionaries from Google, and turning it off alone did not stop that. **A second launch
+  on a root opens no window and starts no engine.** **A `TMPDIR` too long for Chromium's socket is
+  set aside while the lock is asked for**: it aborted the app at start (with the owner's
+  decision 3; an Electron upgrade re-checks the socket's path, [versions.md](../../docs/versions.md)).
+- **Failures** (task 8): kinds beyond the review's list are `edge`, `graph`, `root`, `request` and
+  `app`; refusals to install or remove share kind `runtime`. `next` is a sentence for a person and
+  `retry` belongs to the reason; the page decides from the kind and reason. An `edge` failure has no
+  `node.failed`: `run.failed` names the edge. The page receives a failed request as a value, since
+  Electron passes on only a thrown error's message; a page that subscribed after the engine failed
+  to start learns why from its first request. Any start failure is an `engine.failed` with a reason.
+- **Evidence** (task 9): one journal per run or install, pruned as a folder with the step logs
+  (now `logs/steps/`), so `app.log` is never touched. A journal that cannot be written never fails
+  the run; a full one still takes how the run ended, and an engine crash is its last line. The
+  diagnostics file is JSON, redacted after it is serialised, and matches a user only as a whole
+  path segment after the users folder, so a longer name or a word elsewhere is kept. `diagnose` reads
+  the root as it is: it reports on a root the engine refuses, and writes only `reports/`.
+- **Cache keys** (task 10): a node's code is read from its files each run (a size and a time can
+  stay the same when the bytes do not), following linked folders; the runtime part is the build the
+  plan picks and the hashes its marker records, so a key follows what is installed. A cached result
+  is served even when the runtime is `out_of_date` since: it is what the installed build made. A
+  node in the engine's process re-imports its helpers, as its key says. **`KEY_VERSION` goes up when
+  the engine changes what a node's output means** (its trust, facets or carrier handling), since
+  the engine's own code is in no key.
 
 ## Out of scope
 
@@ -188,8 +257,39 @@ starts Electron. In a local session after the merge:
 - **Splitting the child into setup and per-job code,** before spec 004.
 - **A machine-readable protocol contract.**
 
+## Open questions
+
+None.
+
 ## Owner's decisions
 
 1. **The storage rule's exceptions** (2026-10-03). "Nothing in the repo" is kept, except a file the
    person names (such as a bench report written with `--out` into `specs/<id>/reports/`) and a dev
    checkout's engine environment (`engine/.venv`). [AGENTS.md](../../AGENTS.md) says so.
+2. **The two changed tests** (2026-10-04, approved). `test_a_store_file_that_cannot_be_read_starts_empty`
+   now asserts that learned memory in a newer format is left as it is (requirement 3), and still that an
+   unreadable file is replaced; the runtime tests compare the snake_case reasons (requirement 5). Both
+   follow from this spec's requirements, and neither checks less than before. A third, in
+   `tests/app/engine.test.js`, was unlisted until the review; it is listed under Changed, with the
+   review's fixes the owner accepted the same day.
+3. **Chromium's files in the system temporary folder on Linux** (2026-10-04, accepted as an
+   exception; [AGENTS.md](../../AGENTS.md) says so). While the app runs, Chromium keeps the socket
+   behind the single-instance lock in a folder it makes in `$TMPDIR` or `/tmp` (`scoped_dir*`, linked
+   from `electron/`), removed at a clean exit and left by a crash until the system cleans its
+   temporary folder; it also makes and deletes one temporary file there. Windows uses no file for the
+   lock. A study on Electron 44.4.5 (task 6's open question, answered with the source and real runs)
+   found the socket *can* be moved, by setting `TMPDIR` before the lock, contrary to what this spec
+   first said; it stays where Chromium puts it because a socket path over 107 bytes aborts the app at
+   start (a root under `cache/electron/tmp` leaves only 55 bytes for the root's own path), and a root
+   on a network file system may not hold a socket at all, which would make the app quit without a word.
+4. **Graphics driver shader caches** (2026-10-04, accepted as an exception on the review's
+   recommendation; [AGENTS.md](../../AGENTS.md) says so). The GPU process writes the driver's shader
+   cache where the driver keeps it (`~/.cache/mesa_shader_cache` with Mesa, `~/.cache/nvidia` or
+   `%LOCALAPPDATA%\NVIDIA\DXCache` with NVIDIA, `D3DSCache` on Windows). The driver owns, caps and
+   shares it with every program on the machine. The app's own code cannot redirect it: on Linux the
+   GPU process forks from a zygote that starts before `main.js`, so a variable set there never
+   reaches it, and on Windows the driver alone decides where its caches go. On Linux a launcher,
+   or the app relaunching itself, could set `MESA_SHADER_CACHE_DIR` (and, untested, NVIDIA's
+   `__GL_SHADER_DISK_CACHE_PATH`) before Electron starts; the review first said it could not be
+   moved. Told this, the owner kept the exception (2026-10-04): the driver caps the cache, every
+   program shares it, and a relaunch would cover only part of Linux.

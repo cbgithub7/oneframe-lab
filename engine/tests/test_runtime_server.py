@@ -133,7 +133,7 @@ def test_the_runtime_methods_work_over_the_server(
             "runtimes.remove",
         } <= set(hello["methods"])
         [row] = server.call("runtimes.list")["result"]["runtimes"]
-        assert row["id"] == "tiny" and row["status"] == "not installed"
+        assert row["id"] == "tiny" and row["status"] == "not_installed"
         build = row["plan"]["build"]
         assert build in ("cpu", "cu130")  # whatever this machine runs
 
@@ -160,7 +160,7 @@ def test_the_runtime_methods_work_over_the_server(
 
         removed = server.call("runtimes.remove", {"runtime": "tiny"})["result"]
         assert removed == {"runtime": "tiny", "removed": str(data / "runtimes" / "tiny")}
-        assert server.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not installed"
+        assert server.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not_installed"
     finally:
         server.close()
 
@@ -184,7 +184,7 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
     release.set()
     again = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
     try:
-        assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not installed"
+        assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not_installed"
         again.call("runtimes.install", {"runtime": "tiny"})
         done = again.event("runtime.done", "runtime.failed", "runtime.stopped", runtime="tiny")
         assert done["event"] == "runtime.done", done
@@ -215,7 +215,7 @@ def test_stop_ends_an_install_and_installs_run_one_at_a_time(
         ended = server.event("runtime.done", "runtime.failed", "runtime.stopped", runtime="tiny")
         assert ended["event"] == "runtime.stopped", ended
         assert not (data / "runtimes" / "tiny" / build / runtime_install.MARKER).exists()
-        assert server.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not installed"
+        assert server.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not_installed"
     finally:
         server.close()
 

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import child
+from oneframe.errors import KINDS, Failure, Stopped
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(child.__file__).resolve()
@@ -36,14 +37,21 @@ Emit = Callable[[dict[str, Any]], None]
 ShouldStop = Callable[[], bool]
 
 
-class NodeError(RuntimeError):
-    """A node ended without its outputs. `kind` is oom / fetch / missing / node / error / died.
-    `peaks` are what the run had used when it ended (`peak_reserved_mb`, `peak_vram_mb`,
-    `peak_ram_mb`), so a failed attempt can be reported and learned from."""
+class NodeError(Failure):
+    """A node ended without its outputs. `kind` is a declared kind (errors.py): oom, memory,
+    fetch, missing, node, error, died or contract. `peaks` are what the run had used when it ended
+    (`peak_reserved_mb`, `peak_vram_mb`, `peak_ram_mb`), so a failed attempt can be reported and
+    learned from."""
 
-    def __init__(self, kind: str, message: str, detail: str = "", peaks: dict[str, Any] | None = None):
-        super().__init__(message)
-        self.kind = kind
+    def __init__(
+        self,
+        kind: str,
+        message: str,
+        detail: str = "",
+        peaks: dict[str, Any] | None = None,
+        next: str | None = None,
+    ):
+        super().__init__(message, next=next, kind=kind)
         self.detail = detail
         self.peaks = dict(peaks or {})
 
@@ -63,21 +71,23 @@ def died_message(code: int | None, platform: str = sys.platform) -> str:
     return text
 
 
-class Stopped(RuntimeError):
-    """Stop was pressed."""
-
-
 class EngineExecutor:
     """Runs a node in the engine's process. Stop is cooperative: the node checks ctx.stopped()."""
 
     def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
         try:
             return child.run_node(job, emit, should_stop)
-        except child.Stopped as exc:
-            raise Stopped() from exc
+        except Stopped:
+            raise
         except Exception as exc:
-            kind = child.classify(exc)
+            kind = declared_kind(child.classify(exc))
             raise NodeError(kind, f"{type(exc).__name__}: {exc}", _trace()) from exc
+
+
+def declared_kind(kind: str) -> str:
+    """A child's word for its failure, as a declared kind: one errors.py does not know (a newer
+    child, or a node writing on the protocol stream) is reported as `error`, never lost."""
+    return kind if kind in KINDS else "error"
 
 
 def _trace() -> str:
@@ -108,8 +118,59 @@ SECRET_OR_UNSAFE_ENV = (
     "HF_ENDPOINT",
     "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
 )
-_RESERVED = {name.upper() for name in (*FORCED_ENV, *SECRET_OR_UNSAFE_ENV)}
-_ENGINE_PYTHON = {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"}
+# Where the libraries a node uses keep their caches: each under the data root, in
+# `cache/runtime/<id>/`, never in the person's home folder, where nothing would remove them.
+LIBRARY_CACHES = {
+    "HF_HOME": "huggingface",
+    "TORCH_HOME": "torch",
+    "TORCH_EXTENSIONS_DIR": "torch_extensions",
+    "TORCHINDUCTOR_CACHE_DIR": "torchinductor",
+    "TRITON_HOME": "triton",
+    "CUDA_CACHE_PATH": "cuda",
+    "XDG_CACHE_HOME": "xdg",
+    "MPLCONFIGDIR": "matplotlib",
+}
+TEMP_ENV = ("TMP", "TEMP", "TMPDIR")
+# Variables that point a library past the folders above: each overrides HF_HOME or TRITON_HOME,
+# so the person's own value would let a run read weights Download never fetched, or write outside
+# the root. They are removed; the folders above then decide (spec 003 sets HF_HUB_CACHE itself).
+OVERRIDING_CACHES = (
+    "HF_HUB_CACHE",
+    "HUGGINGFACE_HUB_CACHE",
+    "HF_ASSETS_CACHE",
+    "HUGGINGFACE_ASSETS_CACHE",
+    "HF_DATASETS_CACHE",
+    "HF_MODULES_CACHE",
+    "HF_XET_CACHE",
+    "TRANSFORMERS_CACHE",
+    "PYTORCH_TRANSFORMERS_CACHE",
+    "PYTORCH_PRETRAINED_BERT_CACHE",
+    "TRITON_CACHE_DIR",
+)
+# A child reads the bytecode its runtime's install compiled and writes none: not beside a node's
+# code, and not into the runtime, which an install alone changes.
+ROOT_ENV = (*LIBRARY_CACHES, *TEMP_ENV, *OVERRIDING_CACHES, "PYTHONDONTWRITEBYTECODE")
+_RESERVED = {name.upper() for name in (*FORCED_ENV, *SECRET_OR_UNSAFE_ENV, *ROOT_ENV)}
+# PYTHONPYCACHEPREFIX is the engine's own (the app sets it): a child given it would look for its
+# runtime's bytecode there instead of beside each module, and never find it.
+_ENGINE_PYTHON = {
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "VIRTUAL_ENV",
+    "CONDA_PREFIX",
+    "CONDA_DEFAULT_ENV",
+    "PYTHONPYCACHEPREFIX",
+}
+
+
+def reserved_why(names: list[str]) -> str:
+    """Why the engine keeps these names to itself, in words for a runtime's author."""
+    why = []
+    if any(name.upper() not in {n.upper() for n in ROOT_ENV} for name in names):
+        why.append("hub libraries offline, no hub token or endpoint, torch's weights_only loading on")
+    if any(name.upper() in {n.upper() for n in ROOT_ENV} for name in names):
+        why.append("a run's caches, temporary files and bytecode kept under the data root")
+    return "; ".join(why)
 
 
 def reserved_env(name: str) -> bool:
@@ -118,10 +179,17 @@ def reserved_env(name: str) -> bool:
     return name.upper() in _RESERVED
 
 
-def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, str]:
+def child_env(
+    base: dict[str, str] | None,
+    extra: dict[str, str],
+    caches: Path | None = None,
+    tmp: Path | None = None,
+) -> dict[str, str]:
     """A runtime child's environment: nothing of the engine's own Python leaks in, so the runtime
     never sees the engine's packages or loads a DLL from the engine's folders; no hub token or
-    endpoint reaches it; and FORCED_ENV is set last. Names are compared without case."""
+    endpoint reaches it; and FORCED_ENV is set last. Then what keeps a run's writes under the data
+    root: the library caches in `caches` (the runtime's folder in `cache/runtime/`), the temporary
+    folder in `tmp` (the job's own), and no bytecode written. Names are compared without case."""
     source = dict(os.environ if base is None else base)
     drop = {*_ENGINE_PYTHON, "UV_PROJECT_ENVIRONMENT"}
     env = {k: v for k, v in source.items() if k.upper() not in drop and not reserved_env(k)}
@@ -134,6 +202,11 @@ def child_env(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, s
         )
     env.update({k: v for k, v in extra.items() if not reserved_env(k)})
     env.update(FORCED_ENV)
+    if caches is not None:
+        env.update({name: str(caches / folder) for name, folder in LIBRARY_CACHES.items()})
+    if tmp is not None:
+        env.update(dict.fromkeys(TEMP_ENV, str(tmp)))
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env
@@ -171,8 +244,14 @@ class ProcessExecutor:
         poll: float = 0.2,
         log_dir: Path | None = None,
         on_pid: Callable[[int], None] | None = None,
+        tmp_root: Path | None = None,
+        caches: Path | None = None,
     ):
         self.python = Path(python)
+        self.caches = caches  # the runtime's folder for library caches, under the data root
+        # Where each job's own folder is made: the process's folder under cache/tmp/, or, when not
+        # given, the process's temporary folder (which an engine or bench tool points there too).
+        self.tmp_root = tmp_root
         self.env = dict(env or {})
         self.base_env = base_env
         self.poll = poll
@@ -184,7 +263,7 @@ class ProcessExecutor:
         # to stop it (an engine, a bench tool), so no orphan keeps holding the card. It watches
         # the stdin pipe this process holds, and closes.
         job = {**job, "exit_with_parent": True}
-        tmp = Path(tempfile.mkdtemp(prefix="oneframe-job-"))
+        tmp = Path(tempfile.mkdtemp(prefix="job-", dir=self.tmp_root))
         stderr_tail: deque[str] = deque(maxlen=80)
         done: dict[str, Any] | None = None
         failed: dict[str, Any] | None = None
@@ -200,7 +279,9 @@ class ProcessExecutor:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=child_env(self.base_env, {**self.env, **(job.get("env") or {})}),
+                env=child_env(
+                    self.base_env, {**self.env, **(job.get("env") or {})}, caches=self.caches, tmp=tmp
+                ),
                 cwd=tmp,
                 text=True,
                 encoding="utf-8",
@@ -251,9 +332,11 @@ class ProcessExecutor:
                     proc.stdin.close()
             if done is not None:
                 return done
+            if failed is not None and failed.get("kind") == "stopped":
+                raise Stopped()  # the node stopped itself, as ctx.stopped() told it to
             if failed is not None:
                 raise NodeError(
-                    str(failed.get("kind") or "error"),
+                    declared_kind(str(failed.get("kind") or "error")),
                     str(failed.get("message")),
                     str(failed.get("trace") or ""),
                     {k: failed.get(k) for k in PEAKS},

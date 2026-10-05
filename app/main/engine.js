@@ -8,6 +8,10 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 
+import { APP_FAILURES } from "./failures.js";
+
+/** @typedef {import("./failures.js").Failure} Failure */
+
 /**
  * @typedef {{ command: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv,
  *   spawn?: typeof nodeSpawn, requestTimeoutMs?: number }} EngineOptions
@@ -15,15 +19,23 @@ import { EventEmitter } from "node:events";
  *   timer: NodeJS.Timeout | undefined, method: string }} Pending
  */
 
+/**
+ * A failure the engine reported, or the client found (a timeout, an engine that stopped), with its
+ * declared kind and reason (oneframe/errors.py). `failure` is all of it, as the page receives it.
+ */
 export class EngineError extends Error {
   /**
    * @param {string} message
-   * @param {{ problems?: Array<{node?: string, port?: string, message: string}> }} [detail]
+   * @param {Partial<Failure> & { problems?: Array<{node?: string, port?: string, message: string}> }} [detail]
    */
   constructor(message, detail = {}) {
     super(message);
     this.name = "EngineError";
     this.problems = detail.problems ?? [];
+    this.kind = detail.kind ?? "engine";
+    this.reason = detail.reason;
+    /** @type {Failure} */
+    this.failure = { ...detail, kind: this.kind, message, retry: detail.retry ?? false };
   }
 }
 
@@ -55,7 +67,11 @@ export class EngineClient extends EventEmitter {
     this.ready = false;
   }
 
-  /** Start the process. Resolves with the engine's `engine.ready` event. */
+  /**
+   * Start the process. Resolves with the engine's `engine.ready` event; rejects with an EngineError
+   * when the engine says it cannot start (`engine.failed`, such as a data root laid out by a newer
+   * version), or with an Error when it exits without a word.
+   */
   start() {
     if (this.child) throw new Error("The engine is already running.");
     const spawn = this.options.spawn ?? nodeSpawn;
@@ -76,11 +92,16 @@ export class EngineClient extends EventEmitter {
     child.stderr.on("data", (chunk) => {
       for (const line of err.push(chunk)) this.emit("log", line);
     });
-    child.on("exit", (code, signal) => this.#onExit(code, signal));
+    // "close", not "exit": it comes once stdout is drained, so a last line the engine wrote before
+    // it ended (engine.failed, saying why) is read before the client decides how it ended.
+    child.on("close", (code, signal) => this.#onExit(code, signal));
     child.on("error", (error) => this.#onExit(null, null, error));
     return new Promise((resolve, reject) => {
+      /** @type {EngineError | null} */
+      let refused = null;
       /** @param {any} event */
       const onEvent = (event) => {
+        if (event.event === "engine.failed") refused = new EngineError(String(event.message), event);
         if (event.event !== "engine.ready") return;
         this.off("event", onEvent);
         this.off("exit", onExit);
@@ -90,7 +111,7 @@ export class EngineClient extends EventEmitter {
       /** @param {{ code: number | null, error?: Error }} info */
       const onExit = (info) => {
         this.off("event", onEvent);
-        reject(info.error ?? new Error(`The engine exited before it was ready (code ${info.code}).`));
+        reject(info.error ?? refused ?? new Error(`The engine exited before it was ready (code ${info.code}).`));
       };
       this.on("event", onEvent);
       this.once("exit", onExit);
@@ -105,14 +126,14 @@ export class EngineClient extends EventEmitter {
    */
   request(method, params = {}) {
     const child = this.child;
-    if (!child || !this.ready) return Promise.reject(new Error("The engine is not running."));
+    if (!child || !this.ready) return Promise.reject(new EngineError("The engine is not running.", APP_FAILURES.not_running));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timeoutMs = this.options.requestTimeoutMs ?? 30_000;
       const timer = timeoutMs > 0
         ? setTimeout(() => {
           this.pending.delete(id);
-          reject(new Error(`The engine did not answer ${method} within ${timeoutMs} ms.`));
+          reject(new EngineError(`The engine did not answer ${method} within ${timeoutMs} ms.`, APP_FAILURES.timed_out));
         }, timeoutMs)
         : undefined;
       this.pending.set(id, { resolve, reject, timer, method });
@@ -168,7 +189,7 @@ export class EngineClient extends EventEmitter {
     this.ready = false;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
-      pending.reject(new Error(`The engine stopped while answering ${pending.method}.`));
+      pending.reject(new EngineError(`The engine stopped while answering ${pending.method}.`, APP_FAILURES.not_running));
     }
     this.pending.clear();
     this.emit("exit", { code, signal, error });
