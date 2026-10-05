@@ -13,8 +13,9 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
 - **Two loops.**
     - *Generate:* photo → a depth scene, a mesh, a splat, or segmented objects placed in a scene.
       At its fullest, a world from one image: the environment as a splat and the movable objects
-      as meshes placed by depth, seen together (the owner, 2026-10-05). `neilsonnn/image-blaster`
-      makes one with closed, paid services; here every step is a local, open node.
+      as meshes placed by depth, seen together, with its sound: an ambient loop and the objects'
+      own sounds (the owner, 2026-10-05). `neilsonnn/image-blaster` makes one with closed, paid
+      services; here every step is a local, open node.
     - *Improve:* photo, or a first result rendered along a camera path → synthesised views →
       reconstruction → a better result, compared against the first.
 - **Everything is a node.** A node is a manifest plus its code. Ports are typed, with facets.
@@ -205,8 +206,8 @@ Known from the review, to be settled by the specs above or later ones:
       cannot run;
     - `.spz` and `.obj`: export nodes beside `.glb` and `.ply`, or new port types (not decided);
     - the token part spec 003 leaves for later, before any gated model;
-    - sound: image-blaster also makes an ambient loop and object sounds. Nothing here carries
-      audio, and adding it is the owner's call.
+    - sound, in scope since 2026-10-05: an audio port type, nodes that make it, and a player in
+      the page; nothing carries audio yet, and no spec has taken it on.
 - **Precision has no speed model.** The fit can pick fp16 on a card that runs it far slower than
   fp32. The rate per precision and compute capability is published data, so it can be added
   without naming a card. The margin (1.5 GiB or 10%) should be derived again from real runs.
