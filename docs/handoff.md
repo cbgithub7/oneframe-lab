@@ -36,11 +36,13 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   NVIDIA or the processor. Storage: one data root, versioned formats, safe deletes, dev and
   packaged roots apart ([AGENTS.md](../AGENTS.md)).
 
-## State (2026-10-04)
+## State (2026-10-05)
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
-- **Foundations** (spec 006, implemented 2026-10-03; in review, its local checks pending;
+- **Foundations** (spec 006, merged 2026-10-05 in
+  [PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7) and green in CI; the spec stays in
+  progress until its local checks run;
   [reviewed 2026-10-04](reviews/2026-10-04-spec-006.md)):
     - one data root, computed alike by the engine (`oneframe/layout.py`) and the app
       (`app/main/paths.js`) from a shared table; the dev root is `OneframeLab-dev`
@@ -135,8 +137,8 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
-| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | implemented 2026-10-03, in review; local checks after the merge (its Verification) |
-| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); next to implement, once 006 is merged |
+| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | merged 2026-10-05 ([PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7)); its local checks (Verification) still to run |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); amended 2026-10-05 to fit 006 as built, the amendment approved the same day; next to implement |
 | 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog | 005 (first part) | not started |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
@@ -159,7 +161,8 @@ Known from the review, to be settled by the specs above or later ones:
     - 4.2 (High): requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop`;
     - the rest of 4.5: two lists of variables kept from children (`executors.py`,
-      `runtime_install.py`), two ways to kill a process, the scheduler assembled in several places;
+      `runtime_install.py`), two ways to kill a process, the scheduler assembled in several places
+      (spec 003's task 6 takes this last one on);
     - 4.10: `memory.py` is four modules, and `bench_fit.py` names the runtime `torch`;
     - 4.11: pyright on the first node that imports torch, and a cached CI job for real torch
       (spec 005);
@@ -175,7 +178,7 @@ Known from the review, to be settled by the specs above or later ones:
     - section 3: the build-versus-adopt decision against ComfyUI, still unwritten.
 - **From the [review of spec 006](reviews/2026-10-04-spec-006.md)**, small and open:
     - the npm tools (`bench:runtime`, `bench:fit`, `diagnose`) leave uv's lock file in the system
-      temporary folder; the app's own `uv run` does not;
+      temporary folder; the app's own `uv run` does not (spec 003's task 8 takes this on);
     - a `memory` failure says `retry` even when this machine can never run the node;
     - a step log has no bound while its run lasts;
     - disk and lock errors are reported as engine bugs;
@@ -183,7 +186,6 @@ Known from the review, to be settled by the specs above or later ones:
       profile;
     - a runtime node running in one process is not protected from a remove or reinstall in another,
       and an install in another process reads as `not_installed` here;
-    - spec 003 lists `stopped` as a download failure reason, but under 006 Stop is not a failure;
     - spec 004's long-lived worker must keep what 006 assumes of one process per job: node code
       imported fresh, `child_env` per job, a scratch folder per process.
 
