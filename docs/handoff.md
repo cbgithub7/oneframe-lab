@@ -12,15 +12,11 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   to block.
 - **Two loops.**
     - *Generate:* photo → a depth scene, a mesh, a splat, or segmented objects placed in a scene.
+      At its fullest, a world from one image: the environment as a splat and the movable objects
+      as meshes placed by depth, seen together (the owner, 2026-10-05). `neilsonnn/image-blaster`
+      makes one with closed, paid services; here every step is a local, open node.
     - *Improve:* photo, or a first result rendered along a camera path → synthesised views →
       reconstruction → a better result, compared against the first.
-- **What the foundation is for** (the owner, 2026-10-05). Generate's fullest result is a world
-  from one image: the static environment as a Gaussian splat and the movable objects as meshes,
-  each placed by depth, seen together. `neilsonnn/image-blaster` makes one from closed, paid
-  services; here every step is a local, open node, so one recipe runs light models on a small card
-  and heavier ones on a large card, and a world model tested only on datacenter cards under Linux
-  (NVIDIA's Lyra 2, say) is a node only where it can run. The port types already carry it (depth
-  → point map → splat; mask → mesh → pose → `Scene`); what is missing is under "Known" below.
 - **Everything is a node.** A node is a manifest plus its code. Ports are typed, with facets.
   Nothing outside a node's folder names a model.
 - **Local only.** No hosted models, no accounts, no network during a run. Weights download only
@@ -146,7 +142,7 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
 | 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | merged 2026-10-05 ([PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7)); its local checks (Verification) still to run |
 | 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); amended 2026-10-05 to fit 006 as built, the amendment approved the same day; next to implement |
-| 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog; MoGe-3 needs compute 8.0 or newer (see Known) | 005 (first part) | not started |
+| 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog and a result protocol the page can read (a large mesh or splat included); MoGe-3 may not run on the 1070 (see Known) | 005 (first part) | not started |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
 | 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times measured in steps 3 and 4 | 004 | not started |
@@ -196,16 +192,18 @@ Known from the review, to be settled by the specs above or later ones:
     - spec 004's long-lived worker must keep what 006 assumes of one process per job: node code
       imported fresh, `child_env` per job, a scratch folder per process.
 
-- **MoGe-3 needs a card of compute capability 8.0 or newer** (checked 2026-10-05: MoGe's
-  `pyproject.toml` requires FlexGEMM, which is built on Triton, and Triton's README supports NVIDIA
-  cards from 8.0). Its runtime will be refused on older cards, the owner's GTX 1070 among them, so
-  step 3 cannot show MoGe-3 there. Before spec 005 the owner chooses: a rented card for it, or
-  MoGe-2 beside it. Whether it installs on Windows is spec 005's to check.
-- **For a world from one image** (the foundation's aim above), beyond the compiled extensions of
-  step 4 and the viewer of step 7:
-    - a way to bring a large mesh or splat into the sandboxed page (the review of 2026-10-02 found
-      no result protocol);
-    - `.spz` and `.obj`, as export nodes beside `.glb` and `.ply` rather than new port types;
+- **MoGe-3 may not run on the owner's GTX 1070** (read in MoGe's source, 2026-10-05). Its code
+  imports FlexGEMM, which is built on Triton, and Triton's README supports NVIDIA cards from compute
+  8.0; FlexGEMM runs only in MoGe-3's optional refinement (`refine_steps`), and the `moge` package
+  requires it for every version. Whether MoGe-3, or MoGe-2 through that package, installs and runs
+  on an older card or on Windows is unverified, and spec 005's to check. If the 1070 cannot show
+  MoGe-3 in step 3, the owner chooses between a rented card and MoGe-2 beside it.
+- **For a world from one image** (Generate at its fullest), beyond what steps 3 to 7 plan (the
+  result protocol, compiled extensions, the viewer):
+    - lighter and heavier models are separate nodes to choose between; a world model tested only on
+      datacenter cards under Linux (NVIDIA's Lyra 2, say) gets a runtime the plan refuses where it
+      cannot run;
+    - `.spz` and `.obj`: export nodes beside `.glb` and `.ply`, or new port types (not decided);
     - the token part spec 003 leaves for later, before any gated model;
     - sound: image-blaster also makes an ambient loop and object sounds. Nothing here carries
       audio, and adding it is the owner's call.
