@@ -2,7 +2,7 @@
 
 Status: approved (core, 2026-10-03; evidence in [research.md](research.md), the owner's decisions
 in [the review](../../docs/reviews/2026-10-02.md))
-Owner approval: 2026-10-03
+Owner approval: 2026-10-03; fitted to spec 006 as built on 2026-10-05 (Decisions taken)
 
 Built on [spec 006](../006-foundations/spec.md): its layout module, failure model, locks and journal.
 
@@ -32,24 +32,30 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
     - an unsafe path: absolute, `..`, a Windows reserved name, a trailing dot or space, `:`, or
       paths that differ only in case;
     - a checkpoint that is not a choice of `files_by`, or checkpoints without `files_by`;
+    - a `files_by` param, or the `weights_by` of a node with files, whose `affects` is not
+      `output` (else every checkpoint would share one cache key);
     - two files with one `name`;
     - files in a node that runs in the engine.
 2. **One copy of each file,** under `<data>/models/`, named by its sha256 and read-only. A file
-   already stored is never fetched again, whatever pin names it.
+   already stored is never fetched again, whatever pin names it. The store says its format in
+   `models/oneframe-store.json`, and each record says its own. Neither is ever rewritten by an
+   older app: a newer or unreadable store refuses download, verify, remove and pin, and listing
+   and runs treat its files as not present; a newer record's file counts as not present.
 3. **Download is a job, and heals itself.**
     - `models.download {node, checkpoints?}` fetches the files every run needs, plus the default
-      checkpoint's, or every checkpoint's when asked. It answers at once with a request id, then
-      sends:
+      checkpoint's, or every checkpoint's when asked. It answers at once with a job id, which
+      every `model.*` event carries, then sends:
         - `model.start`;
         - `model.file`, with its phase: checking, downloading, retrying, verifying or placing;
         - `model.progress`, throttled;
-        - then `model.done`, `model.failed` or `model.stopped`.
+        - then `model.done`, `model.failed` or `model.stopped`. The first two list each file's
+          outcome; `model.failed` takes the kind and reason of the first file that failed.
 
       Its events go to spec 006's journal.
     - **One job at a time.** One job (download or verify) runs at a time across processes; another
-      is refused with `busy` or `locked`. A file that fails does not stop the others.
-    - **Stop.** `models.stop` sends `model.stopped` within 2 s, even on a stalled connection, and
-      keeps the partial.
+      is refused. A file that fails does not stop the others.
+    - **Stop.** `models.stop` sends `model.stopped` within 2 s of the engine reading it, even on a
+      stalled connection, and keeps the partial. A Stop is not a failure (spec 006).
     - **Each attempt starts from the source URL;** redirects are never reused. Dropped, reset or
       stalled connections, 5xx, 408 and 429 are retried with a growing wait, honouring
       `Retry-After` and `RateLimit`. The download fails only after a number of attempts in a row
@@ -69,16 +75,17 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
           engine dependency), proxies come from the system, and `HF_ENDPOINT` names a mirror.
     - **Failures** carry kind `download` and a reason:
         - `source_changed`, `hash_mismatch`, `no_space`, `stalled`, `tls`, `rate_limited`;
-        - `gated`, `not_found`, `revision_gone`;
-        - `busy`, `locked`, `stopped`.
+        - `gated`, `not_found`, `revision_gone`.
 
       Hugging Face's `X-Error-Code` decides `gated`, `not_found` (`RepoNotFound`, `EntryNotFound`)
       and `revision_gone`, never the status alone.
+    - **Refusals** of a download, verify, remove or pin carry kind `store` and a reason: `busy`,
+      `locked`, `in_use`, `registry_problems`, `node_root_missing` or `newer_format`.
 4. **Present means checked.**
     - A file is present once its sha256 matched, and its record holds its size and modification
       time. Each run compares both.
     - `models.verify {node?}`, a job like download, hashes again and drops a file that fails, so the
-      next download fetches only it.
+      next download fetches only it; its `model.done` names the files dropped.
 5. **Runs use only what is present.**
     - **Order.** A cached result needs no files. Otherwise these run before `node.start`, in
       order: the fit, the runtime check, then the files check.
@@ -89,14 +96,18 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
         - The engine never switches checkpoint just because one is on disk.
     - **A node missing a file fails with kind `files`.** Its reason is `not_downloaded`,
       `downloading`, `incomplete` or `changed`, and the failure names the files, the bytes left, and
-      a present checkpoint if there is one.
+      a present checkpoint if there is one. Its `next` names `npm run models:download`, since the
+      page has no `models.*` method yet.
     - **A node reaches its files only through `ctx.file(name)`.** `ctx.models` goes.
 6. **Remove is safe.**
     - `models.remove {node, checkpoint?}` deletes those files and their partials, keeping and
       naming any that another node pins.
     - `models.remove {unpinned: [sha256…]}` deletes exactly the files `models.list` showed as
       pinned by no node. It is refused while the registry has problems or a node root is missing.
-    - Remove is refused while a job runs in any process, and for files a running graph uses.
+    - Remove is refused while a job runs in any process.
+    - A file a run uses, in this process or another, is kept and named (`in_use`), by remove and
+      by verify's drop: each process lists the files its run reads in its own locked folder under
+      `cache/tmp/` (spec 006). A delete that fails keeps the file and its record and names it.
     - Nothing is deleted automatically.
 7. **Status without the network.**
     - `models.list` gives, for each node's shared files and each checkpoint:
@@ -116,6 +127,8 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
         - re-pinning to a new commit rewrites that source's entries and reports each sha256 that
           changed;
         - a value that changed under an unchanged pin is reported and left as it was.
+    - Ctrl+C stops either tool as `models.stop` does. Like every npm script that starts uv, they
+      leave nothing outside the data root, uv's own temporary files included.
 
 ## Acceptance criteria
 
@@ -133,8 +146,8 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
   download completes without a second request from the person. Repeated failures with no progress
   end it as `stalled`, saying how many bytes it kept. A Stop sends `model.stopped` within 2 s,
   before the headers and mid-body, over TLS, on both operating systems.
-- [ ] AC4: Integrity, space and the network (tests). Each reason in requirement 3 is produced by a
-  test:
+- [ ] AC4: Integrity, space and the network (tests). Each `download` reason in requirement 3 is
+  produced by a test:
     - a changed size fails before the body;
     - a hash mismatch keeps nothing;
     - a full partial answered with 416 is hashed;
@@ -148,7 +161,7 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
     - before any download, kind `files` with the bytes to fetch, and no process starts;
     - a cached result needs no files;
     - with the runtime missing too, the failure is kind `runtime`;
-    - after the download, the node runs and reads through `ctx.file`;
+    - after the download, the node runs and reads through `ctx.file`, under `bench:fit` too;
     - a truncated file, or one with a new modification time, reads as `changed`, and
       `models.verify` catches a change that keeps both the size and the time;
     - with only `small` present, a graph that sets `large`, or a default of `large` with room,
@@ -159,16 +172,19 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
     - a file shared with another node is kept and the other node named;
     - a checkpoint's removal deletes only its files and partials;
     - an unpinned list deletes exactly that list;
-    - remove is refused while the registry has problems, while a node root is missing, during a job
-      in another process, and for a file a running graph uses;
+    - remove is refused while the registry has problems, while a node root is missing, and during a
+      job in another process, each with its reason;
+    - a file that a graph running in this process or another uses is kept and named;
+    - a store in a newer format is left as it is and refuses download, verify, remove and pin;
     - nothing outside the store is touched.
 - [ ] AC7: The pin tool, against the test server:
     - it fills in sizes, sha256s, formats (a torch zip archive named `.bin` reads as a pickle),
       `gated` and the canonical id;
     - a re-pin reports the changed sha256s;
     - a changed value under the same pin is reported and left.
-- [ ] AC8 (local, real hosts, no GPU): on the owner's Windows PC, with manifests that pin only
-  files, kept in `specs/003-model-store/live/`:
+- [ ] AC8 (local, real hosts, no GPU): on the owner's Windows PC, with manifests whose only job is
+  to pin files (runtime nodes with a stub entry, whose runtime need not be installed), kept in
+  `specs/003-model-store/live/`:
     - these are pinned with `npm run models:pin` and fetched with
       `npm run models:download -- --all`:
         - Depth Pro's `depth_pro.pt` from Apple's server;
@@ -176,8 +192,10 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
         - MoGe-3's `model.pt` from `Ruicheng/moge-3-vitl` and `Ruicheng/moge-3-vitg`, as two
           checkpoints of one manifest. The 1.25B-parameter `vitg` is the large file this test
           needs;
+        - MiDaS v3.1's `dpt_beit_large_512.pt` (1.58 GB), a GitHub release asset;
     - each download is stopped midway, resumed, and completes and verifies;
-    - one GitHub release asset is resumed more than 300 s later, past its redirect token's life;
+    - the GitHub asset is resumed after its signed redirect has expired (3600 s on 2026-10-05; 300 s
+      in research.md);
     - the report gives each file's bytes, seconds and MB/s on one connection, the hosts reached,
       and the longest path. It goes under `specs/003-model-store/reports/`.
 
@@ -186,8 +204,8 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
 
 ## Design
 
-- **On disk** (a format; hard to change):
-    - `models/oneframe-store.json`, the store's format;
+- **On disk** (a format; hard to change), under `models/`:
+    - `oneframe-store.json`, the store's format;
     - `blobs/<2>/<sha256>`;
     - `partial/<sha256>`, or `partial/url-<hash of the URL>` while pinning;
     - `records/<sha256>.json`.
@@ -203,13 +221,26 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
 - **Fit.** The scheduler passes the present checkpoints to the fit.
 - **Risks.**
     - Windows' handling of a TLS read shut down mid-read is unverified (AC3).
-    - Windows cannot delete a memory-mapped file: remove refuses files a run uses, and spec 004's
-      workers inherit that rule.
+    - Windows cannot delete a memory-mapped file: remove keeps files a run in any process uses,
+      and spec 004's workers inherit that rule.
 
 ## Tests
 
 - Added: AC1 to AC7.
 - Removed: none.
+
+## Verification
+
+AC1 to AC7 run in CI. AC8 runs in a local session on the owner's Windows PC (`/local-session`),
+from the checkout, for each manifest in `specs/003-model-store/live/`:
+
+1. `npm run models:pin -- --nodes specs/003-model-store/live <node>`, and commit the pins it writes.
+2. `npm run models:download -- --nodes specs/003-model-store/live <node> --all`; press Ctrl+C
+   midway (`model.stopped`, the partial kept), run it again, and let it finish.
+3. For MiDaS: press Ctrl+C midway, wait until its redirect has expired (the `se` time in the URL
+   it logged), and run it again.
+4. Write the report under `specs/003-model-store/reports/`: each file's bytes, seconds and MB/s on
+   one connection, the hosts reached, the redirect's lifetime, and the longest path.
 
 ## Decisions taken
 
@@ -219,9 +250,32 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
   rule, the hub lookup tests, and the pin tool's folder expansion and code report. TripoSR is
   the first model that needs it; Depth Pro, MoGe-2 and MoGe-3 load one local file each. Until then,
   `ctx.file` gives the stored file's own path.
-- **No file hashes in the cache key.** Spec 006 hashes the node's folder, so a changed pin in
-  `node.json` already changes it.
+- **No file hashes in the cache key,** since spec 006 hashes the node's folder. But 006 reads the
+  folder at each run and parses the manifest only at start or reload, so after a re-pin a run would
+  use the old pins under the new key. The key's `node.json` part becomes the digest of the bytes the
+  manifest was parsed from, which closes this for every field, not only pins.
 - **A second job is refused, not queued,** until the UI's part adds a queue.
+- **Fitted to spec 006 as built** (2026-10-05). Once 006 merged, four reviewers checked this
+  spec against its code, and a second reviewer tried to refute each finding: 19 of 51 held. Each
+  change above or below that came from it, with its reason:
+    - Stop is not a failure in 006, so `stopped` left the reasons.
+    - Refusals have their own kind, `store`, as 006 gave install and remove `runtime`; a refused
+      verify no longer reads as a failed download.
+    - The store and each record say their format, and a newer one is left alone, as 006 does for
+      every file it keeps.
+    - A job answers with a job id: the protocol's `id` is already the request's.
+    - `model.failed` takes the first failed file's kind and reason, since a failure has one of
+      each; every file's outcome is listed.
+    - 006 knows only its own process's run, so files in use are listed in each process's locked
+      folder, which 006 already gives every process.
+    - `bench:fit` builds its own scheduler; one factory now serves it and the engine, so
+      `ctx.file` works in both (part of review item 4.5).
+    - Every npm script that starts uv goes through one launcher that keeps uv's temporary files
+      under the root, the three existing ones included (an open item of 006's review).
+    - A checkpoint param must affect output, or the cache key ignores it.
+    - The 2 s Stop counts from when the engine reads it: review item 4.2, still open, can delay that.
+    - AC8's live manifests are stub runtime nodes, since 006's manifest check needs an entry and an
+      output; its GitHub asset is named, and the Verification section gives its commands.
 - **The test CA is a committed fixture:** a CA and a leaf for `127.0.0.1` and `localhost`, valid
   for a century and built to pass Python's strict checks. The standard library cannot make
   certificates.
