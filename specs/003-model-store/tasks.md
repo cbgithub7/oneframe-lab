@@ -52,7 +52,8 @@ task makes stale is updated in that task.
   Commands gains the two tools.
 - [ ] 9. The live manifests under `specs/003-model-store/live/` for AC8: stub runtime nodes for
   Depth Pro, MoGe-2, MoGe-3 (checkpoints `vitl` and `vitg`) and MiDaS v3.1's
-  `dpt_beit_large_512.pt`. MoGe-2 and MoGe-3 load the same way: one `model.pt` per repository,
-  read with `torch.load(..., weights_only=True)` (microsoft/MoGe, `moge/model/v2.py`).
+  `dpt_beit_large_512.pt`. Each MoGe repository holds one `model.pt`; MoGe-2 reads it with
+  `torch.load(..., weights_only=True)` (microsoft/MoGe, `moge/model/v2.py`), and MoGe-3 has its own
+  loader (`moge/model/v3.py`) and needs FlexGEMM. Only the files matter here.
 - [ ] 10. Docs: `docs/architecture.md` (the store, `models.*` not yet on the page's method list)
   and the handoff.
