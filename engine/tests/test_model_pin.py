@@ -243,3 +243,40 @@ def test_ctrl_c_stops_the_pin_tool(tmp_path: Path, hub: Hosts, make_node: MakeNo
     assert partial.stat().st_size == 10_000 and "sha256" not in files_of(path)["apple"]
     assert run_pin(tmp_path, node_root) == 0  # the next pin resumes it
     assert files_of(path)["apple"]["sha256"] == sha(DEPTH * 50)
+
+
+LIVE = Path(__file__).resolve().parents[2] / "specs" / "003-model-store" / "live"
+
+
+def test_the_live_manifests_of_ac8_pin_and_then_pass_the_check(
+    tmp_path: Path, hub: Hosts, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The manifests the owner pins on real hosts (AC8), pinned here against the test hosts: their
+    sources are moved to them, and nothing else about them changes."""
+    import shutil
+    import urllib.parse
+
+    from oneframe.manifest import load
+
+    roots = tmp_path / "live"
+    shutil.copytree(LIVE, roots, ignore=shutil.ignore_patterns("README.md"))
+    for path in sorted(roots.glob("*/node.json")):
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        for i, row in enumerate(manifest["files"]):
+            data = DEPTH + bytes([i]) + path.parent.name.encode()
+            if "url" in row:
+                row["url"] = hub.add_file(urllib.parse.urlsplit(row["url"]).path, data, redirect=True)
+            else:
+                hub.repo(row["hf"]).commit({row["path"]: data})
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+        assert tools.pin_tool(tmp_path / "data", [roots], manifest["id"], TRANSFER) == 0, (
+            capsys.readouterr().err
+        )
+        pinned = load(path)  # the check refuses an unpinned manifest; pinned, it passes
+        assert all(spec.size and spec.format == "pickle" for spec in pinned.files)
+    assert sorted(p.parent.name for p in roots.glob("*/node.json")) == [
+        "live.depth_pro",
+        "live.midas",
+        "live.moge2",
+        "live.moge3",
+    ]

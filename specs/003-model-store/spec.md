@@ -1,8 +1,9 @@
 # 003: Model store (core)
 
-Status: approved (core, 2026-10-03; evidence in [research.md](research.md), the owner's decisions
-in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 to fit spec 006 as built,
-acceptance criteria included (Decisions taken).
+Status: built, in review (2026-10-11): AC1 to AC7 by tests in CI on Windows and Ubuntu; AC8 waits
+for the owner's Windows PC. Approved (core, 2026-10-03; evidence in [research.md](research.md), the
+owner's decisions in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 to fit spec
+006 as built, acceptance criteria included (Decisions taken).
 Owner approval: 2026-10-03; the amendment, 2026-10-05
 
 Built on [spec 006](../006-foundations/spec.md): its layout module, failure model, locks and journal.

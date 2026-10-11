@@ -1,0 +1,26 @@
+{
+  "id": "live.moge2",
+  "version": "1",
+  "title": "MoGe-2 ViT-L normal (live pin)",
+  "category": "depth",
+  "summary": "MoGe-2's model.pt, on Hugging Face.",
+  "outputs": {
+    "text": "Text"
+  },
+  "run": {
+    "where": "runtime",
+    "runtime": "torch",
+    "entry": "node.py:run"
+  },
+  "files": [
+    {
+      "name": "weights",
+      "hf": "Ruicheng/moge-2-vitl-normal",
+      "revision": "main",
+      "path": "model.pt"
+    }
+  ],
+  "links": {
+    "repo": "https://github.com/microsoft/MoGe"
+  }
+}

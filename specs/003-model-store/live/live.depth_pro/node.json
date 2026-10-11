@@ -1,0 +1,24 @@
+{
+  "id": "live.depth_pro",
+  "version": "1",
+  "title": "Depth Pro (live pin)",
+  "category": "depth",
+  "summary": "Apple's Depth Pro weights, from Apple's own server.",
+  "outputs": {
+    "text": "Text"
+  },
+  "run": {
+    "where": "runtime",
+    "runtime": "torch",
+    "entry": "node.py:run"
+  },
+  "files": [
+    {
+      "name": "weights",
+      "url": "https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt"
+    }
+  ],
+  "links": {
+    "repo": "https://github.com/apple/ml-depth-pro"
+  }
+}

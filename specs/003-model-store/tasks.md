@@ -50,10 +50,10 @@ task makes stale is updated in that task.
   (`bench:runtime`, `bench:fit`, `diagnose` and the two new ones), with its temporary folder under
   the root but outside `cache/tmp/`, whose sweep deletes what it does not know. `AGENTS.md`'s
   Commands gains the two tools.
-- [ ] 9. The live manifests under `specs/003-model-store/live/` for AC8: stub runtime nodes for
+- [x] 9. The live manifests under `specs/003-model-store/live/` for AC8: stub runtime nodes for
   Depth Pro, MoGe-2, MoGe-3 (checkpoints `vitl` and `vitg`) and MiDaS v3.1's
   `dpt_beit_large_512.pt`. MoGe-2 and MoGe-3 load the same way: one `model.pt` per repository,
   read with `torch.load(..., weights_only=True)` (microsoft/MoGe, `moge/model/v2.py`; v3's model
   inherits it). MoGe-3's code also imports FlexGEMM. Only the files matter here.
-- [ ] 10. Docs: `docs/architecture.md` (the store, `models.*` not yet on the page's method list)
+- [x] 10. Docs: `docs/architecture.md` (the store, `models.*` not yet on the page's method list)
   and the handoff.
