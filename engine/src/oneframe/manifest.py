@@ -7,6 +7,7 @@ every problem named at once, so a person writing one fixes it in one pass.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -92,6 +93,9 @@ class Manifest:
     files: tuple[FileSpec, ...] = ()
     files_by: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
+    # The sha256 of the bytes this manifest was parsed from: the cache key's node.json part, so a
+    # result is kept under the manifest a run used, not one edited on disk since (spec 003).
+    digest: str = ""
 
     @property
     def code_path(self) -> Path:
@@ -176,7 +180,11 @@ def _param(name: str, row: Any, problems: list[str]) -> Param | None:
     )
 
 
-def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Manifest:
+def parse(
+    data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
+) -> Manifest:
+    """`read`: the bytes `data` was read from, whose sha256 is the manifest's digest; without them
+    (a manifest made in code) the digest is of `data` written out in one canonical form."""
     problems: list[str] = []
     known = ports.types()
 
@@ -286,14 +294,18 @@ def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Mani
         files=files,
         files_by=files_by,
         raw=data,
+        digest=hashlib.sha256(
+            read if read is not None else json.dumps(data, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest(),
     )
 
 
 def load(path: Path) -> Manifest:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        text = path.read_bytes()
+        data = json.loads(text.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ManifestError(str(path), [f"cannot read: {exc}"]) from exc
     if not isinstance(data, dict):
         raise ManifestError(str(path), ["the file should hold one JSON object"])
-    return parse(data, path.parent, source=str(path))
+    return parse(data, path.parent, source=str(path), read=text)

@@ -1,13 +1,14 @@
 """Every node output, stored by what produced it.
 
 A node's key is a hash of: the node's id and version, its output-affecting parameters (a file
-parameter by the file's content, not its name), the keys of the values it was given, the code in
-its folder (every file but bytecode), and for a node that runs in a runtime, the build this machine
-runs and what that build was installed from (the hashes its marker records: lock, definition and
-stand-ins). The same node with the same inputs, settings, code and runtime therefore has the same
-key on any run, from any recipe -- so changing one node re-runs only what comes after it, two
-recipes that start the same way share the start, and a changed node or runtime is never served a
-result from before the change.
+parameter by the file's content, not its name), the keys of the values it was given, its manifest
+as it was loaded (the bytes it was parsed from: a manifest edited on disk since, a re-pin say,
+counts once it is reloaded), the rest of the code in its folder (every file but bytecode), and for
+a node that runs in a runtime, the build this machine runs and what that build was installed from
+(the hashes its marker records: lock, definition and stand-ins). The same node with the same
+inputs, settings, code and runtime therefore has the same key on any run, from any recipe -- so
+changing one node re-runs only what comes after it, two recipes that start the same way share the
+start, and a changed node or runtime is never served a result from before the change.
 
 Writes are atomic: a run writes into a private folder and renames it into place, so a crash or a
 Stop never leaves half an output that a later run would trust. The private folders live in the
@@ -30,9 +31,11 @@ from oneframe.errors import ContractError
 from oneframe.manifest import Manifest
 
 # 2: the node's code and its runtime joined the key (spec 006). Older entries are never served;
-# they stay on disk until a later spec evicts them.
+# they stay on disk until a later spec evicts them. Spec 003 moved node.json from the folder's
+# digest to the manifest's own field, which changes every key without a new version.
 KEY_VERSION = 2
 BYTECODE = (".pyc", ".pyo")
+MANIFEST = "node.json"  # in the key as it was loaded (Manifest.digest), not as it is on disk
 
 
 def file_digest(path: Path) -> str:
@@ -45,10 +48,13 @@ def file_digest(path: Path) -> str:
 
 def code_digest(folder: Path) -> str:
     """A hash of every file in a node's folder, by its path in the folder and its bytes; bytecode
-    (`__pycache__/`, `.pyc`) is left out, since it follows from the source and differs by Python.
-    Read from the files every time: a size and a time can stay the same when the bytes do not."""
+    (`__pycache__/`, `.pyc`) is left out, since it follows from the source and differs by Python,
+    and so is the folder's own node.json, which the key takes as it was loaded. Read from the files
+    every time: a size and a time can stay the same when the bytes do not."""
     digest = hashlib.sha256()
     for relative, path in sorted(_code_files(folder)):
+        if relative == MANIFEST:
+            continue
         digest.update(relative.encode("utf-8") + b"\0")
         digest.update(file_digest(path).encode("ascii"))
     return digest.hexdigest()
@@ -112,6 +118,7 @@ class Cache:
             "version": manifest.version,
             "params": affecting,
             "inputs": {port: value.key for port, value in sorted(inputs.items())},
+            "manifest": manifest.digest,
             "code": code if code is not None else code_digest(manifest.folder),
             "runtime": runtime,
         }

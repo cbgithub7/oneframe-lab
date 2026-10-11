@@ -35,7 +35,7 @@ task makes stale is updated in that task.
     - their journal, opened where the job starts, with its crash line;
     - `Engine.shutdown` stops a running job and waits for it with the run and the install, so its
       journal ends with `model.stopped`.
-- [ ] 6. Runs (AC5):
+- [x] 6. Runs (AC5):
     - the fit's present checkpoints, the `files` failure (a `Failure` the scheduler catches, its
       `next` naming the command when a download would help), `ctx.file`, `ctx.models` gone, and
       `docs/nodes.md` to match;

@@ -151,6 +151,11 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `runtime` | `wrong_build` | no | Only the build this machine runs is installed. |
 | `runtime` | `unsafe_path` | no | Its folder is not a runtime folder in the data root; nothing was deleted. |
 | `runtime` | `install_failed` | yes | A step of the install failed; installing again resumes it. |
+| `files` |  | no | A file the node reads is not downloaded and checked; no process started. |
+| `files` | `not_downloaded` | no | A file it reads has not been downloaded. |
+| `files` | `downloading` | yes | A file it reads is being downloaded now. |
+| `files` | `incomplete` | no | A download of a file it reads stopped partway; downloading again resumes it. |
+| `files` | `changed` | no | A file it reads changed since it was checked, or a newer app recorded it. |
 | `download` |  | no | A file could not be downloaded; nothing but its checked bytes was kept. |
 | `download` | `source_changed` | no | The source gives another size than the pin; it changed since. |
 | `download` | `hash_mismatch` | yes | The bytes fetched are not the pinned file; nothing was kept. |

@@ -71,6 +71,18 @@ KINDS: dict[str, Kind] = {
             "install_failed": (True, "A step of the install failed; installing again resumes it."),
         },
     ),
+    "files": Kind(
+        "A file the node reads is not downloaded and checked; no process started.",
+        reasons={
+            "not_downloaded": (False, "A file it reads has not been downloaded."),
+            "downloading": (True, "A file it reads is being downloaded now."),
+            "incomplete": (
+                False,
+                "A download of a file it reads stopped partway; downloading again resumes it.",
+            ),
+            "changed": (False, "A file it reads changed since it was checked, or a newer app recorded it."),
+        },
+    ),
     "download": Kind(
         "A file could not be downloaded; nothing but its checked bytes was kept.",
         reasons={

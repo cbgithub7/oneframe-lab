@@ -73,6 +73,13 @@ fetch it and what its bytes must be ([spec 003](../specs/003-model-store/spec.md
 - **`checkpoints`** names the values of the node's `files_by` choice param that read the file; a
   file without them is read by every run. `files_by` needs a default, must affect output, and must
   be the memory model's `weights_by` when there is one. `precision` never picks files.
+- **Reading them.** A node reaches its files only through `ctx.file(name)`, which gives the store's
+  read-only copy: a run at a checkpoint sees the shared files and that checkpoint's, nothing else.
+  Before the node's process starts, after the fit and the runtime check, every one must be present
+  (downloaded, checked, and unchanged since); otherwise the node fails with kind `files`, naming
+  them, the bytes left to fetch and a checkpoint that is downloaded, and `next` gives the
+  `npm run models:download` command. A cached result needs no files. The fit never changes to a
+  checkpoint that is not downloaded (`node.fit` says so), and never to one just because it is.
 - **Write the sources, then pin.** `npm run models:pin -- <node>` resolves each commit and fills
   in the sizes, sha256s, formats and `gated`. Until then the manifest is refused, with every problem
   named at once; so is a file in a node that runs in the engine, and a `path` that cannot be a file
@@ -108,7 +115,7 @@ import torch
 from upstream.config import ModelConfig  # the one class this checkpoint holds besides tensors
 
 torch.serialization.add_safe_globals([ModelConfig])
-state = torch.load(checkpoint, map_location="cpu")  # checkpoint: the file's path
+state = torch.load(ctx.file("weights"), map_location="cpu")  # a file the manifest names
 ```
 
 Never turn `weights_only` off: the engine removes the variable that would, and a runtime may not

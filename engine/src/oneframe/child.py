@@ -435,7 +435,8 @@ class NodeContext:
         self.attempt = int(job.get("attempt") or 1)  # 2 on the engine's retry after running out
         # The fit's budget on this device in MB, or None when the node was not fitted.
         self.memory_budget_mb: float | None = job.get("memory_budget_mb")
-        self.models = Path(job["models"]) if job.get("models") else None
+        # The files this run reads (spec 003), by their name in the manifest: ctx.file(name).
+        self._files: dict[str, str] = dict(job.get("files") or {})
         self.outputs: dict[str, dict[str, Any]] = {}
         self._say = say
         self._should_stop = should_stop or (lambda: False)
@@ -507,6 +508,16 @@ class NodeContext:
         result = fn()
         self.ways[step] = name
         return result
+
+    def file(self, name: str) -> Path:
+        """A file this node reads, by its name in the manifest's `files`: the store's copy, checked
+        before the run started. Only this run's own files are here: the shared ones, and those of
+        the checkpoint it runs at. The file is read-only; never write to it."""
+        found = self._files.get(name)
+        if found is None:
+            known = ", ".join(sorted(self._files)) or "none"
+            raise NodeFailed(f"{name!r} is not a file this run reads (it reads: {known}).")
+        return Path(found)
 
     def path(self, name: str) -> Path:
         """A path for a file this run writes. Names stay inside the output folder."""

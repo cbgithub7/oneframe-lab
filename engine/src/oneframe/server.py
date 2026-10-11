@@ -39,9 +39,10 @@ from oneframe.journal import engine_crash
 from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory import LearnedStore, read_settings
 from oneframe.models.jobs import Jobs
+from oneframe.models.runs import in_use
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, Runtimes, find_uv
-from oneframe.scheduler import Scheduler
+from oneframe.scheduler import for_root
 from oneframe.scratch import Scratch
 
 LOGGER = logging.getLogger("oneframe.server")
@@ -87,24 +88,18 @@ class Engine:
         self.cache = Cache(self.layout.cache, work=self.scratch.folder / "runs")
         self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
         self.learned = LearnedStore(data)
-        self.models = Jobs(data, say, transfer)
+        self.models = Jobs(data, say, transfer, in_use=lambda: in_use(self.layout))
         # A fit reads the machine fresh, since free memory changes; a test passes its own profile.
         self._profile = profile
-        self.scheduler = Scheduler(
+        self.scheduler = for_root(
+            data,
             self.registry,
+            self.runtimes,
             self.cache,
-            runtime_python=self.runtimes.python_for,
-            runtime_env=self.runtimes.env_for,
-            models_dir=self.layout.models,
-            log_dir=self.layout.step_logs,
-            journal_dir=self.layout.journals,
             machine=self._machine,
-            target=self.runtimes.device_target,
             settings=lambda: read_settings(data),
             learned=self.learned,
             tmp_root=self.scratch.folder,
-            runtime_caches=self.runtimes.caches_for,
-            runtime_key=self.runtimes.key_for,
         )
         self._install: threading.Thread | None = None
         # the running graph: its id, its stop flag, and the runtimes its nodes run in

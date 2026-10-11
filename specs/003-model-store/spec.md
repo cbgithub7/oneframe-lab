@@ -329,6 +329,14 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
       was, so the next slice reads on. The TCP connect and a proxy's CONNECT are polled the same
       way; only a TLS handshake waits whole, up to the stall, since truststore checks the
       certificate inside it.
+    - The cache key keeps `KEY_VERSION` 2: moving `node.json` from the folder's digest to the
+      manifest's own (`Manifest.digest`, the bytes it was parsed from) changes every key anyway, and
+      spec 006's test holds the version.
+    - A run lists the files it reads in `cache/tmp/<n>/reading.json`, its process's own folder, for
+      as long as its node runs; a list counts only while that process holds its folder's lock.
+    - A node missing files for several reasons gives the one a person acts on first: `changed`, then
+      `downloading`, `incomplete`, `not_downloaded`. The failure lists each file with its state
+      (`files`), `bytes_left`, and `present_checkpoint` when one is downloaded.
 
 ## Out of scope
 
