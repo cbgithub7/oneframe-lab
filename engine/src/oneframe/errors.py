@@ -71,6 +71,17 @@ KINDS: dict[str, Kind] = {
             "install_failed": (True, "A step of the install failed; installing again resumes it."),
         },
     ),
+    "store": Kind(
+        "The model store refused a download, verify, remove or pin.",
+        reasons={
+            "newer_format": (False, "A newer version of the app wrote it; it is left as it is."),
+            "unreadable": (False, "Its format file cannot be read, or does not say its format."),
+            "os_refused": (
+                True,
+                "The system refused to rename or delete a file; it and its record were kept.",
+            ),
+        },
+    ),
     "graph": Kind(
         "The graph cannot run; `problems` says why.",
         reasons={"busy": (True, "Another run is going; runs go one at a time.")},

@@ -142,6 +142,10 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `runtime` | `wrong_build` | no | Only the build this machine runs is installed. |
 | `runtime` | `unsafe_path` | no | Its folder is not a runtime folder in the data root; nothing was deleted. |
 | `runtime` | `install_failed` | yes | A step of the install failed; installing again resumes it. |
+| `store` |  | no | The model store refused a download, verify, remove or pin. |
+| `store` | `newer_format` | no | A newer version of the app wrote it; it is left as it is. |
+| `store` | `unreadable` | no | Its format file cannot be read, or does not say its format. |
+| `store` | `os_refused` | yes | The system refused to rename or delete a file; it and its record were kept. |
 | `graph` |  | no | The graph cannot run; `problems` says why. |
 | `graph` | `busy` | yes | Another run is going; runs go one at a time. |
 | `root` |  | no | The engine cannot use this data root; nothing under it was changed. |

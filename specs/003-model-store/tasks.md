@@ -18,7 +18,7 @@ task makes stale is updated in that task.
     - a recording CONNECT proxy (the test clears `NO_PROXY`).
 - [x] 2. The files schema in manifests and its checks, a checkpoint param that does not affect
   output included (AC1); files in the manifest documented in `docs/nodes.md`.
-- [ ] 3. The store (AC2's first half, AC6's newer store):
+- [x] 3. The store (AC2's first half, AC6's newer store):
     - its paths named in `oneframe/layout.py`, `contracts/layout.json` and `app/main/paths.js`;
     - blobs, partials, the format file and records, written through `files.write_json`; a newer or
       unreadable store or record handled as requirement 2 says;
