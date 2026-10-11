@@ -42,8 +42,9 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
 
 ## State (2026-10-11)
 
-Built, in review: **the model store's core** (spec 003, on `claude/modest-darwin-kgl11n`; AC1 to
-AC7 by tests in CI on Windows and Ubuntu, AC8 waiting for the owner's Windows PC and the real hosts):
+Merged, AC8 pending: **the model store's core** (spec 003, merged 2026-10-11 in
+[PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16); AC1 to AC7 by tests in CI on Windows and
+Ubuntu, AC8 waiting for the owner's Windows PC and the real hosts):
 
 - the files a node reads, declared in its manifest (`hf` at a full commit, or an `https` URL, with
   size, sha256, format and `gated`; checkpoints of a `files_by` param), and checked all at once;
@@ -160,7 +161,7 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
 | 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | done: merged 2026-10-05 ([PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7)); local checks passed on Windows 2026-10-11 ([report](../specs/006-foundations/reports/2026-10-11-local.md)) |
-| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); amended 2026-10-05; built 2026-10-11, in review: AC1–AC7 by tests in CI, AC8 waits for the owner's Windows PC (`/local-session`, the spec's Verification) |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); amended 2026-10-05; merged 2026-10-11 ([PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16)): AC1–AC7 by tests in CI; AC8 pending, on the owner's Windows PC (`/local-session`, the spec's Verification) |
 | 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog and a result protocol the page can read (a large mesh or splat included); MoGe-3 may not run on the 1070 (see Known) | 005 (first part) | not started |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
