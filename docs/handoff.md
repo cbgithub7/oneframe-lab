@@ -213,6 +213,12 @@ Known from the review, to be settled by the specs above or later ones:
   `dir` and `reg query` from inside show the merged view. A local check of where things land runs
   from a terminal started outside it; `npm run diagnose` names the root's real path. A packaged
   Oneframe Lab built as MSIX would have its writes redirected the same way.
+- **The footprint test can fail on another program's write** (for the spec 003 session to take
+  on). On PR #11's Windows CI (2026-10-11), `test_ac2_nothing_is_written_outside_the_root` found a
+  new `Mozilla` folder in the runner's real `AppData\Roaming`, almost surely the runner's own
+  Firefox; the next run passed. The check should tell our processes' writes from others' without
+  checking less, and a change to it is listed in spec 006's Tests section (narrowing it is the
+  owner's call).
 - **Precision has no speed model.** The fit can pick fp16 on a card that runs it far slower than
   fp32. The rate per precision and compute capability is published data, so it can be added
   without naming a card. The margin (1.5 GiB or 10%) should be derived again from real runs.
