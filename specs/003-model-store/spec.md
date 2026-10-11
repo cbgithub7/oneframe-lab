@@ -226,13 +226,14 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
 - **Code** in `oneframe/models/`: the schema, the store, the transport, the download and verify
   jobs, the pin tool and the methods. The transport follows research.md's "Second round":
     - `http.client`;
-    - Stop shuts the socket down from a watchdog;
-    - the stall rule is the socket timeout;
+    - every read waits in slices and looks at Stop between them, and a stall is a window with no
+      byte (Decisions taken: the watchdog this named does not work on Windows);
     - proxies come from `urllib.request.getproxies()`, with a CONNECT tunnel;
     - truststore is imported only when a download starts.
 - **Fit.** The scheduler passes the present checkpoints to the fit.
 - **Risks.**
-    - Windows' handling of a TLS read shut down mid-read is unverified (AC3).
+    - Windows' handling of a TLS read shut down mid-read: settled by CI, it does not unblock the read
+      (Decisions taken).
     - Windows cannot delete a memory-mapped file: remove keeps files a run in any process uses,
       and spec 004's workers inherit that rule.
 
@@ -320,6 +321,14 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
       research.md recommends; a full partial of a pinned file is hashed with no request at all.
     - The sha256 is kept as bytes are written, after reading back what a partial held (`checking`),
       so a finished download is not read a second time.
+    - **Stop is seen by the reader, not by a watchdog.** The Design named a watchdog that shuts the
+      socket down. It passed on Linux, and on the Windows runner (2026-10-11) both of AC3's Stop
+      cases hung: there, shutting a socket down from another thread does not wake a read waiting on
+      it. So every read waits in slices of 0.1 s and looks at Stop between them, and a stall is 30 s
+      with no byte, counted by the reader. A TLS read that times out leaves its connection as it
+      was, so the next slice reads on. The TCP connect and a proxy's CONNECT are polled the same
+      way; only a TLS handshake waits whole, up to the stall, since truststore checks the
+      certificate inside it.
 
 ## Out of scope
 

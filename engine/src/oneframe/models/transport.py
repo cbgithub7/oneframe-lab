@@ -9,10 +9,12 @@ requirement 3; research.md's "Second round").
   (Retry-After, RateLimit). The download ends as `stalled` only after ATTEMPTS attempts in a row
   that fetched no new byte, saying how many bytes it kept: a slow line that keeps delivering never
   runs out of attempts, and there is no limit on the total time.
-- **A stall is the socket timeout:** no byte for STALL_S ends an attempt. A trickle is not a stall.
-- **Stop** shuts the socket down from a watchdog thread, which unblocks a read waiting on a stalled
-  host at once (closing the response would not, research.md). It is recognised by its own flag,
-  never by how the read ended, and the partial keeps every byte that arrived.
+- **Stop and stalls are seen by the reader.** Every read waits in slices of SLICE_S, looking at
+  Stop between them, so a Stop ends a download stalled before its headers or in its body within a
+  moment, and a stall is a window of STALL_S with no byte at all; a trickle is not a stall. Shutting
+  the socket down from another thread, which research.md found unblocks a read on Linux, does not
+  on Windows (CI, 2026-10-11), and closing the response unblocks nothing anywhere. The TCP connect
+  and a proxy's CONNECT are polled the same way; only a TLS handshake waits whole, up to STALL_S.
 - **Integrity.** A response whose total size differs from the pin fails before its body
   (`source_changed`), as do the hub's X-Linked-Size and X-Linked-Etag on its redirect. Only a 206
   that starts exactly at the partial's end is appended; a 200 starts the file again, and a 206 that
@@ -34,6 +36,7 @@ import email.utils
 import errno
 import hashlib
 import http.client
+import io
 import random
 import re
 import select
@@ -52,6 +55,7 @@ from oneframe import __version__
 from oneframe.errors import Failure, Stopped
 
 CHUNK = 1 << 20
+SLICE_S = 0.1  # how long one read waits before it looks at Stop again
 USER_AGENT = f"oneframe-lab/{__version__}"
 REDIRECTS = (301, 302, 303, 307, 308)
 # Hugging Face's X-Error-Code decides these, never the status alone (research.md).
@@ -154,52 +158,59 @@ def _disk_full(exc: OSError) -> bool:
     return exc.errno == errno.ENOSPC or getattr(exc, "winerror", None) in _DISK_FULL
 
 
-class _Watchdog:
-    """Shuts the current connection down when Stop is pressed, from its own thread. It holds a
-    duplicate of the TCP socket from the moment it connects, so a TLS handshake, a CONNECT to a
-    proxy and every read are unblocked alike."""
+class _Reader(io.RawIOBase):
+    """A response's bytes, read in slices so Stop is seen between them and a stall is a window
+    with no byte at all, however the system ends a blocked read."""
 
-    def __init__(self, stop: threading.Event):
-        self.stop = stop
-        self._lock = threading.Lock()
-        self._sock: socket.socket | None = None
-        self._done = threading.Event()
-        self._thread = threading.Thread(target=self._watch, name="download-watchdog", daemon=True)
-        self._thread.start()
+    def __init__(self, sock: socket.socket, stop: threading.Event, stall_s: float):
+        self._sock = sock
+        self._stop = stop
+        self._stall_s = stall_s
 
-    def _watch(self) -> None:
-        while not self._done.is_set():
-            if self.stop.wait(0.05):
-                self._shut()
-                self._done.wait(0.05)
+    def readable(self) -> bool:
+        return True
 
-    def _shut(self) -> None:
-        with self._lock:
-            if self._sock is not None:
-                with contextlib.suppress(OSError):
-                    self._sock.shutdown(socket.SHUT_RDWR)
+    def readinto(self, buffer: Any) -> int:
+        return _recv_into(self._sock, buffer, self._stop, self._stall_s)
 
-    def track(self, sock: socket.socket) -> None:
-        with self._lock:
-            self._release()
-            self._sock = sock.dup()
-        if self.stop.is_set():
-            self._shut()
 
-    def _release(self) -> None:
-        if self._sock is not None:
-            with contextlib.suppress(OSError):
-                self._sock.close()
-            self._sock = None
+def _recv_into(sock: socket.socket, buffer: Any, stop: threading.Event, stall_s: float) -> int:
+    """One read, waiting at most `stall_s` for its first byte, in slices; Stopped when Stop is set.
+    A TLS read that times out leaves its connection as it was, so the next slice reads on."""
+    quiet_since = time.monotonic()
+    while True:
+        if stop.is_set():
+            raise Stopped()
+        try:
+            return sock.recv_into(buffer)
+        except TimeoutError:
+            if time.monotonic() - quiet_since >= stall_s:
+                raise TimeoutError(f"no byte arrived for {stall_s:g} s") from None
 
-    def untrack(self) -> None:
-        with self._lock:
-            self._release()
+
+class _Socket:
+    """What http.client asks of a connection's socket (sendall, makefile, close), over one whose
+    reads go in slices (_Reader)."""
+
+    def __init__(self, sock: socket.socket, stop: threading.Event, stall_s: float):
+        self._sock = sock
+        self._stop = stop
+        self._stall_s = stall_s
+        sock.settimeout(SLICE_S)
+
+    def sendall(self, data: Any) -> None:
+        # A request is a few hundred bytes, which never waits on the host; sent whole.
+        self._sock.settimeout(self._stall_s)
+        try:
+            self._sock.sendall(data)
+        finally:
+            self._sock.settimeout(SLICE_S)
+
+    def makefile(self, _mode: str = "rb", *_args: Any, **_kw: Any) -> io.BufferedReader:
+        return io.BufferedReader(_Reader(self._sock, self._stop, self._stall_s), CHUNK)
 
     def close(self) -> None:
-        self._done.set()
-        self._thread.join(1)
-        self.untrack()
+        self._sock.close()
 
 
 class Transfer:
@@ -245,45 +256,38 @@ class Transfer:
         self.partial.parent.mkdir(parents=True, exist_ok=True)
         self._resume()
         self._check_space()
-        watchdog = _Watchdog(self.stop)
-        try:
-            misses = 0
-            limited = False
-            while not self._complete():
-                before = self.have
-                try:
-                    self._attempt(watchdog)
-                    continue
-                except _Retry as retry:
-                    if self.stop.is_set():
-                        raise Stopped() from None
-                    misses = 0 if self.have > before else misses + 1
-                    limited = retry.limited
-                    if retry.wait_s > self.policy.longest_asked_s:
-                        raise DownloadFailed(
-                            f"{self._where()} asked to wait {retry.wait_s:.0f} s before trying again; "
-                            f"{self.have} bytes were kept.",
-                            "rate_limited",
-                            self.have,
-                            "Download again later; it resumes where it stopped.",
-                        ) from None
-                    if misses >= self.policy.attempts:
-                        reason = "rate_limited" if limited else "stalled"
-                        raise DownloadFailed(
-                            f"{self.policy.attempts} attempts in a row fetched nothing from {self._where()} "
-                            f"(the last: {retry}); {self.have} bytes were kept.",
-                            reason,
-                            self.have,
-                            "Check the connection, then download again; it resumes where it stopped.",
-                        ) from None
-                    wait = max(retry.wait_s, self._backoff(misses))
-                    self._phase(
-                        "retrying", {"attempt": misses + 1, "wait_s": round(wait, 2), "why": str(retry)}
-                    )
-                    if self.stop.wait(wait):
-                        raise Stopped() from None
-        finally:
-            watchdog.close()
+        misses = 0
+        limited = False
+        while not self._complete():
+            before = self.have
+            try:
+                self._attempt()
+                continue
+            except _Retry as retry:
+                if self.stop.is_set():
+                    raise Stopped() from None
+                misses = 0 if self.have > before else misses + 1
+                limited = retry.limited
+                if retry.wait_s > self.policy.longest_asked_s:
+                    raise DownloadFailed(
+                        f"{self._where()} asked to wait {retry.wait_s:.0f} s before trying again; "
+                        f"{self.have} bytes were kept.",
+                        "rate_limited",
+                        self.have,
+                        "Download again later; it resumes where it stopped.",
+                    ) from None
+                if misses >= self.policy.attempts:
+                    raise DownloadFailed(
+                        f"{self.policy.attempts} attempts in a row fetched nothing from {self._where()} "
+                        f"(the last: {retry}); {self.have} bytes were kept.",
+                        "rate_limited" if limited else "stalled",
+                        self.have,
+                        "Check the connection, then download again; it resumes where it stopped.",
+                    ) from None
+                wait = max(retry.wait_s, self._backoff(misses))
+                self._phase("retrying", {"attempt": misses + 1, "wait_s": round(wait, 2), "why": str(retry)})
+                if self.stop.wait(wait):
+                    raise Stopped() from None
         digest = self._digest.hexdigest()
         if self.sha256 is not None and digest != self.sha256:
             self.partial.unlink(missing_ok=True)
@@ -349,7 +353,7 @@ class Transfer:
 
     # one attempt: from the source, through its redirects, to the bytes
 
-    def _attempt(self, watchdog: _Watchdog) -> None:
+    def _attempt(self) -> None:
         url = self.source
         source_origin = _origin(url)
         for hop in range(self.policy.redirects + 1):
@@ -368,7 +372,7 @@ class Transfer:
                 headers["Range"] = f"bytes={self.have}-"
             conn: http.client.HTTPSConnection | None = None
             try:
-                conn = self._connect(parts.hostname, parts.port or 443, watchdog)
+                conn = self._connect(parts.hostname, parts.port or 443)
                 path = parts.path or "/"
                 conn.request("GET", f"{path}?{parts.query}" if parts.query else path, headers=headers)
                 response = conn.getresponse()
@@ -396,27 +400,26 @@ class Transfer:
             finally:
                 if conn is not None:
                     conn.close()
-                watchdog.untrack()
         raise _Retry(f"more than {self.policy.redirects} redirects")
 
-    def _connect(self, host: str, port: int, watchdog: _Watchdog) -> http.client.HTTPSConnection:
-        """A TLS connection to host:port, through the system's proxy if it names one, on a socket
-        the watchdog can shut down at any point after the TCP connect."""
+    def _connect(self, host: str, port: int) -> http.client.HTTPSConnection:
+        """A TLS connection to host:port, through the system's proxy if it names one, whose reads
+        look at Stop between slices."""
         proxy = self._proxy(host)
         tunnel = urllib.parse.urlsplit(proxy if "://" in proxy else f"http://{proxy}") if proxy else None
         sock = self._tcp(tunnel.hostname or "", tunnel.port or 80) if tunnel else self._tcp(host, port)
         try:
-            watchdog.track(sock)
             if tunnel is not None:
                 self._tunnel(sock, host, port, tunnel)
             if self._context is None:
                 self._context = self._context_factory()
+            sock.settimeout(self.policy.stall_s)  # a handshake waits whole (truststore checks after it)
             secured = self._context.wrap_socket(sock, server_hostname=host)
         except BaseException:
             sock.close()
             raise
         conn = http.client.HTTPSConnection(host, port, timeout=self.policy.stall_s, context=self._context)
-        conn.sock = secured
+        conn.sock = _Socket(secured, self.stop, self.policy.stall_s)  # type: ignore[assignment]
         return conn
 
     def _tcp(self, host: str, port: int) -> socket.socket:
@@ -441,7 +444,7 @@ class Transfer:
                 if error:
                     raise OSError(error, f"connecting to {host}:{port}: {errno.errorcode.get(error, error)}")
                 sock.setblocking(True)
-                sock.settimeout(self.policy.stall_s)
+                sock.settimeout(SLICE_S)
                 return sock
             except OSError as exc:
                 sock.close()
@@ -458,8 +461,11 @@ class Transfer:
             lines.append(f"Proxy-Authorization: Basic {base64.b64encode(secret.encode()).decode()}")
         sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
         reply = b""
+        sock.settimeout(SLICE_S)
+        buffer = bytearray(4096)
         while b"\r\n\r\n" not in reply:
-            chunk = sock.recv(4096)
+            got = _recv_into(sock, buffer, self.stop, self.policy.stall_s)
+            chunk = bytes(buffer[:got])
             if not chunk:
                 raise ConnectionError("the proxy closed the connection")
             reply += chunk

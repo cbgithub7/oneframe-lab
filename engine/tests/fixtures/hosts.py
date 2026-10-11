@@ -31,6 +31,7 @@ import select
 import socket
 import socketserver
 import ssl
+import sys
 import threading
 import urllib.parse
 from collections.abc import Iterable
@@ -369,6 +370,12 @@ class _Server(http.server.ThreadingHTTPServer):
         self.name = name
         self.tls = tls
         super().__init__(("127.0.0.1", 0), _Handler)
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """A client that went away mid-answer (a stopped download) is expected; anything else is a
+        bug in the hosts, printed as usual."""
+        if not isinstance(sys.exception(), OSError):
+            super().handle_error(request, client_address)
 
     def finish_request(self, request: Any, client_address: Any) -> None:
         """The TLS handshake happens here, in the connection's own thread, so a client that
@@ -719,6 +726,7 @@ def _range_start(header: str | None) -> int | None:
 class _Proxy(socketserver.ThreadingTCPServer):
     daemon_threads = True
     allow_reuse_address = True
+    handle_error = _Server.handle_error
 
     def __init__(self, hosts: Hosts):
         self.hosts = hosts
