@@ -8,6 +8,11 @@ updates:
     schedule:
       interval: weekly
     versioning-strategy: increase
+    ignore:
+      # Node's types follow the Node the app runs on (docs/versions.md), so their major moves only
+      # with engines.node.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       npm:
         patterns: ["*"]

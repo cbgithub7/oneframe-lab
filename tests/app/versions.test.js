@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { compareVersions, failureCount, judge } from "../../scripts/check-versions.js";
+import { compareVersions, failureCount, judge, typesFollowNode } from "../../scripts/check-versions.js";
 
 const now = Date.parse("2026-09-29T00:00:00Z");
 const daysAgo = (/** @type {number} */ n) => new Date(now - n * 86_400_000).toISOString();
@@ -35,4 +35,12 @@ test("on a pull request only broken rules fail, not pins behind their latest rel
   assert.equal(failureCount([behind, wrongPin], 1, false), 3);
   assert.equal(failureCount([behind, wrongPin], 1, true), 2, "the stray exception and the wrong pin, not the age");
   assert.equal(failureCount([behind], 0, true), 0);
+});
+
+test("Node's types follow the Node the app runs on, never a newer major", () => {
+  assert.equal(typesFollowNode("24.19.2", ">=24.21.0"), null);
+  const ahead = typesFollowNode("26.6.4", ">=24.21.0");
+  assert.equal(ahead?.status, "fail");
+  assert.equal(ahead?.rule, true, "a pull request that raises the major fails, not only the weekly run");
+  assert.equal(typesFollowNode("22.18.0", ">=24.21.0")?.status, "fail");
 });

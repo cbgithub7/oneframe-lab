@@ -33,7 +33,7 @@ decision someone made for a stated reason, not something that happened because n
 | Engine Python | The newest stable CPython minor that uv can install | The engine imports no model libraries, so nothing holds it back |
 | Model runtimes | The newest Python and torch each family's code and wheels support, per runtime, backed by a `bench:runtime` report. A build may keep an older torch line for cards a newer one drops | 3D research code often ships compiled wheels for older Pythons and torch lines only, and a new torch line can drop older cards; each runtime states its reason |
 | Node | The current LTS line (`.node-version`, `engines.node`) | Electron's bundled Node follows the LTS line |
-| `@types/node` | The newest release for the Node major the app runs on | Types must describe the Node the code actually runs on, not a newer one |
+| `@types/node` | The newest release for the Node major the app runs on; another major fails `npm run versions` on any pull request, and Dependabot skips its majors | Types must describe the Node the code actually runs on, not a newer one |
 | Electron | The newest stable release | Electron supports only its three newest majors; staying current is the main security measure |
 | GitHub Actions | The newest tag, pinned by commit hash with the version in a comment | A tag can be moved; a commit cannot |
 
