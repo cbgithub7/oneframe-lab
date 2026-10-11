@@ -12,7 +12,8 @@
 // matching @types/node, and every GitHub Action (pinned by commit, with the version in a comment).
 //
 // With --rules-only, only the rules a change can break fail the check: exact pins, actions pinned
-// by commit, .node-version matching engines.node, and exceptions that name what is pinned. Being
+// by commit, .node-version matching engines.node, @types/node on engines.node's major, and
+// exceptions that name what is pinned. Being
 // behind the latest release, or an exception's date passing, is left to the run on main and the
 // weekly run, so an upstream release never turns an unrelated pull request red.
 
@@ -158,6 +159,19 @@ function actionRows() {
 }
 
 /**
+ * @types/node must describe the Node the code runs on, so its major is engines.node's. A newer
+ * major is ahead of the latest this check computes, which judge() would pass as "ok".
+ * @param {string} pinned the @types/node pin
+ * @param {string} enginesNode package.json's engines.node
+ * @returns {{ status: string, note: string, rule: boolean } | null}
+ */
+export function typesFollowNode(pinned, enginesNode) {
+  const major = (/** @type {string} */ v) => v.match(/(\d+)/)?.[1];
+  if (major(pinned) === major(enginesNode)) return null;
+  return { status: "fail", rule: true, note: `types for Node ${major(pinned)}, but the app runs on Node ${major(enginesNode)}` };
+}
+
+/**
  * How many failures count. Rules-only counts the rules a change can break (`rule` failures and
  * exceptions for names pinned nowhere), not pins behind their latest release.
  * @param {Array<{ status: string, rule?: boolean }>} rows
@@ -173,9 +187,14 @@ async function main() {
   const policy = JSON.parse(read("versions.json"));
   const exceptions = new Map((policy.exceptions ?? []).map((/** @type {any} */ e) => [e.name, e]));
   const now = Date.now();
+  const enginesNode = String(JSON.parse(read("package.json")).engines.node);
   const raw = [...(await npmRows()), ...(await pythonRows()), pythonVersionRow(), await nodeRow(), ...actionRows()];
   /** @type {Row[]} */
-  const rows = raw.map((r) => ({ ...r, ...judge({ ...r, exception: exceptions.get(r.name), now }) }));
+  const rows = raw.map((r) => ({
+    ...r,
+    ...((r.name === "@types/node" && typesFollowNode(r.pinned, enginesNode))
+      || judge({ ...r, exception: exceptions.get(r.name), now })),
+  }));
   const width = Math.max(...rows.map((r) => r.name.length));
   for (const r of rows) {
     const mark = { ok: "  ok  ", grace: " grace", excepted: "except", fail: " FAIL " }[r.status];
