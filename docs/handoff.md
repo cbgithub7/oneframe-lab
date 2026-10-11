@@ -197,8 +197,8 @@ Known from the review, to be settled by the specs above or later ones:
   imports FlexGEMM, which is built on Triton, and Triton's README supports NVIDIA cards from compute
   8.0; FlexGEMM runs only in MoGe-3's optional refinement (`refine_steps`), and the `moge` package
   requires it for every version. Whether MoGe-3, or MoGe-2 through that package, installs and runs
-  on an older card or on Windows is unverified, and spec 005's to check. If the 1070 cannot show
-  MoGe-3 in step 3, the owner chooses between a rented card and MoGe-2 beside it.
+  on an older card or on Windows is unverified, and spec 005's to check. If it does not run on the
+  1070, step 3 uses MoGe-2 there instead (the owner, 2026-10-11).
 - **For a world from one image** (Generate at its fullest), beyond what steps 3 to 7 plan (the
   result protocol, compiled extensions, the viewer):
     - lighter and heavier models are separate nodes to choose between; a world model tested only on
