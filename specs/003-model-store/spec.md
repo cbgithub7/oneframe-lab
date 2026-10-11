@@ -309,6 +309,17 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
       the page where the licence is accepted. `files_by` needs a default, since a download fetches
       the default checkpoint's files unless told otherwise. A file's `name` is lower case, as a
       port's is.
+    - The transport's values (`Policy` in `oneframe/models/transport.py`, each with its reason): a
+      30 s stall, 6 attempts in a row without a new byte, waits doubling from 1 s to 60 s with
+      jitter, and a host asking for more than 600 s ends the download as `rate_limited` at once.
+    - "Another host" is another origin (scheme, host and port): the test hosts differ only by port.
+    - A redirect to `http` fails as `tls`, the reason for a connection that cannot be secured. A
+      status at the source that neither the hub's codes nor a retry explain (a 401 without
+      `X-Error-Code`, say) is kind `download` without a reason, so nothing calls it gated.
+    - A 206 that starts anywhere but the partial's end starts the file again from nothing, as
+      research.md recommends; a full partial of a pinned file is hashed with no request at all.
+    - The sha256 is kept as bytes are written, after reading back what a partial held (`checking`),
+      so a finished download is not read a second time.
 
 ## Out of scope
 

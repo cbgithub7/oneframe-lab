@@ -26,7 +26,7 @@ task makes stale is updated in that task.
       antivirus holds a new file for seconds; research.md), and every delete clears read-only first;
     - kind `store`; a rename or delete the system still refuses is `os_refused`, never kind
       `engine`.
-- [ ] 4. The transport on `http.client`: redirects, retries, stall, the stop watchdog, the TLS
+- [x] 4. The transport on `http.client`: redirects, retries, stall, the stop watchdog, the TLS
   factory, proxies (AC3, AC4).
 - [ ] 5. The download and verify jobs (AC2, AC3, AC4):
     - `models.download`, `models.verify`, `models.stop`; a job id on every `model.*` event; each

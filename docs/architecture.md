@@ -142,6 +142,16 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `runtime` | `wrong_build` | no | Only the build this machine runs is installed. |
 | `runtime` | `unsafe_path` | no | Its folder is not a runtime folder in the data root; nothing was deleted. |
 | `runtime` | `install_failed` | yes | A step of the install failed; installing again resumes it. |
+| `download` |  | no | A file could not be downloaded; nothing but its checked bytes was kept. |
+| `download` | `source_changed` | no | The source gives another size than the pin; it changed since. |
+| `download` | `hash_mismatch` | yes | The bytes fetched are not the pinned file; nothing was kept. |
+| `download` | `no_space` | no | The store's drive is too full; the partial download was kept. |
+| `download` | `stalled` | yes | Attempt after attempt fetched nothing; the partial download was kept. |
+| `download` | `tls` | no | The connection could not be secured: a certificate refused, or http. |
+| `download` | `rate_limited` | yes | The host asked to wait longer than a download waits. |
+| `download` | `gated` | no | The file is gated: its licence must be accepted on its page first. |
+| `download` | `not_found` | no | The source has no such repository or file. |
+| `download` | `revision_gone` | no | The pinned commit is gone from its repository. |
 | `store` |  | no | The model store refused a download, verify, remove or pin. |
 | `store` | `newer_format` | no | A newer version of the app wrote it; it is left as it is. |
 | `store` | `unreadable` | no | Its format file cannot be read, or does not say its format. |

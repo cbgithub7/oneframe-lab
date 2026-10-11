@@ -7,6 +7,7 @@ license = "MIT"
 dependencies = [
     "numpy>=2.3",
     "pillow>=12",
+    "truststore>=0.10.4",
 ]
 
 [dependency-groups]

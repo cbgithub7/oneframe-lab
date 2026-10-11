@@ -71,6 +71,20 @@ KINDS: dict[str, Kind] = {
             "install_failed": (True, "A step of the install failed; installing again resumes it."),
         },
     ),
+    "download": Kind(
+        "A file could not be downloaded; nothing but its checked bytes was kept.",
+        reasons={
+            "source_changed": (False, "The source gives another size than the pin; it changed since."),
+            "hash_mismatch": (True, "The bytes fetched are not the pinned file; nothing was kept."),
+            "no_space": (False, "The store's drive is too full; the partial download was kept."),
+            "stalled": (True, "Attempt after attempt fetched nothing; the partial download was kept."),
+            "tls": (False, "The connection could not be secured: a certificate refused, or http."),
+            "rate_limited": (True, "The host asked to wait longer than a download waits."),
+            "gated": (False, "The file is gated: its licence must be accepted on its page first."),
+            "not_found": (False, "The source has no such repository or file."),
+            "revision_gone": (False, "The pinned commit is gone from its repository."),
+        },
+    ),
     "store": Kind(
         "The model store refused a download, verify, remove or pin.",
         reasons={
