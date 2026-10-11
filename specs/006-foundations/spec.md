@@ -1,7 +1,7 @@
 # 006: Foundations
 
-Status: in progress (merged 2026-10-05 in [PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7);
-the local checks in Verification are still to run)
+Status: done (merged 2026-10-05 in [PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7); the
+local checks in Verification passed on Windows on 2026-10-11: [report](reports/2026-10-11-local.md))
 Owner approval: 2026-10-03
 
 Comes before spec 003's core, which builds on it. It answers [the review of 2026-10-02](../../docs/reviews/2026-10-02.md):
