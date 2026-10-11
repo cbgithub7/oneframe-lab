@@ -1,0 +1,127 @@
+{
+  "spec": "006-foundations",
+  "criterion": "Verification (local session), steps 1-6",
+  "outcome": "passed",
+  "date": "2026-10-11",
+  "commit": "75acfece0e742f966021cca24d5f4ee59ef0d78f",
+  "attempts": [
+    {
+      "where": "inside the Claude desktop app (MSIX package container)",
+      "counts": false,
+      "why": "new AppData folders were redirected to %LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Local\\; the dev root and its torch runtime landed there, and the before/after comparison sees a merged view",
+      "results": {
+        "step2": "dev root made, but in the package's storage",
+        "step3": "cu126 installed in 136.3 s, 4,360 MB, probe 0.602 s, peak VRAM 209.8 MB, but in the package's storage",
+        "step4": "passed: user name 0 times, no hf_ token",
+        "step5": "inconclusive: merged view"
+      }
+    },
+    {
+      "where": "Windows Terminal started from the Start menu (powershell.exe <- pwsh.exe <- WindowsTerminal.exe <- explorer.exe)",
+      "counts": true
+    }
+  ],
+  "machine": {
+    "os": "Microsoft Windows [Version 10.0.19045.6466]",
+    "gpu": "NVIDIA GeForce GTX 1070",
+    "compute_capability": "6.1",
+    "vram_mb": 8192,
+    "driver": "582.66",
+    "free_disk_gb": 375.8,
+    "other_gpu_processes": [
+      "explorer.exe",
+      "steamwebhelper.exe",
+      "SearchApp.exe",
+      "TextInputHost.exe",
+      "ShellExperienceHost.exe",
+      "claude.exe (2)",
+      "Discord.exe",
+      "lghub_system_tray.exe"
+    ]
+  },
+  "tools": {
+    "node": "v24.21.0",
+    "uv": "0.12.20",
+    "git": "2.28.0.windows.1",
+    "npm": "12.0.1",
+    "python": "3.14.5 (engine), 3.14.7 (torch runtime)",
+    "torch": "2.14.0+cu126"
+  },
+  "checks": {
+    "npm run check": "passed (33 tests, docs check ok)",
+    "npm run engine:check": "passed (ruff, format, pyright clean; pytest 439 passed, 4 skipped by design on Windows, 144.6 s)",
+    "node scripts/test-guard.js": "passed (363 tests)"
+  },
+  "commands": [
+    "npm install",
+    "uv sync --project engine --frozen",
+    "npm run check",
+    "npm run engine:check",
+    "node scripts/test-guard.js",
+    "dir /a %APPDATA%; dir /a %LOCALAPPDATA%; dir /a %USERPROFILE%",
+    "reg query HKCU\\Software\\Python /s; reg query HKCU\\Environment /v Path",
+    "npm start",
+    "dir /a %LOCALAPPDATA%\\OneframeLab-dev",
+    "npm run bench:runtime -- torch",
+    "npm run diagnose",
+    "step 1's commands again, compared"
+  ],
+  "results": {
+    "step1": "done",
+    "step2": {
+      "outcome": "passed",
+      "node_list_shown": true,
+      "dev_root_contains": ["cache", "electron", "logs", "oneframe-root.json", "uv"],
+      "root_file": { "format": 1, "kind": "dev" },
+      "appdata_oneframe_lab_exists": false,
+      "engine_ready_nodes": 2
+    },
+    "step3": {
+      "outcome": "passed",
+      "build": "cu126",
+      "install_seconds": 115.1,
+      "size_mb": 4359,
+      "probe_seconds": 0.528,
+      "peak_vram_mb": 209.8,
+      "matmul_4096_seconds": 0.0291,
+      "journal": "logs\\journal\\20261011T180718882771Z-install-torch.ndjson, 36 events, runtime.start to runtime.done",
+      "notes": "the bench's report names no path (as spec 001's did not); the dev root is named by the command's last line and by where the report was written"
+    },
+    "step4": {
+      "outcome": "passed",
+      "bytes": 10867,
+      "user_name_mentions": 0,
+      "user_name_in_a_path": 0,
+      "hf_tokens": 0,
+      "placeholders": 5
+    },
+    "step5": {
+      "outcome": "passed",
+      "appdata": "no change",
+      "localappdata": "only OneframeLab-dev, the root itself",
+      "userprofile": "no change",
+      "hkcu_software_python": "unchanged",
+      "hkcu_environment_path": "unchanged"
+    },
+    "step6": {
+      "outcome": "done by the owner, by hand",
+      "deleted": [
+        "%LOCALAPPDATA%\\OneframeLab (4.2 GB)",
+        "HKCU\\Software\\Python\\Astral\\CPython3.14.7 (pointed into the old root; its Python was already gone, so uv python uninstall found nothing; reg delete)",
+        "HKCU\\Software\\Python\\Astral\\CPython3.11.16 (pointed into pytest-411\\uv-home0, 2026-10-01)",
+        "%USERPROFILE%\\.local\\bin\\python3.14.exe (uv launcher for the old root's Python, 2026-09-29, target gone)",
+        "%USERPROFILE%\\.local\\bin\\python3.11.exe (uv launcher for pytest-397\\uv-home0's Python, 2026-09-29, target gone)"
+      ],
+      "not_there": ["%APPDATA%\\oneframe-lab"],
+      "also_deleted": "the first attempt's redirected root, %LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Local\\OneframeLab-dev",
+      "checked_after": "old root gone; .local\\bin holds only the owner's python3.10.exe; HKCU\\Software\\Python\\Astral holds only the owner's CPython3.10.21"
+    },
+    "notes": [
+      "Electron's npm package fetched its 44.4.5 binary (158 MB zip) on the first npm start, into %LOCALAPPDATA%\\electron\\Cache (existing since 2024); dev tooling, not the app, and not named among spec 006's exceptions",
+      "code from before spec 006 left Pythons outside its root (two registry keys, two launchers in %USERPROFILE%\\.local\\bin on PATH, some from test runs); today's runs added none, AC2 now guards against it, but nothing cleans up what an older build left",
+      "no bytecode was written into the checkout",
+      "AC2's Windows footprint test ran inside the MSIX container here, so it saw a merged view; CI's Windows job is the real check"
+    ]
+  },
+  "local_changes": "none"
+}
