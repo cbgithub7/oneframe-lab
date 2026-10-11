@@ -1,8 +1,9 @@
 # 003: Model store (core)
 
-Status: approved (core, 2026-10-03; evidence in [research.md](research.md), the owner's decisions
-in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 to fit spec 006 as built,
-acceptance criteria included (Decisions taken).
+Status: built, in review (2026-10-11): AC1 to AC7 by tests in CI on Windows and Ubuntu; AC8 waits
+for the owner's Windows PC. Approved (core, 2026-10-03; evidence in [research.md](research.md), the
+owner's decisions in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 to fit spec
+006 as built, acceptance criteria included (Decisions taken).
 Owner approval: 2026-10-03; the amendment, 2026-10-05
 
 Built on [spec 006](../006-foundations/spec.md): its layout module, failure model, locks and journal.
@@ -226,13 +227,14 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
 - **Code** in `oneframe/models/`: the schema, the store, the transport, the download and verify
   jobs, the pin tool and the methods. The transport follows research.md's "Second round":
     - `http.client`;
-    - Stop shuts the socket down from a watchdog;
-    - the stall rule is the socket timeout;
+    - every read waits in slices and looks at Stop between them, and a stall is a window with no
+      byte (Decisions taken: the watchdog this named does not work on Windows);
     - proxies come from `urllib.request.getproxies()`, with a CONNECT tunnel;
     - truststore is imported only when a download starts.
 - **Fit.** The scheduler passes the present checkpoints to the fit.
 - **Risks.**
-    - Windows' handling of a TLS read shut down mid-read is unverified (AC3).
+    - Windows' handling of a TLS read shut down mid-read: settled by CI, it does not unblock the read
+      (Decisions taken).
     - Windows cannot delete a memory-mapped file: remove keeps files a run in any process uses,
       and spec 004's workers inherit that rule.
 
@@ -301,6 +303,57 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
 - **The test CA is a committed fixture:** a CA and a leaf for `127.0.0.1` and `localhost`, valid
   for a century and built to pass Python's strict checks. The standard library cannot make
   certificates.
+- **Taken while building** (2026-10-11), each reversible:
+    - The CA's private key is not kept: a new set is made rather than a new leaf. A second CA that
+      signed nothing gives the `tls` test a certificate to refuse, with no trust store involved
+      (`engine/tests/fixtures/tls/README.md`).
+    - The manifest's form: a file names `hf`, `revision` and `path`, or `url`; `gated` is false or
+      the page where the licence is accepted. `files_by` needs a default, since a download fetches
+      the default checkpoint's files unless told otherwise. A file's `name` is lower case, as a
+      port's is.
+    - The transport's values (`Policy` in `oneframe/models/transport.py`, each with its reason): a
+      30 s stall, 6 attempts in a row without a new byte, waits doubling from 1 s to 60 s with
+      jitter, and a host asking for more than 600 s ends the download as `rate_limited` at once.
+    - "Another host" is another origin (scheme, host and port): the test hosts differ only by port.
+    - A redirect to `http` fails as `tls`, the reason for a connection that cannot be secured. A
+      status at the source that neither the hub's codes nor a retry explain (a 401 without
+      `X-Error-Code`, say) is kind `download` without a reason, so nothing calls it gated.
+    - A 206 that starts anywhere but the partial's end starts the file again from nothing, as
+      research.md recommends; a full partial of a pinned file is hashed with no request at all.
+    - The sha256 is kept as bytes are written, after reading back what a partial held (`checking`),
+      so a finished download is not read a second time.
+    - **Stop is seen by the reader, not by a watchdog.** The Design named a watchdog that shuts the
+      socket down. It passed on Linux, and on the Windows runner (2026-10-11) both of AC3's Stop
+      cases hung: there, shutting a socket down from another thread does not wake a read waiting on
+      it. So every read waits in slices of 0.1 s and looks at Stop between them, and a stall is 30 s
+      with no byte, counted by the reader. A TLS read that times out leaves its connection as it
+      was, so the next slice reads on. The TCP connect and a proxy's CONNECT are polled the same
+      way; only a TLS handshake waits whole, up to the stall, since truststore checks the
+      certificate inside it.
+    - The cache key keeps `KEY_VERSION` 2: moving `node.json` from the folder's digest to the
+      manifest's own (`Manifest.digest`, the bytes it was parsed from) changes every key anyway, and
+      spec 006's test holds the version.
+    - A run lists the files it reads in `cache/tmp/<n>/reading.json`, its process's own folder, for
+      as long as its node runs; a list counts only while that process holds its folder's lock.
+    - A node missing files for several reasons gives the one a person acts on first: `changed`, then
+      `downloading`, `incomplete`, `not_downloaded`. The failure lists each file with its state
+      (`files`), `bytes_left`, and `present_checkpoint` when one is downloaded.
+    - A run lists every file its nodes could read, at any checkpoint, for the whole run, not only
+      while a node runs: a remove then never takes a file from under a graph between its steps.
+    - Remove of a node, as well as of the unpinned, is refused while the registry has problems or a
+      folder of nodes is missing: a manifest that cannot be read may pin the same file. A remove
+      that would touch a file a running graph may read is refused whole, naming the files.
+    - The launcher is `scripts/tool.js`, in Node like the app's own start of the engine: it knows
+      the data root before uv starts, so uv's lock lands in the root's `cache/tools/tmp/`.
+    - The pin tool fetches a URL again on every pin, since only its bytes say whether it changed; a
+      file at a pinned commit is fetched only when the hub's sha256 is not in the store. A file's
+      canonical id and `gated` are written even when its download is refused (a gated file).
+    - From the code review (2026-10-11): a pin resumes only a partial whose sha256 the hub names; a
+      partial keyed by its URL starts again, since a source that changed between two pins would be
+      spliced into a file that exists nowhere. A stopped pin writes what it finished. An attempt
+      counts as progress when it wrote any byte, wherever it landed. An `https://` proxy is refused
+      with its reason (downloads reach an `http://` proxy through CONNECT). A file the system
+      refuses to read fails alone, kind `store`, and the job goes on.
 
 ## Out of scope
 

@@ -1,0 +1,49 @@
+{
+  "id": "live.moge3",
+  "version": "1",
+  "title": "MoGe-3 (live pin)",
+  "category": "depth",
+  "summary": "MoGe-3's ViT-L and ViT-G model.pt, two checkpoints of one node; vitg is the large file.",
+  "outputs": {
+    "text": "Text"
+  },
+  "params": {
+    "checkpoint": {
+      "type": "choice",
+      "choices": [
+        "vitl",
+        "vitg"
+      ],
+      "default": "vitl"
+    }
+  },
+  "run": {
+    "where": "runtime",
+    "runtime": "torch",
+    "entry": "node.py:run"
+  },
+  "files_by": "checkpoint",
+  "files": [
+    {
+      "name": "vitl",
+      "hf": "Ruicheng/moge-3-vitl",
+      "revision": "main",
+      "path": "model.pt",
+      "checkpoints": [
+        "vitl"
+      ]
+    },
+    {
+      "name": "vitg",
+      "hf": "Ruicheng/moge-3-vitg",
+      "revision": "main",
+      "path": "model.pt",
+      "checkpoints": [
+        "vitg"
+      ]
+    }
+  ],
+  "links": {
+    "repo": "https://github.com/microsoft/MoGe"
+  }
+}

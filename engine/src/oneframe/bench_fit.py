@@ -52,7 +52,7 @@ from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
-from oneframe.scheduler import Scheduler
+from oneframe.scheduler import Scheduler, for_root
 from oneframe.scratch import for_tool
 
 HARDWARE_NODES = Path(__file__).resolve().parents[2] / "tests" / "hardware"
@@ -174,34 +174,26 @@ def make_scheduler(
     settings: Callable[[], Settings] = Settings,
     on_pid: Callable[[int], None] | None = None,
     runtime_python: Callable[[str], Path] | None = None,
+    tmp_root: Path | None = None,
 ) -> Scheduler:
-    """A scheduler for the bench: a cache of its own (a repeated setting must run, not be served),
-    nothing learned (estimates stay uncorrected), and the person's settings left alone."""
+    """A scheduler for the bench, built as the engine's is (scheduler.for_root), so a node reads its
+    files from the root's store: but with a cache of its own (a repeated setting must run, not be
+    served), nothing learned (estimates stay uncorrected), and the person's settings left alone."""
 
     def machine(cards: bool) -> dict[str, Any]:
         return hardware.profile(manager.data if manager else None, cards=cards)
 
-    kw: dict[str, Any] = {}
-    if manager is not None:
-        kw.update(
-            runtime_python=manager.python_for,
-            runtime_env=manager.env_for,
-            target=manager.device_target,
-            runtime_caches=manager.caches_for,
-            runtime_key=manager.key_for,
-        )
-    if runtime_python is not None:
-        kw["runtime_python"] = runtime_python
-    return Scheduler(
+    return for_root(
+        manager.data if manager else None,
         registry,
+        manager,
         Cache(cache_root),
         machine=machine,
         settings=settings,
         learned=_Unlearned(),
+        tmp_root=tmp_root,
         on_pid=on_pid,
-        log_dir=Layout(manager.data).step_logs if manager else None,
-        journal_dir=Layout(manager.data).journals if manager else None,
-        **kw,
+        runtime_python=runtime_python,
     )
 
 
@@ -749,7 +741,7 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 print(str(exc), file=sys.stderr)
                 return 2
-            scheduler = make_scheduler(registry, manager, work / "cache")
+            scheduler = make_scheduler(registry, manager, work / "cache", tmp_root=mine.folder)
             record.update(bench_node(scheduler, args.node, groups))
     path = report_path(args.out or Layout(data).reports, record)
     path.parent.mkdir(parents=True, exist_ok=True)

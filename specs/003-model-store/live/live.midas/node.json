@@ -1,0 +1,24 @@
+{
+  "id": "live.midas",
+  "version": "1",
+  "title": "MiDaS v3.1 BEiT-L 512 (live pin)",
+  "category": "depth",
+  "summary": "MiDaS v3.1's dpt_beit_large_512.pt (1.58 GB), a GitHub release asset behind a signed redirect.",
+  "outputs": {
+    "text": "Text"
+  },
+  "run": {
+    "where": "runtime",
+    "runtime": "torch",
+    "entry": "node.py:run"
+  },
+  "files": [
+    {
+      "name": "weights",
+      "url": "https://github.com/isl-org/MiDaS/releases/download/v3_1/dpt_beit_large_512.pt"
+    }
+  ],
+  "links": {
+    "repo": "https://github.com/isl-org/MiDaS"
+  }
+}

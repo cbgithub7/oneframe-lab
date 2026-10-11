@@ -574,6 +574,17 @@ def margin(settings: Settings, device_type: str, total_mb: float | None) -> floa
 
 
 @dataclass(frozen=True)
+class Checkpoints:
+    """Which of a node's checkpoints are downloaded (spec 003). The fit never changes to one that is
+    not, says so among what it skipped, and when only such a checkpoint would fit, names it and what
+    it would take to download. It never changes to one just because it is on disk."""
+
+    by: str  # the choice param that picks a checkpoint's files
+    present: frozenset[str]
+    to_fetch: Mapping[str, int] = field(default_factory=dict)  # bytes still to download, by checkpoint
+
+
+@dataclass(frozen=True)
 class Target:
     """What a node's runtime can use: the card its build was planned for (None: no card, as for an
     engine node or a processor build), and the lock hash its learning is kept under."""
@@ -866,8 +877,11 @@ class _Fitter:
         devices: tuple[str, ...],
         here: list[Device],
         system: Device,
+        checkpoints: Checkpoints | None = None,
     ) -> None:
         self.model = model
+        self.checkpoints = checkpoints
+        self.not_downloaded: set[str] = set()
         self.values = dict(values)
         self.explicit = explicit
         self.inputs = inputs
@@ -896,6 +910,7 @@ class _Fitter:
             self.devices,
             self.here,
             self.system,
+            self.checkpoints,
         )
 
     # -- looking at one point --
@@ -912,6 +927,11 @@ class _Fitter:
         if set_by_graph:
             self.explicit_blocked = True
             return f"the graph sets {', '.join(set_by_graph)}"
+        if self.checkpoints is not None and self.checkpoints.by in change.set:
+            wanted = str(change.set[self.checkpoints.by])
+            if wanted not in self.checkpoints.present:
+                self.not_downloaded.add(wanted)
+                return f"{self.checkpoints.by} {wanted} is not downloaded"
         precision = change.set.get(PRECISION_PARAM)
         if precision is not None and not self.runs_on(device, str(precision)):
             self.precision_skipped.setdefault(device.type, set()).add(str(precision))
@@ -1097,6 +1117,9 @@ class _Fitter:
 
         if after is not None:
             return self.failed("Nothing smaller than the attempt that ran out of memory is left to try.")
+        only = self.only_if_downloaded()
+        if only is not None:
+            return self.failed(only)
         if self.explicit_blocked:
             for device in [d for d in (first, *usable) if d is not None]:
                 allowed = self.points(device, not self.settings.never_reduce_quality)
@@ -1105,6 +1128,26 @@ class _Fitter:
                     why = "Nothing fits in the free memory, and the graph sets what the engine would change"
                     return self.result(point, "tried_anyway", {"kind": "tried_anyway", "why": why})
         return self.failed(self.memory_message(usable))
+
+    def only_if_downloaded(self) -> str | None:
+        """When nothing on disk fits but a checkpoint that is not downloaded would: which, and its
+        size to download."""
+        if self.checkpoints is None or not self.not_downloaded:
+            return None
+        anyway = self.fresh()
+        anyway.checkpoints = None
+        found = anyway.run(None)
+        if found.outcome != "fits":
+            return None
+        wanted = str(found.values.get(self.checkpoints.by))
+        if wanted in self.checkpoints.present:
+            return None
+        size = self.checkpoints.to_fetch.get(wanted)
+        mb = f"{round(size / 1e6)} MB to download" if size is not None else "its size is not known"
+        return (
+            f"Only {self.checkpoints.by} {wanted} would fit in the free memory, and it is not downloaded "
+            f"({mb}). Download it, or free some memory."
+        )
 
     def upgrade(self, first: Device) -> _Point | None:
         """The most upgrades, in order, that fit on the first device; an upgrade that sets a param
@@ -1192,13 +1235,15 @@ def fit(
     settings: Settings,
     devices: tuple[str, ...],
     after: Fit | None = None,
+    checkpoints: Checkpoints | None = None,
 ) -> Fit:
     """Where a node runs and at which values.
 
     Pure: the same arguments give the same fit, and no card's name is read. `values` are the step's
     params (with `precision`), `explicit` the ones the graph sets, `inputs` each input's `meta`,
     `devices` the manifest's list, and `after` the fit of an attempt that ran out of memory, which
-    the result must be strictly smaller than."""
+    the result must be strictly smaller than. `checkpoints`: which checkpoints are downloaded, for
+    a node that reads files by checkpoint (spec 003); a change to another is skipped."""
     system = _system_device(machine, settings)
     here = _devices_here(devices, machine, target, settings)
     if model is None:
@@ -1211,7 +1256,9 @@ def fit(
         if devices and first.type != devices[0]:
             found.warning = {"kind": "slow", "seconds": None, "basis": "unknown", "alternative": None}
         return found
-    fitter = _Fitter(model, values, frozenset(explicit), inputs, learned, settings, devices, here, system)
+    fitter = _Fitter(
+        model, values, frozenset(explicit), inputs, learned, settings, devices, here, system, checkpoints
+    )
     return fitter.run(after)
 
 

@@ -31,6 +31,7 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Executors | `oneframe/executors.py`, `oneframe/child.py` | In-process or child-process runs; one `NodeContext` either way |
 | Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
 | Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, system memory (total and available), free disk |
+| Model store | `oneframe/models/` | The files nodes read ([spec 003](../specs/003-model-store/spec.md)): declared in manifests (`schema.py`), kept once each by sha256 under `models/` (`store.py`), fetched on `http.client` by a transport that heals itself (`transport.py`), as download and verify jobs (`jobs.py`), checked before a run (`runs.py`), listed and removed (`catalog.py`), pinned (`pin.py`); the two command-line tools (`tools.py`) |
 | Archives | `oneframe/archives.py` | Pinned downloads kept only when their sha256 matches; unpacking that stays inside its folder |
 | Layout | `oneframe/layout.py`, `app/main/paths.js`, `contracts/layout.json` | The data root, defined once, and every path under it; the root file and its format |
 | Files | `oneframe/files.py` | The one JSON writer, which never replaces a newer format; operating-system locks |
@@ -39,6 +40,7 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
 | Server | `oneframe/server.py` | The engine's NDJSON protocol |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py` | The reports a hardware claim needs: a runtime's install, and a node's memory on a card |
+| Tool launcher | `scripts/tool.js` | Starts each command-line tool that opens a data root, with uv's temporary files under that root |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
 | Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js` | Electron's folders under the root, the window, the engine process, and the one IPC door, which answers with values |
 
@@ -107,6 +109,19 @@ A runtime install answers `runtimes.install` at once with the build it will inst
 `runtime.progress` for source downloads → `runtime.done` | `runtime.failed` | `runtime.stopped`.
 `runtimes.stop` ends an install; one install runs at a time.
 
+A model job, `models.download {node, checkpoints?}` or `models.verify {node?}`, answers at once with
+its job id, which every event carries ([spec 003](../specs/003-model-store/spec.md)):
+
+`model.start` → per file `model.file` (its phase: `checking`, `downloading`, `retrying`,
+`verifying`, `placing`) and throttled `model.progress` → `model.done` | `model.failed` (the first
+failed file's kind and reason) | `model.stopped`, each listing every file's outcome. `models.stop`
+ends a job within 2 s and keeps its partial; one job runs at a time across processes.
+`models.list` answers what the store holds for each node, by shared files and by checkpoint, and
+what no node pins, without the network; `models.remove {node, checkpoint?}` or
+`{unpinned: [...]}` deletes only that, keeping a file another node pins, and is refused while the
+registry has problems, a folder of nodes is missing, a job runs, or a running graph may read the
+file. None of these is on the page's method list yet.
+
 ## Failures
 
 Every failure the engine reports (`node.failed`, `run.failed`, `runtime.failed`, `engine.failed`,
@@ -142,6 +157,30 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `runtime` | `wrong_build` | no | Only the build this machine runs is installed. |
 | `runtime` | `unsafe_path` | no | Its folder is not a runtime folder in the data root; nothing was deleted. |
 | `runtime` | `install_failed` | yes | A step of the install failed; installing again resumes it. |
+| `files` |  | no | A file the node reads is not downloaded and checked; no process started. |
+| `files` | `not_downloaded` | no | A file it reads has not been downloaded. |
+| `files` | `downloading` | yes | A file it reads is being downloaded now. |
+| `files` | `incomplete` | no | A download of a file it reads stopped partway; downloading again resumes it. |
+| `files` | `changed` | no | A file it reads changed since it was checked, or a newer app recorded it. |
+| `download` |  | no | A file could not be downloaded; nothing but its checked bytes was kept. |
+| `download` | `source_changed` | no | The source gives another size than the pin; it changed since. |
+| `download` | `hash_mismatch` | yes | The bytes fetched are not the pinned file; nothing was kept. |
+| `download` | `no_space` | no | The store's drive is too full; the partial download was kept. |
+| `download` | `stalled` | yes | Attempt after attempt fetched nothing; the partial download was kept. |
+| `download` | `tls` | no | The connection could not be secured: a certificate refused, or http. |
+| `download` | `rate_limited` | yes | The host asked to wait longer than a download waits. |
+| `download` | `gated` | no | The file is gated: its licence must be accepted on its page first. |
+| `download` | `not_found` | no | The source has no such repository or file. |
+| `download` | `revision_gone` | no | The pinned commit is gone from its repository. |
+| `store` |  | no | The model store refused a download, verify, remove or pin. |
+| `store` | `newer_format` | no | A newer version of the app wrote it; it is left as it is. |
+| `store` | `unreadable` | no | Its format file cannot be read, or does not say its format. |
+| `store` | `busy` | yes | A download or verify is running in this engine; they run one at a time. |
+| `store` | `locked` | yes | Another process is downloading, verifying or removing model files. |
+| `store` | `in_use` | yes | A graph that is running may read it; nothing was deleted. |
+| `store` | `registry_problems` | no | A node's manifest cannot be read, so what it pins is unknown. |
+| `store` | `node_root_missing` | no | A folder of nodes is missing, so what its nodes pin is unknown. |
+| `store` | `os_refused` | yes | The system refused to rename or delete a file; it and its record were kept. |
 | `graph` |  | no | The graph cannot run; `problems` says why. |
 | `graph` | `busy` | yes | Another run is going; runs go one at a time. |
 | `root` |  | no | The engine cannot use this data root; nothing under it was changed. |
@@ -166,9 +205,11 @@ engine itself is never blamed on a node: kind `engine`, with its trace in `detai
 
 ## What comes next
 
-1. Model store: Download for a node's weights, into the data root.
-2. Keep models loaded: a long-lived worker per runtime in place of one child process per run.
-3. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
+1. First light: Depth Pro and MoGe from the app, reading their weights through `ctx.file`.
+2. The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to
+   need; then import, a movable store, a queue and the page's part.
+3. Keep models loaded: a long-lived worker per runtime in place of one child process per run.
+4. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
    and a reconstructor, enough for both loops, each with a memory model measured with
    `bench:fit`.
-4. Workspace UI: variants side by side, a graph editor, the three.js + Spark viewer.
+5. Workspace UI: variants side by side, a graph editor, the three.js + Spark viewer.

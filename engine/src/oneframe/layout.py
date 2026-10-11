@@ -172,13 +172,40 @@ class Layout:
         return self.root / "cache" / "electron" / "tmp"
 
     @property
+    def tools_tmp(self) -> Path:
+        """The temporary folder of the uv that starts a command-line tool (scripts/tool.js). Not in
+        `tmp`, whose unlocked folders an engine's start removes."""
+        return self.root / "cache" / "tools" / "tmp"
+
+    @property
     def electron(self) -> Path:
         """Electron's user data."""
         return self.root / "electron"
 
     @property
     def models(self) -> Path:
+        """The model store (spec 003): each file once, named by its sha256."""
         return self.root / "models"
+
+    @property
+    def store_file(self) -> Path:
+        """The store's format."""
+        return self.root / "models" / "oneframe-store.json"
+
+    @property
+    def blobs(self) -> Path:
+        """`<first two hex>/<sha256>`: each file the store holds, read-only."""
+        return self.root / "models" / "blobs"
+
+    @property
+    def partials(self) -> Path:
+        """`<sha256>`, or `url-<hash of the URL>` while pinning: downloads not yet checked."""
+        return self.root / "models" / "partial"
+
+    @property
+    def records(self) -> Path:
+        """`<sha256>.json`: what was checked of each file, its size and modification time."""
+        return self.root / "models" / "records"
 
     @property
     def runtimes(self) -> Path:

@@ -18,8 +18,15 @@ A failure carries a declared kind and reason (errors.py). A value whose facets d
 it reaches is no node's fault: there is no node.failed, and run.failed names the edge.
 
 Before a node's model loads, the engine fits it to the memory this machine has free (memory.py):
-the device, the precision and the settings the person left alone. Out of memory is answered once,
-with a fit strictly smaller than the one that ran out, in a new process for a runtime node.
+the device, the precision and the settings the person left alone, never a checkpoint that is not
+downloaded. Out of memory is answered once, with a fit strictly smaller than the one that ran out,
+in a new process for a runtime node.
+
+A cached result needs nothing more. Otherwise, before node.start and in this order: the fit, the
+runtime check, then the files check (spec 003): every file the node reads at its fitted values must
+be present in the model store, or it fails with kind `files` and no process starts. The node reaches
+them through `ctx.file(name)`. For as long as a run lasts, this process lists every file its nodes
+could read, so a remove in any process leaves them alone.
 
 Values are checked where they cross a port: a node's declared outputs against its manifest
 (every output present, every facet stated, each from the allowed values), and each input against
@@ -46,10 +53,13 @@ from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
 from oneframe.journal import engine_crash, journalled, prune_step_logs
+from oneframe.layout import Layout
 from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
+from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
+from oneframe.models.store import Store
 from oneframe.registry import Registry
-from oneframe.runtimes import RuntimeMissing
+from oneframe.runtimes import RuntimeMissing, Runtimes
 
 LOGGER = logging.getLogger(__name__)
 Emit = Callable[[dict[str, Any]], None]
@@ -120,7 +130,7 @@ class Scheduler:
         registry: Registry,
         cache: Cache,
         runtime_python: Callable[[str], Path] = no_runtimes,
-        models_dir: Path | None = None,
+        store: Store | None = None,
         log_dir: Path | None = None,
         runtime_env: Callable[[str], dict[str, str]] = no_env,
         machine: Callable[[bool], dict[str, Any]] = no_machine,
@@ -137,7 +147,7 @@ class Scheduler:
         self.cache = cache
         self.runtime_python = runtime_python
         self.runtime_env = runtime_env
-        self.models_dir = models_dir
+        self.store = store  # the model store a node's files are read from; None: no node has any
         self.log_dir = log_dir
         # A fresh machine profile for each fit; True when the node can use a card, so nvidia-smi
         # is started only for those.
@@ -146,7 +156,7 @@ class Scheduler:
         self.settings = settings
         self.learned = learned or LearnedStore(None)
         self.on_pid = on_pid
-        self.tmp_root = tmp_root  # where a runtime node's job folder is made
+        self.tmp_root = tmp_root  # where a runtime node's job folder is made, and its files listed
         self.runtime_caches = runtime_caches  # where its libraries keep their caches
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
         self.runtime_key = runtime_key  # a runtime node's build and marker hashes, for its cache key
@@ -205,6 +215,15 @@ class Scheduler:
 
         the_plan: Plan = plan(graph, self.registry)
         say({"event": "run.start", "order": the_plan.order, "notes": the_plan.notes})
+        # Every file the graph's nodes could read, at any checkpoint, is listed for the whole run,
+        # so a remove in any process leaves them alone until it ends.
+        files = sorted({spec.sha256 for step in the_plan.steps for spec in step.manifest.files})
+        with reading(self.tmp_root, files):
+            return self._steps(the_plan, result, say, should_stop, run_id)
+
+    def _steps(
+        self, the_plan: Plan, result: RunResult, say: Emit, should_stop: Callable[[], bool], run_id: str
+    ) -> RunResult:
         for step in the_plan.steps:
             if should_stop():
                 result.status = "stopped"
@@ -222,7 +241,7 @@ class Scheduler:
                 result.error = exc.to_json(edge=exc.edge)
                 say(dict(result.error, event="run.failed"))
                 return result
-            except (NodeError, RuntimeMissing, ContractError) as exc:
+            except (NodeError, RuntimeMissing, ContractError, FilesMissing) as exc:
                 error = exc.to_json(step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""))
                 if trail.fits:
                     error["fits"] = [f.to_json() for f in trail.fits]
@@ -343,6 +362,7 @@ class Scheduler:
             settings,
             manifest.devices,
             after,
+            checkpoints_for(self.store, manifest),
         )
         return found, settings
 
@@ -429,7 +449,8 @@ class Scheduler:
         values = dict(found.values) if found is not None else dict(step.params)
         device = (found.device if found is not None else None) or manifest.devices[0]
         key = self._key(manifest, values, inputs)
-        executor = self._executor(manifest)
+        executor = self._executor(manifest)  # the runtime check, then the files check
+        files = check_files(self.store, manifest, values)
         say(
             {
                 "event": "node.start",
@@ -450,7 +471,7 @@ class Scheduler:
             "params": values,
             "out_dir": str(work),
             "device": device,
-            "models": str(self.models_dir) if self.models_dir else None,
+            "files": files,
             "attempt": attempt,
         }
         outside = 0.0
@@ -636,3 +657,46 @@ def _described(found: Fit, peaks: dict[str, Any]) -> str:
     peak = peaks.get("peak_reserved_mb") if found.device == "cuda" else peaks.get("peak_ram_mb")
     used = f" (peak {round(peak)} MB)" if isinstance(peak, int | float) else ""
     return f"on {found.kind or found.device}{at}{used}"
+
+
+def for_root(
+    data: Path | None,
+    registry: Registry,
+    runtimes: Runtimes | None,
+    cache: Cache,
+    *,
+    machine: Callable[[bool], dict[str, Any]] = no_machine,
+    settings: Callable[[], Settings] = Settings,
+    learned: LearnedStore | None = None,
+    tmp_root: Path | None = None,
+    on_pid: Callable[[int], None] | None = None,
+    runtime_python: Callable[[str], Path] | None = None,
+) -> Scheduler:
+    """The scheduler for a data root, as the engine and bench:fit both build it: the runtimes'
+    Pythons, environments, targets, caches and keys, the root's step logs, journals and model store,
+    and `tmp_root`, the process's own folder under `cache/tmp/`."""
+    kw: dict[str, Any] = {}
+    if runtimes is not None:
+        kw.update(
+            runtime_python=runtimes.python_for,
+            runtime_env=runtimes.env_for,
+            target=runtimes.device_target,
+            runtime_caches=runtimes.caches_for,
+            runtime_key=runtimes.key_for,
+        )
+    if runtime_python is not None:
+        kw["runtime_python"] = runtime_python
+    layout = Layout(data) if data is not None else None
+    return Scheduler(
+        registry,
+        cache,
+        store=Store(data) if data is not None else None,
+        log_dir=layout.step_logs if layout else None,
+        journal_dir=layout.journals if layout else None,
+        machine=machine,
+        settings=settings,
+        learned=learned,
+        on_pid=on_pid,
+        tmp_root=tmp_root,
+        **kw,
+    )

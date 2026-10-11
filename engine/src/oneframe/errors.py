@@ -71,6 +71,48 @@ KINDS: dict[str, Kind] = {
             "install_failed": (True, "A step of the install failed; installing again resumes it."),
         },
     ),
+    "files": Kind(
+        "A file the node reads is not downloaded and checked; no process started.",
+        reasons={
+            "not_downloaded": (False, "A file it reads has not been downloaded."),
+            "downloading": (True, "A file it reads is being downloaded now."),
+            "incomplete": (
+                False,
+                "A download of a file it reads stopped partway; downloading again resumes it.",
+            ),
+            "changed": (False, "A file it reads changed since it was checked, or a newer app recorded it."),
+        },
+    ),
+    "download": Kind(
+        "A file could not be downloaded; nothing but its checked bytes was kept.",
+        reasons={
+            "source_changed": (False, "The source gives another size than the pin; it changed since."),
+            "hash_mismatch": (True, "The bytes fetched are not the pinned file; nothing was kept."),
+            "no_space": (False, "The store's drive is too full; the partial download was kept."),
+            "stalled": (True, "Attempt after attempt fetched nothing; the partial download was kept."),
+            "tls": (False, "The connection could not be secured: a certificate refused, or http."),
+            "rate_limited": (True, "The host asked to wait longer than a download waits."),
+            "gated": (False, "The file is gated: its licence must be accepted on its page first."),
+            "not_found": (False, "The source has no such repository or file."),
+            "revision_gone": (False, "The pinned commit is gone from its repository."),
+        },
+    ),
+    "store": Kind(
+        "The model store refused a download, verify, remove or pin.",
+        reasons={
+            "newer_format": (False, "A newer version of the app wrote it; it is left as it is."),
+            "unreadable": (False, "Its format file cannot be read, or does not say its format."),
+            "busy": (True, "A download or verify is running in this engine; they run one at a time."),
+            "locked": (True, "Another process is downloading, verifying or removing model files."),
+            "in_use": (True, "A graph that is running may read it; nothing was deleted."),
+            "registry_problems": (False, "A node's manifest cannot be read, so what it pins is unknown."),
+            "node_root_missing": (False, "A folder of nodes is missing, so what its nodes pin is unknown."),
+            "os_refused": (
+                True,
+                "The system refused to rename or delete a file; it and its record were kept.",
+            ),
+        },
+    ),
     "graph": Kind(
         "The graph cannot run; `problems` says why.",
         reasons={"busy": (True, "Another run is going; runs go one at a time.")},

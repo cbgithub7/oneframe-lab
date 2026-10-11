@@ -7,6 +7,7 @@ every problem named at once, so a person writing one fixes it in one pass.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from typing import Any
 from oneframe import ports
 from oneframe.memory import PRECISION_PARAM, MemoryModel
 from oneframe.memory import parse as parse_memory
+from oneframe.models.schema import FileSpec
+from oneframe.models.schema import parse as parse_files
 
 CATEGORIES = (
     "source",  # brings something in: a photo, clicks, text
@@ -86,11 +89,26 @@ class Manifest:
     memory: MemoryModel | None = None
     licence: dict[str, Any] = field(default_factory=dict)
     links: dict[str, str] = field(default_factory=dict)
+    # the files it reads (spec 003), and the choice param that picks a checkpoint's files
+    files: tuple[FileSpec, ...] = ()
+    files_by: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
+    # The sha256 of the bytes this manifest was parsed from: the cache key's node.json part, so a
+    # result is kept under the manifest a run used, not one edited on disk since (spec 003).
+    digest: str = ""
 
     @property
     def code_path(self) -> Path:
         return self.folder / self.run.file
+
+    @property
+    def default_checkpoint(self) -> str | None:
+        """The checkpoint a run reads unless the graph or the fit picks another; None without one."""
+        return None if self.files_by is None else str(self.params[self.files_by].default)  # never None
+
+    def files_for(self, checkpoint: str | None) -> tuple[FileSpec, ...]:
+        """The files a run at `checkpoint` reads: every shared file, and that checkpoint's own."""
+        return tuple(f for f in self.files if f.wanted_by(checkpoint))
 
     def to_json(self) -> dict[str, Any]:
         """What the app is sent: the manifest as written, plus where it came from and the params
@@ -162,7 +180,11 @@ def _param(name: str, row: Any, problems: list[str]) -> Param | None:
     )
 
 
-def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Manifest:
+def parse(
+    data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
+) -> Manifest:
+    """`read`: the bytes `data` was read from, whose sha256 is the manifest's digest; without them
+    (a manifest made in code) the digest is of `data` written out in one canonical form."""
     problems: list[str] = []
     known = ports.types()
 
@@ -249,6 +271,9 @@ def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Mani
         if precision:
             params[PRECISION_PARAM] = precision
 
+    weights_by = data["memory"].get("weights_by") if isinstance(data.get("memory"), dict) else None
+    files, files_by = parse_files(data, params, where, weights_by, problems)
+
     if problems:
         raise ManifestError(source, problems)
     return Manifest(
@@ -266,15 +291,21 @@ def parse(data: dict[str, Any], folder: Path, source: str = "node.json") -> Mani
         memory=model,
         licence=dict(data.get("licence") or {}),
         links=dict(data.get("links") or {}),
+        files=files,
+        files_by=files_by,
         raw=data,
+        digest=hashlib.sha256(
+            read if read is not None else json.dumps(data, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest(),
     )
 
 
 def load(path: Path) -> Manifest:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        text = path.read_bytes()
+        data = json.loads(text.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ManifestError(str(path), [f"cannot read: {exc}"]) from exc
     if not isinstance(data, dict):
         raise ManifestError(str(path), ["the file should hold one JSON object"])
-    return parse(data, path.parent, source=str(path))
+    return parse(data, path.parent, source=str(path), read=text)

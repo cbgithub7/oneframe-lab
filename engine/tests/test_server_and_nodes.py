@@ -23,7 +23,8 @@ from oneframe.server import Engine
 def test_importing_the_server_loads_no_numeric_or_model_library() -> None:
     probe = (
         "import sys, oneframe.server\n"
-        "heavy = [m for m in ('numpy', 'PIL', 'torch', 'cv2', 'transformers') if m in sys.modules]\n"
+        "heavy = ('numpy', 'PIL', 'torch', 'cv2', 'transformers', 'truststore')\n"
+        "heavy = [m for m in heavy if m in sys.modules]\n"
         "print(','.join(heavy))"
     )
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
