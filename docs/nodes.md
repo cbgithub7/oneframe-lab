@@ -46,6 +46,39 @@ the code it names. The folder is named after the node's id.
 - **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
   repair, texture, convert, evaluate, export.
 
+## Files: weights and other downloads
+
+A node that reads files from outside its folder (weights, configs) declares each one, with where to
+fetch it and what its bytes must be ([spec 003](../specs/003-model-store/spec.md)):
+
+```json
+"files_by": "checkpoint",
+"files": [
+  { "name": "config", "hf": "Ruicheng/moge-3-vitl", "revision": "<full commit>", "path": "config.json",
+    "size": 1024, "sha256": "<64 hex>", "format": "other" },
+  { "name": "vitl", "hf": "Ruicheng/moge-3-vitl", "revision": "<full commit>", "path": "model.pt",
+    "size": 1314651781, "sha256": "<64 hex>", "format": "pickle", "checkpoints": ["vitl"] },
+  { "name": "depth_pro", "url": "https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt",
+    "size": 1904446787, "sha256": "<64 hex>", "format": "pickle", "gated": false }
+]
+```
+
+- **The source** is a Hugging Face repository (`hf`) at a full commit (`revision`, never a
+  branch) with the file's `path` in it, or an `https` `url`. It is only where the bytes come from:
+  the `size` and `sha256` are the file's identity, so a file two nodes pin is stored and fetched
+  once.
+- **`format`** is read from the file's content: `safetensors`, `pickle` (torch's zip archives
+  included, whatever the file's name) or `other`. **`gated`** is false, or the page where its
+  licence is accepted.
+- **`checkpoints`** names the values of the node's `files_by` choice param that read the file; a
+  file without them is read by every run. `files_by` needs a default, must affect output, and must
+  be the memory model's `weights_by` when there is one. `precision` never picks files.
+- **Write the sources, then pin.** `npm run models:pin -- <node>` resolves each commit and fills
+  in the sizes, sha256s, formats and `gated`. Until then the manifest is refused, with every problem
+  named at once; so is a file in a node that runs in the engine, and a `path` that cannot be a file
+  on every system (absolute, `..`, a name Windows keeps for a device, a `:`, a step ending in a dot
+  or a space, or two paths that differ only in case).
+
 ## The code
 
 ```python

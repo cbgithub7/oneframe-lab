@@ -301,6 +301,14 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
 - **The test CA is a committed fixture:** a CA and a leaf for `127.0.0.1` and `localhost`, valid
   for a century and built to pass Python's strict checks. The standard library cannot make
   certificates.
+- **Taken while building** (2026-10-11), each reversible:
+    - The CA's private key is not kept: a new set is made rather than a new leaf. A second CA that
+      signed nothing gives the `tls` test a certificate to refuse, with no trust store involved
+      (`engine/tests/fixtures/tls/README.md`).
+    - The manifest's form: a file names `hf`, `revision` and `path`, or `url`; `gated` is false or
+      the page where the licence is accepted. `files_by` needs a default, since a download fetches
+      the default checkpoint's files unless told otherwise. A file's `name` is lower case, as a
+      port's is.
 
 ## Out of scope
 

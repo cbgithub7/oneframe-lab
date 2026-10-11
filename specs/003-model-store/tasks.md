@@ -16,7 +16,7 @@ task makes stale is updated in that task.
       `EntryNotFound`);
     - a redirect to `http`;
     - a recording CONNECT proxy (the test clears `NO_PROXY`).
-- [ ] 2. The files schema in manifests and its checks, a checkpoint param that does not affect
+- [x] 2. The files schema in manifests and its checks, a checkpoint param that does not affect
   output included (AC1); files in the manifest documented in `docs/nodes.md`.
 - [ ] 3. The store (AC2's first half, AC6's newer store):
     - its paths named in `oneframe/layout.py`, `contracts/layout.json` and `app/main/paths.js`;
