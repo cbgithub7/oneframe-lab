@@ -107,6 +107,15 @@ A runtime install answers `runtimes.install` at once with the build it will inst
 `runtime.progress` for source downloads → `runtime.done` | `runtime.failed` | `runtime.stopped`.
 `runtimes.stop` ends an install; one install runs at a time.
 
+A model job, `models.download {node, checkpoints?}` or `models.verify {node?}`, answers at once with
+its job id, which every event carries ([spec 003](../specs/003-model-store/spec.md)):
+
+`model.start` → per file `model.file` (its phase: `checking`, `downloading`, `retrying`,
+`verifying`, `placing`) and throttled `model.progress` → `model.done` | `model.failed` (the first
+failed file's kind and reason) | `model.stopped`, each listing every file's outcome. `models.stop`
+ends a job within 2 s and keeps its partial; one job runs at a time across processes. None of
+these is on the page's method list yet.
+
 ## Failures
 
 Every failure the engine reports (`node.failed`, `run.failed`, `runtime.failed`, `engine.failed`,
@@ -155,6 +164,8 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `store` |  | no | The model store refused a download, verify, remove or pin. |
 | `store` | `newer_format` | no | A newer version of the app wrote it; it is left as it is. |
 | `store` | `unreadable` | no | Its format file cannot be read, or does not say its format. |
+| `store` | `busy` | yes | A download or verify is running in this engine; they run one at a time. |
+| `store` | `locked` | yes | Another process is downloading, verifying or removing model files. |
 | `store` | `os_refused` | yes | The system refused to rename or delete a file; it and its record were kept. |
 | `graph` |  | no | The graph cannot run; `problems` says why. |
 | `graph` | `busy` | yes | Another run is going; runs go one at a time. |

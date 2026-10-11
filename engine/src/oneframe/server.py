@@ -38,6 +38,7 @@ from oneframe.graph import Graph, Step, plan, step_params
 from oneframe.journal import engine_crash
 from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory import LearnedStore, read_settings
+from oneframe.models.jobs import Jobs
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, Runtimes, find_uv
 from oneframe.scheduler import Scheduler
@@ -70,8 +71,10 @@ class Engine:
         packaged: bool = False,
         scratch: Scratch | None = None,
         warnings: list[str] | None = None,
+        transfer: dict[str, Any] | None = None,
     ):
-        """`warnings`: the root's, when the caller has already claimed it (layout.open_root)."""
+        """`warnings`: the root's, when the caller has already claimed it (layout.open_root).
+        `transfer`: options for each download (a test's TLS context, policy or proxy)."""
         self.data = data
         self.layout = Layout(data)
         # Before anything is written under the root: a newer layout stops the engine here.
@@ -84,6 +87,7 @@ class Engine:
         self.cache = Cache(self.layout.cache, work=self.scratch.folder / "runs")
         self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
         self.learned = LearnedStore(data)
+        self.models = Jobs(data, say, transfer)
         # A fit reads the machine fresh, since free memory changes; a test passes its own profile.
         self._profile = profile
         self.scheduler = Scheduler(
@@ -122,6 +126,9 @@ class Engine:
             "runtimes.install": self.runtimes_install,
             "runtimes.stop": self.runtimes_stop,
             "runtimes.remove": self.runtimes_remove,
+            "models.download": self.models_download,
+            "models.verify": self.models_verify,
+            "models.stop": self.models_stop,
         }
 
     def hello(self, _params: dict[str, Any]) -> dict[str, Any]:
@@ -262,9 +269,29 @@ class Engine:
         self._refuse_if_running(runtime_id, "removing")
         return self.runtimes.remove(runtime_id)
 
+    def _node(self, params: dict[str, Any]) -> Any:
+        node = str(_required(params, "node"))
+        if node not in self.registry.nodes:
+            raise _bad_params(f"No node called {node!r} is installed.")
+        return self.registry.get(node)
+
+    def models_download(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Fetch a node's files: `{node, checkpoints?}`, a list of checkpoints or "all". Answers at
+        once with the job's id; model.* events follow."""
+        return self.models.download(self._node(params), params.get("checkpoints"))
+
+    def models_verify(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Hash again what the store holds: `{node?}`, one node's files or every file."""
+        if params.get("node") is not None:
+            return self.models.verify(str(params["node"]), [self._node(params)])
+        return self.models.verify(None, list(self.registry.nodes.values()))
+
+    def models_stop(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self.models.stop(params.get("job"))
+
     def shutdown(self, timeout: float = 30) -> None:
-        """Stop a run and an install that are still going, and wait for them, so that no node
-        process holding the card and no uv outlives the engine."""
+        """Stop a run, an install and a model job that are still going, and wait for them, so that
+        no node process holding the card, no uv and no half-told download outlives the engine."""
         with self._lock:
             running = self._run
             run_thread = self._run_thread
@@ -273,11 +300,13 @@ class Engine:
         installing = self.runtimes.installing()
         if installing is not None:
             self.runtimes.stop(installing)
-        deadline = time.monotonic() + timeout  # one budget for both, not one each
+        self.models.stop()
+        deadline = time.monotonic() + timeout  # one budget for all, not one each
         if run_thread is not None:
             run_thread.join(max(deadline - time.monotonic(), 0))
         if self._install is not None:
             self._install.join(max(deadline - time.monotonic(), 0))
+        self.models.shutdown(max(deadline - time.monotonic(), 0))
         self.scratch.release()
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:

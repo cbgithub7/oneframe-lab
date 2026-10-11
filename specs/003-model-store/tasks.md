@@ -28,7 +28,7 @@ task makes stale is updated in that task.
       `engine`.
 - [x] 4. The transport on `http.client`: redirects, retries, stall, the stop watchdog, the TLS
   factory, proxies (AC3, AC4).
-- [ ] 5. The download and verify jobs (AC2, AC3, AC4):
+- [x] 5. The download and verify jobs (AC2, AC3, AC4):
     - `models.download`, `models.verify`, `models.stop`; a job id on every `model.*` event; each
       file's outcome in the ending event; a second job refused, `busy` here and `locked` from
       another process;

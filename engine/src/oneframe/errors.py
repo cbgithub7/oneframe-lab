@@ -90,6 +90,8 @@ KINDS: dict[str, Kind] = {
         reasons={
             "newer_format": (False, "A newer version of the app wrote it; it is left as it is."),
             "unreadable": (False, "Its format file cannot be read, or does not say its format."),
+            "busy": (True, "A download or verify is running in this engine; they run one at a time."),
+            "locked": (True, "Another process is downloading, verifying or removing model files."),
             "os_refused": (
                 True,
                 "The system refused to rename or delete a file; it and its record were kept.",

@@ -250,6 +250,10 @@ class Store:
             return Presence("changed", 0, "it was modified after it was checked")
         return Presence("present", size)
 
+    def recorded(self, sha: str) -> Record:
+        """Record a stored file whose sha256 the caller has just checked (verify)."""
+        return self._write_record(sha, self.blob(sha))
+
     def _write_record(self, sha: str, path: Path) -> Record:
         info = path.stat()
         record = Record(sha, info.st_size, info.st_mtime_ns)
