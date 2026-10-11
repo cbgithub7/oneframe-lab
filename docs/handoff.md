@@ -44,9 +44,9 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
 
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
-- **Foundations** (spec 006, merged 2026-10-05 in
-  [PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7) and green in CI; the spec stays in
-  progress until its local checks run;
+- **Foundations** (spec 006, done: merged 2026-10-05 in
+  [PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7), its local checks passed on Windows on
+  2026-10-11 ([report](../specs/006-foundations/reports/2026-10-11-local.md));
   [reviewed 2026-10-04](reviews/2026-10-04-spec-006.md)):
     - one data root, computed alike by the engine (`oneframe/layout.py`) and the app
       (`app/main/paths.js`) from a shared table; the dev root is `OneframeLab-dev`
@@ -56,8 +56,8 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
       gaps listed below (uv's lock from the npm tools; on Windows, a library cache outside the
       variables `child_env` sets). The
       engine's side is proved by a footprint test on both systems, library caches, temporary files
-      and bytecode included; Electron's folders by a unit test of `app/main/boot.js` and a headless
-      run on Linux, with the real app on Windows still to run (spec 006's Verification);
+      and bytecode included; Electron's folders by a unit test of `app/main/boot.js`, a headless
+      run on Linux, and the real app on the owner's Windows PC (the local checks);
     - every kept file says its format (`oneframe-root.json`, settings, learned memory, the runtime
       marker), and a newer one is left alone; a runtime moved to another root reads as `moved`;
     - a locked folder per process under `cache/tmp/`, and a lock per runtime install or remove;
@@ -141,7 +141,7 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
-| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | merged 2026-10-05 ([PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7)); its local checks (Verification) still to run |
+| 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | done: merged 2026-10-05 ([PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7)); local checks passed on Windows 2026-10-11 ([report](../specs/006-foundations/reports/2026-10-11-local.md)) |
 | 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); amended 2026-10-05 to fit 006 as built, the amendment approved the same day; next to implement |
 | 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog and a result protocol the page can read (a large mesh or splat included); MoGe-3 may not run on the 1070 (see Known) | 005 (first part) | not started |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
@@ -197,8 +197,8 @@ Known from the review, to be settled by the specs above or later ones:
   imports FlexGEMM, which is built on Triton, and Triton's README supports NVIDIA cards from compute
   8.0; FlexGEMM runs only in MoGe-3's optional refinement (`refine_steps`), and the `moge` package
   requires it for every version. Whether MoGe-3, or MoGe-2 through that package, installs and runs
-  on an older card or on Windows is unverified, and spec 005's to check. If the 1070 cannot show
-  MoGe-3 in step 3, the owner chooses between a rented card and MoGe-2 beside it.
+  on an older card or on Windows is unverified, and spec 005's to check. If it does not run on the
+  1070, step 3 uses MoGe-2 there instead (the owner, 2026-10-11).
 - **For a world from one image** (Generate at its fullest), beyond what steps 3 to 7 plan (the
   result protocol, compiled extensions, the viewer):
     - lighter and heavier models are separate nodes to choose between; a world model tested only on
@@ -208,6 +208,11 @@ Known from the review, to be settled by the specs above or later ones:
     - the token part spec 003 leaves for later, before any gated model;
     - sound, in scope since 2026-10-05: an audio port type, nodes that make it, and a player in
       the page; nothing carries audio yet, and no spec has taken it on.
+- **Claude desktop on Windows is an MSIX package** (spec 006's local report). A process it starts
+  writes a new folder under `AppData`, and any `HKCU` key, into the package's private storage, while
+  `dir` and `reg query` from inside show the merged view. A local check of where things land runs
+  from a terminal started outside it; `npm run diagnose` names the root's real path. A packaged
+  Oneframe Lab built as MSIX would have its writes redirected the same way.
 - **Precision has no speed model.** The fit can pick fp16 on a card that runs it far slower than
   fp32. The rate per precision and compute capability is published data, so it can be added
   without naming a card. The margin (1.5 GiB or 10%) should be derived again from real runs.
