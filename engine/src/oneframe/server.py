@@ -38,6 +38,7 @@ from oneframe.graph import Graph, Step, plan, step_params
 from oneframe.journal import engine_crash
 from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory import LearnedStore, read_settings
+from oneframe.models.catalog import listing, remove_node, remove_unpinned
 from oneframe.models.jobs import Jobs
 from oneframe.models.runs import in_use
 from oneframe.registry import Registry, discover
@@ -124,6 +125,8 @@ class Engine:
             "models.download": self.models_download,
             "models.verify": self.models_verify,
             "models.stop": self.models_stop,
+            "models.list": self.models_list,
+            "models.remove": self.models_remove,
         }
 
     def hello(self, _params: dict[str, Any]) -> dict[str, Any]:
@@ -283,6 +286,29 @@ class Engine:
 
     def models_stop(self, params: dict[str, Any]) -> dict[str, Any]:
         return self.models.stop(params.get("job"))
+
+    def models_list(self, _params: dict[str, Any]) -> dict[str, Any]:
+        """What the store holds for each node, and what no node pins; never uses the network."""
+        return listing(self.models.store, self.registry)
+
+    def models_remove(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{node, checkpoint?}`: a node's files, or a checkpoint's; `{unpinned: [...]}`: exactly the
+        files and partials models.list showed as pinned by no node."""
+        busy = self.models.running()
+        if params.get("unpinned") is not None:
+            listed = params["unpinned"]
+            if not isinstance(listed, list) or not all(isinstance(x, str) for x in listed):
+                raise _bad_params("unpinned should be a list of what models.list showed.")
+            return remove_unpinned(self.models.store, self.registry, self.node_roots, listed, busy)
+        checkpoint = params.get("checkpoint")
+        return remove_node(
+            self.models.store,
+            self.registry,
+            self.node_roots,
+            self._node(params),
+            None if checkpoint is None else str(checkpoint),
+            busy,
+        )
 
     def shutdown(self, timeout: float = 30) -> None:
         """Stop a run, an install and a model job that are still going, and wait for them, so that

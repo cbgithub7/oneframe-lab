@@ -172,7 +172,7 @@ def test_after_the_download_the_node_reads_through_ctx_file_and_a_cached_result_
     store = Store(data)
     assert seen["config"] == {"sha256": sha(CONFIG), "path": str(store.blob(sha(CONFIG)))}
     assert seen["weights"]["sha256"] == sha(SMALL)
-    assert seen["listed"] == sorted([sha(CONFIG), sha(SMALL)])  # listed while it ran
+    assert seen["listed"] == sorted([sha(CONFIG), sha(SMALL), sha(LARGE)])  # all it could read, while it ran
     assert "'other' is not a file this run reads (it reads: config, weights)" in seen["other"]
     assert not listed.exists()  # and no longer
     # The cached result is served even with the files gone.

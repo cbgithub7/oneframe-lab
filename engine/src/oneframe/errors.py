@@ -104,6 +104,9 @@ KINDS: dict[str, Kind] = {
             "unreadable": (False, "Its format file cannot be read, or does not say its format."),
             "busy": (True, "A download or verify is running in this engine; they run one at a time."),
             "locked": (True, "Another process is downloading, verifying or removing model files."),
+            "in_use": (True, "A graph that is running may read it; nothing was deleted."),
+            "registry_problems": (False, "A node's manifest cannot be read, so what it pins is unknown."),
+            "node_root_missing": (False, "A folder of nodes is missing, so what its nodes pin is unknown."),
             "os_refused": (
                 True,
                 "The system refused to rename or delete a file; it and its record were kept.",

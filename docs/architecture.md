@@ -113,8 +113,12 @@ its job id, which every event carries ([spec 003](../specs/003-model-store/spec.
 `model.start` → per file `model.file` (its phase: `checking`, `downloading`, `retrying`,
 `verifying`, `placing`) and throttled `model.progress` → `model.done` | `model.failed` (the first
 failed file's kind and reason) | `model.stopped`, each listing every file's outcome. `models.stop`
-ends a job within 2 s and keeps its partial; one job runs at a time across processes. None of
-these is on the page's method list yet.
+ends a job within 2 s and keeps its partial; one job runs at a time across processes.
+`models.list` answers what the store holds for each node, by shared files and by checkpoint, and
+what no node pins, without the network; `models.remove {node, checkpoint?}` or
+`{unpinned: [...]}` deletes only that, keeping a file another node pins, and is refused while the
+registry has problems, a folder of nodes is missing, a job runs, or a running graph may read the
+file. None of these is on the page's method list yet.
 
 ## Failures
 
@@ -171,6 +175,9 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `store` | `unreadable` | no | Its format file cannot be read, or does not say its format. |
 | `store` | `busy` | yes | A download or verify is running in this engine; they run one at a time. |
 | `store` | `locked` | yes | Another process is downloading, verifying or removing model files. |
+| `store` | `in_use` | yes | A graph that is running may read it; nothing was deleted. |
+| `store` | `registry_problems` | no | A node's manifest cannot be read, so what it pins is unknown. |
+| `store` | `node_root_missing` | no | A folder of nodes is missing, so what its nodes pin is unknown. |
 | `store` | `os_refused` | yes | The system refused to rename or delete a file; it and its record were kept. |
 | `graph` |  | no | The graph cannot run; `problems` says why. |
 | `graph` | `busy` | yes | Another run is going; runs go one at a time. |

@@ -337,6 +337,11 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
     - A node missing files for several reasons gives the one a person acts on first: `changed`, then
       `downloading`, `incomplete`, `not_downloaded`. The failure lists each file with its state
       (`files`), `bytes_left`, and `present_checkpoint` when one is downloaded.
+    - A run lists every file its nodes could read, at any checkpoint, for the whole run, not only
+      while a node runs: a remove then never takes a file from under a graph between its steps.
+    - Remove of a node, as well as of the unpinned, is refused while the registry has problems or a
+      folder of nodes is missing: a manifest that cannot be read may pin the same file. A remove
+      that would touch a file a running graph may read is refused whole, naming the files.
 
 ## Out of scope
 

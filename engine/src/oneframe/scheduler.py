@@ -25,7 +25,8 @@ in a new process for a runtime node.
 A cached result needs nothing more. Otherwise, before node.start and in this order: the fit, the
 runtime check, then the files check (spec 003): every file the node reads at its fitted values must
 be present in the model store, or it fails with kind `files` and no process starts. The node reaches
-them through `ctx.file(name)`, and while it runs this process lists them as being read.
+them through `ctx.file(name)`. For as long as a run lasts, this process lists every file its nodes
+could read, so a remove in any process leaves them alone.
 
 Values are checked where they cross a port: a node's declared outputs against its manifest
 (every output present, every facet stated, each from the allowed values), and each input against
@@ -203,8 +204,20 @@ class Scheduler:
         def crashed(exc: BaseException) -> dict[str, Any]:  # what the server reports to the page
             return engine_crash(exc, event="run.failed", run=run_id)
 
-        with journalled(emit, self.journal_dir, f"run-{run_id}", crashed) as kept:
+        with (
+            journalled(emit, self.journal_dir, f"run-{run_id}", crashed) as kept,
+            reading(self.tmp_root, self._files_of(graph)),
+        ):
             return self._run(graph, kept, should_stop, run_id)
+
+    def _files_of(self, graph: Graph) -> list[str]:
+        """Every file the graph's nodes could read, at any checkpoint: listed for the whole run, so
+        a remove in any process leaves them alone until it ends."""
+        try:
+            steps = plan(graph, self.registry).steps
+        except Exception:  # a graph that cannot run fails in _run, with its problems
+            return []
+        return sorted({spec.sha256 for step in steps for spec in step.manifest.files})
 
     def _run(self, graph: Graph, emit: Emit, should_stop: Callable[[], bool], run_id: str) -> RunResult:
         result = RunResult(run=run_id, status="done")
@@ -490,11 +503,9 @@ class Scheduler:
                 event = dict(event, event="node.step_oom")
             say(dict(event, step=step.id))
 
-        shas = [f.sha256 for f in manifest.files if f.name in files]
         try:
             try:
-                with reading(self.tmp_root, shas):
-                    finished = executor.execute(job, forward, should_stop)
+                finished = executor.execute(job, forward, should_stop)
             except NodeError as exc:
                 trail.peaks.append({"attempt": attempt, **exc.peaks})
                 if exc.kind == "oom":

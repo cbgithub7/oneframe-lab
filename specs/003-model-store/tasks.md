@@ -43,7 +43,7 @@ task makes stale is updated in that task.
       too;
     - the cache key's `node.json` part taken from the bytes the manifest was parsed from;
     - each process lists the files its run reads in its own folder under `cache/tmp/`.
-- [ ] 7. `models.list` and `models.remove`: remove refused for a file any process's run lists,
+- [x] 7. `models.list` and `models.remove`: remove refused for a file any process's run lists,
   verify's drop of such a file only its record (AC6, a graph in another process included).
 - [ ] 8. The pin tool and both command-line tools (AC7): the root opened and its journal kept as
   006's tools do, Ctrl+C as a Stop. One launcher starts uv for every tool that opens a data root
