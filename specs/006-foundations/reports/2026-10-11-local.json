@@ -113,6 +113,7 @@
         "%USERPROFILE%\\.local\\bin\\python3.11.exe (uv launcher for pytest-397\\uv-home0's Python, 2026-09-29, target gone)"
       ],
       "not_there": ["%APPDATA%\\oneframe-lab"],
+      "also_deleted": "the first attempt's redirected root, with the rest of %LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Local",
       "checked_after": "old root gone; .local\\bin holds only the owner's python3.10.exe; HKCU\\Software\\Python\\Astral holds only the owner's CPython3.10.21"
     },
     "notes": [
