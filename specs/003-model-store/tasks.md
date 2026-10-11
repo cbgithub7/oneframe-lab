@@ -5,7 +5,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 retry, and into the table in `docs/architecture.md` in the task that first raises it; a doc that a
 task makes stale is updated in that task.
 
-- [ ] 1. Test server and test CA: Hugging Face's resolve, revision, tree and paths-info endpoints,
+- [x] 1. Test server and test CA: Hugging Face's resolve, revision, tree and paths-info endpoints,
   a URL host, a redirect host with single-use URLs, all over TLS from a committed CA. Faults it can
   inject, each used by AC3 or AC4:
     - a connection dropped at a given byte, and a stall before the headers and mid-body;

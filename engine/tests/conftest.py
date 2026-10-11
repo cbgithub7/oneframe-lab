@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fixtures.hosts import Hosts
 
 from oneframe.cache import Cache
 from oneframe.registry import Registry, discover
@@ -341,3 +342,13 @@ def source_server() -> Iterator[SourceServer]:
         yield server
     finally:
         server.close()
+
+
+@pytest.fixture
+def hosts() -> Iterator[Hosts]:
+    """Spec 003's hosts (fixtures/hosts.py): the hub, a files host, a cdn and a proxy, over TLS."""
+    found = Hosts()
+    try:
+        yield found
+    finally:
+        found.close()
