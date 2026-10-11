@@ -204,20 +204,8 @@ class Scheduler:
         def crashed(exc: BaseException) -> dict[str, Any]:  # what the server reports to the page
             return engine_crash(exc, event="run.failed", run=run_id)
 
-        with (
-            journalled(emit, self.journal_dir, f"run-{run_id}", crashed) as kept,
-            reading(self.tmp_root, self._files_of(graph)),
-        ):
+        with journalled(emit, self.journal_dir, f"run-{run_id}", crashed) as kept:
             return self._run(graph, kept, should_stop, run_id)
-
-    def _files_of(self, graph: Graph) -> list[str]:
-        """Every file the graph's nodes could read, at any checkpoint: listed for the whole run, so
-        a remove in any process leaves them alone until it ends."""
-        try:
-            steps = plan(graph, self.registry).steps
-        except Exception:  # a graph that cannot run fails in _run, with its problems
-            return []
-        return sorted({spec.sha256 for step in steps for spec in step.manifest.files})
 
     def _run(self, graph: Graph, emit: Emit, should_stop: Callable[[], bool], run_id: str) -> RunResult:
         result = RunResult(run=run_id, status="done")
@@ -227,6 +215,15 @@ class Scheduler:
 
         the_plan: Plan = plan(graph, self.registry)
         say({"event": "run.start", "order": the_plan.order, "notes": the_plan.notes})
+        # Every file the graph's nodes could read, at any checkpoint, is listed for the whole run,
+        # so a remove in any process leaves them alone until it ends.
+        files = sorted({spec.sha256 for step in the_plan.steps for spec in step.manifest.files})
+        with reading(self.tmp_root, files):
+            return self._steps(the_plan, result, say, should_stop, run_id)
+
+    def _steps(
+        self, the_plan: Plan, result: RunResult, say: Emit, should_stop: Callable[[], bool], run_id: str
+    ) -> RunResult:
         for step in the_plan.steps:
             if should_stop():
                 result.status = "stopped"

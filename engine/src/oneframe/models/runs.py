@@ -59,12 +59,21 @@ class FilesMissing(Failure):
         return super().to_json(**row, **extra)
 
 
-def _state(found: Presence, downloading: bool) -> str:
+def state_of(found: Presence, downloading: bool) -> str:
+    """A file's state, as a run's failure and models.list both name it: present, not_downloaded,
+    downloading, incomplete, changed, newer (a newer app wrote the store or its record) or
+    unreadable (the store's format file)."""
     if found.status == "missing":
         return "not_downloaded"
     if found.status == "partial":
         return "downloading" if downloading else "incomplete"
-    return "changed"  # changed, or a newer or unreadable store or record
+    return found.status  # present, changed, newer, unreadable
+
+
+def _reason(state: str) -> str:
+    """The `files` reason for a state: a file a newer app recorded, or in a store this one cannot
+    read, is not one this run can trust, as a changed one is not."""
+    return "changed" if state in ("newer", "unreadable") else state
 
 
 def _mb(size: int) -> str:
@@ -78,10 +87,13 @@ def checkpoints_for(store: Store | None, manifest: Manifest) -> Checkpoints | No
         return None
     present: set[str] = set()
     to_fetch: dict[str, int] = {}
+    state = store.state() if store is not None else None
     for choice in manifest.params[manifest.files_by].choices:
         left = 0
         for spec in manifest.files_for(choice):
-            found = store.presence(spec.sha256, spec.size) if store is not None else Presence("missing", 0)
+            found = (
+                store.presence(spec.sha256, spec.size, state) if store is not None else Presence("missing", 0)
+            )
             if found.status != "present":
                 left += spec.size - (found.have if found.status == "partial" else 0)
         if left == 0:
@@ -100,8 +112,9 @@ def check_files(store: Store | None, manifest: Manifest, values: Mapping[str, An
     wanted = manifest.files_for(checkpoint)
     paths: dict[str, str] = {}
     missing: list[tuple[Any, Presence]] = []
+    state = store.state() if store is not None else None
     for spec in wanted:
-        found = store.presence(spec.sha256, spec.size) if store is not None else Presence("missing", 0)
+        found = store.presence(spec.sha256, spec.size, state) if store is not None else Presence("missing", 0)
         if found.status == "present" and store is not None:
             paths[spec.name] = str(store.blob(spec.sha256))
         else:
@@ -118,11 +131,11 @@ def check_files(store: Store | None, manifest: Manifest, values: Mapping[str, An
                 "sha256": spec.sha256,
                 "size": spec.size,
                 "have": have,
-                "state": _state(found, downloading),
+                "state": state_of(found, downloading),
                 **({"why": found.why} if found.why else {}),
             }
         )
-    reason = next(r for r in ORDER if any(row["state"] == r for row in rows))
+    reason = next(r for r in ORDER if any(_reason(row["state"]) == r for row in rows))
     left = sum(row["size"] - row["have"] for row in rows)
     present = None
     if manifest.files_by is not None:
@@ -146,7 +159,7 @@ def check_files(store: Store | None, manifest: Manifest, values: Mapping[str, An
         "downloading": "Wait for the download to finish, then run again.",
         "changed": f"Download again ({command}); it checks the file and fetches it again if it must.",
     }
-    if store is not None and store.state() in ("newer", "unreadable"):
+    if state in ("newer", "unreadable"):
         nexts["changed"] = "Use the newer version of the app, or another data root."
     raise FilesMissing(message, reason, nexts.get(reason, command), rows, left, present)
 

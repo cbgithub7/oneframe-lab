@@ -236,6 +236,16 @@ class Connector:
         look at Stop between slices."""
         proxy = self._proxy(host)
         tunnel = urllib.parse.urlsplit(proxy if "://" in proxy else f"http://{proxy}") if proxy else None
+        if tunnel is not None and tunnel.scheme != "http":
+            # TLS to the proxy and then TLS through it is not built: say so, rather than send a
+            # CONNECT in the clear to a proxy that expects TLS and retry until "stalled".
+            raise DownloadFailed(
+                f"The system's proxy is {tunnel.scheme}://{tunnel.hostname}, and downloads reach only an "
+                "http:// proxy (a CONNECT tunnel).",
+                None,
+                0,
+                "Give HTTPS_PROXY the proxy's http:// address, if it has one.",
+            )
         sock = self._tcp(tunnel.hostname or "", tunnel.port or 80) if tunnel else self._tcp(host, port)
         try:
             if tunnel is not None:
@@ -314,6 +324,10 @@ class Connector:
                 return self._json_once(url, data)
             except _Retry as retry:
                 misses += 1
+                if retry.wait_s > self.policy.longest_asked_s:
+                    raise DownloadFailed(
+                        f"{url} asked to wait {retry.wait_s:.0f} s before trying again.", "rate_limited"
+                    ) from None
                 if misses >= self.policy.attempts:
                     raise DownloadFailed(
                         f"{self.policy.attempts} attempts in a row at {url} failed (the last: {retry}).",
@@ -394,6 +408,7 @@ class Transfer:
         self._connector = Connector(stop, self.policy, context, proxy)
         self._free = free_bytes
         self.have = 0
+        self.received = 0  # bytes written by this transfer, wherever they landed: its progress
         self._digest = hashlib.sha256()
         self.total: int | None = size
 
@@ -406,14 +421,16 @@ class Transfer:
         misses = 0
         limited = False
         while not self._complete():
-            before = self.have
+            before = self.received
             try:
                 self._attempt()
                 continue
             except _Retry as retry:
                 if self.stop.is_set():
                     raise Stopped() from None
-                misses = 0 if self.have > before else misses + 1
+                # An attempt that wrote anything made progress, even one that had to start the file
+                # again (a 200 to a range) and ended below where the last one did.
+                misses = 0 if self.received > before else misses + 1
                 limited = retry.limited
                 if retry.wait_s > self.policy.longest_asked_s:
                     raise DownloadFailed(
@@ -669,6 +686,7 @@ class Transfer:
                         ) from exc
                     self._digest.update(view[:wrote])
                     self.have += wrote
+                    self.received += wrote
                     view = view[wrote:]
                 self._progress(self.have, self.total)
                 if self.stop.is_set():

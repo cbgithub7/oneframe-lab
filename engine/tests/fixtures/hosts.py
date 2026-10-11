@@ -102,8 +102,10 @@ class WrongOffset:
 
 @dataclass
 class IgnoreRange:
-    """Answer a range request with a 200 and the whole file."""
+    """Answer a range request with a 200 and the whole file; with `at`, dropped after that many
+    bytes, as a proxy that ignores ranges on a flaky line would."""
 
+    at: int | None = None
     on: str = "body"
 
 
@@ -671,7 +673,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if not self.body:
             return
         rest = data[start:]
-        if isinstance(fault, Drop):
+        if isinstance(fault, Drop) or (isinstance(fault, IgnoreRange) and fault.at is not None):
             self._write(rest[: fault.at])
             self._drop()
         if isinstance(fault, Stall):

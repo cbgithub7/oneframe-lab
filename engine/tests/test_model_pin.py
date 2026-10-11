@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 from conftest import MakeNode
-from fixtures.hosts import Hosts, Stall, client_context
+from fixtures.hosts import Hosts, Stall, client_context, retry_after
 
 from oneframe.layout import Layout
 from oneframe.models import tools
@@ -229,10 +229,13 @@ def test_ctrl_c_stops_the_download_tool_as_models_stop_does(
     assert Store(root).presence(sha(data), len(data)).status == "present"
 
 
-def test_ctrl_c_stops_the_pin_tool(tmp_path: Path, hub: Hosts, make_node: MakeNode, node_root: Path) -> None:
+def test_ctrl_c_stops_the_pin_tool_keeping_what_it_pinned(
+    tmp_path: Path, hub: Hosts, make_node: MakeNode, node_root: Path
+) -> None:
+    first = hub.add_file("/models/first.pt", DEPTH)
     url = hub.add_file("/models/depth_pro.pt", DEPTH * 50)
     hub.fault(url, Stall(at=10_000))
-    path = write_node(make_node, [{"name": "apple", "url": url}])
+    path = write_node(make_node, [{"name": "first", "url": first}, {"name": "apple", "url": url}])
     store = Store(tmp_path / "data")
     partial = store.url_partial(url)
     _press_ctrl_c_when(lambda: partial.exists() and partial.stat().st_size >= 10_000)
@@ -240,43 +243,22 @@ def test_ctrl_c_stops_the_pin_tool(tmp_path: Path, hub: Hosts, make_node: MakeNo
     data.mkdir()
     slow = {**TRANSFER, "policy": Policy(stall_s=60)}
     assert tools.pin_tool(data, [node_root], "test.moge", slow) == tools.STOPPED
-    assert partial.stat().st_size == 10_000 and "sha256" not in files_of(path)["apple"]
-    assert run_pin(tmp_path, node_root) == 0  # the next pin resumes it
+    rows = files_of(path)
+    assert rows["first"]["sha256"] == sha(DEPTH) and "sha256" not in rows["apple"]  # what it pinned is kept
+    journal = sorted(Layout(data).journals.glob("*model-pin*"))[-1]
+    assert json.loads(journal.read_text(encoding="utf-8").splitlines()[-1])["event"] == "pin.stopped"
+    # The next pin starts the URL's file again: a partial keyed by a URL cannot tell old bytes from new.
+    assert run_pin(tmp_path, node_root) == 0
     assert files_of(path)["apple"]["sha256"] == sha(DEPTH * 50)
+    assert hub.requests("files")[-1].headers.get("range") is None
 
 
-LIVE = Path(__file__).resolve().parents[2] / "specs" / "003-model-store" / "live"
-
-
-def test_the_live_manifests_of_ac8_pin_and_then_pass_the_check(
-    tmp_path: Path, hub: Hosts, capsys: pytest.CaptureFixture[str]
+def test_a_hub_that_asks_for_a_long_wait_ends_the_pin_as_rate_limited(
+    tmp_path: Path, hub: Hosts, make_node: MakeNode, node_root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The manifests the owner pins on real hosts (AC8), pinned here against the test hosts: their
-    sources are moved to them, and nothing else about them changes."""
-    import shutil
-    import urllib.parse
-
-    from oneframe.manifest import load
-
-    roots = tmp_path / "live"
-    shutil.copytree(LIVE, roots, ignore=shutil.ignore_patterns("README.md"))
-    for path in sorted(roots.glob("*/node.json")):
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-        for i, row in enumerate(manifest["files"]):
-            data = DEPTH + bytes([i]) + path.parent.name.encode()
-            if "url" in row:
-                row["url"] = hub.add_file(urllib.parse.urlsplit(row["url"]).path, data, redirect=True)
-            else:
-                hub.repo(row["hf"]).commit({row["path"]: data})
-        path.write_text(json.dumps(manifest), encoding="utf-8")
-        assert tools.pin_tool(tmp_path / "data", [roots], manifest["id"], TRANSFER) == 0, (
-            capsys.readouterr().err
-        )
-        pinned = load(path)  # the check refuses an unpinned manifest; pinned, it passes
-        assert all(spec.size and spec.format == "pickle" for spec in pinned.files)
-    assert sorted(p.parent.name for p in roots.glob("*/node.json")) == [
-        "live.depth_pro",
-        "live.midas",
-        "live.moge2",
-        "live.moge3",
-    ]
+    repo = hub.repo("Ruicheng/MoGe-2")
+    repo.commit({"model.bin": MODEL})
+    write_node(make_node, [{"name": "model", "hf": repo.id, "path": "model.bin"}])
+    hub.fault(f"{hub.hub}/api/models/{repo.id}/revision/main", retry_after(3600))
+    assert run_pin(tmp_path, node_root) == 1
+    assert "asked to wait 3600 s" in capsys.readouterr().err

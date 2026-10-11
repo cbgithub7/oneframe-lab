@@ -140,11 +140,16 @@ def pin_tool(data: Path, roots: list[Path], node: str, transfer: dict[str, Any] 
             with journalled(
                 lambda e: _shown(e, last), Layout(data).journals, f"model-pin-{node}", crashed
             ) as emit:
-                result["report"] = _pin(path, store, stop, emit, transfer)
-        except Stopped:
-            result["stopped"] = True
-        except Failure as exc:
-            result["failure"] = exc.to_json()
+                # A Stop and a declared failure end the journal as what they are; only a bug ends
+                # it with an engine crash (journalled's own last line).
+                try:
+                    result["report"] = _pin(path, store, stop, emit, transfer)
+                except Stopped:
+                    result["stopped"] = True
+                    emit({"event": "pin.stopped", "node": node, "message": "Stopped; pin again to carry on."})
+                except Failure as exc:
+                    result["failure"] = exc.to_json()
+                    emit({"event": "pin.failed", "node": node, **result["failure"]})
         except Exception as exc:
             result["failure"] = crashed(exc)
         finally:

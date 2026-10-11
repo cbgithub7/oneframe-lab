@@ -252,9 +252,16 @@ class Jobs:
                 outcome.outcome = "stopped"
                 stopped = True
                 break
-            except (DownloadFailed, StoreRefused) as exc:
+            except (DownloadFailed, StoreRefused, OSError) as exc:
+                failed: Failure = (
+                    # The system refused to read or write one file (an antivirus holding it, a bad
+                    # sector): that file fails, the others go on, and it is no engine bug.
+                    Failure(f"The system refused {outcome.name or outcome.sha256[:12]}: {exc}", kind="store")
+                    if isinstance(exc, OSError)
+                    else exc
+                )
                 outcome.outcome = "failed"
-                outcome.failure = exc.to_json(
+                outcome.failure = failed.to_json(
                     **({"kept": exc.kept} if isinstance(exc, DownloadFailed) else {})
                 )
                 first = first or outcome.failure

@@ -223,9 +223,10 @@ class Store:
             return "unreadable"
         return Record(sha, size, mtime)
 
-    def presence(self, sha: str, size: int) -> Presence:
-        """Whether a run may read this file now, without hashing it."""
-        state = self.state()
+    def presence(self, sha: str, size: int, state: str | None = None) -> Presence:
+        """Whether a run may read this file now, without hashing it. `state`: the store's own, when
+        the caller has read it once for many files."""
+        state = state if state is not None else self.state()
         if state == "newer":
             return Presence("newer", 0, "the store was written by a newer version of the app")
         if state == "unreadable":

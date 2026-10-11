@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from oneframe.errors import Failure
 from oneframe.manifest import ManifestError, load
 from oneframe.models.store import Store
 from oneframe.models.transport import Connector, DownloadFailed, Transfer
@@ -151,18 +152,23 @@ def pin(
         )
         described[(canonical, commit)] = {str(e["path"]): e for e in entries if isinstance(e, dict)}
 
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        name = str(row.get("name"))
-        try:
-            outcome = _pin_one(row, name, endpoint, resolved, described, store, stop, say, options, report)
-        except DownloadFailed as exc:
-            report.failed.append({"name": name, **exc.to_json()})
-            say({"event": "pin.failed", "file": name, **exc.to_json()})
-            continue
-        report.files.append(outcome)
-    path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name"))
+            try:
+                outcome = _pin_one(
+                    row, name, endpoint, resolved, described, store, stop, say, options, report
+                )
+            except Failure as exc:  # a download refused, or the store refusing one file: the rest go on
+                report.failed.append({"name": name, **exc.to_json()})
+                say({"event": "pin.file_failed", "file": name, **exc.to_json()})
+                continue
+            report.files.append(outcome)
+    finally:
+        # What was pinned is written even when a Stop ends the pin: the next pin starts from it.
+        path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     try:
         load(path)
     except ManifestError as exc:
@@ -240,8 +246,16 @@ def _fetch(
     options: dict[str, Any],
 ) -> tuple[str, int]:
     """Download through the store: the file is placed under its sha256 (or found there already),
-    and its partial, keyed by sha256 when the hub names it and by the URL when not, is gone."""
-    partial = store.partial(sha_hint) if sha_hint is not None else store.url_partial(source)
+    and its partial, keyed by sha256 when the hub names it and by the URL when not, is gone.
+
+    Only a partial whose sha256 is known is resumed. One keyed by its URL starts again: nothing
+    could tell bytes fetched before the source changed from bytes after, and a pin of the two
+    spliced together would name a file that exists nowhere."""
+    if sha_hint is not None:
+        partial = store.partial(sha_hint)
+    else:
+        partial = store.url_partial(source)
+        store.drop_partial(partial)
     transfer = Transfer(
         source,
         partial,

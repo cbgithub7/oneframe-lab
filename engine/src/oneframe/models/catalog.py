@@ -21,7 +21,7 @@ from oneframe.errors import Failure
 from oneframe.files import is_free
 from oneframe.manifest import Manifest
 from oneframe.models.jobs import claim_store, store_lock
-from oneframe.models.runs import in_use
+from oneframe.models.runs import in_use, state_of
 from oneframe.models.schema import FileSpec
 from oneframe.models.store import Store, StoreRefused, check_sha256
 from oneframe.registry import Registry
@@ -43,16 +43,11 @@ def pins(registry: Registry) -> dict[str, list[Pin]]:
     return found
 
 
-def _status(store: Store, spec: FileSpec, downloading: bool) -> tuple[str, int]:
-    found = store.presence(spec.sha256, spec.size)
-    if found.status == "partial":
-        return ("downloading" if downloading else "incomplete"), found.have
-    names = {"missing": "not_downloaded"}
-    return names.get(found.status, found.status), found.have
-
-
-def _file_row(store: Store, spec: FileSpec, downloading: bool, others: list[Pin]) -> dict[str, Any]:
-    status, have = _status(store, spec, downloading)
+def _file_row(
+    store: Store, state: str, spec: FileSpec, downloading: bool, others: list[Pin]
+) -> dict[str, Any]:
+    found = store.presence(spec.sha256, spec.size, state)
+    status, have = state_of(found, downloading), found.have
     source = spec.url or f"{spec.repo}@{spec.revision}:{spec.path}"
     return {
         "name": spec.name,
@@ -85,6 +80,7 @@ def listing(store: Store, registry: Registry) -> dict[str, Any]:
     the files and partials no node pins. Never uses the network."""
     pinned = pins(registry)
     downloading = not is_free(store_lock(store).path)
+    state = store.state()
     nodes: list[dict[str, Any]] = []
     for manifest in sorted(registry.nodes.values(), key=lambda m: m.id):
         if not manifest.files:
@@ -101,7 +97,11 @@ def listing(store: Store, registry: Registry) -> dict[str, Any]:
                 continue
             rows = [
                 _file_row(
-                    store, s, downloading, [p for p in pinned.get(s.sha256, []) if p.node != manifest.id]
+                    store,
+                    state,
+                    s,
+                    downloading,
+                    [p for p in pinned.get(s.sha256, []) if p.node != manifest.id],
                 )
                 for s in specs
             ]
@@ -128,7 +128,7 @@ def listing(store: Store, registry: Registry) -> dict[str, Any]:
         )
     files, partials = unpinned(store, pinned)
     return {
-        "store": store.state(),
+        "store": state,
         "free_bytes": store.free_bytes(),
         "nodes": nodes,
         "unpinned": {"files": files, "partials": partials},

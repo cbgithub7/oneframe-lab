@@ -348,6 +348,12 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
     - The pin tool fetches a URL again on every pin, since only its bytes say whether it changed; a
       file at a pinned commit is fetched only when the hub's sha256 is not in the store. A file's
       canonical id and `gated` are written even when its download is refused (a gated file).
+    - From the code review (2026-10-11): a pin resumes only a partial whose sha256 the hub names; a
+      partial keyed by its URL starts again, since a source that changed between two pins would be
+      spliced into a file that exists nowhere. A stopped pin writes what it finished. An attempt
+      counts as progress when it wrote any byte, wherever it landed. An `https://` proxy is refused
+      with its reason (downloads reach an `http://` proxy through CONNECT). A file the system
+      refuses to read fails alone, kind `store`, and the job goes on.
 
 ## Out of scope
 

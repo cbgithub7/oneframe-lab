@@ -297,3 +297,21 @@ def test_stop_ends_a_stalled_download_within_two_seconds_and_keeps_the_partial(
     assert isinstance(done[0], Stopped)
     partial = tmp_path / SHA
     assert (partial.stat().st_size if partial.exists() else 0) == (0 if before_headers else 200_000)
+
+
+def test_a_host_that_ignores_ranges_on_a_flaky_line_never_runs_out_of_attempts(
+    hosts: Hosts, tmp_path: Path
+) -> None:
+    """Each attempt starts the file again and breaks before the last one's offset; bytes still
+    flow, so no attempt counts as fetching nothing."""
+    url = _hub_file(hosts)
+    hosts.fault(url, Drop(at=600_000), *[IgnoreRange(at=300_000) for _ in range(FAST.attempts + 1)])
+    assert _transfer(url, tmp_path / SHA).run() == (SHA, len(DATA))
+    assert hosts.faults_left() == 0
+
+
+def test_an_https_proxy_is_refused_with_its_reason_before_any_request(hosts: Hosts, tmp_path: Path) -> None:
+    url = hosts.add_file("/depth_pro.pt", DATA)
+    with _failed(None) as caught:
+        _transfer(url, tmp_path / SHA, proxy=lambda _host: "https://proxy.example:8443").run()
+    assert "only an http:// proxy" in str(caught.value) and hosts.requests() == []

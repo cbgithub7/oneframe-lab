@@ -342,3 +342,28 @@ def test_a_killed_engine_leaves_a_partial_the_next_download_resumes(
     assert checking and checking[0]["bytes"] == kept
     assert hub.requests("cdn")[-1].headers["range"] == f"bytes={kept}-"
     assert store.presence(sha(LARGE), len(LARGE)).status == "present"
+
+
+def test_a_file_the_system_refuses_to_read_fails_alone_and_is_no_engine_bug(
+    engine: Engine, events: Events, pinned_node: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from oneframe.models import jobs
+
+    assert run_job(engine, events, "models.download", node="test.files")["event"] == "model.done"
+    real = jobs.hash_file
+
+    def held(path: Path, *args: Any) -> str:
+        if path.name == sha(SHARED):
+            raise PermissionError(
+                13, "The process cannot access the file because it is being used", str(path)
+            )
+        return real(path, *args)
+
+    monkeypatch.setattr(jobs, "hash_file", held)
+    end = run_job(engine, events, "models.verify", node="test.files")
+    assert (end["event"], end["kind"]) == ("model.failed", "store")
+    assert {f["name"]: f["outcome"] for f in end["files"]} == {
+        "config": "failed",
+        "small": "verified",
+        "large": "missing",
+    }
