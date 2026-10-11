@@ -1,6 +1,6 @@
 {
   "spec": "006-foundations",
-  "criterion": "Verification (local session), steps 1-5",
+  "criterion": "Verification (local session), steps 1-6",
   "outcome": "passed",
   "date": "2026-10-11",
   "commit": "75acfece0e742f966021cca24d5f4ee59ef0d78f",
@@ -103,10 +103,21 @@
       "hkcu_software_python": "unchanged",
       "hkcu_environment_path": "unchanged"
     },
-    "step6": "not done: the owner deletes the old roots by hand; %LOCALAPPDATA%\\OneframeLab (4.2 GB) still exists, %APPDATA%\\oneframe-lab never existed",
+    "step6": {
+      "outcome": "done by the owner, by hand",
+      "deleted": [
+        "%LOCALAPPDATA%\\OneframeLab (4.2 GB)",
+        "HKCU\\Software\\Python\\Astral\\CPython3.14.7 (pointed into the old root; its Python was already gone, so uv python uninstall found nothing; reg delete)",
+        "HKCU\\Software\\Python\\Astral\\CPython3.11.16 (pointed into pytest-411\\uv-home0, 2026-10-01)",
+        "%USERPROFILE%\\.local\\bin\\python3.14.exe (uv launcher for the old root's Python, 2026-09-29, target gone)",
+        "%USERPROFILE%\\.local\\bin\\python3.11.exe (uv launcher for pytest-397\\uv-home0's Python, 2026-09-29, target gone)"
+      ],
+      "not_there": ["%APPDATA%\\oneframe-lab"],
+      "checked_after": "old root gone; .local\\bin holds only the owner's python3.10.exe; HKCU\\Software\\Python\\Astral holds only the owner's CPython3.10.21"
+    },
     "notes": [
       "Electron's npm package fetched its 44.4.5 binary (158 MB zip) on the first npm start, into %LOCALAPPDATA%\\electron\\Cache (existing since 2024); dev tooling, not the app, and not named among spec 006's exceptions",
-      "two HKCU\\Software\\Python\\Astral keys predate spec 006: CPython3.14.7 points into the old root (dangles after step 6), CPython3.11.16 into a pytest temporary folder from 2026-10-01",
+      "code from before spec 006 left Pythons outside its root (two registry keys, two launchers in %USERPROFILE%\\.local\\bin on PATH, some from test runs); today's runs added none, AC2 now guards against it, but nothing cleans up what an older build left",
       "no bytecode was written into the checkout",
       "AC2's Windows footprint test ran inside the MSIX container here, so it saw a merged view; CI's Windows job is the real check"
     ]
