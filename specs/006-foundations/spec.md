@@ -294,3 +294,8 @@ None.
    `__GL_SHADER_DISK_CACHE_PATH`) before Electron starts; the review first said it could not be
    moved. Told this, the owner kept the exception (2026-10-04): the driver caps the cache, every
    program shares it, and a relaunch would cover only part of Linux.
+5. **A dev checkout's tool caches** (2026-10-11, accepted as an exception after the local checks;
+   [AGENTS.md](../../AGENTS.md) says so). On a checkout's first `npm start`, the `electron` package
+   downloads its binary into its own cache (`%LOCALAPPDATA%\electron\Cache` on Windows), as npm
+   keeps its own. This is the dev tool installing itself, not the app writing, and a packaged app
+   carries its binary.

@@ -79,6 +79,15 @@ Record, for the report:
   (for uv, `uv self update` usually does it). The versions are part of the evidence, so no
   substitutes.
 
+- **Outside Claude desktop's package (Windows).** Claude desktop is an MSIX package: a process it
+  starts (this session's shell, `npm start`, uv, the engine) has every new folder under `AppData`,
+  and every `HKCU` write, redirected into `%LOCALAPPDATA%\Packages\Claude_*\`, while `dir` and
+  `reg query` from inside show the merged view. Run `npm run diagnose` and read the data root it
+  names. If that path contains `\Packages\`, this session is inside the package: a step that
+  checks where files or registry keys land does not count from here. Ask the owner to run those
+  steps from a terminal opened from the Start menu, or to run a script you write and paste back its
+  output, and say in the report which way each step ran (spec 006's local report, 2026-10-11).
+
 ## 4. Dependencies and checks
 
 - `npm install`, then `uv sync --project engine --frozen`. Run both every session, even when
