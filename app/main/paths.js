@@ -104,6 +104,7 @@ export function layout(root) {
     pycache: path.join(root, "cache", "pycache"),
     electron_cache: path.join(root, "cache", "electron"),
     app_tmp: path.join(root, "cache", "electron", "tmp"),
+    tools_tmp: path.join(root, "cache", "tools", "tmp"),
     electron: path.join(root, "electron"),
     models: path.join(root, "models"),
     store_file: path.join(root, "models", "oneframe-store.json"),

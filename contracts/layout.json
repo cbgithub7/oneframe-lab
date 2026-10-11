@@ -47,6 +47,7 @@
     "pycache": "cache/pycache",
     "electron_cache": "cache/electron",
     "app_tmp": "cache/electron/tmp",
+    "tools_tmp": "cache/tools/tmp",
     "electron": "electron",
     "models": "models",
     "store_file": "models/oneframe-store.json",

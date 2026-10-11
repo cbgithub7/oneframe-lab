@@ -172,6 +172,12 @@ class Layout:
         return self.root / "cache" / "electron" / "tmp"
 
     @property
+    def tools_tmp(self) -> Path:
+        """The temporary folder of the uv that starts a command-line tool (scripts/tool.js). Not in
+        `tmp`, whose unlocked folders an engine's start removes."""
+        return self.root / "cache" / "tools" / "tmp"
+
+    @property
     def electron(self) -> Path:
         """Electron's user data."""
         return self.root / "electron"

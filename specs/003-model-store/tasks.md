@@ -45,7 +45,7 @@ task makes stale is updated in that task.
     - each process lists the files its run reads in its own folder under `cache/tmp/`.
 - [x] 7. `models.list` and `models.remove`: remove refused for a file any process's run lists,
   verify's drop of such a file only its record (AC6, a graph in another process included).
-- [ ] 8. The pin tool and both command-line tools (AC7): the root opened and its journal kept as
+- [x] 8. The pin tool and both command-line tools (AC7): the root opened and its journal kept as
   006's tools do, Ctrl+C as a Stop. One launcher starts uv for every tool that opens a data root
   (`bench:runtime`, `bench:fit`, `diagnose` and the two new ones), with its temporary folder under
   the root but outside `cache/tmp/`, whose sweep deletes what it does not know. `AGENTS.md`'s

@@ -342,6 +342,11 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
     - Remove of a node, as well as of the unpinned, is refused while the registry has problems or a
       folder of nodes is missing: a manifest that cannot be read may pin the same file. A remove
       that would touch a file a running graph may read is refused whole, naming the files.
+    - The launcher is `scripts/tool.js`, in Node like the app's own start of the engine: it knows
+      the data root before uv starts, so uv's lock lands in the root's `cache/tools/tmp/`.
+    - The pin tool fetches a URL again on every pin, since only its bytes say whether it changed; a
+      file at a pinned commit is fetched only when the hub's sha256 is not in the store. A file's
+      canonical id and `gated` are written even when its download is refused (a gated file).
 
 ## Out of scope
 

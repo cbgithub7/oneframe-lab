@@ -37,6 +37,7 @@ import errno
 import hashlib
 import http.client
 import io
+import json
 import random
 import re
 import select
@@ -213,6 +214,154 @@ class _Socket:
         self._sock.close()
 
 
+class Connector:
+    """Connections as every request here makes them: TLS checked against the system's trust store,
+    the system's proxy through a CONNECT tunnel, and reads that look at Stop between slices."""
+
+    def __init__(
+        self,
+        stop: threading.Event,
+        policy: Policy | None = None,
+        context: Callable[[], ssl.SSLContext] = system_context,
+        proxy: Callable[[str], str | None] = system_proxy,
+    ):
+        self.stop = stop
+        self.policy = policy or Policy()
+        self._context_factory = context
+        self._context: ssl.SSLContext | None = None
+        self._proxy = proxy
+
+    def connect(self, host: str, port: int) -> http.client.HTTPSConnection:
+        """A TLS connection to host:port, through the system's proxy if it names one, whose reads
+        look at Stop between slices."""
+        proxy = self._proxy(host)
+        tunnel = urllib.parse.urlsplit(proxy if "://" in proxy else f"http://{proxy}") if proxy else None
+        sock = self._tcp(tunnel.hostname or "", tunnel.port or 80) if tunnel else self._tcp(host, port)
+        try:
+            if tunnel is not None:
+                self._tunnel(sock, host, port, tunnel)
+            if self._context is None:
+                self._context = self._context_factory()
+            sock.settimeout(self.policy.stall_s)  # a handshake waits whole (truststore checks after it)
+            secured = self._context.wrap_socket(sock, server_hostname=host)
+        except BaseException:
+            sock.close()
+            raise
+        conn = http.client.HTTPSConnection(host, port, timeout=self.policy.stall_s, context=self._context)
+        conn.sock = _Socket(secured, self.stop, self.policy.stall_s)  # type: ignore[assignment]
+        return conn
+
+    def _tcp(self, host: str, port: int) -> socket.socket:
+        """A TCP connection, made without blocking so a Stop during it is seen within a moment."""
+        deadline = time.monotonic() + self.policy.stall_s
+        last: OSError | None = None
+        for family, kind, proto, _name, address in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+            sock = socket.socket(family, kind, proto)
+            try:
+                sock.setblocking(False)
+                sock.connect_ex(address)
+                while True:
+                    if self.stop.is_set():
+                        raise Stopped()
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(f"connecting to {host}:{port} timed out")
+                    # Windows reports a failed connect as an exception, not as writable.
+                    _r, writable, failed = select.select([], [sock], [sock], 0.05)
+                    if writable or failed:
+                        break
+                error = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+                if error:
+                    raise OSError(error, f"connecting to {host}:{port}: {errno.errorcode.get(error, error)}")
+                sock.setblocking(True)
+                sock.settimeout(SLICE_S)
+                return sock
+            except OSError as exc:
+                sock.close()
+                last = exc
+            except BaseException:
+                sock.close()
+                raise
+        raise last or OSError(f"{host} has no address")
+
+    def _tunnel(self, sock: socket.socket, host: str, port: int, proxy: urllib.parse.SplitResult) -> None:
+        lines = [f"CONNECT {host}:{port} HTTP/1.1", f"Host: {host}:{port}"]
+        if proxy.username is not None:
+            secret = f"{urllib.parse.unquote(proxy.username)}:{urllib.parse.unquote(proxy.password or '')}"
+            lines.append(f"Proxy-Authorization: Basic {base64.b64encode(secret.encode()).decode()}")
+        sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
+        reply = b""
+        sock.settimeout(SLICE_S)
+        buffer = bytearray(4096)
+        while b"\r\n\r\n" not in reply:
+            got = _recv_into(sock, buffer, self.stop, self.policy.stall_s)
+            chunk = bytes(buffer[:got])
+            if not chunk:
+                raise ConnectionError("the proxy closed the connection")
+            reply += chunk
+            if len(reply) > 65536:
+                raise ConnectionError("the proxy's answer is too long")
+        status = reply.split(b"\r\n", 1)[0].decode("latin-1")
+        if len(status.split()) < 2 or status.split()[1] != "200":
+            raise ConnectionError(f"the proxy refused the tunnel: {status}")
+
+    def get_json(self, url: str, data: dict[str, Any] | None = None) -> Any:
+        """A small JSON answer (a hub API's), GET or with `data` a form POST, following redirects on
+        https only and retried as a download's attempts are. The hub's error codes, a 404 and any
+        other refusal raise DownloadFailed; Stop raises Stopped."""
+        misses = 0
+        while True:
+            try:
+                return self._json_once(url, data)
+            except _Retry as retry:
+                misses += 1
+                if misses >= self.policy.attempts:
+                    raise DownloadFailed(
+                        f"{self.policy.attempts} attempts in a row at {url} failed (the last: {retry}).",
+                        "rate_limited" if retry.limited else "stalled",
+                    ) from None
+                if self.stop.wait(max(retry.wait_s, self.policy.first_wait_s * 2 ** (misses - 1))):
+                    raise Stopped() from None
+
+    def _json_once(self, url: str, data: dict[str, Any] | None) -> Any:
+        body = urllib.parse.urlencode(data, doseq=True).encode() if data is not None else None
+        for _hop in range(self.policy.redirects + 1):
+            parts = urllib.parse.urlsplit(url)
+            if parts.scheme != "https" or not parts.hostname:
+                raise DownloadFailed(f"{url} is not https; nothing here leaves https.", "tls")
+            conn: http.client.HTTPSConnection | None = None
+            try:
+                conn = self.connect(parts.hostname, parts.port or 443)
+                path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+                headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+                if body is not None:
+                    headers["Content-Type"] = "application/x-www-form-urlencoded"
+                conn.request("POST" if body is not None else "GET", path, body=body, headers=headers)
+                response = conn.getresponse()
+                if response.status in REDIRECTS and response.getheader("Location"):
+                    url = urllib.parse.urljoin(url, response.getheader("Location", ""))
+                    continue
+                text = response.read()
+                if response.status == 200:
+                    return json.loads(text.decode("utf-8"))
+                code = response.getheader("X-Error-Code")
+                if code in HUB_ERRORS:
+                    raise DownloadFailed(f"{url} answered {response.status} {code}.", HUB_ERRORS[code])
+                if response.status == 429 or response.status == 408 or response.status >= 500:
+                    raise _Retry(f"{response.status}", _wait_asked(response.headers), response.status == 429)
+                reason = "not_found" if response.status in (404, 410) else None
+                raise DownloadFailed(f"{url} answered {response.status} {response.reason}.", reason)
+            except (OSError, http.client.HTTPException, ValueError) as exc:
+                if self.stop.is_set():
+                    raise Stopped() from None
+                if isinstance(exc, ssl.SSLCertVerificationError):
+                    raise DownloadFailed(f"The certificate of {parts.hostname} was refused.", "tls") from exc
+                raise _Retry(f"{type(exc).__name__}: {exc}") from exc
+            finally:
+                if conn is not None:
+                    conn.close()
+        raise _Retry(f"more than {self.policy.redirects} redirects")
+
+
 class Transfer:
     """One file, from its source to `partial`, resuming what the partial holds.
 
@@ -242,9 +391,7 @@ class Transfer:
         self._phase = phase or (lambda _name, _detail: None)
         self._progress = progress or (lambda _have, _total: None)
         self.policy = policy or Policy()
-        self._context_factory = context
-        self._context: ssl.SSLContext | None = None
-        self._proxy = proxy
+        self._connector = Connector(stop, self.policy, context, proxy)
         self._free = free_bytes
         self.have = 0
         self._digest = hashlib.sha256()
@@ -372,7 +519,7 @@ class Transfer:
                 headers["Range"] = f"bytes={self.have}-"
             conn: http.client.HTTPSConnection | None = None
             try:
-                conn = self._connect(parts.hostname, parts.port or 443)
+                conn = self._connector.connect(parts.hostname, parts.port or 443)
                 path = parts.path or "/"
                 conn.request("GET", f"{path}?{parts.query}" if parts.query else path, headers=headers)
                 response = conn.getresponse()
@@ -401,79 +548,6 @@ class Transfer:
                 if conn is not None:
                     conn.close()
         raise _Retry(f"more than {self.policy.redirects} redirects")
-
-    def _connect(self, host: str, port: int) -> http.client.HTTPSConnection:
-        """A TLS connection to host:port, through the system's proxy if it names one, whose reads
-        look at Stop between slices."""
-        proxy = self._proxy(host)
-        tunnel = urllib.parse.urlsplit(proxy if "://" in proxy else f"http://{proxy}") if proxy else None
-        sock = self._tcp(tunnel.hostname or "", tunnel.port or 80) if tunnel else self._tcp(host, port)
-        try:
-            if tunnel is not None:
-                self._tunnel(sock, host, port, tunnel)
-            if self._context is None:
-                self._context = self._context_factory()
-            sock.settimeout(self.policy.stall_s)  # a handshake waits whole (truststore checks after it)
-            secured = self._context.wrap_socket(sock, server_hostname=host)
-        except BaseException:
-            sock.close()
-            raise
-        conn = http.client.HTTPSConnection(host, port, timeout=self.policy.stall_s, context=self._context)
-        conn.sock = _Socket(secured, self.stop, self.policy.stall_s)  # type: ignore[assignment]
-        return conn
-
-    def _tcp(self, host: str, port: int) -> socket.socket:
-        """A TCP connection, made without blocking so a Stop during it is seen within a moment."""
-        deadline = time.monotonic() + self.policy.stall_s
-        last: OSError | None = None
-        for family, kind, proto, _name, address in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
-            sock = socket.socket(family, kind, proto)
-            try:
-                sock.setblocking(False)
-                sock.connect_ex(address)
-                while True:
-                    if self.stop.is_set():
-                        raise Stopped()
-                    if time.monotonic() > deadline:
-                        raise TimeoutError(f"connecting to {host}:{port} timed out")
-                    # Windows reports a failed connect as an exception, not as writable.
-                    _r, writable, failed = select.select([], [sock], [sock], 0.05)
-                    if writable or failed:
-                        break
-                error = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-                if error:
-                    raise OSError(error, f"connecting to {host}:{port}: {errno.errorcode.get(error, error)}")
-                sock.setblocking(True)
-                sock.settimeout(SLICE_S)
-                return sock
-            except OSError as exc:
-                sock.close()
-                last = exc
-            except BaseException:
-                sock.close()
-                raise
-        raise last or OSError(f"{host} has no address")
-
-    def _tunnel(self, sock: socket.socket, host: str, port: int, proxy: urllib.parse.SplitResult) -> None:
-        lines = [f"CONNECT {host}:{port} HTTP/1.1", f"Host: {host}:{port}"]
-        if proxy.username is not None:
-            secret = f"{urllib.parse.unquote(proxy.username)}:{urllib.parse.unquote(proxy.password or '')}"
-            lines.append(f"Proxy-Authorization: Basic {base64.b64encode(secret.encode()).decode()}")
-        sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
-        reply = b""
-        sock.settimeout(SLICE_S)
-        buffer = bytearray(4096)
-        while b"\r\n\r\n" not in reply:
-            got = _recv_into(sock, buffer, self.stop, self.policy.stall_s)
-            chunk = bytes(buffer[:got])
-            if not chunk:
-                raise ConnectionError("the proxy closed the connection")
-            reply += chunk
-            if len(reply) > 65536:
-                raise ConnectionError("the proxy's answer is too long")
-        status = reply.split(b"\r\n", 1)[0].decode("latin-1")
-        if len(status.split()) < 2 or status.split()[1] != "200":
-            raise ConnectionError(f"the proxy refused the tunnel: {status}")
 
     # what came back
 

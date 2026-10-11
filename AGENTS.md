@@ -89,8 +89,14 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   did (the numbers a hardware claim needs)
 - `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
   its estimates beside the peaks measured; with no node, spec 002's hardware check
+- `npm run models:pin -- [--nodes <folder>] <node>`: resolve a node's file sources to commits, fetch
+  each file through the model store, and write its size, sha256, format and `gated` into the manifest
+- `npm run models:download -- [--nodes <folder>] <node> [--checkpoint c | --all]`: fetch a node's
+  files into the store, as `models.download` does; Ctrl+C stops it and the next run resumes
 - `npm run diagnose`: one file in the data root's `reports/` to hand over when something failed:
   versions, machine, runtimes, settings, what was learned, the latest journals and logs, with the
   user's name taken out of every path and hub tokens scrubbed
 - `node scripts/test-guard.js`: no test removed without a listed reason
+- The tools that open a data root (`bench:runtime`, `bench:fit`, `diagnose`, `models:*`) start
+  through `scripts/tool.js`, which keeps uv's temporary files under that root
 - `npm start`: the app (needs `npm run engine:sync` once)
