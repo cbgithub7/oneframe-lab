@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import pickle
+import signal
 import struct
 import subprocess
 import sys
@@ -29,7 +30,7 @@ from oneframe.layout import Layout
 from oneframe.models import tools
 from oneframe.models.jobs import store_lock
 from oneframe.models.pin import sniff
-from oneframe.models.store import Store
+from oneframe.models.store import Store, StoreRefused
 from oneframe.models.transport import Policy
 
 FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
@@ -411,3 +412,46 @@ def test_a_mistake_in_the_request_is_said_at_once_even_while_the_store_is_held(
         assert tools.download(data, [node_root], "test.moge", ["nope"], TRANSFER) == 2
         assert time.monotonic() - started < 5
     assert not _waiting(said) and "no checkpoint 'nope'" in said[-1]
+
+
+def _scripted(attempts: list[int], refused: int, press_on: int | None = None) -> Callable[[], str]:
+    """A claim refused `locked` `refused` times and then made; on attempt `press_on`, Ctrl+C."""
+
+    def claim() -> str:
+        attempts.append(len(attempts) + 1)
+        if len(attempts) == press_on:
+            signal.raise_signal(signal.SIGINT)  # what Ctrl+C does, at that very moment
+        if len(attempts) <= refused:
+            raise StoreRefused("Another process on this data root is downloading.", "locked")
+        return "claimed"
+
+    return claim
+
+
+def test_a_tool_claims_again_until_the_store_is_let_go_saying_so_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    said = _said_by_tools(monkeypatch)
+    monkeypatch.setattr(tools, "LOCK_POLL_S", 0.01)
+    attempts: list[int] = []
+    before = signal.getsignal(signal.SIGINT)
+    assert tools._claimed(_scripted(attempts, refused=3)) == ("claimed", False)
+    assert attempts == [1, 2, 3, 4] and sum(_waiting([line]) for line in said) == 1
+    assert signal.getsignal(signal.SIGINT) is before  # Ctrl+C is the tool's own again
+
+
+def test_ctrl_c_during_a_refused_claim_ends_the_wait_and_during_a_made_one_is_passed_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    said = _said_by_tools(monkeypatch)
+    monkeypatch.setattr(tools, "LOCK_POLL_S", 0.01)
+    attempts: list[int] = []
+    assert tools._claimed(_scripted(attempts, refused=5, press_on=2)) is None  # held back, not raised
+    assert attempts == [1, 2] and said[-1] == "Stopped while waiting; nothing was started."
+    attempts.clear()
+    assert tools._claimed(_scripted(attempts, refused=1, press_on=2)) == ("claimed", True)
+    # ... which the tool then treats as a Stop of what it started, at once
+    started = threading.Event()
+    thread = threading.Thread(target=started.wait, daemon=True)
+    thread.start()
+    assert tools._wait(thread, started.set, pressed=True) and not thread.is_alive()

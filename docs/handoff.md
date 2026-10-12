@@ -261,8 +261,8 @@ Known from the review, to be settled by the specs above or later ones:
   test that ends a lock's holder waits for the lock (`wait_free` in `engine/tests/conftest.py`).
   Under `npm run`, Ctrl+C gives the prompt back before the tool has stopped; only the model tools
   allow for it, by waiting for a store still held.
-- **The footprint test can fail on another program's write** (for the spec 003 session to take
-  on). On PR #11's Windows CI (2026-10-11), `test_ac2_nothing_is_written_outside_the_root` found a
+- **The footprint test can fail on another program's write** (not yet taken on: spec 003 closed
+  without it; any session may). On PR #11's Windows CI (2026-10-11), `test_ac2_nothing_is_written_outside_the_root` found a
   new `Mozilla` folder in the runner's real `AppData\Roaming`, almost surely the runner's own
   Firefox; the next run passed. The check should tell our processes' writes from others' without
   checking less, and a change to it is listed in spec 006's Tests section (narrowing it is the

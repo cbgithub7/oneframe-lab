@@ -380,8 +380,8 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
       waits for the lock (up to 30 s, as spec 006's lock tests do) and ends the reader's own
       process as well as the one it started. Why Windows is late is not verified there: a venv's
       `python.exe` is a launcher whose interpreter ends after it, and Windows lets go of a dead
-      process's locks "depending upon available system resources" (LockFileEx). The product was
-      right.
+      process's locks when it can: the time "depends upon available system resources"
+      (LockFile, LockFileEx). The product was right.
     - Finding 2: a job sent its ending before it let go of the store's lock and its place, so a
       next job asked for on hearing it could be refused `busy`. Now the ending is journalled, the
       lock and the place go together, and then the ending is sent; a job that crashes lets go before
@@ -390,12 +390,14 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
     - Finding 3: under `npm run` on Windows, Ctrl+C gives the prompt back before the stopped tool
       has ended. From npm's and libuv's sources (not run on Windows): run-script passes Ctrl+C on by
       killing the script's shell, which libuv does with TerminateProcess. Nothing in this repo can
-      make npm wait. So both model tools, when refused `locked`, say so and wait up to 10 s
-      (`LOCK_WAIT_S`) for the store, then claim it again; Ctrl+C ends the wait with nothing started.
-      This amends requirement 8's "does what the method does" and "refused, not queued" for these
-      two tools only: the engine's methods still refuse at once. It is preventive, since AC8 never
-      met `locked`. A Stop inside a TLS handshake or a name lookup can hold the store longer than
-      10 s, and then the refusal stands; `bench:runtime` and the other tools do not wait.
+      make npm wait. So both model tools, when refused `locked`, say so and claim again every 0.1 s
+      (`LOCK_POLL_S`) until 10 s (`LOCK_WAIT_S`) have passed; a refused claim holds nothing. Ctrl+C
+      is held back while they claim: it ends the wait with nothing started, or stops what a claim
+      had just started. This amends requirement 8's "does what the method does" and "refused, not
+      queued" for these two tools only, for the owner to accept in this change's pull request: the
+      engine's methods still refuse at once. It is preventive, since AC8 never met `locked`. A Stop
+      inside a TLS handshake or a name lookup can hold the store longer than 10 s, and then the
+      refusal stands; `bench:runtime` and the other tools do not wait.
 
 ## Out of scope
 

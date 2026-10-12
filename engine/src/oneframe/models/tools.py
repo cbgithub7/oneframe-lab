@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import sys
 import threading
 import time
@@ -82,32 +83,42 @@ def _shown(event: dict[str, Any], last: dict[str, float]) -> None:
         _print(f"{kind}: {event.get('message', '')}".rstrip(": "))
 
 
-def _claimed[T](claim: Callable[[], T]) -> T | None:
-    """`claim()`, which takes the store's lock. While another process holds it, say so and claim
-    again until LOCK_WAIT_S has passed; then the refusal stands, `locked` as before. A claim that
-    is refused holds nothing, so the wait never keeps the store from anyone. None when Ctrl+C ends
-    the wait, with nothing started."""
-    deadline = time.monotonic() + LOCK_WAIT_S
-    said = False
-    while True:
-        try:
-            return claim()
-        except StoreRefused as exc:
-            if exc.reason != "locked" or time.monotonic() >= deadline:
-                raise
-        try:
+def _claimed[T](claim: Callable[[], T]) -> tuple[T, bool] | None:
+    """`claim()`, which takes the store's lock, and whether Ctrl+C was pressed while it ran, for the
+    caller to stop what it started. While another process holds the store, say so and claim again
+    every LOCK_POLL_S until LOCK_WAIT_S has passed; then the refusal stands, `locked` as before. A
+    refused claim holds nothing, so the wait keeps the store from no one. Ctrl+C is held back
+    meanwhile, so it never lands halfway through a claim; it ends the wait, and then this gives
+    None, with nothing started."""
+    pressed: list[bool] = []  # appended to by the signal handler: no lock, which it could deadlock on
+    main = threading.current_thread() is threading.main_thread()
+    previous = signal.signal(signal.SIGINT, lambda *_: pressed.append(True)) if main else None
+    try:
+        deadline = time.monotonic() + LOCK_WAIT_S
+        said = False
+        while not pressed:
+            try:
+                return claim(), bool(pressed)
+            except StoreRefused as exc:
+                if exc.reason != "locked" or time.monotonic() >= deadline:
+                    raise
             if not said:
                 _print(f"Another process is using the model store; waiting up to {LOCK_WAIT_S:g} s for it.")
                 said = True
             time.sleep(LOCK_POLL_S)
-        except KeyboardInterrupt:
-            _print("Stopped while waiting; nothing was started.")
-            return None
+        _print("Stopped while waiting; nothing was started.")
+        return None
+    finally:
+        if main:
+            signal.signal(signal.SIGINT, previous if previous is not None else signal.SIG_DFL)
 
 
-def _wait(thread: threading.Thread, stop: Callable[[], object]) -> bool:
-    """Wait for `thread`; Ctrl+C asks it to stop, as models.stop does. Whether Ctrl+C was pressed."""
-    pressed = False
+def _wait(thread: threading.Thread, stop: Callable[[], object], pressed: bool = False) -> bool:
+    """Wait for `thread`; Ctrl+C asks it to stop, as models.stop does, and so does `pressed`, a
+    Ctrl+C that came while it was being started. Whether Ctrl+C was pressed."""
+    if pressed:
+        _print("Stopping; the partial download is kept, and the next download resumes it.")
+        stop()
     while thread.is_alive():
         try:
             thread.join(0.2)
@@ -142,15 +153,15 @@ def download(
 
     jobs = Jobs(data, say, transfer)
     try:
-        started = _claimed(lambda: jobs.download(registry.get(node), checkpoints))
+        claimed = _claimed(lambda: jobs.download(registry.get(node), checkpoints))
     except Failure as exc:
         _print(f"{exc} {exc.next or ''}".strip())
         return 2
-    if started is None:
+    if claimed is None:
         return STOPPED
     thread = jobs._thread
     assert thread is not None
-    _wait(thread, jobs.stop)
+    _wait(thread, jobs.stop, pressed=claimed[1])
     end = ended[-1]["event"] if ended else "model.failed"
     return {"model.done": 0, "model.stopped": STOPPED}.get(end, 1)
 
@@ -162,12 +173,13 @@ def pin_tool(data: Path, roots: list[Path], node: str, transfer: dict[str, Any] 
         return 2
     store = Store(data)
     try:
-        held = _claimed(lambda: claim_store(store, None))
+        claimed = _claimed(lambda: claim_store(store, None))
     except Failure as exc:
         _print(f"{exc} {exc.next or ''}".strip())
         return 2
-    if held is None:
+    if claimed is None:
         return STOPPED
+    held, pressed = claimed
     stop = threading.Event()
     result: dict[str, Any] = {}
     last: dict[str, float] = {}
@@ -197,7 +209,7 @@ def pin_tool(data: Path, roots: list[Path], node: str, transfer: dict[str, Any] 
 
     thread = threading.Thread(target=work, name="pin", daemon=True)
     thread.start()
-    _wait(thread, stop.set)
+    _wait(thread, stop.set, pressed)
     if result.get("stopped"):
         _print("pin stopped; run it again to carry on.")
         return STOPPED
