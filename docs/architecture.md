@@ -46,6 +46,20 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 
 ## Why it is shaped this way
 
+**A playground for graphs.** The product is an editor where a person builds graphs from nodes and
+compares what they make. A graph that ships with the app is only a starting point, saved as data;
+the engine and the page work on whatever graph the person builds, and depend on none. General node
+editors exist (ComfyUI, for one), so this one earns its place by what its graphs mean, not by the
+editor itself (the [review of 2026-10-12](reviews/2026-10-12.md), decision 1):
+
+- every model family in its own environment, behind a process boundary, so families that pin
+  conflicting libraries never meet;
+- each node fitted to the memory this machine has free, on any machine from no GPU to the largest
+  cards;
+- typed geometry: facets on every port, so disparity never becomes metric depth without a
+  converter, and a trust label on every result;
+- no network during a run.
+
 **Nodes are data.** Every earlier attempt to support "one more model" by adding a branch to the
 engine ended with an engine that knew every model by name. Here, the engine knows port types and
 manifests, nothing else.

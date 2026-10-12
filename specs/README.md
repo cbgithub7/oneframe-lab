@@ -13,9 +13,19 @@ else.
 | 3. Implement | code and tests, one task at a time, ticking `tasks.md` | Agent | hooks and CI |
 | 4. Validate | the PR checks every acceptance criterion by name; hardware steps come with a report | Agent, then owner | Owner merges |
 
-One gate: the owner approves the spec once, design included. Aim for about 150 lines and at most
-8 acceptance criteria. Retry counts, edge cases and the like belong in code and tests; writing them
-in the spec as well only makes two places to keep true.
+One gate: the owner approves the spec once, design included. A spec is a contract, not a log:
+
+- **Length.** Aim for 150 lines. One not yet done is never longer than 200: `npm run check` fails it.
+- **Acceptance criteria.** At most 8, each one check. A criterion that hides a list of further
+  checks is several criteria.
+- **Mechanisms** (retry counts, timeouts, edge cases) belong in code and tests; writing them in the
+  spec as well only makes two places to keep true.
+- **Decisions taken** are one line each: the choice and its reason.
+- **How the work went** (findings, review rounds, what was tried) goes in the PR's description, not
+  the spec. `Status:` says the stage and, once done, the PR; it is not a changelog.
+
+A change after approval is a new approval: say what changed and why in one line under the status,
+and ask the owner.
 
 Specs 001 and 002 were written under the earlier process, with a separate `plan.md` approved after
 the spec. The test guard reads "- Removed" lists from both files.

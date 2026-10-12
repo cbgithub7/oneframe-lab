@@ -3,8 +3,9 @@
 Status: draft
 Owner approval: (date, once approved)
 
-One document: what is built and how. Aim for about 150 lines and at most 8 acceptance criteria.
-Mechanisms belong in code and tests; write here what someone needs to judge and check the work.
+One document: what is built and how. Aim for 150 lines, never more than 200, and at most 8
+acceptance criteria. Mechanisms belong in code and tests, and how the work went in the PR; write
+here what someone needs to judge and check the work.
 
 ## Problem
 
@@ -40,7 +41,8 @@ local session and the report they produce.
 
 ## Decisions taken
 
-Reversible choices an agent made, each with its reason, so the owner can see and overturn them.
+Reversible choices an agent made, one line each: the choice and its reason, so the owner can see
+and overturn them.
 
 ## Out of scope
 

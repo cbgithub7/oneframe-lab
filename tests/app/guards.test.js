@@ -7,7 +7,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { backtickPaths, linkTargets, literalPrefix } from "../../scripts/check-docs.js";
+import { SPEC_MAX_LINES, backtickPaths, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
 import { allowedRemovals, isTestFile, removedTests, testNames } from "../../scripts/test-guard.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -41,6 +41,17 @@ test("the docs check reads paths, placeholders and links", () => {
   assert.equal(literalPrefix("runtimes/<id>/uv.lock"), "runtimes");
   assert.equal(literalPrefix("nodes/*/node.json"), "nodes");
   assert.deepEqual(linkTargets("[a](docs/x.md#part) [b](https://x.y) [c](#here) [d](../y.md)"), ["docs/x.md", "../y.md"]);
+});
+
+test("a spec being worked on is held to its length; a finished one is history", () => {
+  const spec = (/** @type {string} */ status, /** @type {number} */ lines) =>
+    [`# 007: Title`, "", `Status: ${status}`, ...Array.from({ length: lines - 3 }, (_, i) => `line ${i}`)].join("\n") + "\n";
+  assert.equal(specTooLong(spec("draft", SPEC_MAX_LINES)), null);
+  assert.match(String(specTooLong(spec("draft", SPEC_MAX_LINES + 1))), /is 201 lines/);
+  assert.match(String(specTooLong(spec("in progress", 300))), /at most 200/);
+  assert.match(String(specTooLong(spec("approved (2026-10-12)", 300))), /at most 200/);
+  assert.equal(specTooLong(spec("done (merged in PR #9)", 400)), null);
+  assert.equal(specTooLong(spec("dropped", 400)), null);
 });
 
 /** A throwaway git repo whose checks pass or fail on command, for running the stop hook.
