@@ -1,0 +1,418 @@
+{
+  "spec": "003-model-store",
+  "criterion": "AC8",
+  "outcome": "passed",
+  "date": "2026-10-12",
+  "commit": "2608782fb7775d456ee9b20e4179cdc49c2302c2",
+  "code_commit": "cf92123372c316f271b554dca2dc1196b297e43d",
+  "machine": {
+    "os": "Microsoft Windows [Version 10.0.19045.6466]",
+    "gpu": "NVIDIA GeForce GTX 1070 (not used: AC8 needs no GPU)",
+    "compute_capability": "6.1",
+    "vram_mb": 8192,
+    "driver": "582.66",
+    "free_disk_gb": 152.9,
+    "other_gpu_processes": [
+      "explorer.exe",
+      "steamwebhelper.exe",
+      "SearchApp.exe",
+      "TextInputHost.exe",
+      "ShellExperienceHost.exe",
+      "WindowsTerminal.exe",
+      "claude.exe (2)",
+      "Discord.exe",
+      "brave.exe (2)",
+      "lghub_system_tray.exe"
+    ]
+  },
+  "tools": {
+    "node": "v24.21.0",
+    "uv": "0.12.20",
+    "git": "2.28.0.windows.1",
+    "npm": "12.0.1",
+    "python": "3.14.5 (engine)"
+  },
+  "where": "Claude desktop's Code tab. Checks and pins ran in its Bash tool; each download ran in its Terminal panel (PowerShell), and each Stop was a Ctrl+C the panel sent to that console. The download root D:\\OneframeLab-ac8 is outside AppData, so the MSIX package's folder redirect does not apply to it; npm run diagnose named %LOCALAPPDATA%\\OneframeLab-dev as the dev root (no \\Packages\\), where the pins were stored.",
+  "checks": {
+    "npm run check": "passed (eslint, tsc, 38 node tests, docs check ok)",
+    "npm run engine:check": "failed: ruff, format and pyright clean; pytest 546 passed, 4 skipped, 2 failed in 188.3 s (see findings 1 and 2); the owner chose to run AC8 anyway and record them"
+  },
+  "commands": [
+    "npm install",
+    "uv sync --project engine --frozen",
+    "npm run diagnose",
+    "npm run check",
+    "npm run engine:check",
+    "npm run models:pin -- --nodes specs/003-model-store/live live.midas",
+    "npm run models:pin -- --nodes specs/003-model-store/live live.depth_pro",
+    "npm run models:pin -- --nodes specs/003-model-store/live live.moge2",
+    "npm run models:pin -- --nodes specs/003-model-store/live live.moge3",
+    "$env:ONEFRAME_DATA = 'D:\\OneframeLab-ac8'; npm run models:download -- --nodes specs/003-model-store/live <node> --all  (for each node: run, Ctrl+C midway, run again until done; live.moge3 stopped twice, in vitl and in vitg; live.midas run again 3,855 s after its Stop)",
+    "sha256sum of each blob under D:\\OneframeLab-ac8\\models\\blobs"
+  ],
+  "results": {
+    "files": [
+      {
+        "node": "live.depth_pro",
+        "file": "weights",
+        "source": {
+          "url": "https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt"
+        },
+        "size": 1904446787,
+        "sha256": "3eb35ca68168ad3d14cb150f8947a4edf85589941661fdb2686259c80685c0ce",
+        "format": "pickle",
+        "gated": false,
+        "hosts": [
+          "ml-site.cdn-apple.com"
+        ],
+        "stopped_at_bytes": 677789696,
+        "resumed_from": 677789696,
+        "last_connection": {
+          "bytes": 1226657091,
+          "seconds": 25.732,
+          "mb_per_s": 47.7
+        },
+        "attempts": [
+          {
+            "started": "2026-10-12T01:09:09.831+00:00",
+            "ended": "2026-10-12T01:09:27.321+00:00",
+            "from": 0,
+            "bytes": 677789696,
+            "seconds": 17.49,
+            "mb_per_s": 38.8,
+            "end": "stopped (Ctrl+C)",
+            "hosts": [
+              "ml-site.cdn-apple.com"
+            ]
+          },
+          {
+            "started": "2026-10-12T01:11:09.117+00:00",
+            "ended": "2026-10-12T01:11:34.849+00:00",
+            "from": 677789696,
+            "bytes": 1226657091,
+            "seconds": 25.732,
+            "mb_per_s": 47.7,
+            "end": "last byte",
+            "hosts": [
+              "ml-site.cdn-apple.com"
+            ]
+          }
+        ],
+        "completed": true,
+        "verified": "the tool hashed it in full before placing it (model.done: downloaded); sha256sum of the stored blob matches its name and pin; the blob is read-only",
+        "pin": [
+          {
+            "from": 0,
+            "bytes": 1560281088,
+            "seconds": 41.39,
+            "mb_per_s": 37.7,
+            "end": "retrying",
+            "hosts": [
+              "ml-site.cdn-apple.com"
+            ],
+            "why": "the connection closed after 1560281088 of 1904446787 bytes"
+          },
+          {
+            "from": 1560281088,
+            "bytes": 344165699,
+            "seconds": 10.122,
+            "mb_per_s": 34.0,
+            "end": "last byte",
+            "hosts": [
+              "ml-site.cdn-apple.com"
+            ]
+          }
+        ]
+      },
+      {
+        "node": "live.moge2",
+        "file": "weights",
+        "source": {
+          "hf": "Ruicheng/moge-2-vitl-normal",
+          "revision": "cb0e8bbd6b1e243589717c78e750b1ba4c093acf",
+          "path": "model.pt"
+        },
+        "size": 1323815904,
+        "sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01",
+        "format": "pickle",
+        "gated": false,
+        "hosts": [
+          "huggingface.co",
+          "us.aws.cdn.hf.co"
+        ],
+        "stopped_at_bytes": 728380593,
+        "resumed_from": 728380593,
+        "last_connection": {
+          "bytes": 595435311,
+          "seconds": 8.475,
+          "mb_per_s": 70.3
+        },
+        "attempts": [
+          {
+            "started": "2026-10-12T01:17:01.817+00:00",
+            "ended": "2026-10-12T01:17:12.230+00:00",
+            "from": 0,
+            "bytes": 728380593,
+            "seconds": 10.413,
+            "mb_per_s": 69.9,
+            "end": "stopped (Ctrl+C)",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          },
+          {
+            "started": "2026-10-12T01:20:13.867+00:00",
+            "ended": "2026-10-12T01:20:22.342+00:00",
+            "from": 728380593,
+            "bytes": 595435311,
+            "seconds": 8.475,
+            "mb_per_s": 70.3,
+            "end": "last byte",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          }
+        ],
+        "completed": true,
+        "verified": "the tool hashed it in full before placing it (model.done: downloaded); sha256sum of the stored blob matches its name and pin; the blob is read-only",
+        "pin": [
+          {
+            "from": 0,
+            "bytes": 1323815904,
+            "seconds": 17.788,
+            "mb_per_s": 74.4,
+            "end": "last byte",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          }
+        ]
+      },
+      {
+        "node": "live.moge3",
+        "file": "vitg",
+        "source": {
+          "hf": "Ruicheng/moge-3-vitg",
+          "revision": "6ef26c5a4b4148dab5ccaacdb08b72dc66380475",
+          "path": "model.pt"
+        },
+        "size": 5003249242,
+        "sha256": "ce7c15417e9105c2ace7b4272e2cc69e36940921211eb7fa05d4d0bb03f0a00c",
+        "format": "pickle",
+        "gated": false,
+        "hosts": [
+          "huggingface.co",
+          "us.aws.cdn.hf.co"
+        ],
+        "stopped_at_bytes": 2279837566,
+        "resumed_from": 2279837566,
+        "last_connection": {
+          "bytes": 2723411676,
+          "seconds": 35.569,
+          "mb_per_s": 76.6
+        },
+        "attempts": [
+          {
+            "started": "2026-10-12T01:26:28.170+00:00",
+            "ended": "2026-10-12T01:27:07.433+00:00",
+            "from": 0,
+            "bytes": 2279837566,
+            "seconds": 39.263,
+            "mb_per_s": 58.1,
+            "end": "stopped (Ctrl+C)",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          },
+          {
+            "started": "2026-10-12T01:28:07.488+00:00",
+            "ended": "2026-10-12T01:28:43.057+00:00",
+            "from": 2279837566,
+            "bytes": 2723411676,
+            "seconds": 35.569,
+            "mb_per_s": 76.6,
+            "end": "last byte",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          }
+        ],
+        "completed": true,
+        "verified": "the tool hashed it in full before placing it (model.done: downloaded); sha256sum of the stored blob matches its name and pin; the blob is read-only",
+        "pin": [
+          {
+            "from": 0,
+            "bytes": 5003249242,
+            "seconds": 63.675,
+            "mb_per_s": 78.6,
+            "end": "last byte",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          }
+        ]
+      },
+      {
+        "node": "live.moge3",
+        "file": "vitl",
+        "source": {
+          "hf": "Ruicheng/moge-3-vitl",
+          "revision": "184008f877d7ad1ad4c2cd2182a9bd1f63d0e5be",
+          "path": "model.pt"
+        },
+        "size": 1481333394,
+        "sha256": "9b41b7b9f65ad80aab7ad686f5e9cc0d1fd33f1964022618dfbcd52fc1fb7925",
+        "format": "pickle",
+        "gated": false,
+        "hosts": [
+          "huggingface.co",
+          "us.aws.cdn.hf.co"
+        ],
+        "stopped_at_bytes": 740357244,
+        "resumed_from": 740357244,
+        "last_connection": {
+          "bytes": 740976150,
+          "seconds": 10.11,
+          "mb_per_s": 73.3
+        },
+        "attempts": [
+          {
+            "started": "2026-10-12T01:20:57.417+00:00",
+            "ended": "2026-10-12T01:21:09.074+00:00",
+            "from": 0,
+            "bytes": 740357244,
+            "seconds": 11.657,
+            "mb_per_s": 63.5,
+            "end": "stopped (Ctrl+C)",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          },
+          {
+            "started": "2026-10-12T01:26:17.510+00:00",
+            "ended": "2026-10-12T01:26:27.620+00:00",
+            "from": 740357244,
+            "bytes": 740976150,
+            "seconds": 10.11,
+            "mb_per_s": 73.3,
+            "end": "last byte",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          }
+        ],
+        "completed": true,
+        "verified": "the tool hashed it in full before placing it (model.done: downloaded); sha256sum of the stored blob matches its name and pin; the blob is read-only",
+        "pin": [
+          {
+            "from": 0,
+            "bytes": 1481333394,
+            "seconds": 24.31,
+            "mb_per_s": 60.9,
+            "end": "last byte",
+            "hosts": [
+              "huggingface.co",
+              "us.aws.cdn.hf.co"
+            ]
+          }
+        ]
+      },
+      {
+        "node": "live.midas",
+        "file": "weights",
+        "source": {
+          "url": "https://github.com/isl-org/MiDaS/releases/download/v3_1/dpt_beit_large_512.pt"
+        },
+        "size": 1581966003,
+        "sha256": "9e9e900747e9e8b3112df716979219836a27716277b3d0dc53889cbba8b82328",
+        "format": "pickle",
+        "gated": false,
+        "hosts": [
+          "github.com",
+          "release-assets.githubusercontent.com"
+        ],
+        "stopped_at_bytes": 864663195,
+        "resumed_from": 864663195,
+        "last_connection": {
+          "bytes": 717302808,
+          "seconds": 8.187,
+          "mb_per_s": 87.6
+        },
+        "attempts": [
+          {
+            "started": "2026-10-12T00:58:12.331+00:00",
+            "ended": "2026-10-12T00:58:22.213+00:00",
+            "from": 0,
+            "bytes": 864663195,
+            "seconds": 9.882,
+            "mb_per_s": 87.5,
+            "end": "stopped (Ctrl+C)",
+            "hosts": [
+              "github.com",
+              "release-assets.githubusercontent.com"
+            ]
+          },
+          {
+            "started": "2026-10-12T02:02:37.686+00:00",
+            "ended": "2026-10-12T02:02:45.873+00:00",
+            "from": 864663195,
+            "bytes": 717302808,
+            "seconds": 8.187,
+            "mb_per_s": 87.6,
+            "end": "last byte",
+            "hosts": [
+              "github.com",
+              "release-assets.githubusercontent.com"
+            ]
+          }
+        ],
+        "completed": true,
+        "verified": "the tool hashed it in full before placing it (model.done: downloaded); sha256sum of the stored blob matches its name and pin; the blob is read-only",
+        "pin": [
+          {
+            "from": 0,
+            "bytes": 1581966003,
+            "seconds": 27.407,
+            "mb_per_s": 57.7,
+            "end": "last byte",
+            "hosts": [
+              "github.com",
+              "release-assets.githubusercontent.com"
+            ]
+          }
+        ]
+      }
+    ],
+    "total_bytes": 11294811330,
+    "github_asset_resumed_after_s": 3855.473,
+    "longest_path": {
+      "path": "D:\\OneframeLab-ac8\\models\\records\\280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01.json",
+      "length": 103,
+      "under_root": "models\\records\\280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01.json",
+      "under_root_length": 84
+    },
+    "proxy": "none: WinINet ProxyEnable 0 with no server or PAC, WinHTTP direct, no *_proxy variables",
+    "partials_left": 0,
+    "notes": [
+      "Seconds and MB/s per connection run from the file's downloading event (its from byte) to its verifying event (the last byte), or to model.stopped for a stopped attempt, whose bytes are the partial the next run's checking event found. MB is 10^6 bytes.",
+      "Every resume asked the source again and followed a fresh redirect: each downloading event names the source host first, then the redirect host.",
+      "During the pin, Apple's server closed the Depth Pro connection after 1,560,281,088 of 1,904,446,787 bytes; the transport waited 0.67 s, resumed from that byte, and the file's hash matched. This was not provoked.",
+      "The MiDaS resume's job began 145 s after its command was typed (journal 02:02:25Z, typed about 02:00:00Z); nothing was logged before model.start, and the cause was not found. Its checking phase took 12.3 s for 864.7 MB, against 2.5 to 7 s earlier, as the partial had been out of the disk cache for an hour.",
+      "Pins and downloads ran one at a time, so no two shared the line."
+    ]
+  },
+  "findings": [
+    "1. engine/tests/test_model_catalog.py::test_remove_is_refused_for_a_file_a_running_graph_reads_in_this_process_or_another fails on every run on this PC (twice in a row). After holder.kill() and holder.wait(), Windows has not yet released the killed process's msvcrt lock, so the next models.remove still answers in_use (retry: true); reproduced outside the repo, the remove succeeded 0.27 s later. The product is right; the test assumes the release is immediate.",
+    "2. engine/tests/test_model_jobs.py::test_verify_drops_a_changed_file_so_the_next_download_fetches_only_it failed once under the full suite (download refused busy right after verify's model.done) and passed 10 of 10 alone. In oneframe/models/jobs.py, _work emits the ending event before _run's finally releases the store lock and clears _job, so a client that starts the next job on model.done can be refused busy.",
+    "3. Ctrl+C under npm run: in 2 of 5 stops (MoGe-2, MoGe-3's vitg) PowerShell's prompt came back before the tool printed its last lines ('stopped', 'model.stopped'), which then appeared after the prompt. The journals ended in model.stopped and no process was left, but npm itself does not wait for the tool as scripts/tool.js does; a download typed again at once could be refused locked."
+  ],
+  "local_changes": "none to code; the pins npm run models:pin wrote into specs/003-model-store/live/*/node.json are committed in 2608782"
+}

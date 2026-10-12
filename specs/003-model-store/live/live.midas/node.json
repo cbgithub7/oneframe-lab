@@ -15,7 +15,10 @@
   "files": [
     {
       "name": "weights",
-      "url": "https://github.com/isl-org/MiDaS/releases/download/v3_1/dpt_beit_large_512.pt"
+      "url": "https://github.com/isl-org/MiDaS/releases/download/v3_1/dpt_beit_large_512.pt",
+      "size": 1581966003,
+      "sha256": "9e9e900747e9e8b3112df716979219836a27716277b3d0dc53889cbba8b82328",
+      "format": "pickle"
     }
   ],
   "links": {

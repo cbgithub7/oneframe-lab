@@ -15,7 +15,10 @@
   "files": [
     {
       "name": "weights",
-      "url": "https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt"
+      "url": "https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt",
+      "size": 1904446787,
+      "sha256": "3eb35ca68168ad3d14cb150f8947a4edf85589941661fdb2686259c80685c0ce",
+      "format": "pickle"
     }
   ],
   "links": {

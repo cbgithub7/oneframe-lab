@@ -16,8 +16,12 @@
     {
       "name": "weights",
       "hf": "Ruicheng/moge-2-vitl-normal",
-      "revision": "main",
-      "path": "model.pt"
+      "revision": "cb0e8bbd6b1e243589717c78e750b1ba4c093acf",
+      "path": "model.pt",
+      "gated": false,
+      "size": 1323815904,
+      "sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01",
+      "format": "pickle"
     }
   ],
   "links": {
