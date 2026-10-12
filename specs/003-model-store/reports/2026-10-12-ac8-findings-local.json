@@ -47,7 +47,10 @@
     "uv run --project engine --frozen pytest <finding 1's test> <finding 2's test> -p no:cacheprovider  (10 times, then once more with -vv -rA)",
     "uv run --project engine --frozen pytest engine -rs -p no:cacheprovider",
     "uv run --project engine --frozen python -I hold-store.py  (a throwaway script outside the repo: takes the dev root's logs\\locks\\models.lock with oneframe.files.FileLock, as test_model_pin.py's holder does, and lets go 3 s after a tool's numbered folder appears under cache\\tmp\\)",
-    "npm run models:download -- --nodes specs/003-model-store/live live.moge2  (in the Terminal panel, while the holder held the store)"
+    "npm run models:download -- --nodes specs/003-model-store/live live.moge2  (in the Terminal panel, while the holder held the store)",
+    "npm run models:download -- --data D:\\OneframeLab-retype --nodes specs/003-model-store/live live.midas  (round 1: in the Terminal panel, Ctrl+C from the panel midway; once the panel saw the prompt back, the same command from the Bash tool)",
+    "npm run models:download -- --data D:\\OneframeLab-retype2 --nodes specs/003-model-store/live live.midas  (round 2: in the Terminal panel; the same command started from the Bash tool, then Ctrl+C from the panel to the first)",
+    "sha256sum of the MiDaS blob in each of the two roots"
   ],
   "results": {
     "finding_1": {
@@ -80,7 +83,56 @@
       ],
       "network": "none: the MoGe-2 file (1,323,815,904 bytes) was already present in the dev root's store from AC8's pins, checked read-only with Store.presence before the run; the journal has no attempt and asked no host",
       "left_behind": "cache/tmp/ empty after the run",
-      "not_run_by_hand": "Ctrl+C while the tool waits (covered by test_ctrl_c_while_a_tool_waits_for_the_store_ends_it_with_nothing_started, which passed in both full runs here), and the case finding 3 came from: Ctrl+C on a live download and the same download typed again at once, which needs a real download"
+      "not_run_by_hand": "Ctrl+C while the tool waits (covered by test_ctrl_c_while_a_tool_waits_for_the_store_ends_it_with_nothing_started, which passed in both full runs here)"
+    },
+    "finding_3_ctrl_c_and_again": {
+      "asked": "Ctrl+C on a live download under npm in PowerShell, then the same download again at once (the case finding 3 came from)",
+      "outcome": "passed",
+      "file": "live.midas weights: MiDaS v3.1 dpt_beit_large_512.pt, 1,581,966,003 bytes, a GitHub release asset (github.com, then release-assets.githubusercontent.com)",
+      "roots": "two new, empty roots, D:\\OneframeLab-retype (round 1) and D:\\OneframeLab-retype2 (round 2), outside AppData; 3.16 GB downloaded in all",
+      "rounds": [
+        {
+          "round": 1,
+          "how": "the second download started once the panel reported the first's prompt back, as a person typing it again would",
+          "times_utc": {
+            "first: downloading from 0": "13:58:25.964",
+            "first: model.stopped": "13:58:46.155",
+            "second: started": "13:58:48.734",
+            "second: model.start": "13:58:50.291",
+            "second: downloading from the kept byte": "13:58:53.506",
+            "second: verifying": "13:59:06.121",
+            "second: model.done": "13:59:06.190"
+          },
+          "kept_bytes": 870921799,
+          "waited": "no: the store was free 2.6 s before the second started, so it printed no waiting line",
+          "prompt": "the first tool's last lines (stopped, model.stopped) printed before PowerShell's prompt came back",
+          "one_connection_mb_s": { "first": 43.1, "second": 56.4 },
+          "checking_s": 3.2,
+          "result": "downloaded, model.done, exit 0; sha256sum matches the pin; no partial left"
+        },
+        {
+          "round": 2,
+          "how": "the second download started just before the Ctrl+C, to make it meet a store the stopping download still held: round 1 had not met it",
+          "times_utc": {
+            "first: downloading from 0": "14:11:41.634",
+            "second: started": "14:11:56.588",
+            "first: model.stopped": "14:12:02.169",
+            "second: model.start": "14:12:02.259",
+            "second: downloading from the kept byte": "14:12:06.151",
+            "second: verifying": "14:12:12.417",
+            "second: model.done": "14:12:12.628"
+          },
+          "kept_bytes": 1113307213,
+          "waited": "yes: printed 'Another process is using the model store; waiting up to 10 s for it.', then started 90 ms after the first's model.stopped (sent after the first let go of the store), about 4 s into its 10 s wait",
+          "prompt": "the first tool's last lines printed before PowerShell's prompt came back",
+          "one_connection_mb_s": { "first": 54.2, "second": 74.8 },
+          "checking_s": 3.9,
+          "result": "downloaded, model.done, exit 0; sha256sum matches the pin; no partial left"
+        }
+      ],
+      "both": "each resume asked github.com again and followed a fresh redirect, started at the kept byte, and left cache/tmp/ empty",
+      "not_measured": "when the panel's Ctrl+C reached the first download (the panel does not say), so how long each Stop took is not measured here",
+      "not_seen": "the early prompt itself: AC8 saw the prompt come back before the tool ended in 2 of 5 Stops; here it came back after, 2 of 2"
     },
     "notes": "A first try at running the holder in a Terminal panel tab was cancelled by the panel (it sends Ctrl+C when it does not see a long command start within 2 s); the holder let go on that Ctrl+C at once, before any tool ran. The holder then ran from the Bash tool instead. The second full pytest run had ended before the holder that counted took the lock."
   },

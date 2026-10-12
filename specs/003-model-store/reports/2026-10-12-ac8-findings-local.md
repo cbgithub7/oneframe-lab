@@ -17,6 +17,7 @@ for a held store. The machine-readable version of this report is
 | 1. The in-use test assumed Windows frees a killed process's lock at once | passed | `test_remove_is_refused_for_a_file_a_running_graph_reads_in_this_process_or_another`, which failed every time here before, passed 13 of 13: in two full runs and 11 runs alone |
 | 2. A job's ending was sent before it let go of the store | passed | `test_verify_drops_a_changed_file_so_the_next_download_fetches_only_it` passed 13 of 13, both full runs included (it had failed under the full suite) |
 | 3. `models:download` waits for a store another process holds | passed | printed the waiting line, carried on 62 ms after the holder let go, ended `model.done`; no network |
+| 3. Ctrl+C on a live download, then the same download again at once | passed | MiDaS (1.58 GB, GitHub), two rounds: each second download resumed from the kept byte and its `sha256sum` matches the pin; in round 2 it met the store still held, printed the waiting line, and started 90 ms after the first's `model.stopped` |
 
 ## Finding 3: a held store
 
@@ -45,8 +46,43 @@ afterwards.
 
 Not run by hand: Ctrl+C while the tool waits, which
 `test_ctrl_c_while_a_tool_waits_for_the_store_ends_it_with_nothing_started` covers and which passed
-in both full runs here. Nor was the case finding 3 came from: Ctrl+C on a live download, then the
-same download typed again at once. That needs a real download.
+in both full runs here.
+
+## Finding 3: Ctrl+C, then the same download again
+
+The case finding 3 came from, asked for by the owner after the hold test: MiDaS v3.1's
+`dpt_beit_large_512.pt` (1,581,966,003 bytes, a GitHub release asset), downloaded with the command
+below into a new, empty root, in the Terminal panel (PowerShell, through npm), and stopped midway
+with a Ctrl+C from the panel. The same command, with the same root, then started again from the
+Bash tool, armed beforehand so that it started at once. Two rounds, each in its own root
+(`D:\OneframeLab-retype`, `D:\OneframeLab-retype2`), 3.16 GB downloaded in all.
+
+```sh
+npm run models:download -- --data D:\OneframeLab-retype --nodes specs/003-model-store/live live.midas
+```
+
+| | Round 1 | Round 2 |
+| --- | --- | --- |
+| The second download started | after the panel saw the prompt back, as a person typing it again would | just before the Ctrl+C, to make it meet the store still held: round 1 had not |
+| First: downloading from 0 | 13:58:25.964 | 14:11:41.634 |
+| Second: started | 13:58:48.734 | 14:11:56.588 |
+| First: `model.stopped` | 13:58:46.155 | 14:12:02.169 |
+| Second: `model.start` | 13:58:50.291 | 14:12:02.259 |
+| Waiting line | no: the store had been free for 2.6 s | yes: started 90 ms after the first's `model.stopped`, about 4 s into its 10 s wait |
+| Bytes kept, and the resume's start | 870,921,799 | 1,113,307,213 |
+| `checking` the partial | 3.2 s | 3.9 s |
+| Second: `model.done` | 13:59:06.190 | 14:12:12.628 |
+| One connection, first / second | 43.1 / 56.4 MB/s | 54.2 / 74.8 MB/s |
+| Result | `downloaded`, exit 0, `sha256sum` matches the pin | the same |
+
+In both rounds the resume asked `github.com` again and followed a fresh redirect, started at the
+kept byte, and left no partial and an empty `cache\tmp\`. A job now sends `model.stopped` after it
+lets go of the store (finding 2's fix), so round 2's waiting download started within 90 ms of it.
+
+Not seen: the early prompt itself. In AC8, PowerShell's prompt came back before the tool ended in
+2 of 5 Stops; here the tool's last lines (`stopped`, `model.stopped`) printed before the prompt in
+both. Not measured: when the panel's Ctrl+C reached the download (the panel does not say), so how
+long each Stop took is not known from this run.
 
 ## How it ran
 
@@ -64,7 +100,8 @@ had ended before the holder that counted took the lock.
 
 - Windows 10 build 19045.6466. NVIDIA GeForce GTX 1070 (compute 6.1, 8,192 MiB, driver 582.66),
   not used. Other programs on the card: the desktop's usual graphics clients only (Explorer, the
-  shell, Steam, Discord, Brave, Claude, Windows Terminal). Free disk on `C:`: 341 GB.
+  shell, Steam, Discord, Brave, Claude, Windows Terminal). Free disk on `C:` (the dev root): 341 GB;
+  on `D:` before the MiDaS rounds: 143 GB.
 - Node v24.21.0 (pinned 24.21.0), uv 0.12.20 (required ≥ 0.12.20), npm 12.0.1, git
   2.28.0.windows.1, Python 3.14.5 (engine).
 - `npm run check` passed: eslint, tsc, 38 node tests, docs check ok.
@@ -85,4 +122,7 @@ uv run --project engine --frozen pytest <finding 1's test> <finding 2's test> -p
 uv run --project engine --frozen pytest engine -rs -p no:cacheprovider
 uv run --project engine --frozen python -I hold-store.py   # the holder, outside the repo
 npm run models:download -- --nodes specs/003-model-store/live live.moge2
+npm run models:download -- --data D:\OneframeLab-retype --nodes specs/003-model-store/live live.midas    # round 1: Ctrl+C midway, then again
+npm run models:download -- --data D:\OneframeLab-retype2 --nodes specs/003-model-store/live live.midas   # round 2: again, started just before the Ctrl+C
+sha256sum <each root>\models\blobs\9e\9e9e9007...
 ```
