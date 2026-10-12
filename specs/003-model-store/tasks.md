@@ -57,3 +57,9 @@ task makes stale is updated in that task.
   inherits it). MoGe-3's code also imports FlexGEMM. Only the files matter here.
 - [x] 10. Docs: `docs/architecture.md` (the store, `models.*` not yet on the page's method list)
   and the handoff.
+- [x] 11. **The owner, on Windows: AC8.** Run the Verification steps in a local session and commit
+  the report. Done 2026-10-12:
+  [2026-10-12-ac8-live-hosts.md](reports/2026-10-12-ac8-live-hosts.md), passed.
+- [x] 12. The AC8 report's three findings (Decisions taken): the in-use test waits for a killed
+  reader's lock; a job lets go of the store before its ending is sent; the model tools wait for a
+  store another process still holds.

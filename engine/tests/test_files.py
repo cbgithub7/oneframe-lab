@@ -7,10 +7,10 @@ import json
 import subprocess
 import sys
 import textwrap
-import time
 from pathlib import Path
 
 import pytest
+from conftest import wait_free
 
 from oneframe.files import FileLock, LockBusy, NewerFormat, format_of, is_free, lock_file, write_json
 from oneframe.memory import STORE_VERSION, LearnedStore, StoreKey
@@ -121,10 +121,7 @@ def test_a_dead_holder_releases_its_lock(tmp_path: Path) -> None:
         holder.wait(timeout=30)
         if holder.stdout is not None:
             holder.stdout.close()
-    deadline = time.monotonic() + 30  # Windows releases a dead process's locks a little late
-    while not is_free(path):
-        assert time.monotonic() < deadline, "the lock outlived its holder"
-        time.sleep(0.1)
+    wait_free(path)  # Windows lets go of a dead process's locks a little late
 
 
 def test_a_lock_that_cannot_be_taken_at_all_is_an_error_not_busy(

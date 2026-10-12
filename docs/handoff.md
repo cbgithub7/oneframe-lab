@@ -42,28 +42,41 @@ https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
 
 ## State (2026-10-12)
 
-Merged, AC8 pending: **the model store's core** (spec 003, merged 2026-10-11 in
-[PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16); AC1 to AC7 by tests in CI on Windows and
-Ubuntu, AC8 waiting for the owner's Windows PC and the real hosts):
-
-- the files a node reads, declared in its manifest (`hf` at a full commit, or an `https` URL, with
-  size, sha256, format and `gated`; checkpoints of a `files_by` param), and checked all at once;
-- the store under `models/`: each file once by sha256, read-only, with a record of what was checked;
-  a newer or unreadable store or record left alone;
-- a transport on `http.client` that heals itself (fresh redirects each attempt, retries, stalls,
-  strict ranges, the pinned size before the body, https only, truststore, the system's proxy). Stop
-  is seen by the reader in slices of 0.1 s: shutting a socket down from another thread does not
-  wake a read on Windows (CI, 2026-10-11). Each attempt journals the hosts it asked (names and
-  ports only, never a signed path or query), which AC8's report reads: merged 2026-10-12 in
-  [PR #18](https://github.com/cbgithub7/oneframe-lab/pull/18);
-- `models.download`, `models.verify`, `models.stop`, `models.list` and `models.remove`, one job at a
-  time across processes; none is on the page's method list yet;
-- runs read only what is present, through `ctx.file`; a missing file fails with kind `files` before
-  any process starts; the fit never changes to a checkpoint that is not downloaded;
-- `npm run models:pin` and `npm run models:download`; every tool that opens a data root starts
-  through `scripts/tool.js`, which keeps uv's temporary files under that root.
-
 Done and green (local, and GitHub Actions on Windows and Ubuntu):
+
+- **The model store's core** (spec 003, done: merged 2026-10-11 in
+  [PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16), AC1 to AC7 by tests in CI on Windows
+  and Ubuntu; AC8 passed against the real hosts on the owner's Windows PC on 2026-10-12
+  ([report](../specs/003-model-store/reports/2026-10-12-ac8-live-hosts.md)); the report's three
+  findings fixed after it, not yet run again on that PC):
+    - the files a node reads, declared in its manifest (`hf` at a full commit, or an `https` URL,
+      with size, sha256, format and `gated`; checkpoints of a `files_by` param), and checked all at
+      once;
+    - the store under `models/`: each file once by sha256, read-only, with a record of what was
+      checked; a newer or unreadable store or record left alone;
+    - a transport on `http.client` that heals itself (fresh redirects each attempt, retries,
+      stalls, strict ranges, the pinned size before the body, https only, truststore, the system's
+      proxy). Stop is seen by the reader in slices of 0.1 s: shutting a socket down from another
+      thread does not wake a read on Windows (CI, 2026-10-11). Each attempt journals the hosts it
+      asked, names and ports only, never a signed path or query
+      ([PR #18](https://github.com/cbgithub7/oneframe-lab/pull/18));
+    - `models.download`, `models.verify`, `models.stop`, `models.list` and `models.remove`, one job
+      at a time across processes, a job letting go of the store before its ending is sent; none is
+      on the page's method list yet;
+    - runs read only what is present, through `ctx.file`; a missing file fails with kind `files`
+      before any process starts; the fit never changes to a checkpoint that is not downloaded;
+    - `npm run models:pin` and `npm run models:download`, which wait up to 10 s for a store another
+      process still holds; every tool that opens a data root starts through `scripts/tool.js`, which
+      keeps uv's temporary files under that root.
+
+    Against the real hosts (AC8): five files, 11.3 GB, pinned with `models:pin` and fetched with
+    `models:download` from Apple's server, Hugging Face (`huggingface.co`, then its CDN) and a
+    GitHub release asset (`github.com`, then `release-assets.githubusercontent.com`). Each was
+    stopped midway and resumed from the byte it kept, and every sha256 matched; the GitHub asset
+    resumed 3,855 s after its Stop, through a fresh redirect; Apple's server dropped a connection on
+    its own, and the transport resumed it. One connection ran at 34 to 88 MB/s; the line's own
+    capacity was not measured, so whether parallel ranges would help is still open. Spec 005 starts
+    from the live pins in `specs/003-model-store/live/`.
 
 - **Foundations** (spec 006, done: merged 2026-10-05 in
   [PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7), its local checks passed on Windows on
@@ -149,8 +162,19 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
 
 Not started: any model node, workspace UI, viewer, installer, the model store's view per runtime.
 
-Follow-up: `npm run versions` does not read runtime locks yet, so a runtime's torch pin is checked by
-hand.
+Follow-up:
+
+- `npm run versions` does not read runtime locks yet, so a runtime's torch pin is checked by hand.
+- From the sweep after spec 003's AC8 findings, not yet fixed:
+    - `runtime.stopped` and `runtime.failed` (`oneframe/runtimes.py`), and a graph run's ending
+      (`run.done` before `Engine.graph_run` clears its run), are still sent before their place is
+      let go, as model jobs' endings were: a client that acts on hearing one can be refused `busy`;
+    - on Windows a Stop kills a node's process, a venv launcher, and at once removes its folder,
+      while the interpreter behind it may still be ending (not verified there; the comment in
+      `oneframe/executors.py` says a kill does not take the interpreter down, and CPython 3.14's
+      launcher says it does);
+    - `test_a_killed_install_is_not_installed_and_a_second_install_completes` installs again right
+      after killing an engine that held the runtime's lock, and does not check the reply.
 
 ## Next, in order
 
@@ -163,8 +187,8 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
 | 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | done: merged 2026-10-05 ([PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7)); local checks passed on Windows 2026-10-11 ([report](../specs/006-foundations/reports/2026-10-11-local.md)) |
-| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | core approved 2026-10-03 ([research](../specs/003-model-store/research.md)); amended 2026-10-05; merged 2026-10-11 ([PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16)): AC1–AC7 by tests in CI; the hosts each download asks, for AC8's report, merged 2026-10-12 ([PR #18](https://github.com/cbgithub7/oneframe-lab/pull/18)); AC8 pending, on the owner's Windows PC (`/local-session`, the spec's Verification) |
-| 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog and a result protocol the page can read (a large mesh or splat included); MoGe-3 may not run on the 1070 (see Known) | 005 (first part) | not started |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | done: merged 2026-10-11 ([PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16)), AC1–AC7 by tests in CI; AC8 passed against the real hosts on Windows 2026-10-12 ([report](../specs/003-model-store/reports/2026-10-12-ac8-live-hosts.md)), its three findings fixed after it; core approved 2026-10-03 ([research](../specs/003-model-store/research.md)), amended 2026-10-05 |
+| 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog and a result protocol the page can read (a large mesh or splat included); MoGe-3 may not run on the 1070 (see Known) | 005 (first part) | next: no spec yet; it starts from the pins AC8 wrote in `specs/003-model-store/live/` |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
 | 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times measured in steps 3 and 4 | 004 | not started |
@@ -232,8 +256,13 @@ Known from the review, to be settled by the specs above or later ones:
   `dir` and `reg query` from inside show the merged view. A local check of where things land runs
   from a terminal started outside it; `npm run diagnose` names the root's real path. A packaged
   Oneframe Lab built as MSIX would have its writes redirected the same way.
-- **The footprint test can fail on another program's write** (for the spec 003 session to take
-  on). On PR #11's Windows CI (2026-10-11), `test_ac2_nothing_is_written_outside_the_root` found a
+- **Windows, from spec 003's AC8 report** ([findings](../specs/003-model-store/reports/2026-10-12-ac8-live-hosts.md),
+  fixed after it). Windows lets go of a killed process's locks a moment after it has ended, so a
+  test that ends a lock's holder waits for the lock (`wait_free` in `engine/tests/conftest.py`).
+  Under `npm run`, Ctrl+C gives the prompt back before the tool has stopped; only the model tools
+  allow for it, by waiting for a store still held.
+- **The footprint test can fail on another program's write** (not yet taken on: spec 003 closed
+  without it; any session may). On PR #11's Windows CI (2026-10-11), `test_ac2_nothing_is_written_outside_the_root` found a
   new `Mozilla` folder in the runner's real `AppData\Roaming`, almost surely the runner's own
   Firefox; the next run passed. The check should tell our processes' writes from others' without
   checking less, and a change to it is listed in spec 006's Tests section (narrowing it is the

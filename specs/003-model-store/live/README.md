@@ -12,8 +12,9 @@ and GitHub's release assets. These four nodes exist only to give `npm run models
 | `live.moge3` | `Ruicheng/moge-3-vitl`'s and `Ruicheng/moge-3-vitg`'s `model.pt`, checkpoints `vitl` and `vitg` | Hugging Face; `vitg` is the large file |
 | `live.midas` | MiDaS v3.1's `dpt_beit_large_512.pt` (1.58 GB) | a GitHub release asset, behind a signed redirect |
 
-Until they are pinned, the manifest check refuses them (`revision` is a branch, and no file has a
-size or sha256): that is expected. The steps are in the spec's Verification section:
+They were pinned for AC8 on 2026-10-12 (full commits, sizes and sha256s), and AC8 passed:
+[the report](../reports/2026-10-12-ac8-live-hosts.md). To run it again, the steps are in the spec's
+Verification section:
 
 1. `npm run models:pin -- --nodes specs/003-model-store/live <node>` for each node, then commit the
    pins it writes.

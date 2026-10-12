@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -18,8 +19,9 @@ import pytest
 from conftest import Events, MakeNode
 from fixtures.hosts import Hosts, Replace, Stall, client_context
 
-from oneframe.files import lock_file
+from oneframe.files import is_free, lock_file
 from oneframe.layout import Layout
+from oneframe.models.jobs import Jobs, store_lock
 from oneframe.models.store import Store
 from oneframe.models.transport import Policy
 from oneframe.server import Engine
@@ -248,6 +250,82 @@ def test_a_second_job_is_refused_busy_here_and_locked_from_another_process(
     finally:
         holder.kill()
         holder.wait()
+
+
+def test_the_next_job_starts_as_soon_as_the_last_ones_end_is_heard(
+    engine: Engine, events: Events, pinned_node: dict[str, str], hub: Hosts
+) -> None:
+    """Whoever hears a job end (the page, a tool) may start the next at once: the store's lock and
+    the job's place are let go before the ending is sent (AC8's report, finding 2). The next job is
+    asked for inside the ending's own event, on the job's thread, so no timing decides it; the first
+    job's end then leaves the second's place and lock alone, and each journal ends with its ending."""
+    stall = Stall(at=100_000)
+    hub.fault(pinned_node["small"], stall)  # the second job waits here until released
+    engine.models.transfer["policy"] = Policy(stall_s=60)
+    asked: list[threading.Thread] = []
+    replies: list[dict[str, Any]] = []
+    answered = threading.Event()
+
+    def say(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] in ("model.done", "model.failed", "model.stopped") and not asked:
+            asked.append(threading.current_thread())
+            replies.append(call(engine, "models.download", node="test.files"))  # config and small
+            answered.set()
+
+    engine.models.say = say
+    first = call(engine, "models.download", node="test.files", checkpoints=["large"])["result"]["job"]
+    assert answered.wait(30)
+    assert wait_end(events, first)["event"] == "model.done"
+    assert "result" in replies[0], replies[0]  # not refused busy: the place went before model.done
+    second = replies[0]["result"]["job"]
+    asked[0].join(10)
+    assert not asked[0].is_alive()  # the first job's thread has ended, its clean-up done ...
+    assert engine.models.running() == second  # ... and the second job keeps its place
+    assert not is_free(store_lock(Store(engine.data)).path)  # and the store's lock
+    assert call(engine, "models.verify")["error"]["reason"] == "busy"
+    assert call(engine, "models.stop", job=first)["result"] == {"stopping": False}
+    stall.release.set()
+    end = wait_end(events, second)
+    assert [(f["name"], f["outcome"]) for f in end["files"]] == [
+        ("config", "present"),
+        ("small", "downloaded"),
+    ]
+    # what the report saw: the next job asked for from another thread on hearing the ending
+    assert run_job(engine, events, "models.verify", node="test.files")["event"] == "model.done"
+    assert run_job(engine, events, "models.verify", node="test.files")["event"] == "model.done"
+    last: dict[str, str] = {}
+    for journal in Layout(engine.data).journals.glob("*model-*.ndjson"):
+        lines = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()]
+        last[lines[1]["job"]] = lines[-1]["event"]
+    assert last[first] == last[second] == "model.done"
+
+
+def test_a_job_that_crashes_ends_its_journal_with_why_and_lets_go_before_it_is_heard(
+    engine: Engine, events: Events, pinned_node: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*_args: Any) -> None:
+        raise RuntimeError("a bug")
+
+    monkeypatch.setattr(Jobs, "_download", broken)
+    replies: list[dict[str, Any]] = []
+    answered = threading.Event()
+
+    def say(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] == "model.failed" and not replies:
+            replies.append(call(engine, "models.verify", node="test.files"))
+            answered.set()
+
+    engine.models.say = say
+    job = call(engine, "models.download", node="test.files")["result"]["job"]
+    assert answered.wait(30)
+    end = wait_end(events, job)
+    assert (end["event"], end["kind"]) == ("model.failed", "engine") and "a bug" in end["message"]
+    assert "result" in replies[0], replies[0]
+    journal = next(Layout(engine.data).journals.glob("*model-download*.ndjson"))
+    last = json.loads(journal.read_text(encoding="utf-8").splitlines()[-1])
+    assert (last["event"], last["kind"], last["job"]) == ("model.failed", "engine", job)
 
 
 @pytest.mark.parametrize("by", ["models.stop", "shutdown"])

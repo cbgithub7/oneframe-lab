@@ -9,11 +9,10 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-import time
 from pathlib import Path
 
 import pytest
-from conftest import NO_GPU
+from conftest import NO_GPU, wait_free
 
 from oneframe import BUILTIN_NODES_DIR, scratch
 from oneframe.files import is_free, lock_file
@@ -87,13 +86,6 @@ HELPER = textwrap.dedent(
 )
 
 
-def _wait_free(*paths: Path) -> None:
-    deadline = time.monotonic() + 30  # Windows releases a dead process's locks a little late
-    while not all(is_free(p) for p in paths):
-        assert time.monotonic() < deadline, "a lock outlived its holder"
-        time.sleep(0.1)
-
-
 def test_ac5_two_processes_on_one_root(tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path) -> None:
     data = tmp_path / "data"
     layout = Layout(data)
@@ -131,7 +123,7 @@ def test_ac5_two_processes_on_one_root(tmp_path: Path, tiny: Path, uv_exe: str, 
         if helper.stdout is not None:
             helper.stdout.close()
 
-    _wait_free(lock_file(layout.locks, f"tmp-{theirs.name}"), lock_file(layout.locks, "runtime-tiny"))
+    wait_free(lock_file(layout.locks, f"tmp-{theirs.name}"), lock_file(layout.locks, "runtime-tiny"))
     engine = start()
     try:
         assert not theirs.exists() or theirs == engine.scratch.folder  # the dead helper's folder went
