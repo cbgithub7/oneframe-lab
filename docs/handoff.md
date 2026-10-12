@@ -185,6 +185,10 @@ The order and the process were decided by the owner on 2026-10-02, after the
 more infrastructure. Each step is one spec document in `specs/` ([specs/README.md](../specs/README.md))
 with one owner approval, or a time-boxed spike that ends in a report.
 
+Before step 3's spec is drafted, the [review of 2026-10-12](reviews/2026-10-12.md) waits on four
+owner decisions (build or adopt, an Improve-loop spike now, the process rules, and a small fix PR
+first).
+
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
