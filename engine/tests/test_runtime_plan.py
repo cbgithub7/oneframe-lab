@@ -68,6 +68,17 @@ def test_a_broken_runtime_does_not_hide_the_others(make_runtime: MakeRuntime, ru
     assert problems == ["python 'three' should be a CPython version like 3.12"]
 
 
+def test_a_runtime_on_a_python_older_than_node_runs_need_is_refused(
+    make_runtime: MakeRuntime, runtime_root: Path
+) -> None:
+    """The child that runs every node starts with -P, which Python 3.11 brought."""
+    make_runtime(_definition(id="old", python="3.10"))
+    make_runtime(_definition(id="floor", python="3.11.9"))
+    found = runtimes.discover([runtime_root])
+    assert list(found.runtimes) == ["floor"]
+    assert list(found.problems.values()) == [["python '3.10' is older than 3.11, which node runs need"]]
+
+
 def test_every_problem_in_a_definition_is_listed_at_once(
     make_runtime: MakeRuntime, runtime_root: Path
 ) -> None:

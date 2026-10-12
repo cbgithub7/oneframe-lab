@@ -81,7 +81,7 @@ class EngineExecutor:
             raise
         except Exception as exc:
             kind = declared_kind(child.classify(exc))
-            raise NodeError(kind, f"{type(exc).__name__}: {exc}", _trace()) from exc
+            raise NodeError(kind, child.describe(exc), _trace()) from exc
 
 
 def declared_kind(kind: str) -> str:
@@ -275,7 +275,7 @@ class ProcessExecutor:
             job_path = tmp / "job.json"
             job_path.write_text(json.dumps(job, default=str), encoding="utf-8")
             proc = subprocess.Popen(
-                [str(self.python), "-u", str(CHILD), str(job_path)],
+                [str(self.python), "-P", "-u", str(CHILD), str(job_path)],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

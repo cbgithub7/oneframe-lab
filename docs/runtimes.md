@@ -87,7 +87,8 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
 }
 ```
 
-- `python`: the CPython this runtime uses. uv fetches it; a system Python is never used.
+- `python`: the CPython this runtime uses, 3.11 or newer (the child that runs each node starts with
+  `-P`). uv fetches it; a system Python is never used.
 - `extensions`: compiled packages, each in one class.
     - `stand-in`: a pure-Python replacement ships in this folder and is put on the path.
     - `optional`: left out; `why` says what the nodes do without it.

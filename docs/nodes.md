@@ -92,8 +92,10 @@ fetch it and what its bytes must be ([spec 003](../specs/003-model-store/spec.md
 def run(ctx):
     image = ctx.inputs["image"]  # Value: .path, .facets, .meta, .trust
     ctx.stage("infer", "Estimating depth")
+    if image.meta["width"] < 256:
+        ctx.fail("The photo is narrower than 256 pixels.")  # kind `node`, in these words
     for i, tile in enumerate(tiles):
-        ctx.check_stop()  # raises if Stop was pressed
+        ctx.check_stop()  # in the engine's process, raises if Stop was pressed
         ctx.progress(i + 1, len(tiles))
     path = ctx.path("depth.npz")  # a file in this run's own folder
     np.savez(path, depth=depth)
@@ -102,7 +104,11 @@ def run(ctx):
 ```
 
 Every output in the manifest must be declared with `ctx.output` before `run` returns. A node
-writes only into `ctx.path(...)`. A run is cached by its inputs and output-affecting params, so it
+writes only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`:
+the run fails with kind `node`, and the person reads the message as written. Stop ends a runtime
+node's process at once; a node in the engine's process is stopped only where it calls
+`ctx.check_stop()`. Node code never imports the engine: in a runtime, `import models` finds the
+runtime's package of that name. A run is cached by its inputs and output-affecting params, so it
 must be deterministic for them (seed any randomness from a `seed` parameter).
 
 **Loading weights.** Prefer `.safetensors`. A `.pt`, `.pth`, `.ckpt` or `.bin` file is a pickle, and
