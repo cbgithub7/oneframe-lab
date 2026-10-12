@@ -78,12 +78,18 @@ def write_json(path: Path, data: dict[str, Any], *, key: str = "format", indent:
     found = _on_disk_format(path, key)
     if found is not None and found > ours:
         raise NewerFormat(path, found, ours)
-    path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(data, indent=indent, separators=None if indent else (",", ":"), ensure_ascii=False)
+    write_text(path, text + "\n")
+
+
+def write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` in one step: a reader, or a crash or Ctrl+C partway, sees the old file
+    or the new one, never part of either."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex[:12]}.tmp")
     try:
         with temporary.open("x", encoding="utf-8") as handle:
-            handle.write(text + "\n")
+            handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
         _replace(temporary, path)

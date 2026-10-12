@@ -12,7 +12,16 @@ from pathlib import Path
 import pytest
 from conftest import wait_free
 
-from oneframe.files import FileLock, LockBusy, NewerFormat, format_of, is_free, lock_file, write_json
+from oneframe.files import (
+    FileLock,
+    LockBusy,
+    NewerFormat,
+    format_of,
+    is_free,
+    lock_file,
+    write_json,
+    write_text,
+)
 from oneframe.memory import STORE_VERSION, LearnedStore, StoreKey
 
 
@@ -22,6 +31,21 @@ def test_a_write_lands_whole_and_leaves_no_temporary(tmp_path: Path) -> None:
     write_json(target, {"format": 1, "x": 2}, indent=2)
     assert json.loads(target.read_text(encoding="utf-8")) == {"format": 1, "x": 2}
     assert [p.name for p in target.parent.iterdir()] == ["settings.json"]
+
+
+def test_a_write_cut_short_leaves_the_old_file_whole(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ctrl+C or a crash before the new file lands leaves the old one as it was, and no temporary."""
+    target = tmp_path / "node.json"
+    target.write_text('{"id": "old"}\n', encoding="utf-8")
+
+    def interrupted(_fd: int) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("oneframe.files.os.fsync", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        write_text(target, '{"id": "new"}\n')
+    assert target.read_text(encoding="utf-8") == '{"id": "old"}\n'
+    assert [p.name for p in tmp_path.iterdir()] == ["node.json"]
 
 
 def test_a_newer_file_is_never_overwritten(tmp_path: Path) -> None:
