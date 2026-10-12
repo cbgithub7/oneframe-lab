@@ -29,10 +29,9 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__
 from oneframe.errors import Failure, Stopped
-from oneframe.files import is_free
 from oneframe.journal import Emit, engine_crash, journalled
 from oneframe.layout import Layout, RootRefused, open_root
-from oneframe.models.jobs import Jobs, claim_store, hub_endpoint, store_lock
+from oneframe.models.jobs import Jobs, claim_store, hub_endpoint
 from oneframe.models.pin import find_manifest, pin
 from oneframe.models.store import Store, StoreRefused
 from oneframe.registry import discover
@@ -83,25 +82,27 @@ def _shown(event: dict[str, Any], last: dict[str, float]) -> None:
         _print(f"{kind}: {event.get('message', '')}".rstrip(": "))
 
 
-def _claimed[T](store: Store, claim: Callable[[], T]) -> T | None:
-    """`claim()`, which takes the store's lock. When another process holds it, say so, wait for it
-    to let go, and claim again, refused `locked` as before if it still has not. None when Ctrl+C
-    ends the wait, with nothing started."""
-    try:
-        return claim()
-    except StoreRefused as exc:
-        if exc.reason != "locked":
-            raise
-    lock = store_lock(store).path
-    try:
-        _print(f"Another process is using the model store; waiting up to {LOCK_WAIT_S:g} s for it to finish.")
-        deadline = time.monotonic() + LOCK_WAIT_S
-        while not is_free(lock) and time.monotonic() < deadline:
+def _claimed[T](claim: Callable[[], T]) -> T | None:
+    """`claim()`, which takes the store's lock. While another process holds it, say so and claim
+    again until LOCK_WAIT_S has passed; then the refusal stands, `locked` as before. A claim that
+    is refused holds nothing, so the wait never keeps the store from anyone. None when Ctrl+C ends
+    the wait, with nothing started."""
+    deadline = time.monotonic() + LOCK_WAIT_S
+    said = False
+    while True:
+        try:
+            return claim()
+        except StoreRefused as exc:
+            if exc.reason != "locked" or time.monotonic() >= deadline:
+                raise
+        try:
+            if not said:
+                _print(f"Another process is using the model store; waiting up to {LOCK_WAIT_S:g} s for it.")
+                said = True
             time.sleep(LOCK_POLL_S)
-    except KeyboardInterrupt:
-        _print("Stopped while waiting; nothing was started.")
-        return None
-    return claim()
+        except KeyboardInterrupt:
+            _print("Stopped while waiting; nothing was started.")
+            return None
 
 
 def _wait(thread: threading.Thread, stop: Callable[[], object]) -> bool:
@@ -141,7 +142,7 @@ def download(
 
     jobs = Jobs(data, say, transfer)
     try:
-        started = _claimed(jobs.store, lambda: jobs.download(registry.get(node), checkpoints))
+        started = _claimed(lambda: jobs.download(registry.get(node), checkpoints))
     except Failure as exc:
         _print(f"{exc} {exc.next or ''}".strip())
         return 2
@@ -161,7 +162,7 @@ def pin_tool(data: Path, roots: list[Path], node: str, transfer: dict[str, Any] 
         return 2
     store = Store(data)
     try:
-        held = _claimed(store, lambda: claim_store(store, None))
+        held = _claimed(lambda: claim_store(store, None))
     except Failure as exc:
         _print(f"{exc} {exc.next or ''}".strip())
         return 2

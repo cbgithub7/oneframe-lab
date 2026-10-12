@@ -250,7 +250,7 @@ def test_remove_is_refused_for_a_file_a_running_graph_reads_in_this_process_or_a
         "import json, os, sys, time\nfrom pathlib import Path\nfrom oneframe.files import FileLock\n"
         "lock = FileLock(Path(sys.argv[1]))\nassert lock.acquire()\n"
         "Path(sys.argv[2]).write_text(json.dumps({'format': 1, 'sha256': [sys.argv[3]]}), encoding='utf-8')\n"
-        "print('reading', os.getpid(), flush=True)\ntime.sleep(60)"
+        "print('reading', os.getpid(), flush=True)\ntime.sleep(600)"
     )
     holder = subprocess.Popen(
         [sys.executable, "-c", script, str(held), str(other / READING), sha(OWN)],
@@ -269,7 +269,8 @@ def test_remove_is_refused_for_a_file_a_running_graph_reads_in_this_process_or_a
     finally:
         # The reader itself as well as the process started: on Windows a venv's python.exe is a
         # launcher, and the interpreter behind it, which holds the lock, may outlive it a moment.
-        if reader:
+        # Only while the launcher lives, whose handle keeps the reader's pid from being reused.
+        if reader and holder.poll() is None:
             with contextlib.suppress(OSError):
                 os.kill(reader, signal.SIGTERM)
         holder.kill()

@@ -192,13 +192,17 @@ def test_sniffing_reads_the_format_from_the_content(tmp_path: Path) -> None:
         assert sniff(tmp_path / name) == kind, name
 
 
-def test_a_newer_store_refuses_pin(tmp_path: Path, hub: Hosts, make_node: MakeNode, node_root: Path) -> None:
+def test_a_newer_store_refuses_pin(
+    tmp_path: Path, hub: Hosts, make_node: MakeNode, node_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     write_node(make_node, [{"name": "apple", "url": hub.add_file("/a.pt", DEPTH)}])
     store_file = Layout(tmp_path / "data").store_file
     store_file.parent.mkdir(parents=True)
     store_file.write_text('{"format": 5}', encoding="utf-8")
+    said = _said_by_tools(monkeypatch)
     assert run_pin(tmp_path, node_root) == 2
     assert store_file.read_text(encoding="utf-8") == '{"format": 5}' and hub.requests() == []
+    assert not _waiting(said)  # refused for what it is, at once: only `locked` is waited out
 
 
 def _when(condition: Callable[[], bool], then: Callable[[], object]) -> threading.Thread:
