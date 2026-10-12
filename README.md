@@ -23,7 +23,8 @@ The engine (node manifests, typed ports, graph planning, a content-addressed cac
 that runs nodes in-process or in their own runtime), the runtime manager (spec 001), fitting each
 node to the memory a machine has (spec 002), the Electron shell, and the checks. No real model has
 run yet: the only nodes are a photo source and a depth-to-points converter. The model store's core
-(spec 003) is done, checked against the real hosts, and the first real models come next.
+(spec 003) is done, checked against the real hosts; a clean-up comes next, then the first real
+models.
 [docs/handoff.md](docs/handoff.md) has the state and what comes next.
 
 ## Layout
@@ -34,8 +35,8 @@ run yet: the only nodes are a photo source and a depth-to-points converter. The 
 | `engine/` | The Python engine, `oneframe` (Python 3.14, managed by uv) |
 | `nodes/` | Built-in nodes, one folder each |
 | `runtimes/` | The Python environments heavy nodes run in, one folder each |
-| `contracts/` | Data both sides read: port types |
-| `scripts/` | `check-versions.js` |
+| `contracts/` | Data both sides read: port types, and the data root's layout |
+| `scripts/` | The checks (`check-versions.js`, `check-docs.js`, `test-guard.js`) and `tool.js`, which starts the command-line tools |
 | `docs/` | Architecture, writing a node, version policy |
 
 ## Running
