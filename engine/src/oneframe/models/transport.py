@@ -24,8 +24,10 @@ requirement 3; research.md's "Second round").
 - **Space.** Free space is checked before the first byte; a full disk ends the download as
   `no_space` and keeps the partial.
 - **Hosts.** Each attempt records the hosts it asks, in order (the source's, then each redirect's),
-  and the `downloading` and `retrying` phases name them: host names and ports only, never a path or
-  a query, since a signed URL's query is a credential. This is the record AC8's report reads.
+  and the `downloading` and `retrying` phases name them, as a failure's JSON does: host names and
+  ports only. No event or failure of a download holds a redirect's path or query, a credential
+  when signed.
+  This is the record AC8's report reads.
 - **TLS and proxies.** Certificates are checked against the operating system's trust store
   through truststore, imported only when a download starts; proxies come from the system
   (`urllib.request.getproxies`), through a CONNECT tunnel.
@@ -95,13 +97,18 @@ class Policy:
 
 
 class DownloadFailed(Failure):
-    """A file could not be downloaded; `kept` is how many bytes of it the partial still holds."""
+    """A file could not be downloaded; `kept` is how many bytes of it the partial still holds, and
+    `hosts` the hosts its last attempt asked, which its JSON names."""
 
     kind = "download"
 
     def __init__(self, message: str, reason: str | None = None, kept: int = 0, next: str | None = None):
         super().__init__(message, reason=reason, next=next)
         self.kept = kept
+        self.hosts: list[str] = []
+
+    def to_json(self, **extra: Any) -> dict[str, Any]:
+        return super().to_json(**({"hosts": self.hosts} if self.hosts else {}), **extra)
 
 
 class _Retry(Exception):
@@ -129,15 +136,17 @@ def system_proxy(host: str) -> str | None:
     return proxy
 
 
-def _host(parts: urllib.parse.SplitResult) -> str:
-    """A request's host as the journal records it: its name, and its port when not 443."""
-    name = (parts.hostname or "").lower()
-    return name if parts.port in (None, 443) else f"{name}:{parts.port}"
+def _origin(parts: urllib.parse.SplitResult) -> tuple[str, str, int]:
+    """A URL's scheme, host (in lower case) and port, 443 when it names none. A port that is not a
+    number up to 65535 raises ValueError."""
+    return parts.scheme, parts.hostname or "", parts.port or 443
 
 
-def _origin(url: str) -> tuple[str, str, int]:
-    parts = urllib.parse.urlsplit(url)
-    return parts.scheme, (parts.hostname or "").lower(), parts.port or 443
+def _host(origin: tuple[str, str, int]) -> str:
+    """An origin as the journal records it: the host, and the port when it is not 443."""
+    _scheme, name, port = origin
+    name = f"[{name}]" if ":" in name else name  # an IPv6 address
+    return name if port == 443 else f"{name}:{port}"
 
 
 def _wait_asked(headers: http.client.HTTPMessage) -> float:
@@ -425,6 +434,13 @@ class Transfer:
     # the whole download
 
     def run(self) -> tuple[str, int]:
+        try:
+            return self._fetch()
+        except DownloadFailed as exc:
+            exc.hosts = list(self.hosts)
+            raise
+
+    def _fetch(self) -> tuple[str, int]:
         self.partial.parent.mkdir(parents=True, exist_ok=True)
         self._resume()
         self._check_space()
@@ -537,26 +553,36 @@ class Transfer:
 
     def _attempt(self) -> None:
         url = self.source
-        source_origin = _origin(url)
+        source_origin: tuple[str, str, int] | None = None
         self.hosts = []
         for hop in range(self.policy.redirects + 1):
             parts = urllib.parse.urlsplit(url)
             if parts.scheme != "https" or not parts.hostname:
-                raise DownloadFailed(
-                    f"{self._where()} redirected to {url}, which is not https, and a download never "
-                    f"leaves https; {self.have} bytes were kept.",
+                raise DownloadFailed(  # its scheme and host only: a signed URL's path is a credential
+                    f"{self._where()} redirected to {parts.scheme}://{parts.hostname or ''}, which is "
+                    f"not https, and a download never leaves https; {self.have} bytes were kept.",
                     "tls",
                     self.have,
                 )
-            self.hosts.append(_host(parts))
+            try:
+                origin = _origin(parts)
+            except ValueError:
+                raise DownloadFailed(
+                    f"{self._where()} redirected to {parts.hostname} at an invalid port; "
+                    f"{self.have} bytes were kept.",
+                    None,
+                    self.have,
+                ) from None
+            source_origin = source_origin or origin
+            self.hosts.append(_host(origin))
             headers: dict[str, str] = {}
-            if _origin(url) == source_origin:
+            if origin == source_origin:
                 headers["User-Agent"] = USER_AGENT
             if self.have:
                 headers["Range"] = f"bytes={self.have}-"
             conn: http.client.HTTPSConnection | None = None
             try:
-                conn = self._connector.connect(parts.hostname, parts.port or 443)
+                conn = self._connector.connect(origin[1], origin[2])
                 path = parts.path or "/"
                 conn.request("GET", f"{path}?{parts.query}" if parts.query else path, headers=headers)
                 response = conn.getresponse()
@@ -580,7 +606,9 @@ class Transfer:
                         self.have,
                         "A proxy or antivirus that inspects https needs its certificate trusted.",
                     ) from exc
-                raise _Retry(f"{type(exc).__name__}: {exc}") from exc
+                # InvalidURL's text holds the path and query it refused, a credential if signed.
+                why = "" if isinstance(exc, http.client.InvalidURL) else f": {exc}"
+                raise _Retry(f"{type(exc).__name__}{why}") from exc
             finally:
                 if conn is not None:
                     conn.close()

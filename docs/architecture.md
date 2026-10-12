@@ -114,9 +114,9 @@ its job id, which every event carries ([spec 003](../specs/003-model-store/spec.
 
 `model.start` → per file `model.file` (its phase: `checking`, `downloading`, `retrying`,
 `verifying`, `placing`) and throttled `model.progress` → `model.done` | `model.failed` (the first
-failed file's kind and reason) | `model.stopped`, each listing every file's outcome. `downloading`
-and `retrying` name the hosts that attempt asked, in order: names and ports, never a path or a
-query, since a signed URL's are a credential. `models.stop`
+failed file's kind and reason) | `model.stopped`, each listing every file's outcome. `downloading`,
+`retrying` and a failed file name the hosts that attempt asked, in order: names and ports, never a
+path or a query, since a signed URL's are a credential. `models.stop`
 ends a job within 2 s and keeps its partial; one job runs at a time across processes.
 `models.list` answers what the store holds for each node, by shared files and by checkpoint, and
 what no node pins, without the network; `models.remove {node, checkpoint?}` or

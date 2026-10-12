@@ -255,8 +255,9 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
    more than 3600 s before running it again.
 4. Write the report AC8 describes, under `specs/003-model-store/reports/`, from the journals in
    the data root's `logs/journal/`: every line has its time (`at`). The last `downloading` event of
-   a file names the hosts it reached and the byte it started `from`; its `verifying` event follows
-   the last byte, so the two give its seconds and MB/s on one connection.
+   a file names the hosts it asked and the byte it started `from`; its `verifying` event follows
+   the last byte, so the two give its seconds and MB/s on one connection. Say whether the machine
+   goes through a proxy, which the hosts do not show.
 
 ## Decisions taken
 
@@ -359,8 +360,11 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
       refuses to read fails alone, kind `store`, and the job goes on.
 - **Hosts are recorded** (2026-10-12, before AC8 runs; reversible): each attempt keeps the hosts it
   asked, in order (the source's, then each redirect's), and the `downloading` and `retrying` phases
-  name them. Only names and ports: a signed URL's path or query is a credential, and journals go into
-  `npm run diagnose`. AC8's report needs the hosts reached, and the tools recorded none.
+  name them, as a failed file does. Only names and ports: a signed URL's path or query is a
+  credential, and journals go into `npm run diagnose`. AC8's report needs the hosts reached, and the
+  tools recorded none. A system proxy in between is not among them. From its review: a redirect to
+  `http` is named by scheme and host alone, a refused path (`InvalidURL`) by its error alone, and a
+  redirect to an invalid port fails that file, kind `download`, not the job.
 
 ## Out of scope
 
