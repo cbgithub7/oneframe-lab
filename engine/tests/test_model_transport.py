@@ -68,6 +68,22 @@ def test_a_hub_file_follows_its_signed_redirect_and_is_hashed(hosts: Hosts, tmp_
     assert hosts.requests("hub")[0].headers["accept-encoding"] == "identity"
 
 
+def test_each_attempt_names_the_hosts_it_asked_without_a_path_or_a_query(
+    hosts: Hosts, tmp_path: Path
+) -> None:
+    phases: list[tuple[str, dict[str, Any]]] = []
+    url = _hub_file(hosts)
+    hosts.fault(url, Status(503), Drop(at=400_000))
+    assert _transfer(url, tmp_path / SHA, phase=lambda n, d: phases.append((n, d))).run() == (SHA, len(DATA))
+    hub, cdn = (hosts.base(name).removeprefix("https://") for name in ("hub", "cdn"))
+    assert [(n, d["hosts"]) for n, d in phases] == [
+        ("retrying", [hub]),  # the 503 came from the hub, before any redirect
+        ("downloading", [hub, cdn]),
+        ("retrying", [hub, cdn]),  # dropped mid-body by the cdn
+        ("downloading", [hub, cdn]),
+    ]  # host and port alone: the cdn's single-use path is a credential
+
+
 @pytest.mark.parametrize(
     "fault",
     [

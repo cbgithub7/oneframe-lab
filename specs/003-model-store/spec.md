@@ -253,7 +253,10 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
 3. `npm run models:download -- --nodes specs/003-model-store/live <node> --all`; press Ctrl+C
    midway (`model.stopped`, the partial kept), run it again, and let it finish. For MiDaS, wait
    more than 3600 s before running it again.
-4. Write the report AC8 describes, under `specs/003-model-store/reports/`.
+4. Write the report AC8 describes, under `specs/003-model-store/reports/`, from the journals in
+   the data root's `logs/journal/`: every line has its time (`at`). The last `downloading` event of
+   a file names the hosts it reached and the byte it started `from`; its `verifying` event follows
+   the last byte, so the two give its seconds and MB/s on one connection.
 
 ## Decisions taken
 
@@ -354,6 +357,10 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
       counts as progress when it wrote any byte, wherever it landed. An `https://` proxy is refused
       with its reason (downloads reach an `http://` proxy through CONNECT). A file the system
       refuses to read fails alone, kind `store`, and the job goes on.
+- **Hosts are recorded** (2026-10-12, before AC8 runs; reversible): each attempt keeps the hosts it
+  asked, in order (the source's, then each redirect's), and the `downloading` and `retrying` phases
+  name them. Only names and ports: a signed URL's path or query is a credential, and journals go into
+  `npm run diagnose`. AC8's report needs the hosts reached, and the tools recorded none.
 
 ## Out of scope
 

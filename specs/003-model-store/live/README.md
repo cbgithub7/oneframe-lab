@@ -20,7 +20,9 @@ size or sha256): that is expected. The steps are in the spec's Verification sect
 2. Point `ONEFRAME_DATA` at a new, empty folder.
 3. `npm run models:download -- --nodes specs/003-model-store/live <node> --all`: press Ctrl+C midway,
    run it again, and let it finish. For MiDaS, wait more than 3600 s before running it again.
-4. Write the report AC8 describes, under `specs/003-model-store/reports/`.
+4. Write the report AC8 describes, under `specs/003-model-store/reports/`, from the journals in
+   the data root's `logs/journal/`: a file's last `downloading` event names the hosts it reached and
+   where it started, and its `verifying` event follows the last byte.
 
 MoGe-2 and MoGe-3 load the same way: one `model.pt` per repository, read with
 `torch.load(..., weights_only=True)` (microsoft/MoGe, `moge/model/v2.py`; v3's model inherits it).

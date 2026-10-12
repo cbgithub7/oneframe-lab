@@ -55,7 +55,9 @@ def _shown(event: dict[str, Any], last: dict[str, float]) -> None:
         share = f" ({100 * event['bytes'] / total:.0f}%)" if total else ""
         _print(f"  {event.get('file')}: {_mb(event['bytes'])} of {_mb(total)}{share}")
     elif kind in ("model.file", "pin.phase"):
-        detail = {k: v for k, v in event.items() if k in ("why", "wait_s", "bytes", "reason", "message")}
+        detail = {
+            k: v for k, v in event.items() if k in ("hosts", "why", "wait_s", "bytes", "reason", "message")
+        }
         extra = f" {json.dumps(detail)}" if detail else ""
         _print(f"  {event.get('file')}: {event.get('phase')}{extra}")
     elif kind in ("model.start",):

@@ -23,6 +23,9 @@ requirement 3; research.md's "Second round").
   whole file is hashed before it is placed and a mismatch keeps nothing.
 - **Space.** Free space is checked before the first byte; a full disk ends the download as
   `no_space` and keeps the partial.
+- **Hosts.** Each attempt records the hosts it asks, in order (the source's, then each redirect's),
+  and the `downloading` and `retrying` phases name them: host names and ports only, never a path or
+  a query, since a signed URL's query is a credential. This is the record AC8's report reads.
 - **TLS and proxies.** Certificates are checked against the operating system's trust store
   through truststore, imported only when a download starts; proxies come from the system
   (`urllib.request.getproxies`), through a CONNECT tunnel.
@@ -124,6 +127,12 @@ def system_proxy(host: str) -> str | None:
     if not proxy or urllib.request.proxy_bypass(host):
         return None
     return proxy
+
+
+def _host(parts: urllib.parse.SplitResult) -> str:
+    """A request's host as the journal records it: its name, and its port when not 443."""
+    name = (parts.hostname or "").lower()
+    return name if parts.port in (None, 443) else f"{name}:{parts.port}"
 
 
 def _origin(url: str) -> tuple[str, str, int]:
@@ -409,6 +418,7 @@ class Transfer:
         self._free = free_bytes
         self.have = 0
         self.received = 0  # bytes written by this transfer, wherever they landed: its progress
+        self.hosts: list[str] = []  # the hosts the current attempt asked, in order
         self._digest = hashlib.sha256()
         self.total: int | None = size
 
@@ -449,7 +459,15 @@ class Transfer:
                         "Check the connection, then download again; it resumes where it stopped.",
                     ) from None
                 wait = max(retry.wait_s, self._backoff(misses))
-                self._phase("retrying", {"attempt": misses + 1, "wait_s": round(wait, 2), "why": str(retry)})
+                self._phase(
+                    "retrying",
+                    {
+                        "attempt": misses + 1,
+                        "wait_s": round(wait, 2),
+                        "why": str(retry),
+                        "hosts": list(self.hosts),
+                    },
+                )
                 if self.stop.wait(wait):
                     raise Stopped() from None
         digest = self._digest.hexdigest()
@@ -520,6 +538,7 @@ class Transfer:
     def _attempt(self) -> None:
         url = self.source
         source_origin = _origin(url)
+        self.hosts = []
         for hop in range(self.policy.redirects + 1):
             parts = urllib.parse.urlsplit(url)
             if parts.scheme != "https" or not parts.hostname:
@@ -529,6 +548,7 @@ class Transfer:
                     "tls",
                     self.have,
                 )
+            self.hosts.append(_host(parts))
             headers: dict[str, str] = {}
             if _origin(url) == source_origin:
                 headers["User-Agent"] = USER_AGENT
@@ -656,7 +676,7 @@ class Transfer:
             if total_200 is not None:
                 self.total = total_200
         self._check_space()
-        self._phase("downloading", {"from": self.have, "total": self.total})
+        self._phase("downloading", {"from": self.have, "total": self.total, "hosts": list(self.hosts)})
         self._copy(response)
 
     def _copy(self, response: http.client.HTTPResponse) -> None:
