@@ -1,0 +1,88 @@
+{
+  "spec": "003-model-store",
+  "criterion": "AC8 report's findings 1 to 3, run again after their fixes",
+  "outcome": "passed",
+  "date": "2026-10-12",
+  "commit": "e8b2986db58a8c3a1ece5326d02f2293eee16c2f",
+  "machine": {
+    "os": "Microsoft Windows [Version 10.0.19045.6466]",
+    "gpu": "NVIDIA GeForce GTX 1070 (not used: nothing here needs a GPU)",
+    "compute_capability": "6.1",
+    "vram_mb": 8192,
+    "driver": "582.66",
+    "free_disk_gb": 341,
+    "other_gpu_processes": [
+      "explorer.exe",
+      "steamwebhelper.exe",
+      "SearchApp.exe",
+      "TextInputHost.exe",
+      "ShellExperienceHost.exe",
+      "WindowsTerminal.exe",
+      "claude.exe (2)",
+      "Discord.exe",
+      "brave.exe (2)",
+      "lghub_system_tray.exe",
+      "2 processes nvidia-smi could not name (Insufficient Permissions)"
+    ]
+  },
+  "tools": {
+    "node": "v24.21.0",
+    "uv": "0.12.20",
+    "git": "2.28.0.windows.1",
+    "npm": "12.0.1",
+    "python": "3.14.5 (engine)"
+  },
+  "where": "Claude desktop's Code tab. Checks, the repeated tests and the store holder ran in its Bash tool; the download ran in its Terminal panel (PowerShell), through npm, as the owner runs it. npm run diagnose named %LOCALAPPDATA%\\OneframeLab-dev as the dev root (no \\Packages\\), so this session wrote the real dev root, not a copy in the MSIX package's storage.",
+  "checks": {
+    "npm run check": "passed in 19 s (eslint, tsc, 38 node tests, docs check ok)",
+    "npm run engine:check": "passed in 203 s: ruff, format and pyright clean; pytest 557 passed, 4 skipped in 187.6 s",
+    "pytest engine -rs (a second full run)": "557 passed, 4 skipped in 212.6 s; the skips: two symlink tests (need a privilege on Windows), test_hardware.py:214 (on Windows the real reader answers), test_process.py:327 (SIGKILL)"
+  },
+  "commands": [
+    "npm install",
+    "uv sync --project engine --frozen",
+    "npm run diagnose",
+    "npm run check",
+    "npm run engine:check",
+    "uv run --project engine --frozen pytest <finding 1's test> <finding 2's test> -p no:cacheprovider  (10 times, then once more with -vv -rA)",
+    "uv run --project engine --frozen pytest engine -rs -p no:cacheprovider",
+    "uv run --project engine --frozen python -I hold-store.py  (a throwaway script outside the repo: takes the dev root's logs\\locks\\models.lock with oneframe.files.FileLock, as test_model_pin.py's holder does, and lets go 3 s after a tool's numbered folder appears under cache\\tmp\\)",
+    "npm run models:download -- --nodes specs/003-model-store/live live.moge2  (in the Terminal panel, while the holder held the store)"
+  ],
+  "results": {
+    "finding_1": {
+      "test": "engine/tests/test_model_catalog.py::test_remove_is_refused_for_a_file_a_running_graph_reads_in_this_process_or_another",
+      "before": "failed every time on this PC (AC8's report)",
+      "now": "passed 13 of 13: in both full runs and 11 runs alone (10 repeats, 0.94 to 8.02 s for the pair, and one verbose run)"
+    },
+    "finding_2": {
+      "test": "engine/tests/test_model_jobs.py::test_verify_drops_a_changed_file_so_the_next_download_fetches_only_it",
+      "before": "failed once under the full suite, passed 10 of 10 alone (AC8's report)",
+      "now": "passed 13 of 13: in both full runs and 11 runs alone"
+    },
+    "finding_3": {
+      "asked": "With the store held by another process, models:download prints the waiting line, then carries on once it is let go",
+      "outcome": "passed",
+      "times_utc": {
+        "holder_took_the_lock": "13:20:34.202",
+        "tool_started (its folder cache/tmp/0 appeared)": "13:21:44.344",
+        "holder_let_go": "13:21:47.378",
+        "journal_opened": "13:21:47.440",
+        "model.start": "13:21:47.447",
+        "model.done": "13:21:47.448"
+      },
+      "waited_s": "about 3 (from the tool's start to the holder letting go), within the tool's 10 s",
+      "printed": [
+        "Another process is using the model store; waiting up to 10 s for it.",
+        "download live.moge2: 1 files",
+        "  weights: present",
+        "model.done"
+      ],
+      "network": "none: the MoGe-2 file (1,323,815,904 bytes) was already present in the dev root's store from AC8's pins, checked read-only with Store.presence before the run; the journal has no attempt and asked no host",
+      "left_behind": "cache/tmp/ empty after the run",
+      "not_run_by_hand": "Ctrl+C while the tool waits (covered by test_ctrl_c_while_a_tool_waits_for_the_store_ends_it_with_nothing_started, which passed in both full runs here), and the case finding 3 came from: Ctrl+C on a live download and the same download typed again at once, which needs a real download"
+    },
+    "notes": "A first try at running the holder in a Terminal panel tab was cancelled by the panel (it sends Ctrl+C when it does not see a long command start within 2 s); the holder let go on that Ctrl+C at once, before any tool ran. The holder then ran from the Bash tool instead. The second full pytest run had ended before the holder that counted took the lock."
+  },
+  "local_changes": "none"
+}
