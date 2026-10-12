@@ -1,17 +1,27 @@
 name: checks
 
+# A branch is checked through its pull request, and main on every push: one run per commit. Any
+# branch can still be run by hand (workflow_dispatch).
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer commit to the same pull request makes its older run moot; main's runs all finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   checks:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # A full run takes about 3 minutes on Windows; a hang ends here, not after GitHub's 6 hours.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +52,7 @@ jobs:
   versions:
     name: versions follow the policy
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
