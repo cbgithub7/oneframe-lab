@@ -9,6 +9,13 @@
 // The data root is the one the tool will open: `--data <folder>` when given, else ONEFRAME_DATA,
 // else the dev root. Ctrl+C reaches the tool itself, which treats it as a Stop; this script waits
 // for the tool to end and exits with its code.
+//
+// npm waits for this script on Linux (checked), but not on Windows: there it passes Ctrl+C on by
+// ending the script's shell outright (@npmcli/run-script kills it, and libuv's kill is
+// TerminateProcess; read from their sources, not run on Windows) and gives the prompt back while
+// the tool is still stopping, so its last lines can print after the prompt (spec 003, AC8's report,
+// finding 3). Nothing here can change that. The model tools wait for a store still held instead;
+// the other tools do not.
 
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";

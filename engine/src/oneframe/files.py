@@ -9,9 +9,9 @@ temporary.
 
 `FileLock` is an operating-system lock on a file under `logs/locks/`: `fcntl.flock` or
 `msvcrt.locking`, never `lockf`, which lets one process take the same lock twice. The operating
-system releases it when its holder dies, however it dies, so a lock is never left behind and a lock
-file is never deleted (deleting one would let two processes each hold a lock on a different file of
-the same name).
+system releases it when its holder dies, however it dies (on Windows, a moment after it has ended),
+so a lock is never left behind and a lock file is never deleted (deleting one would let two
+processes each hold a lock on a different file of the same name).
 """
 
 from __future__ import annotations

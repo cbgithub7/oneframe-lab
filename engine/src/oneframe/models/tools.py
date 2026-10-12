@@ -7,6 +7,12 @@ Each opens its data root as the engine does (`--data`, else the dev root), keeps
 and works in its own folder under `cache/tmp/`. Ctrl+C is a Stop, as `models.stop` is: the download
 ends within a moment, keeping its partial, and the next one resumes it.
 
+A tool that finds the store held by another process says so and waits up to LOCK_WAIT_S for it to
+let go before it is refused `locked`; Ctrl+C ends that wait with nothing started. On Windows, npm
+gives the prompt back as soon as Ctrl+C reaches it, before the tool it ran has finished stopping,
+so a download typed again at once would otherwise meet the store still held (spec 003, AC8's
+report, finding 3). The engine's own `models.*` methods still refuse at once.
+
 Exit codes: 0 done, 1 failed, 2 refused before starting, 130 stopped.
 """
 
@@ -23,16 +29,22 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__
 from oneframe.errors import Failure, Stopped
+from oneframe.files import is_free
 from oneframe.journal import Emit, engine_crash, journalled
 from oneframe.layout import Layout, RootRefused, open_root
-from oneframe.models.jobs import Jobs, claim_store, hub_endpoint
+from oneframe.models.jobs import Jobs, claim_store, hub_endpoint, store_lock
 from oneframe.models.pin import find_manifest, pin
-from oneframe.models.store import Store
+from oneframe.models.store import Store, StoreRefused
 from oneframe.registry import discover
 from oneframe.scratch import for_tool
 
 STOPPED = 130
 PROGRESS_EVERY_S = 2.0
+# How long a tool waits for a store another process holds. A tool stopped a moment ago usually lets
+# go within 2 s; one stopped inside a TLS handshake or a name lookup can take longer, and then the
+# refusal stands, as it did before the wait.
+LOCK_WAIT_S = 10.0
+LOCK_POLL_S = 0.1
 
 
 def _print(text: str) -> None:
@@ -69,6 +81,27 @@ def _shown(event: dict[str, Any], last: dict[str, float]) -> None:
             why = f" ({row['failure']['message']})" if row.get("failure") else ""
             _print(f"  {row.get('name')}: {row.get('outcome')}{why}")
         _print(f"{kind}: {event.get('message', '')}".rstrip(": "))
+
+
+def _claimed[T](store: Store, claim: Callable[[], T]) -> T | None:
+    """`claim()`, which takes the store's lock. When another process holds it, say so, wait for it
+    to let go, and claim again, refused `locked` as before if it still has not. None when Ctrl+C
+    ends the wait, with nothing started."""
+    try:
+        return claim()
+    except StoreRefused as exc:
+        if exc.reason != "locked":
+            raise
+    lock = store_lock(store).path
+    try:
+        _print(f"Another process is using the model store; waiting up to {LOCK_WAIT_S:g} s for it to finish.")
+        deadline = time.monotonic() + LOCK_WAIT_S
+        while not is_free(lock) and time.monotonic() < deadline:
+            time.sleep(LOCK_POLL_S)
+    except KeyboardInterrupt:
+        _print("Stopped while waiting; nothing was started.")
+        return None
+    return claim()
 
 
 def _wait(thread: threading.Thread, stop: Callable[[], object]) -> bool:
@@ -108,10 +141,12 @@ def download(
 
     jobs = Jobs(data, say, transfer)
     try:
-        jobs.download(registry.get(node), checkpoints)
+        started = _claimed(jobs.store, lambda: jobs.download(registry.get(node), checkpoints))
     except Failure as exc:
         _print(f"{exc} {exc.next or ''}".strip())
         return 2
+    if started is None:
+        return STOPPED
     thread = jobs._thread
     assert thread is not None
     _wait(thread, jobs.stop)
@@ -126,10 +161,12 @@ def pin_tool(data: Path, roots: list[Path], node: str, transfer: dict[str, Any] 
         return 2
     store = Store(data)
     try:
-        held = claim_store(store, None)
+        held = _claimed(store, lambda: claim_store(store, None))
     except Failure as exc:
         _print(f"{exc} {exc.next or ''}".strip())
         return 2
+    if held is None:
+        return STOPPED
     stop = threading.Event()
     result: dict[str, Any] = {}
     last: dict[str, float] = {}

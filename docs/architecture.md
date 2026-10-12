@@ -83,7 +83,8 @@ pointing every home and temporary folder into a sandbox; Electron's folders rest
 Every kept file says its format, and an older app leaves a newer one alone. A format goes up only
 when an older app would misread or damage the file, and the change that raises it brings the
 migration; a new file or folder is not a format change. Processes on one root
-lock what they work on, and the operating system releases a lock when its holder dies.
+lock what they work on, and the operating system releases a lock when its holder dies (on Windows,
+a moment after).
 
 **One door into the page.** The page is sandboxed, has no Node, and can call only the engine
 methods `ENGINE_METHODS` lists. A compromised page can ask the engine to run a graph; it cannot
@@ -117,7 +118,9 @@ its job id, which every event carries ([spec 003](../specs/003-model-store/spec.
 failed file's kind and reason) | `model.stopped`, each listing every file's outcome. `downloading`,
 `retrying` and a failed file name the hosts that attempt asked, in order: names and ports, never a
 path or a query, since a signed URL's are a credential. `models.stop`
-ends a job within 2 s and keeps its partial; one job runs at a time across processes.
+ends a job within 2 s and keeps its partial; one job runs at a time across processes. A job lets go
+of the store before its ending is sent, so the next may be asked for on hearing it; its events may
+then come before that ending, and a listener tells jobs apart by `job`.
 `models.list` answers what the store holds for each node, by shared files and by checkpoint, and
 what no node pins, without the network; `models.remove {node, checkpoint?}` or
 `{unpinned: [...]}` deletes only that, keeping a file another node pins, and is refused while the

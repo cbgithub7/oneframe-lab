@@ -12,7 +12,9 @@ every file's outcome. `model.failed` takes the kind and reason of the first file
 file that fails does not stop the others. Every event also goes to the job's journal.
 
 One job runs at a time across processes: a second is refused, `busy` in this engine and `locked`
-from another process. The lock is the store's, so remove and pin take it too.
+from another process. The lock is the store's, so remove and pin take it too. A job lets go of the
+lock and its place before its ending is sent, so a next job asked for on hearing it starts; that
+job's events may then come before the ending, and a listener tells jobs apart by `job`.
 """
 
 from __future__ import annotations
@@ -216,18 +218,40 @@ class Jobs:
         crashed: Callable[[BaseException], dict[str, Any]] = lambda exc: engine_crash(  # noqa: E731
             exc, event="model.failed", job=job.id, files=[f.to_json() for f in job.files]
         )
+        ending: list[dict[str, Any]] = []  # journalled first, sent once the store is free
+
+        def say(event: dict[str, Any]) -> None:
+            if not (ending and event is ending[0]):
+                self.say(event)
+
         try:
-            with journalled(self.say, self.store.layout.journals, what, crashed) as emit:
-                self._work(job, emit)
+            with journalled(say, self.store.layout.journals, what, crashed) as emit:
+                ending.append(self._work(job, emit))
+                emit(ending[0])  # the journal's last line, not yet sent
+                self._free(job, held)  # whoever hears the ending may start the next job at once
+                self.say(ending[0])  # in the block: a listener that raises is journalled as a bug
         except Exception as exc:  # a bug: the journal ends with it, and the page hears of it too
             LOGGER.exception("model job %s crashed", job.id)
-            self.say(crashed(exc))
+            try:
+                self._free(job, held)
+            finally:
+                self.say(crashed(exc))
         finally:
-            held.release()
-            with self._lock:
-                self._job = None
+            self._free(job, held)
 
-    def _work(self, job: Job, emit: Emit) -> None:
+    def _free(self, job: Job, held: FileLock) -> None:
+        """Let go of the store's lock and of this job's place, together under the lock `_start`
+        claims both with, so it never sees one free without the other. The place only while it is
+        still this job's: a next job may have started on hearing this one end. Safe to repeat."""
+        with self._lock:
+            try:
+                held.release()
+            finally:
+                if self._job is job:
+                    self._job = None
+
+    def _work(self, job: Job, emit: Emit) -> dict[str, Any]:
+        """Run the job, sending everything but its ending, which it returns for `_run` to send."""
         base = {"job": job.id, "what": job.what, "node": job.node}
         emit(
             {
@@ -281,21 +305,18 @@ class Jobs:
                 if outcome.outcome == "waiting":
                     outcome.outcome = "stopped"
             files = [f.to_json() for f in job.files]
-            emit(
-                {
-                    **base,
-                    "event": "model.stopped",
-                    "files": files,
-                    "message": "Stopped; a download resumes where it stopped.",
-                }
-            )
-        elif first is not None:
-            emit({**base, "event": "model.failed", **first, "files": files})
-        else:
-            done: dict[str, Any] = {**base, "event": "model.done", "files": files}
-            if job.what == "verify":
-                done["dropped"] = [f.sha256 for f in job.files if f.outcome == "dropped"]
-            emit(done)
+            return {
+                **base,
+                "event": "model.stopped",
+                "files": files,
+                "message": "Stopped; a download resumes where it stopped.",
+            }
+        if first is not None:
+            return {**base, "event": "model.failed", **first, "files": files}
+        done: dict[str, Any] = {**base, "event": "model.done", "files": files}
+        if job.what == "verify":
+            done["dropped"] = [f.sha256 for f in job.files if f.outcome == "dropped"]
+        return done
 
     def _phase(self, job: Job, outcome: Outcome, emit: Emit, phase: str, **detail: Any) -> None:
         emit(

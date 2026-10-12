@@ -3,8 +3,11 @@ requirement 7's list). Each refusal says its reason; nothing outside the store i
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
+import signal
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -12,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, MakeNode, wait_free
 
 from oneframe.files import lock_file
 from oneframe.layout import Layout
@@ -242,32 +245,39 @@ def test_remove_is_refused_for_a_file_a_running_graph_reads_in_this_process_or_a
     layout = Layout(engine.data)
     other = layout.tmp / "99"
     other.mkdir(parents=True)
+    held = lock_file(layout.locks, "tmp-99")
     script = (
-        "import json, sys, time\nfrom pathlib import Path\nfrom oneframe.files import FileLock\n"
+        "import json, os, sys, time\nfrom pathlib import Path\nfrom oneframe.files import FileLock\n"
         "lock = FileLock(Path(sys.argv[1]))\nassert lock.acquire()\n"
-        "Path(sys.argv[2]).write_text(json.dumps({'format': 1, 'sha256': [sys.argv[3]]}))\n"
-        "print('reading', flush=True)\ntime.sleep(60)"
+        "Path(sys.argv[2]).write_text(json.dumps({'format': 1, 'sha256': [sys.argv[3]]}), encoding='utf-8')\n"
+        "print('reading', os.getpid(), flush=True)\ntime.sleep(60)"
     )
     holder = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            script,
-            str(lock_file(layout.locks, "tmp-99")),
-            str(other / READING),
-            sha(OWN),
-        ],
+        [sys.executable, "-c", script, str(held), str(other / READING), sha(OWN)],
         stdout=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
     )
+    reader = 0
     try:
-        assert holder.stdout is not None and holder.stdout.readline().strip() == "reading"
+        assert holder.stdout is not None
+        said, pid = holder.stdout.readline().split()
+        assert said == "reading"
+        reader = int(pid)
         error = call(engine, "models.remove", node="test.other")["error"]
         assert (error["reason"], error["files"]) == ("in_use", [sha(OWN)])
     finally:
+        # The reader itself as well as the process started: on Windows a venv's python.exe is a
+        # launcher, and the interpreter behind it, which holds the lock, may outlive it a moment.
+        if reader:
+            with contextlib.suppress(OSError):
+                os.kill(reader, signal.SIGTERM)
         holder.kill()
-        holder.wait()
-    # once that process has ended, its list says nothing
+        holder.wait(timeout=30)
+        if holder.stdout is not None:
+            holder.stdout.close()
+    # once that process has ended and the system has let go of its lock, its list says nothing
+    wait_free(held)
     done = call(engine, "models.remove", node="test.other")["result"]
     assert [r["sha256"] for r in done["removed"]] == [sha(OWN)]
     assert json.loads((other / READING).read_text(encoding="utf-8"))["sha256"] == [sha(OWN)]

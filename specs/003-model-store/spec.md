@@ -1,9 +1,12 @@
 # 003: Model store (core)
 
-Status: merged 2026-10-11 in [PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16): AC1 to AC7
-by tests in CI on Windows and Ubuntu; AC8 pending, on the owner's Windows PC. Approved (core, 2026-10-03; evidence in [research.md](research.md), the
-owner's decisions in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 to fit spec
-006 as built, acceptance criteria included (Decisions taken).
+Status: done (every acceptance criterion verified 2026-10-12: AC1 to AC7 by tests in CI on Windows
+and Ubuntu, merged 2026-10-11 in [PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16); AC8
+against the real hosts on the owner's Windows PC, [report](reports/2026-10-12-ac8-live-hosts.md),
+merged in [PR #20](https://github.com/cbgithub7/oneframe-lab/pull/20); the report's three findings
+fixed after it, Decisions taken). Approved (core, 2026-10-03; evidence in [research.md](research.md),
+the owner's decisions in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 to fit
+spec 006 as built, acceptance criteria included (Decisions taken).
 Owner approval: 2026-10-03; the amendment, 2026-10-05
 
 Built on [spec 006](../006-foundations/spec.md): its layout module, failure model, locks and journal.
@@ -59,7 +62,8 @@ what the first models need: Depth Pro (one `.pt` from Apple's server), and MoGe-
       Its events go to spec 006's journal.
     - **One job at a time.** One job (download or verify) runs at a time across processes; another
       is refused, `busy` in this engine and `locked` from another process. A file that fails does
-      not stop the others.
+      not stop the others. A job lets go of the store before its ending is sent, so a next job
+      asked for on hearing it starts.
     - **Stop.** `models.stop` sends `model.stopped` within 2 s of the engine reading it, even on a
       stalled connection, and keeps the partial. A Stop is not a failure (spec 006).
     - **Each attempt starts from the source URL;** redirects are never reused. Dropped, reset or
@@ -240,7 +244,9 @@ CA. It can inject faults, and it logs every request (tasks.md lists each fault).
 
 ## Tests
 
-- Added: AC1 to AC7.
+- Added: AC1 to AC7. After AC8, for its report's findings: a next job asked for on hearing the
+  last one end, a job that crashes, and the model tools' wait for a held store
+  (`test_model_jobs.py`, `test_model_pin.py`).
 - Removed: none.
 
 ## Verification
@@ -365,6 +371,31 @@ from the checkout, for each manifest in `specs/003-model-store/live/`:
   tools recorded none. A system proxy in between is not among them. From its review: a redirect to
   `http` is named by scheme and host alone, a refused path (`InvalidURL`) by its error alone, and a
   redirect to an invalid port fails that file, kind `download`, not the job.
+- **AC8 passed** (2026-10-12, [report](reports/2026-10-12-ac8-live-hosts.md)): parallel ranges stay
+  a later spec's (Out of scope). One connection ran at 34 to 88 MB/s, but the line's own capacity
+  was not measured, so the speeds do not show that more connections would gain anything.
+- **The AC8 report's findings, fixed** (2026-10-12, each reversible; none is in the transport AC8
+  tests):
+    - Finding 1: AC6's in-use test assumed Windows frees a killed process's lock at once. It now
+      waits for the lock (up to 30 s, as spec 006's lock tests do) and ends the reader's own
+      process as well as the one it started. Why Windows is late is not verified there: a venv's
+      `python.exe` is a launcher whose interpreter ends after it, and Windows lets go of a dead
+      process's locks "depending upon available system resources" (LockFileEx). The product was
+      right.
+    - Finding 2: a job sent its ending before it let go of the store's lock and its place, so a
+      next job asked for on hearing it could be refused `busy`. Now the ending is journalled, the
+      lock and the place go together, and then the ending is sent; a job that crashes lets go before
+      its crash is sent. A next job's events may therefore come before the last one's ending:
+      listeners tell jobs apart by `job`.
+    - Finding 3: under `npm run` on Windows, Ctrl+C gives the prompt back before the stopped tool
+      has ended. From npm's and libuv's sources (not run on Windows): run-script passes Ctrl+C on by
+      killing the script's shell, which libuv does with TerminateProcess. Nothing in this repo can
+      make npm wait. So both model tools, when refused `locked`, say so and wait up to 10 s
+      (`LOCK_WAIT_S`) for the store, then claim it again; Ctrl+C ends the wait with nothing started.
+      This amends requirement 8's "does what the method does" and "refused, not queued" for these
+      two tools only: the engine's methods still refuse at once. It is preventive, since AC8 never
+      met `locked`. A Stop inside a TLS handshake or a name lookup can hold the store longer than
+      10 s, and then the refusal stands; `bench:runtime` and the other tools do not wait.
 
 ## Out of scope
 

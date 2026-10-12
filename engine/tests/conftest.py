@@ -27,6 +27,7 @@ import pytest
 from fixtures.hosts import Hosts
 
 from oneframe.cache import Cache
+from oneframe.files import is_free
 from oneframe.registry import Registry, discover
 from oneframe.scheduler import Scheduler
 
@@ -133,6 +134,16 @@ def wait_gone(pid: int, seconds: float = 10) -> bool:
             return False
         time.sleep(0.05)
     return True
+
+
+def wait_free(*paths: Path, seconds: float = 30) -> None:
+    """Wait until nobody holds these locks. Windows lets go of a dead process's locks a little after
+    it has ended ("depends upon available system resources", LockFileEx), so a test that ends a
+    holder waits for its locks rather than assuming them free at once."""
+    deadline = time.monotonic() + seconds
+    while not all(is_free(p) for p in paths):
+        assert time.monotonic() < deadline, "a lock outlived its holder"
+        time.sleep(0.1)
 
 
 @pytest.fixture

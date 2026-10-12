@@ -92,7 +92,9 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 - `npm run models:pin -- [--nodes <folder>] <node>`: resolve a node's file sources to commits, fetch
   each file through the model store, and write its size, sha256, format and `gated` into the manifest
 - `npm run models:download -- [--nodes <folder>] <node> [--checkpoint c | --all]`: fetch a node's
-  files into the store, as `models.download` does; Ctrl+C stops it and the next run resumes
+  files into the store, as `models.download` does; Ctrl+C stops it and the next run resumes. Both
+  model tools wait up to 10 s for a store another process still holds (on Windows, npm gives the
+  prompt back before a stopped tool has ended)
 - `npm run diagnose`: one file in the data root's `reports/` to hand over when something failed:
   versions, machine, runtimes, settings, what was learned, the latest journals and logs, with the
   user's name taken out of every path and hub tokens scrubbed

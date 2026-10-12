@@ -22,9 +22,9 @@ person presses Download.
 The engine (node manifests, typed ports, graph planning, a content-addressed cache, and a scheduler
 that runs nodes in-process or in their own runtime), the runtime manager (spec 001), fitting each
 node to the memory a machine has (spec 002), the Electron shell, and the checks. No real model has
-run yet: the only nodes are a photo source and a depth-to-points converter. The model store (spec
-003) is being specified, and the first real models follow it. [docs/handoff.md](docs/handoff.md)
-has the state and what comes next.
+run yet: the only nodes are a photo source and a depth-to-points converter. The model store's core
+(spec 003) is done, checked against the real hosts, and the first real models come next.
+[docs/handoff.md](docs/handoff.md) has the state and what comes next.
 
 ## Layout
 
