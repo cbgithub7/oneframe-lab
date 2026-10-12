@@ -8,6 +8,7 @@ import errno
 import hashlib
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +67,53 @@ def test_a_hub_file_follows_its_signed_redirect_and_is_hashed(hosts: Hosts, tmp_
     assert "user-agent" not in cdn.headers  # no header but Range follows a redirect to another host
     assert hosts.requests("hub")[0].headers["user-agent"].startswith("oneframe-lab/")
     assert hosts.requests("hub")[0].headers["accept-encoding"] == "identity"
+
+
+def test_each_attempt_names_the_hosts_it_asked_without_a_path_or_a_query(
+    hosts: Hosts, tmp_path: Path
+) -> None:
+    phases: list[tuple[str, dict[str, Any]]] = []
+    url = _hub_file(hosts)
+    hosts.fault(url, Status(503), Drop(at=400_000))
+    assert _transfer(url, tmp_path / SHA, phase=lambda n, d: phases.append((n, d))).run() == (SHA, len(DATA))
+    hub, cdn = (hosts.base(name).removeprefix("https://") for name in ("hub", "cdn"))
+    assert [(n, d["hosts"]) for n, d in phases] == [
+        ("retrying", [hub]),  # the 503 came from the hub, before any redirect
+        ("downloading", [hub, cdn]),
+        ("retrying", [hub, cdn]),  # dropped mid-body by the cdn
+        ("downloading", [hub, cdn]),
+    ]  # host and port alone: the cdn's single-use path is a credential
+
+
+def test_a_host_is_recorded_by_its_name_and_its_port_when_not_443() -> None:
+    def host(url: str) -> str:
+        return transport._host(transport._origin(urllib.parse.urlsplit(url)))
+
+    assert host("https://HuggingFace.co/x?signature=1") == "huggingface.co"
+    assert host("https://cdn.example:443/x") == "cdn.example"
+    assert host("https://user:secret@cdn.example:8443/x") == "cdn.example:8443"
+    assert host("https://[2001:db8::1]:8443/x") == "[2001:db8::1]:8443"
+
+
+def test_a_failure_or_a_retry_names_the_hosts_asked_and_never_a_redirects_path(
+    hosts: Hosts, tmp_path: Path
+) -> None:
+    files, cdn = (hosts.base(name).removeprefix("https://") for name in ("files", "cdn"))
+    url = hosts.add_file("/depth_pro.pt", DATA)
+    hosts.fault(url, RedirectTo(hosts.base("plain") + "/depth_pro.pt?signature=secret"))
+    with _failed("tls") as failed:
+        _transfer(url, tmp_path / SHA).run()
+    assert "secret" not in str(failed.value) and failed.value.to_json()["hosts"] == [files]
+    hosts.fault(url, RedirectTo("https://127.0.0.1:99999/depth_pro.pt"))  # no port: no engine bug
+    with _failed(None) as failed:
+        _transfer(url, tmp_path / SHA).run()
+    assert failed.value.to_json()["hosts"] == [files]
+    # http.client refuses a space in a path, naming the path: the record keeps only that it refused.
+    phases: list[tuple[str, dict[str, Any]]] = []
+    hosts.fault(url, RedirectTo(hosts.base("cdn") + "/depth_pro.pt?signature=se cret"))
+    assert _transfer(url, tmp_path / SHA, phase=lambda n, d: phases.append((n, d))).run() == (SHA, len(DATA))
+    name, detail = phases[0]
+    assert (name, detail["why"], detail["hosts"]) == ("retrying", "InvalidURL", [files, cdn])
 
 
 @pytest.mark.parametrize(

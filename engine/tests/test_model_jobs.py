@@ -166,6 +166,18 @@ def test_a_download_is_a_job_that_fetches_each_file_once(
         assert len(hub.served(data)) == 1, data[:10]
 
 
+def test_the_journal_names_the_hosts_each_file_was_fetched_from(
+    engine: Engine, events: Events, pinned_node: dict[str, str], hub: Hosts
+) -> None:
+    run_job(engine, events, "models.download", node="test.files", checkpoints=["large"])
+    home, files, cdn = (hub.base(name).removeprefix("https://") for name in ("hub", "files", "cdn"))
+    journal = next(Layout(engine.data).journals.glob("*model-download*.ndjson"))  # the only job
+    lines = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()]
+    fetched = {e["file"]: e["hosts"] for e in lines if e.get("phase") == "downloading"}
+    # A small file on the hub is sent to the hub's own cache; a large one elsewhere, to the cdn.
+    assert fetched == {"config": [home, home], "large": [files, cdn]}
+
+
 def test_checkpoints_are_checked(engine: Engine, pinned_node: dict[str, str]) -> None:
     reply = call(engine, "models.download", node="test.files", checkpoints=["huge"])
     assert reply["error"]["reason"] == "bad_params" and "huge" in reply["error"]["message"]

@@ -53,7 +53,8 @@ Ubuntu, AC8 waiting for the owner's Windows PC and the real hosts):
 - a transport on `http.client` that heals itself (fresh redirects each attempt, retries, stalls,
   strict ranges, the pinned size before the body, https only, truststore, the system's proxy). Stop
   is seen by the reader in slices of 0.1 s: shutting a socket down from another thread does not
-  wake a read on Windows (CI, 2026-10-11);
+  wake a read on Windows (CI, 2026-10-11). Each attempt journals the hosts it asked (names and
+  ports only), which AC8's report reads;
 - `models.download`, `models.verify`, `models.stop`, `models.list` and `models.remove`, one job at a
   time across processes; none is on the page's method list yet;
 - runs read only what is present, through `ctx.file`; a missing file fails with kind `files` before
