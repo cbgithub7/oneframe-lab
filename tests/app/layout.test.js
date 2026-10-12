@@ -63,8 +63,11 @@ test("the engine keeps its bytecode under the root, and is told which app starte
 });
 
 test("the command-line tools write no bytecode into the checkout", () => {
+  // Each runs through scripts/tool.js, which starts Python with -B (tests/app/tool.test.js). A tool
+  // started any other way could write bytecode beside the engine's code, so none may be.
   const scripts = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")).scripts;
-  for (const [name, command] of Object.entries(/** @type {Record<string, string>} */ (scripts))) {
-    if (/python\b.*-m oneframe\./.test(command)) assert.match(command, /python -B -m oneframe\./, name);
-  }
+  const tools = Object.entries(/** @type {Record<string, string>} */ (scripts)).filter(([, command]) =>
+    /\boneframe\.\w/.test(command));
+  assert.ok(tools.length >= 5, "the npm scripts that run an engine tool");
+  for (const [name, command] of tools) assert.match(command, /^node scripts\/tool\.js oneframe\.\w/, name);
 });
