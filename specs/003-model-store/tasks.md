@@ -63,3 +63,6 @@ task makes stale is updated in that task.
 - [x] 12. The AC8 report's three findings (Decisions taken): the in-use test waits for a killed
   reader's lock; a job lets go of the store before its ending is sent; the model tools wait for a
   store another process still holds.
+- [x] 13. **The owner, on Windows: the findings run again.** Findings 1 and 2's tests, the model
+  tools' wait for a held store, and Ctrl+C then the same download again. Done 2026-10-12:
+  [2026-10-12-ac8-findings-local.md](reports/2026-10-12-ac8-findings-local.md), passed.

@@ -48,7 +48,9 @@ Done and green (local, and GitHub Actions on Windows and Ubuntu):
   [PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16), AC1 to AC7 by tests in CI on Windows
   and Ubuntu; AC8 passed against the real hosts on the owner's Windows PC on 2026-10-12
   ([report](../specs/003-model-store/reports/2026-10-12-ac8-live-hosts.md)); the report's three
-  findings fixed after it, not yet run again on that PC):
+  findings fixed after it, and the fixes passed on that PC the same day
+  ([report](../specs/003-model-store/reports/2026-10-12-ac8-findings-local.md),
+  [PR #22](https://github.com/cbgithub7/oneframe-lab/pull/22))):
     - the files a node reads, declared in its manifest (`hf` at a full commit, or an `https` URL,
       with size, sha256, format and `gated`; checkpoints of a `files_by` param), and checked all at
       once;
@@ -187,7 +189,7 @@ with one owner approval, or a time-boxed spike that ends in a report.
 | --- | --- | --- | --- |
 | 0 | Fixes from the review | none | done 2026-10-03, on this branch, each its own commit with a test |
 | 1 | Foundations: one data root, nothing written outside it, versioned formats, locks, one failure model, a journal and `diagnose`, cache keys from code | [006](../specs/006-foundations/spec.md) | done: merged 2026-10-05 ([PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7)); local checks passed on Windows 2026-10-11 ([report](../specs/006-foundations/reports/2026-10-11-local.md)) |
-| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | done: merged 2026-10-11 ([PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16)), AC1–AC7 by tests in CI; AC8 passed against the real hosts on Windows 2026-10-12 ([report](../specs/003-model-store/reports/2026-10-12-ac8-live-hosts.md)), its three findings fixed after it; core approved 2026-10-03 ([research](../specs/003-model-store/research.md)), amended 2026-10-05 |
+| 2 | Model store, core: pinned files, one copy per sha256, a download that heals itself, runs offline through `ctx.file` | [003](../specs/003-model-store/spec.md) | done: merged 2026-10-11 ([PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16)), AC1–AC7 by tests in CI; AC8 passed against the real hosts on Windows 2026-10-12 ([report](../specs/003-model-store/reports/2026-10-12-ac8-live-hosts.md)), its three findings fixed after it and the fixes passed there the same day ([report](../specs/003-model-store/reports/2026-10-12-ac8-findings-local.md)); core approved 2026-10-03 ([research](../specs/003-model-store/research.md)), amended 2026-10-05 |
 | 3 | First light: Depth Pro and MoGe-3 (vitl, chosen by the owner 2026-10-03) run from the app, two variants side by side in a minimal viewer, with a photo picked in a main-process dialog and a result protocol the page can read (a large mesh or splat included); MoGe-3 may not run on the 1070 (see Known) | 005 (first part) | next: no spec yet; it starts from the pins AC8 wrote in `specs/003-model-store/live/` |
 | 3b | The model store's view per runtime, in the Hugging Face layout (`refs/main`, hard links, `ctx.snapshot`), which TripoSR is the first to need | 003 (view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
@@ -257,10 +259,13 @@ Known from the review, to be settled by the specs above or later ones:
   from a terminal started outside it; `npm run diagnose` names the root's real path. A packaged
   Oneframe Lab built as MSIX would have its writes redirected the same way.
 - **Windows, from spec 003's AC8 report** ([findings](../specs/003-model-store/reports/2026-10-12-ac8-live-hosts.md),
-  fixed after it). Windows lets go of a killed process's locks a moment after it has ended, so a
-  test that ends a lock's holder waits for the lock (`wait_free` in `engine/tests/conftest.py`).
-  Under `npm run`, Ctrl+C gives the prompt back before the tool has stopped; only the model tools
-  allow for it, by waiting for a store still held.
+  fixed after it; the fixes passed on the owner's PC,
+  [report](../specs/003-model-store/reports/2026-10-12-ac8-findings-local.md)). Windows lets go of a
+  killed process's locks a moment after it has ended, so a test that ends a lock's holder waits for
+  the lock (`wait_free` in `engine/tests/conftest.py`). Under `npm run`, Ctrl+C gives the prompt
+  back before the tool has stopped; only the model tools allow for it, by waiting for a store still
+  held. On the PC, a download started again during a Stop waited and went on 90 ms after the
+  stopped one let go; the early prompt itself did not come back in that run's two Stops.
 - **The footprint test can fail on another program's write** (not yet taken on: spec 003 closed
   without it; any session may). On PR #11's Windows CI (2026-10-11), `test_ac2_nothing_is_written_outside_the_root` found a
   new `Mozilla` folder in the runner's real `AppData\Roaming`, almost surely the runner's own
