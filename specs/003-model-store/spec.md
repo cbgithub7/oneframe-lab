@@ -4,7 +4,9 @@ Status: done (every acceptance criterion verified 2026-10-12: AC1 to AC7 by test
 and Ubuntu, merged 2026-10-11 in [PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16); AC8
 against the real hosts on the owner's Windows PC, [report](reports/2026-10-12-ac8-live-hosts.md),
 merged in [PR #20](https://github.com/cbgithub7/oneframe-lab/pull/20); the report's three findings
-fixed after it, Decisions taken). Approved (core, 2026-10-03; evidence in [research.md](research.md),
+fixed after it, Decisions taken, and the fixes passed on that PC,
+[report](reports/2026-10-12-ac8-findings-local.md), merged in
+[PR #22](https://github.com/cbgithub7/oneframe-lab/pull/22)). Approved (core, 2026-10-03; evidence in [research.md](research.md),
 the owner's decisions in [the review](../../docs/reviews/2026-10-02.md)). Amended 2026-10-05 to fit
 spec 006 as built, acceptance criteria included (Decisions taken).
 Owner approval: 2026-10-03; the amendment, 2026-10-05
