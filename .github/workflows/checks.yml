@@ -11,10 +11,12 @@ on:
 permissions:
   contents: read
 
-# A newer commit to the same pull request makes its older run moot; main's runs all finish.
+# A newer commit to the same pull request makes its older run moot, so it is cancelled. Every other
+# run (main's pushes, a run by hand) is its own group: GitHub keeps one run waiting per group and
+# cancels a waiting one when another arrives, so sharing a group would skip commits on main.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:

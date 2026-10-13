@@ -7,7 +7,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { SPEC_MAX_LINES, backtickPaths, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
+import { SPEC_MAX_LINES, backtickPaths, checkDocs, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
 import { allowedRemovals, isTestFile, removedTests, testNames } from "../../scripts/test-guard.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -52,6 +52,30 @@ test("a spec being worked on is held to its length; a finished one is history", 
   assert.match(String(specTooLong(spec("approved (2026-10-12)", 300))), /at most 200/);
   assert.equal(specTooLong(spec("done (merged in PR #9)", 400)), null);
   assert.equal(specTooLong(spec("dropped", 400)), null);
+});
+
+test("the docs check fails a long spec being worked on, and a link to nothing, in a real tree", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "oneframe-docs-"));
+  try {
+    const write = (/** @type {string} */ rel, /** @type {string} */ text) => {
+      mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      writeFileSync(path.join(root, rel), text);
+    };
+    const body = (/** @type {string} */ status) =>
+      [`# 007: Title`, "", `Status: ${status}`, ...Array.from({ length: SPEC_MAX_LINES }, () => "line")].join("\n");
+    write("specs/007-long/spec.md", body("draft"));
+    write("specs/003-old/spec.md", body("done (merged)"));
+    write("docs/handoff.md", "See [the roadmap](roadmap.md).\n");
+    assert.deepEqual(checkDocs(root).problems, [
+      "docs/handoff.md: link to roadmap.md, which does not exist",
+      `specs/007-long/spec.md: is ${SPEC_MAX_LINES + 3} lines; a spec being worked on is at most ${SPEC_MAX_LINES}`,
+    ]);
+    write("docs/roadmap.md", "Parked.\n");
+    write("specs/007-long/spec.md", body("done (merged)"));
+    assert.deepEqual(checkDocs(root).problems, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 /** A throwaway git repo whose checks pass or fail on command, for running the stop hook.

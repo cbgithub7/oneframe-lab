@@ -82,13 +82,19 @@ export function linkTargets(text) {
     .map((t) => t.split("#")[0]);
 }
 
-function main() {
-  const docs = [...["AGENTS.md", "CLAUDE.md", "README.md"].map((f) => path.join(ROOT, f)),
-    ...markdownFiles(path.join(ROOT, "docs")), ...markdownFiles(path.join(ROOT, "specs")),
-    ...markdownFiles(path.join(ROOT, ".claude", "skills"))];
+/**
+ * Every problem in the docs under `root`: a link or a backticked path to nothing, and a spec being
+ * worked on that is too long.
+ * @param {string} root
+ * @returns {{ docs: number, problems: string[] }}
+ */
+export function checkDocs(root) {
+  const docs = [...["AGENTS.md", "CLAUDE.md", "README.md"].map((f) => path.join(root, f)).filter((f) => existsSync(f)),
+    ...[path.join(root, "docs"), path.join(root, "specs"), path.join(root, ".claude", "skills")]
+      .filter((d) => existsSync(d)).flatMap((d) => markdownFiles(d))];
   const problems = [];
   for (const file of docs) {
-    const rel = path.relative(ROOT, file).split(path.sep).join("/");
+    const rel = path.relative(root, file).split(path.sep).join("/");
     if (rel.startsWith("specs/_template/")) continue;
     const text = readFileSync(file, "utf8");
     for (const target of linkTargets(text)) {
@@ -101,12 +107,17 @@ function main() {
     if (rel.startsWith("specs/")) continue; // specs name files that are still to be built
     for (const p of backtickPaths(text)) {
       const prefix = literalPrefix(p);
-      if (prefix && !existsSync(path.join(ROOT, prefix))) problems.push(`${rel}: names ${p}, and ${prefix} does not exist`);
-      else if (prefix === p && p.endsWith("/") && !statSync(path.join(ROOT, p)).isDirectory()) {
+      if (prefix && !existsSync(path.join(root, prefix))) problems.push(`${rel}: names ${p}, and ${prefix} does not exist`);
+      else if (prefix === p && p.endsWith("/") && !statSync(path.join(root, p)).isDirectory()) {
         problems.push(`${rel}: names ${p} as a folder, which it is not`);
       }
     }
   }
+  return { docs: docs.length, problems };
+}
+
+function main() {
+  const { docs, problems } = checkDocs(ROOT);
   if (problems.length) {
     for (const p of problems) console.log(p);
     console.log(`\ncheck-docs: ${problems.length} problem(s). Update the docs in the same change as the code, and keep a`
@@ -114,7 +125,7 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  console.log(`check-docs: ok (${docs.length} documents).`);
+  console.log(`check-docs: ok (${docs} documents).`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
