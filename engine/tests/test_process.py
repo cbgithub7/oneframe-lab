@@ -15,7 +15,14 @@ from pathlib import Path
 import pytest
 from conftest import Events, MakeNode, wait_gone
 
-from oneframe.executors import CHILD, EngineExecutor, NodeError, ProcessExecutor, child_env, died_message
+from oneframe.executors import (
+    EngineExecutor,
+    NodeError,
+    ProcessExecutor,
+    child_command,
+    child_env,
+    died_message,
+)
 from oneframe.graph import Graph
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
@@ -132,7 +139,7 @@ def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
     job_path = tmp_path / "job.json"
     job_path.write_text(json.dumps(job), encoding="utf-8")
     proc = subprocess.Popen(
-        [sys.executable, "-u", str(CHILD), str(job_path)],
+        child_command(Path(sys.executable), job_path),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         env=child_env(None, {}),
@@ -238,6 +245,16 @@ def test_a_node_fails_in_its_own_words(tmp_path: Path) -> None:
         with pytest.raises(NodeError) as info:
             executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
         assert (info.value.kind, str(info.value)) == ("node", words)
+
+
+def test_any_other_error_is_reported_with_its_type(tmp_path: Path) -> None:
+    """An error the node did not word for the person keeps its type, so whoever reads it knows what
+    went wrong, in a runtime child and in the engine's process alike."""
+    body = "raise ValueError('expected 3 channels, got 4')\n"
+    for executor in (ProcessExecutor(Path(sys.executable)), EngineExecutor()):
+        with pytest.raises(NodeError) as info:
+            executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
+        assert (info.value.kind, str(info.value)) == ("error", "ValueError: expected 3 channels, got 4")
 
 
 def test_a_failure_carries_the_peaks_of_the_run(tmp_path: Path) -> None:

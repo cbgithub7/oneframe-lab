@@ -21,7 +21,7 @@ import pytest
 
 from oneframe import child
 from oneframe.child import NetworkForbidden, NodeFailed, Stopped, classify, is_oom
-from oneframe.executors import CHILD, child_env
+from oneframe.executors import child_command, child_env
 
 
 class OutOfMemoryError(RuntimeError):
@@ -68,6 +68,19 @@ def test_ac6_out_of_memory_in_its_common_forms(exc: BaseException) -> None:
 def test_ac6_an_unrelated_error_is_an_error() -> None:
     assert classify(RuntimeError("expected input with shape [1, 3, 518, 518]")) == "error"
     assert classify(_raised(RuntimeError("outer"), ValueError("inner"))) == "error"
+
+
+def test_a_nodes_own_words_never_change_its_kind() -> None:
+    """A node that refuses ahead of time says why in plain words; "out of memory" or a hub's error
+    name in them must not make the engine retry, learn a false peak, or call it a download."""
+    for words in (
+        "At 12000 pixels the processor would run out of memory; choose a smaller resolution.",
+        "The weights are missing (LocalEntryNotFound); press Download first.",
+        "OutOfMemory guard: the photo is too large.",
+    ):
+        assert classify(NodeFailed(words)) == "node" and not is_oom(NodeFailed(words)), words
+    # What the node failed while handling still counts.
+    assert classify(_raised(NodeFailed("Could not finish."), MemoryError(), context=True)) == "oom"
 
 
 def test_the_other_kinds_are_kept() -> None:
@@ -165,7 +178,7 @@ def _run_child(
         extra["PYTHONPATH"] = str(site)
         extra.setdefault("FAKE_TORCH_LOG", str(tmp_path / "torch.log"))
     done = subprocess.run(
-        [sys.executable, "-u", str(CHILD), str(job_path)],
+        child_command(Path(sys.executable), job_path),
         capture_output=True,
         text=True,
         encoding="utf-8",

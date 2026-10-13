@@ -313,10 +313,17 @@ def _chain(exc: BaseException) -> list[BaseException]:
     return out
 
 
+def _causes(exc: BaseException) -> list[BaseException]:
+    """The chain without the node's own words: a NodeFailed's message is what the node told the
+    person ("this would run out of memory at 12000 pixels"), never evidence of what happened. What
+    it was raised from, or while handling, still counts."""
+    return [error for error in _chain(exc) if not isinstance(error, NodeFailed)]
+
+
 def is_oom(exc: BaseException) -> bool:
     """Out of memory in any of its common forms: torch's OutOfMemoryError, a CUDA, cuBLAS or cuDNN
     allocation failure, Python's MemoryError, or any of these as the cause of another error."""
-    for error in _chain(exc):
+    for error in _causes(exc):
         text = str(error).lower()
         if isinstance(error, MemoryError) or "OutOfMemory" in type(error).__name__:
             return True
@@ -355,7 +362,7 @@ def classify(exc: BaseException) -> str:
     """The kinds the engine acts on: oom is retried with a smaller fit; the rest stop the run."""
     if isinstance(exc, Stopped):
         return "stopped"
-    for error in _chain(exc):
+    for error in _causes(exc):
         text = f"{type(error).__name__}: {error}"
         if isinstance(error, NetworkForbidden) or any(needle in text for needle in _FETCH_TEXT):
             return "fetch"
@@ -567,7 +574,9 @@ class NodeContext:
             raise Stopped()
 
     def fail(self, message: str) -> NoReturn:
-        """Ends the run with kind `node` and this message, shown to the person as it is written."""
+        """Ends the run with kind `node` and this message, shown to the person as it is written. Called
+        while handling an out-of-memory error (or a download), the run keeps that kind, so the engine
+        can answer it; the message's own words never change the kind."""
         raise NodeFailed(message)
 
 
