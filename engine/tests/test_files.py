@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from conftest import wait_free
 
+from oneframe import files
 from oneframe.files import (
     FileLock,
     LockBusy,
@@ -38,10 +39,10 @@ def test_a_write_cut_short_leaves_the_old_file_whole(tmp_path: Path, monkeypatch
     target = tmp_path / "node.json"
     target.write_text('{"id": "old"}\n', encoding="utf-8")
 
-    def interrupted(_fd: int) -> None:
+    def interrupted(_source: Path, _target: Path) -> None:  # written, and stopped before it lands
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("oneframe.files.os.fsync", interrupted)
+    monkeypatch.setattr(files, "_replace", interrupted)
     with pytest.raises(KeyboardInterrupt):
         write_text(target, '{"id": "new"}\n')
     assert target.read_text(encoding="utf-8") == '{"id": "old"}\n'

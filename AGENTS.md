@@ -14,7 +14,7 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 1. **Spec first, in one document.** Anything larger than a small fix has a folder in `specs/` with
    `spec.md`, which holds the plan too, and `tasks.md` ([specs/README.md](specs/README.md)). A spec
    is a contract: aim for 150 lines, never more than 200 (the docs check fails a longer one that is
-   not done), and at most 8 acceptance criteria, none hiding a list of further checks. Mechanisms
+   not done or dropped), and at most 8 acceptance criteria, none hiding a list of further checks. Mechanisms
    belong in code and tests, and how the work went belongs in the PR. An agent reviews the draft;
    the owner approves it once, before code is written. The spec, not the chat, is the source of
    truth.

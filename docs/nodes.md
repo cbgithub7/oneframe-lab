@@ -107,7 +107,8 @@ Every output in the manifest must be declared with `ctx.output` before `run` ret
 writes only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`:
 the run fails with kind `node`, and the person reads the message as written, whatever words it uses.
 Called while handling an out-of-memory error, it keeps kind `oom`, so the engine can retry with a
-smaller fit; any other error is reported with its type. Stop ends a runtime
+smaller fit; to refuse for good instead, call it after the `except` block. Any other error is
+reported with its type. Stop ends a runtime
 node's process at once; a node in the engine's process is stopped only where it calls
 `ctx.check_stop()`. Node code never imports the engine: in a runtime, `import models` finds the
 runtime's package of that name. A run is cached by its inputs and output-affecting params, so it

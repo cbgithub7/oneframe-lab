@@ -80,7 +80,7 @@ numbers the reviews use; steps 1 and 2 (specs 006 and 003) are done.
   is unverified, and spec 005's to check. If MoGe-3 does not run on the 1070, step 3 uses MoGe-2
   there (the owner, 2026-10-11).
 - **The footprint test can fail on another program's write** (once, a runner's own Firefox);
-  step 2 takes it on.
+  step 2b takes it on.
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"
   is a convention. Protecting it, with the CI checks required, comes before Dependabot's minor
   updates may merge themselves.
