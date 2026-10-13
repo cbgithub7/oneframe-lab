@@ -18,6 +18,10 @@ One gate: the owner approves the spec once, design included. A spec is a contrac
 - **Length.** Aim for 150 lines. One not yet done is never longer than 200: `npm run check` fails it.
 - **Acceptance criteria.** At most 8, each one check. A criterion that hides a list of further
   checks is several criteria.
+- **The limits are on the document, never on the design.** Work that needs more than one spec
+  holds becomes two (or more), each with its own criteria and approval, in an order that leaves the
+  checks green between them. Never leave out, merge away or weaken what the design needs to fit the
+  count: a criterion dropped to make room is a check nobody runs.
 - **Mechanisms** (retry counts, timeouts, edge cases) belong in code and tests; writing them in the
   spec as well only makes two places to keep true.
 - **Decisions taken** are one line each: the choice and its reason.

@@ -14,10 +14,11 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 1. **Spec first, in one document.** Anything larger than a small fix has a folder in `specs/` with
    `spec.md`, which holds the plan too, and `tasks.md` ([specs/README.md](specs/README.md)). A spec
    is a contract: aim for 150 lines, never more than 200 (the docs check fails a longer one that is
-   not done or dropped), and at most 8 acceptance criteria, none hiding a list of further checks. Mechanisms
-   belong in code and tests, and how the work went belongs in the PR. An agent reviews the draft;
-   the owner approves it once, before code is written. The spec, not the chat, is the source of
-   truth.
+   not done or dropped), and at most 8 acceptance criteria, none hiding a list of further checks.
+   The limits are on the document, never on the design: work that needs more becomes two specs, each
+   standing alone, and nothing the design needs is cut or bent to fit. Mechanisms belong in code and
+   tests, and how the work went belongs in the PR. An agent reviews the draft; the owner approves it
+   once, before code is written. The spec, not the chat, is the source of truth.
 2. **Agents decide what can be undone.** An agent makes reversible choices itself and logs each
    under "Decisions taken" in the spec, in one line with its reason. The owner decides product
    behaviour, licences and money, the platform matrix, data formats that are hard to change, and
