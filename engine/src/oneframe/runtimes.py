@@ -53,7 +53,9 @@ _ID = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _BUILD = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _VERSION = re.compile(r"^\d+(?:\.\d+)*$")
-_PYTHON = re.compile(r"^3\.\d+(?:\.\d+)?$")
+_PYTHON = re.compile(r"^3\.(\d+)(?:\.\d+)?$")
+# The oldest Python a runtime may use: child.py runs in it, and is started with -P (3.11).
+MIN_PYTHON_MINOR = 11
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -379,8 +381,11 @@ def parse(data: dict[str, Any], folder: Path, source: str = DEFINITION) -> Runti
     title = _text(data, "title", problems)
     summary = _text(data, "summary", problems, required=False)
     python = _text(data, "python", problems)
-    if python and not _PYTHON.match(python):
+    matched = _PYTHON.match(python) if python else None
+    if python and not matched:
         problems.append(f"python {python!r} should be a CPython version like 3.12")
+    elif matched and int(matched.group(1)) < MIN_PYTHON_MINOR:
+        problems.append(f"python {python!r} is older than 3.{MIN_PYTHON_MINOR}, which node runs need")
     builds = _builds(data.get("builds"), problems)
     extensions = _extensions(data.get("extensions"), folder, problems)
     sources = _sources(data.get("sources"), problems)

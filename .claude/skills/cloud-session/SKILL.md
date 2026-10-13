@@ -42,7 +42,7 @@ a broken environment by installing other versions.
 
 ## 4. The active spec and its stage
 
-List `specs/*/spec.md` and the table in `docs/handoff.md`. The owner's message usually names the
+List `specs/*/spec.md` and the "Next, in order" table in `docs/handoff.md`. The owner's message usually names the
 spec; if it does not, the active spec is the lowest-numbered one that is not `done` or `dropped`.
 Its stage decides the next action:
 
@@ -93,7 +93,8 @@ Your job ends when the PR is open.
 
 1. Run `/code-review` on the branch. Fix what it finds, or answer each finding in the PR.
 2. Update the docs in the same change if anything structural moved: `AGENTS.md`,
-   `docs/architecture.md`, `docs/handoff.md` (the spec's status), and the spec's `Status:`.
+   `docs/architecture.md`, `docs/handoff.md` (the spec's status), `docs/roadmap.md` (an item
+   the spec took on is deleted there), and the spec's `Status:`.
 3. Push the branch and open the PR against `main` using `.github/pull_request_template.md`:
     - each acceptance criterion with how it was checked;
     - hardware criteria as "pending hardware", with the `/local-session` commands;

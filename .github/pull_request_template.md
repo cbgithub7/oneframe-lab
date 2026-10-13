@@ -13,11 +13,16 @@ Each criterion from the spec, ticked only with how it was checked.
 - [ ] `npm run check` and `npm run engine:check` pass locally, and CI is green
 - [ ] `/code-review` was run on this branch, and its findings are fixed or answered below
 - [ ] Hardware steps: report committed under `specs/NNN-name/reports/`, or "none needed"
-- [ ] Docs, AGENTS.md and the handoff updated if anything structural changed
+- [ ] Docs, AGENTS.md, the handoff and the roadmap updated if anything structural changed
 
 ## Tests removed
 
 None, or each one listed under "- Removed" in the spec's Tests section, with the reason.
+
+## How the work went
+
+What was found and changed on the way (review findings, what was tried): it belongs here, not in
+the spec.
 
 ## Unverified
 

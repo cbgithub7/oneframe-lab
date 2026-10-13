@@ -12,13 +12,17 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 ## How work is done
 
 1. **Spec first, in one document.** Anything larger than a small fix has a folder in `specs/` with
-   `spec.md`, which holds the plan too, and `tasks.md` ([specs/README.md](specs/README.md)). Aim
-   for about 150 lines and at most 8 acceptance criteria: mechanisms belong in code and tests, not
-   written twice. An agent reviews the draft; the owner approves it once, before code is written.
-   The spec, not the chat, is the source of truth.
+   `spec.md`, which holds the plan too, and `tasks.md` ([specs/README.md](specs/README.md)). A spec
+   is a contract: aim for 150 lines, never more than 200 (the docs check fails a longer one that is
+   not done or dropped), and at most 8 acceptance criteria, none hiding a list of further checks.
+   The limits are on the document, never on the design: work that needs more becomes two specs, each
+   standing alone, and nothing the design needs is cut or bent to fit. Mechanisms belong in code and
+   tests, and how the work went belongs in the PR. An agent reviews the draft; the owner approves it
+   once, before code is written. The spec, not the chat, is the source of truth.
 2. **Agents decide what can be undone.** An agent makes reversible choices itself and logs each
-   under "Decisions taken" in the spec. The owner decides product behaviour, licences and money,
-   the platform matrix, data formats that are hard to change, and these rules.
+   under "Decisions taken" in the spec, in one line with its reason. The owner decides product
+   behaviour, licences and money, the platform matrix, data formats that are hard to change, and
+   these rules.
 3. **Spikes answer feasibility.** A question such as "does this model run on Windows" is a spike:
    time-boxed, no spec, a throwaway branch, ending in a report the owner reads.
 4. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
@@ -36,9 +40,16 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 
 ## Rules
 
+- **The graph is the person's.** The product is an editor, a playground where a person builds
+  graphs. A graph that ships with the app is a starting point saved as data, like one the person
+  saves; nothing in the engine or the page depends on one existing, or works around the graph to
+  do what a graph would. Tests build their own nodes and graphs.
 - **Nothing hard-coded.** No code outside a node's folder names a node, a model, or a
   pipeline. The engine and app learn what exists from `nodes/*/node.json`; ports come from
   `contracts/port-types.json`. A new model is a new folder, never an edit to the engine or app.
+- **One way to do each thing.** Before writing a helper, find the one that exists: starting and
+  stopping a process, a child's environment, writing a file in one step, hashing, downloading,
+  paths under the root. A second way to do the same thing needs its reason in the spec.
 - **Any card that can run it.** The app targets every machine that can run a model, from no GPU
   to the largest cards. The owner's GTX 1070 is the only card we can test on; it is never the
   target. No default, margin, threshold, formula or model choice is tuned to it, and nothing
@@ -65,16 +76,20 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   the latest release before adding any dependency.
 - **One data root.** Everything the app, the engine, a runtime child or a command-line tool writes
   goes under the data root (or the model store), in the folder for its kind: nothing in the install
-  folder, the repo, temp, Roaming, the registry or `PATH`, except a file the person names (a bench
-  report with `--out`), a dev checkout's engine environment and its tools' own download caches
-  (npm's, and the Electron binary's), the graphics driver's own shader cache, and on Linux what
-  Chromium keeps in the system temporary folder while the app runs (its single-instance socket,
-  which may not fit a root's path or file system, and a moment's temporary file). Every file the
-  app keeps says its format; a newer one is never overwritten, and a change of format ships with
-  its migration. Deletes stay inside a folder marked as the root's or the store's
-  (until packaging adds the mark, inside the folders the layout names), and never touch the
-  person's own work. A dev checkout and a packaged app never share a root. `oneframe/layout.py` names every
-  path under it and `app/main/paths.js` mirrors it; `contracts/layout.json` holds the two equal.
+  folder, the repo, temp, Roaming, the registry or `PATH`. `oneframe/layout.py` names every path
+  under it, `app/main/paths.js` mirrors it, and `contracts/layout.json` holds the two equal. The
+  only exceptions:
+    - a file the person names (a bench report with `--out`);
+    - a dev checkout's engine environment, and its tools' own download caches (npm's, and the
+      Electron binary's);
+    - the graphics driver's own shader cache;
+    - on Linux, while the app runs, Chromium's single-instance socket (which may not fit a root's
+      path or file system) and a moment's temporary file, in the system temporary folder.
+- **Kept files say their format.** A newer one is never overwritten, and a change of format ships
+  with its migration.
+- **Deletes stay inside the root or the store.** Only inside a folder marked as the root's or the store's (until
+  packaging adds the mark, inside the folders the layout names), never the person's own work.
+- **Separate roots.** A dev checkout and a packaged app never share one.
 - **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
   generated result measured.
 - `encoding="utf-8"` on every text open in Python; Windows defaults to cp1252.
@@ -82,7 +97,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 ## Commands
 
 - `npm run check`: eslint, tsc (JSDoc types, `// @ts-check` in every JS file), node tests, and
-  the docs check (every repo path the docs name exists)
+  the docs check (every repo path the docs name exists, and no spec being worked on is over 200
+  lines)
 - `npm run engine:check`: ruff, ruff format, pyright, pytest
 - `npm run versions`: version policy
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it

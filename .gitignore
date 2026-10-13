@@ -8,3 +8,5 @@ dist/
 out/
 *.log
 .DS_Store
+# A one-step write's temporary, left only when its process was killed outright (oneframe/files.py)
+.*.????????????.tmp

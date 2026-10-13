@@ -78,12 +78,34 @@ def write_json(path: Path, data: dict[str, Any], *, key: str = "format", indent:
     found = _on_disk_format(path, key)
     if found is not None and found > ours:
         raise NewerFormat(path, found, ours)
-    path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(data, indent=indent, separators=None if indent else (",", ":"), ensure_ascii=False)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex[:12]}.tmp")
+    write_text(path, text + "\n")
+
+
+_TEMPORARY = re.compile(r"^\..+\.[0-9a-f]{12}\.tmp$")
+
+
+def temporary_for(path: Path) -> Path:
+    """Where write_text puts the new file before it replaces `path`: beside it, on its volume."""
+    return path.with_name(f".{path.name}.{uuid.uuid4().hex[:12]}.tmp")
+
+
+def is_temporary(name: str) -> bool:
+    """A file write_text was writing when its process was killed outright, which nothing may read
+    (a node's code key skips it)."""
+    return bool(_TEMPORARY.match(name))
+
+
+def write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` in one step: a reader, or an error or Ctrl+C partway, sees the old file
+    or the new one, never part of either. Lines end in LF on every system, so a file's bytes (and a
+    manifest's digest) do not depend on where it was written. A process killed outright can leave
+    the temporary behind (is_temporary)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = temporary_for(path)
     try:
-        with temporary.open("x", encoding="utf-8") as handle:
-            handle.write(text + "\n")
+        with temporary.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
         _replace(temporary, path)

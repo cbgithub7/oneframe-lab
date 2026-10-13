@@ -34,7 +34,7 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Model store | `oneframe/models/` | The files nodes read ([spec 003](../specs/003-model-store/spec.md)): declared in manifests (`schema.py`), kept once each by sha256 under `models/` (`store.py`), fetched on `http.client` by a transport that heals itself (`transport.py`), as download and verify jobs (`jobs.py`), checked before a run (`runs.py`), listed and removed (`catalog.py`), pinned (`pin.py`); the two command-line tools (`tools.py`) |
 | Archives | `oneframe/archives.py` | Pinned downloads kept only when their sha256 matches; unpacking that stays inside its folder |
 | Layout | `oneframe/layout.py`, `app/main/paths.js`, `contracts/layout.json` | The data root, defined once, and every path under it; the root file and its format |
-| Files | `oneframe/files.py` | The one JSON writer, which never replaces a newer format; operating-system locks |
+| Files | `oneframe/files.py` | Writing a file in one step (`write_text`), the one JSON writer, which never replaces a newer format; operating-system locks |
 | Scratch | `oneframe/scratch.py` | Each process's locked folder under `cache/tmp/`; a start removes only dead processes' folders |
 | Journal | `oneframe/journal.py` | Every event of a run or an install, kept in a journal; journals and step logs pruned |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
@@ -45,6 +45,20 @@ Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
 | Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js` | Electron's folders under the root, the window, the engine process, and the one IPC door, which answers with values |
 
 ## Why it is shaped this way
+
+**A playground for graphs.** The product is an editor where a person builds graphs from nodes and
+compares what they make. A graph that ships with the app is only a starting point, saved as data;
+the engine and the page work on whatever graph the person builds, and depend on none. General node
+editors exist (ComfyUI, for one), so this one earns its place by what its graphs mean, not by the
+editor itself (the [review of 2026-10-12](reviews/2026-10-12.md), decision 1):
+
+- every model family in its own environment, behind a process boundary, so families that pin
+  conflicting libraries never meet;
+- each node fitted to the memory this machine has free, on any machine from no GPU to the largest
+  cards;
+- typed geometry: facets on every port, so disparity never becomes metric depth without a
+  converter, and a trust label on every result;
+- no network during a run.
 
 **Nodes are data.** Every earlier attempt to support "one more model" by adding a branch to the
 engine ended with an engine that knew every model by name. Here, the engine knows port types and
@@ -210,11 +224,5 @@ engine itself is never blamed on a node: kind `engine`, with its trace in `detai
 
 ## What comes next
 
-1. First light: Depth Pro and MoGe from the app, reading their weights through `ctx.file`.
-2. The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to
-   need; then import, a movable store, a queue and the page's part.
-3. Keep models loaded: a long-lived worker per runtime in place of one child process per run.
-4. The first model nodes: two depth models, a segmenter, an object generator, a view synthesiser
-   and a reconstructor, enough for both loops, each with a memory model measured with
-   `bench:fit`.
-5. Workspace UI: variants side by side, a graph editor, the three.js + Spark viewer.
+The order of work, and what is in its way, is in [handoff.md](handoff.md); what is parked is in
+[roadmap.md](roadmap.md).

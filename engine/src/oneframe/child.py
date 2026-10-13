@@ -1,11 +1,13 @@
 """The far side of a node run, and the context every node is handed.
 
-    <runtime python> -u child.py <job.json>
+    <runtime python> -P -u child.py <job.json>
 
 A heavy node runs in its own runtime -- a separate interpreter with its own packages, where
 nothing of the engine is installed. This file is therefore standard library only, and is started
-by path. The engine imports the same file for nodes it runs in its own process, so a node's code
-sees one `NodeContext` wherever it runs.
+by path. `-P` keeps this file's folder off the import path: it holds the engine's own modules
+(`models`, `graph`, `errors`, ...), and a node's `import models` must find the runtime's package,
+never the engine's. The engine imports the same file for nodes it runs in its own process, so a
+node's code sees one `NodeContext` wherever it runs.
 
 Each of these guards against something model code does. All of them are in place before any node
 code is imported:
@@ -43,7 +45,7 @@ import time
 import traceback
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, NoReturn, TypeVar
 
 _OUT: Any = None
 _WRITE = threading.Lock()
@@ -61,7 +63,8 @@ class NetworkForbidden(ConnectionError):
 
 
 class NodeFailed(RuntimeError):
-    """A node reports a failure it understands, in words meant for the person running it."""
+    """A node reports a failure it understands, in words meant for the person running it. Node code
+    raises it through `ctx.fail(message)`, since a runtime cannot import this file."""
 
 
 class Stopped(RuntimeError):
@@ -310,10 +313,17 @@ def _chain(exc: BaseException) -> list[BaseException]:
     return out
 
 
+def _causes(exc: BaseException) -> list[BaseException]:
+    """The chain without the node's own words: a NodeFailed's message is what the node told the
+    person ("this would run out of memory at 12000 pixels"), never evidence of what happened. What
+    it was raised from, or while handling, still counts."""
+    return [error for error in _chain(exc) if not isinstance(error, NodeFailed)]
+
+
 def is_oom(exc: BaseException) -> bool:
     """Out of memory in any of its common forms: torch's OutOfMemoryError, a CUDA, cuBLAS or cuDNN
     allocation failure, Python's MemoryError, or any of these as the cause of another error."""
-    for error in _chain(exc):
+    for error in _causes(exc):
         text = str(error).lower()
         if isinstance(error, MemoryError) or "OutOfMemory" in type(error).__name__:
             return True
@@ -343,11 +353,16 @@ def _release(device: str) -> None:
         pass
 
 
+def describe(exc: BaseException) -> str:
+    """A failure's message: a node's own words as it wrote them, anything else with its type."""
+    return str(exc) if isinstance(exc, NodeFailed) else f"{type(exc).__name__}: {exc}"
+
+
 def classify(exc: BaseException) -> str:
     """The kinds the engine acts on: oom is retried with a smaller fit; the rest stop the run."""
     if isinstance(exc, Stopped):
         return "stopped"
-    for error in _chain(exc):
+    for error in _causes(exc):
         text = f"{type(error).__name__}: {error}"
         if isinstance(error, NetworkForbidden) or any(needle in text for needle in _FETCH_TEXT):
             return "fetch"
@@ -553,8 +568,16 @@ class NodeContext:
         return self._should_stop()
 
     def check_stop(self) -> None:
+        """Raises Stopped when Stop was pressed. A node in a runtime never sees it: Stop ends its
+        process at once. A node in the engine's process is stopped only by this."""
         if self._should_stop():
             raise Stopped()
+
+    def fail(self, message: str) -> NoReturn:
+        """Ends the run with kind `node` and this message, shown to the person as it is written. Called
+        while handling an out-of-memory error (or a download), the run keeps that kind, so the engine
+        can answer it; the message's own words never change the kind."""
+        raise NodeFailed(message)
 
 
 def load_entry(file: str | Path, function: str) -> Callable[[NodeContext], Any]:
@@ -636,7 +659,7 @@ def main(argv: list[str] | None = None) -> int:
                 "event": "error",
                 "kind": classify(exc),
                 "stage": stage.get("stage"),
-                "message": f"{type(exc).__name__}: {exc}",
+                "message": describe(exc),
                 "trace": traceback.format_exc()[-4000:],
                 **(ctx.peaks() if ctx else peaks(str(job.get("device") or ""), ram_start)),
             }

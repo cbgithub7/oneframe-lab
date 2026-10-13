@@ -26,10 +26,11 @@ import pytest
 from conftest import MakeNode
 from fixtures.hosts import Hosts, Stall, client_context, retry_after
 
+from oneframe import files
 from oneframe.layout import Layout
 from oneframe.models import tools
 from oneframe.models.jobs import store_lock
-from oneframe.models.pin import sniff
+from oneframe.models.pin import pin, sniff
 from oneframe.models.store import Store, StoreRefused
 from oneframe.models.transport import Policy
 
@@ -182,6 +183,33 @@ def test_a_changed_value_under_the_same_pin_is_reported_and_left(
         ("apple", sha(DEPTH), sha(DEPTH + b"replaced upstream"))
     ]
     assert files_of(path)["apple"] == pinned
+
+
+class _Killed(BaseException):
+    """The write ended where it stands, by Ctrl+C or an error. (A process killed outright can also
+    leave the temporary, which nothing reads: test_a_leftover_temporary_does_not_change_the_key.)"""
+
+
+def test_a_pin_ended_while_writing_leaves_the_manifest_whole(
+    tmp_path: Path, hub: Hosts, make_node: MakeNode, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The manifest is written as the pin ends, a Stop included; the process ending during that
+    write must leave node.json as it was, never truncated."""
+    hub.repo("Ruicheng/MoGe-2").commit({"model.bin": MODEL})
+    path = write_node(make_node, [{"name": "model", "hf": "ruicheng/moge-2", "path": "model.bin"}])
+    before = path.read_text(encoding="utf-8")
+    replace = files._replace
+
+    def ended(source: Path, target: Path) -> None:
+        if target.name == "node.json":  # the new manifest is written, and the process ends before it lands
+            raise _Killed
+        replace(source, target)
+
+    monkeypatch.setattr(files, "_replace", ended)
+    with pytest.raises(_Killed):
+        pin(path, Store(tmp_path / "data"), hub.hub, threading.Event(), lambda _e: None, TRANSFER)
+    assert path.read_text(encoding="utf-8") == before
+    assert sorted(p.name for p in path.parent.iterdir()) == ["node.json", "node.py"]
 
 
 def test_sniffing_reads_the_format_from_the_content(tmp_path: Path) -> None:

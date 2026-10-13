@@ -31,6 +31,14 @@ from oneframe.errors import KINDS, Failure, Stopped
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(child.__file__).resolve()
+
+
+def child_command(python: Path, job: Path) -> list[str]:
+    """How a runtime's Python runs a node: -P keeps child.py's folder, the engine's own modules, off
+    the node's import path; -u keeps the protocol unbuffered."""
+    return [str(python), "-P", "-u", str(CHILD), str(job)]
+
+
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 Emit = Callable[[dict[str, Any]], None]
@@ -81,7 +89,7 @@ class EngineExecutor:
             raise
         except Exception as exc:
             kind = declared_kind(child.classify(exc))
-            raise NodeError(kind, f"{type(exc).__name__}: {exc}", _trace()) from exc
+            raise NodeError(kind, child.describe(exc), _trace()) from exc
 
 
 def declared_kind(kind: str) -> str:
@@ -275,7 +283,7 @@ class ProcessExecutor:
             job_path = tmp / "job.json"
             job_path.write_text(json.dumps(job, default=str), encoding="utf-8")
             proc = subprocess.Popen(
-                [str(self.python), "-u", str(CHILD), str(job_path)],
+                child_command(self.python, job_path),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

@@ -1,10 +1,15 @@
 // @ts-check
-// Every repo path the rules and docs name must exist. Run: node scripts/check-docs.js
+// Every repo path the rules and docs name must exist, and a spec being worked on stays short.
+// Run: node scripts/check-docs.js
 //
 // A stale rules file is worse than none: an agent follows it confidently. This catches the most
 // common kind of staleness -- a file or folder renamed or removed while the docs still point at
 // it. It checks relative markdown links in every doc, and, in the documents that describe the
 // current state (not specs, which describe what is to be built), paths written in backticks.
+//
+// A spec is the contract the owner approves once; every line of it spends the owner's attention.
+// One that is not yet done may be at most SPEC_MAX_LINES long (specs/README.md). A finished spec
+// is history, and is left as it ended.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -53,6 +58,20 @@ export function backtickPaths(text) {
   return out;
 }
 
+export const SPEC_MAX_LINES = 200;
+
+/**
+ * Why a spec is too long, or null: only a spec not yet done or dropped is held to the cap.
+ * @param {string} text the spec.md
+ * @returns {string | null}
+ */
+export function specTooLong(text) {
+  const status = /^Status:\s*(.*)$/m.exec(text)?.[1] ?? "";
+  if (/^(done|dropped)\b/i.test(status)) return null;
+  const lines = text.replace(/\n$/, "").split("\n").length;
+  return lines > SPEC_MAX_LINES ? `is ${lines} lines; a spec being worked on is at most ${SPEC_MAX_LINES}` : null;
+}
+
 /**
  * Relative link targets in markdown: [text](target), without anchors, skipping URLs.
  * @param {string} text
@@ -63,34 +82,50 @@ export function linkTargets(text) {
     .map((t) => t.split("#")[0]);
 }
 
-function main() {
-  const docs = [...["AGENTS.md", "CLAUDE.md", "README.md"].map((f) => path.join(ROOT, f)),
-    ...markdownFiles(path.join(ROOT, "docs")), ...markdownFiles(path.join(ROOT, "specs")),
-    ...markdownFiles(path.join(ROOT, ".claude", "skills"))];
+/**
+ * Every problem in the docs under `root`: a link or a backticked path to nothing, and a spec being
+ * worked on that is too long.
+ * @param {string} root
+ * @returns {{ docs: number, problems: string[] }}
+ */
+export function checkDocs(root) {
+  const docs = [...["AGENTS.md", "CLAUDE.md", "README.md"].map((f) => path.join(root, f)).filter((f) => existsSync(f)),
+    ...[path.join(root, "docs"), path.join(root, "specs"), path.join(root, ".claude", "skills")]
+      .filter((d) => existsSync(d)).flatMap((d) => markdownFiles(d))];
   const problems = [];
   for (const file of docs) {
-    const rel = path.relative(ROOT, file).split(path.sep).join("/");
+    const rel = path.relative(root, file).split(path.sep).join("/");
     if (rel.startsWith("specs/_template/")) continue;
     const text = readFileSync(file, "utf8");
     for (const target of linkTargets(text)) {
       if (!existsSync(path.resolve(path.dirname(file), target))) problems.push(`${rel}: link to ${target}, which does not exist`);
     }
+    if (/^specs\/\d{3}-[^/]+\/spec\.md$/.test(rel)) {
+      const why = specTooLong(text);
+      if (why) problems.push(`${rel}: ${why}`);
+    }
     if (rel.startsWith("specs/")) continue; // specs name files that are still to be built
     for (const p of backtickPaths(text)) {
       const prefix = literalPrefix(p);
-      if (prefix && !existsSync(path.join(ROOT, prefix))) problems.push(`${rel}: names ${p}, and ${prefix} does not exist`);
-      else if (prefix === p && p.endsWith("/") && !statSync(path.join(ROOT, p)).isDirectory()) {
+      if (prefix && !existsSync(path.join(root, prefix))) problems.push(`${rel}: names ${p}, and ${prefix} does not exist`);
+      else if (prefix === p && p.endsWith("/") && !statSync(path.join(root, p)).isDirectory()) {
         problems.push(`${rel}: names ${p} as a folder, which it is not`);
       }
     }
   }
+  return { docs: docs.length, problems };
+}
+
+function main() {
+  const { docs, problems } = checkDocs(ROOT);
   if (problems.length) {
     for (const p of problems) console.log(p);
-    console.log(`\ncheck-docs: ${problems.length} stale reference(s). Update the docs in the same change as the code.`);
+    console.log(`\ncheck-docs: ${problems.length} problem(s). Update the docs in the same change as the code, and keep a`
+      + " spec to its contract (specs/README.md).");
     process.exitCode = 1;
     return;
   }
-  console.log(`check-docs: ok (${docs.length} documents).`);
+  console.log(`check-docs: ok (${docs} documents).`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

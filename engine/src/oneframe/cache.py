@@ -28,6 +28,7 @@ from typing import Any
 
 from oneframe.child import Value
 from oneframe.errors import ContractError
+from oneframe.files import is_temporary
 from oneframe.manifest import Manifest
 
 # 2: the node's code and its runtime joined the key (spec 006). Older entries are never served;
@@ -61,8 +62,9 @@ def code_digest(folder: Path) -> str:
 
 
 def _code_files(folder: Path) -> list[tuple[str, Path]]:
-    """(path in the folder, file) for every file but bytecode, following linked folders (code shared
-    between nodes, say) but never into one already seen, so a loop of links ends."""
+    """(path in the folder, file) for every file but bytecode and a one-step write's leftover
+    temporary (a pin killed outright), following linked folders (code shared between nodes, say) but
+    never into one already seen, so a loop of links ends."""
     out: list[tuple[str, Path]] = []
     seen: set[str] = set()
     for here, dirs, files in os.walk(folder, followlinks=True):
@@ -74,7 +76,7 @@ def _code_files(folder: Path) -> list[tuple[str, Path]]:
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         for name in files:
             path = Path(here) / name
-            if path.suffix not in BYTECODE and path.is_file():
+            if path.suffix not in BYTECODE and not is_temporary(name) and path.is_file():
                 out.append((path.relative_to(folder).as_posix(), path))
     return out
 

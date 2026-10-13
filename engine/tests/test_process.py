@@ -15,7 +15,14 @@ from pathlib import Path
 import pytest
 from conftest import Events, MakeNode, wait_gone
 
-from oneframe.executors import CHILD, NodeError, ProcessExecutor, child_env, died_message
+from oneframe.executors import (
+    EngineExecutor,
+    NodeError,
+    ProcessExecutor,
+    child_command,
+    child_env,
+    died_message,
+)
 from oneframe.graph import Graph
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
@@ -132,7 +139,7 @@ def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
     job_path = tmp_path / "job.json"
     job_path.write_text(json.dumps(job), encoding="utf-8")
     proc = subprocess.Popen(
-        [sys.executable, "-u", str(CHILD), str(job_path)],
+        child_command(Path(sys.executable), job_path),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         env=child_env(None, {}),
@@ -213,6 +220,41 @@ def _executor_job(tmp_path: Path, body: str, **extra: object) -> dict[str, objec
         "device": "cpu",
         **extra,
     }
+
+
+def test_a_runtime_child_cannot_import_the_engines_own_modules(tmp_path: Path) -> None:
+    """The child's file lies among the engine's modules; a node's `import models` must reach the
+    runtime's package of that name, never the engine's."""
+    body = """
+    import importlib.util, sys
+    names = ("models", "graph", "errors", "layout", "scheduler", "child")
+    found = [n for n in names if importlib.util.find_spec(n) is not None]
+    ctx.stage("path", json.dumps({"found": found, "on_path": sys.argv[0].rsplit(os.sep, 1)[0] in sys.path}))
+    """
+    seen: list[dict[str, object]] = []
+    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False}
+
+
+def test_a_node_fails_in_its_own_words(tmp_path: Path) -> None:
+    """ctx.fail ends the run with kind `node` and the message as the node wrote it, in a runtime
+    child and in the engine's process alike."""
+    body = "ctx.fail('The photo is 32 pixels wide; this node needs at least 256.')\n"
+    words = "The photo is 32 pixels wide; this node needs at least 256."
+    for executor in (ProcessExecutor(Path(sys.executable)), EngineExecutor()):
+        with pytest.raises(NodeError) as info:
+            executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
+        assert (info.value.kind, str(info.value)) == ("node", words)
+
+
+def test_any_other_error_is_reported_with_its_type(tmp_path: Path) -> None:
+    """An error the node did not word for the person keeps its type, so whoever reads it knows what
+    went wrong, in a runtime child and in the engine's process alike."""
+    body = "raise ValueError('expected 3 channels, got 4')\n"
+    for executor in (ProcessExecutor(Path(sys.executable)), EngineExecutor()):
+        with pytest.raises(NodeError) as info:
+            executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
+        assert (info.value.kind, str(info.value)) == ("error", "ValueError: expected 3 channels, got 4")
 
 
 def test_a_failure_carries_the_peaks_of_the_run(tmp_path: Path) -> None:

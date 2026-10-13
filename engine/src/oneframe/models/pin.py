@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.errors import Failure
+from oneframe.files import write_text
 from oneframe.manifest import ManifestError, load
 from oneframe.models.store import Store
 from oneframe.models.transport import Connector, DownloadFailed, Transfer
@@ -168,7 +169,7 @@ def pin(
             report.files.append(outcome)
     finally:
         # What was pinned is written even when a Stop ends the pin: the next pin starts from it.
-        path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        write_text(path, json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
     try:
         load(path)
     except ManifestError as exc:

@@ -23,7 +23,8 @@ The engine (node manifests, typed ports, graph planning, a content-addressed cac
 that runs nodes in-process or in their own runtime), the runtime manager (spec 001), fitting each
 node to the memory a machine has (spec 002), the Electron shell, and the checks. No real model has
 run yet: the only nodes are a photo source and a depth-to-points converter. The model store's core
-(spec 003) is done, checked against the real hosts, and the first real models come next.
+(spec 003) is done, checked against the real hosts; a clean-up comes next, then the first real
+models.
 [docs/handoff.md](docs/handoff.md) has the state and what comes next.
 
 ## Layout
@@ -34,8 +35,8 @@ run yet: the only nodes are a photo source and a depth-to-points converter. The 
 | `engine/` | The Python engine, `oneframe` (Python 3.14, managed by uv) |
 | `nodes/` | Built-in nodes, one folder each |
 | `runtimes/` | The Python environments heavy nodes run in, one folder each |
-| `contracts/` | Data both sides read: port types |
-| `scripts/` | `check-versions.js` |
+| `contracts/` | Data both sides read: port types, and the data root's layout |
+| `scripts/` | The checks (`check-versions.js`, `check-docs.js`, `test-guard.js`) and `tool.js`, which starts the command-line tools |
 | `docs/` | Architecture, writing a node, version policy |
 
 ## Running
@@ -52,8 +53,8 @@ npm start
 Checks, the same ones CI runs on Windows and Linux:
 
 ```
-npm run check          # eslint, tsc (TypeScript 7, JSDoc types), node --test
-npm run engine:check   # ruff, pyright, pytest
+npm run check          # eslint, tsc (TypeScript 7, JSDoc types), node --test, the docs check
+npm run engine:check   # ruff, ruff format, pyright, pytest
 npm run versions       # every pin against its latest release
 ```
 
@@ -64,7 +65,8 @@ and writes a report of what it did.
 
 - [AGENTS.md](AGENTS.md): the rules and the way work is done, for people and agents
 - [specs/README.md](specs/README.md): how a change goes from spec to merged PR
-- [docs/handoff.md](docs/handoff.md): what is done, what was decided, what comes next
+- [docs/handoff.md](docs/handoff.md): what it is, what is done, what comes next and what is in the way
+- [docs/roadmap.md](docs/roadmap.md): what is decided or found but parked
 - [docs/architecture.md](docs/architecture.md): how the parts fit, and the rules that keep them apart
 - [docs/nodes.md](docs/nodes.md): writing a node
 - [docs/runtimes.md](docs/runtimes.md): writing a runtime
