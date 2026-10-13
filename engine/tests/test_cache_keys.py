@@ -16,6 +16,7 @@ from conftest import AMPERE, NO_GPU, Events, MakeNode
 
 from oneframe import runtime_install
 from oneframe.cache import KEY_VERSION, Cache
+from oneframe.files import temporary_for
 from oneframe.graph import Graph
 from oneframe.manifest import Manifest, parse
 from oneframe.runtimes import Runtimes
@@ -68,6 +69,16 @@ def test_bytecode_does_not_change_the_key(tmp_path: Path) -> None:
     pycache.mkdir()
     (pycache / f"node.cpython-{sys.version_info[0]}{sys.version_info[1]}.pyc").write_bytes(b"\x00compiled")
     (manifest.folder / "stray.pyc").write_bytes(b"\x00")
+    assert cache.key(manifest, {"n": 1}, {}) == before
+
+
+def test_a_leftover_temporary_does_not_change_the_key(tmp_path: Path) -> None:
+    """A pin killed outright while writing node.json leaves write_text's temporary beside it; the
+    node's results must not all miss until someone deletes it."""
+    manifest = _node(tmp_path)
+    cache = Cache(tmp_path / "cache")
+    before = cache.key(manifest, {"n": 1}, {})
+    temporary_for(manifest.folder / "node.json").write_text('{"id": "half', encoding="utf-8")
     assert cache.key(manifest, {"n": 1}, {}) == before
 
 

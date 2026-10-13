@@ -34,7 +34,7 @@ def test_a_write_lands_whole_and_leaves_no_temporary(tmp_path: Path) -> None:
 
 
 def test_a_write_cut_short_leaves_the_old_file_whole(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ctrl+C or a crash before the new file lands leaves the old one as it was, and no temporary."""
+    """An error or Ctrl+C before the new file lands leaves the old one as it was, and no temporary."""
     target = tmp_path / "node.json"
     target.write_text('{"id": "old"}\n', encoding="utf-8")
 
@@ -46,6 +46,13 @@ def test_a_write_cut_short_leaves_the_old_file_whole(tmp_path: Path, monkeypatch
         write_text(target, '{"id": "new"}\n')
     assert target.read_text(encoding="utf-8") == '{"id": "old"}\n'
     assert [p.name for p in tmp_path.iterdir()] == ["node.json"]
+
+
+def test_a_file_written_in_one_step_ends_lines_in_lf_on_every_system(tmp_path: Path) -> None:
+    """Its bytes, and so a manifest's digest and a node's cache key, do not depend on the system."""
+    target = tmp_path / "node.json"
+    write_text(target, '{\n  "id": "x"\n}\n')
+    assert target.read_bytes() == b'{\n  "id": "x"\n}\n'
 
 
 def test_a_newer_file_is_never_overwritten(tmp_path: Path) -> None:

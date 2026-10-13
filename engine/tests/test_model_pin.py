@@ -186,7 +186,8 @@ def test_a_changed_value_under_the_same_pin_is_reported_and_left(
 
 
 class _Killed(BaseException):
-    """The process ending where it stands: a second Ctrl+C, a crash, a terminal closed."""
+    """The write ended where it stands, by Ctrl+C or an error. (A process killed outright can also
+    leave the temporary, which nothing reads: test_a_leftover_temporary_does_not_change_the_key.)"""
 
 
 def test_a_pin_ended_while_writing_leaves_the_manifest_whole(
