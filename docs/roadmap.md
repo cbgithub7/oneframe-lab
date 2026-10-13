@@ -6,7 +6,8 @@ What has been decided or found, but that no step has taken on yet. The order of 
 ## For the clean-up spec (007)
 
 From the [review of 2026-10-12](reviews/2026-10-12.md), section 3, which the owner asked to clean
-up before the first model node. Nothing a person or a node sees changes.
+up before the first model node. Nothing a person sees changes; the node contract changes once,
+before any model node depends on it.
 
 - **The node contract:**
     - an optional `load(ctx)` before `run(ctx, state)`, so spec 004 keeps models loaded without
@@ -14,7 +15,9 @@ up before the first model node. Nothing a person or a node sees changes.
     - node code loaded as a package named for the node: a helper called `utils` hides a package of
       that name today, and two engine nodes with same-named helpers can run each other's code;
     - a node API module apart from the child script, which `errors.py`, `cache.py` and
-      `scheduler.py` import today (review of 2026-10-02, 4.10).
+      `scheduler.py` import today (review of 2026-10-02, 4.10), so a node can see `Stopped` too;
+    - the context's undocumented public parts (`ctx.job`, `outputs`, `ways`, `out_dir`, `node`),
+      and a type for `ctx`, which nodes declare as `Any` today.
 - **Modules that are several:**
     - `oneframe/memory.py` is five: the model and its parser, settings, devices and the estimate,
       the fit, and the learned store;
@@ -41,8 +44,9 @@ up before the first model node. Nothing a person or a node sees changes.
   add nothing more to it.
 - **Tests:**
     - shared helpers for the model tests;
-    - the test guard: it sees neither the 139 parametrized cases nor skip marks, and a test cannot
-      be renamed;
+    - the test guard: it sees neither the 139 parametrized cases, nor skip marks, nor an emptied
+      test body, and a test cannot be renamed;
+    - a Stop hang on Windows, which failed CI twice in its last 100 runs;
     - the footprint test tells our writes from another program's without checking less (it failed
       once on a runner's own Firefox), and reads the data root's exceptions as data. Narrowing it
       is the owner's call;
@@ -56,7 +60,9 @@ up before the first model node. Nothing a person or a node sees changes.
 
 ## The editor (step 7)
 
-- **Wiring aids.** Layer 1, "what fits here" answered by the engine, belongs in spec 005. Then:
+- **Wiring aids**, the owner's idea, proposed on 2026-10-12 and not yet decided. Layer 1, "what
+  fits here" answered by the engine (valid targets for a connection, and why the others do not
+  fit), is proposed for spec 005, since the page needs the engine's connection rule anyway. Then:
     - wiring a new node's input that exactly one output fits, and asking when several do;
     - a goal search ("a photo to a splat"), bounded in depth, ranked by what this machine can run,
       what is downloaded, and trust.
@@ -74,6 +80,7 @@ Generate at its fullest, beyond what steps 3 to 7 plan:
   datacenter cards under Linux (NVIDIA's Lyra 2, say) gets a runtime the plan refuses where it
   cannot run;
 - `.spz` and `.obj`: export nodes beside `.glb` and `.ply`, or new port types (not decided);
+- the token part spec 003 leaves for later, before any gated model;
 - sound, in scope since 2026-10-05: an audio port type, nodes that make it, and a player in the
   page.
 
@@ -100,17 +107,17 @@ Generate at its fullest, beyond what steps 3 to 7 plan:
     - spec 004's long-lived worker must keep what 006 assumes of one process per job: node code
       imported fresh, `child_env` per job, a scratch folder per process.
 - `npm run versions` does not read runtime locks, so a runtime's torch pin is checked by hand.
-- The docs check proves only that paths exist.
+- Beyond paths, links and a spec's length, the docs check proves nothing about what the docs say.
 
 ## Packaging and a public release
 
 A public release is a goal (the owner, 2026-10-03). The app's own code is MIT (`LICENSE`).
 
-- notices for third-party code, signing, a cleared product name, documentation for users, and an
+- an installer, a two-tier uninstaller, signing and updates;
+- notices for third-party code, a cleared product name, documentation for users, and an
   accessibility baseline;
 - a chosen root is not checked for long paths, OneDrive or FAT32 (review of 2026-10-02, section 5);
 - licence pages open in the browser: the page's list of external hosts holds only `github.com`;
-  with the token part spec 003 leaves for later, before any gated model;
 - Claude desktop on Windows is an MSIX package (spec 006's local report): a process it starts
   writes a new folder under `AppData`, and any `HKCU` key, into the package's private storage, while
   `dir` and `reg query` from inside show the merged view. A local check of where things land runs

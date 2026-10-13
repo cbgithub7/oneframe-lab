@@ -8,21 +8,24 @@ proposal": https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
 ## What it is
 
 - **A playground for making 3D from one photo:** an editor where a person builds graphs of nodes
-  and compares what they make (the owner, 2026-10-12). Personal, free, local only: no hosted
-  models, no accounts, no network during a run; weights download when a person presses Download.
-  Non-commercial model licences are fine; licence data is shown, not used to block.
+  and compares what they make (the owner, 2026-10-12). Personal, free, non-commercial and local
+  only: no hosted models, no accounts, no network during a run; weights download when a person
+  presses Download. Non-commercial model licences are fine; licence data is shown, not used to
+  block.
 - **Two loops.**
-    - *Generate:* a photo → a depth scene, a mesh, a splat, or objects placed in a scene. At its
-      fullest, a world from one image, with its sound (the owner, 2026-10-05).
-      `neilsonnn/image-blaster` makes one with closed, paid services; here every step is a local,
-      open node.
+    - *Generate:* a photo → a depth scene, a mesh, a splat, or segmented objects placed in a scene.
+      At its fullest, a world from one image: the environment as a splat and the movable objects
+      as meshes placed by depth, seen together, with its sound: an ambient loop and the objects'
+      own sounds (the owner, 2026-10-05). `neilsonnn/image-blaster` makes one with closed, paid
+      services; here every step is a local, open node.
     - *Improve:* a photo, or a first result rendered along a camera path → synthesised views →
       reconstruction → a better result, compared against the first.
 - **Who runs it:** Windows or Linux on x86-64, with an NVIDIA card or the processor. The owner's
   GTX 1070 (8 GB, compute 6.1) is the only card we test on, never the target. The cloud container
   has no GPU and cannot reach Hugging Face.
 - **A public release is a goal;** the app's own code is MIT. `cbgithub7/depth-pro-gui`, the owner's
-  earlier app, may be read for what it learned; nothing is copied from it.
+  earlier app, may be read for what it learned; nothing is ported or copied from it, and nothing
+  here has to match it.
 
 ## State (2026-10-12)
 
@@ -43,19 +46,20 @@ with no model code. No model node, editor or viewer yet.
 ## Next, in order
 
 The [review of 2026-10-12](reviews/2026-10-12.md) set this order with the owner: clean code
-before the first model node, and the Improve-loop spike now, beside first light.
+before the first model node, and the Improve-loop spike now, beside first light. Steps keep the
+numbers the reviews use; steps 1 and 2 (specs 006 and 003) are done.
 
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
-| 1 | The review's small fixes, and its process rules | none | in a PR from `claude/magical-hypatia-v0uxpj` |
-| 2 | Clean-up: the review's section 3 (roadmap, "For the clean-up spec"), the node contract's `load` and `run`, nothing a person sees changing | 007 | next: no spec yet |
-| 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change; nodes listed by the engine, settings from manifests, viewers by port type, results served by key, a photo picked in a main-process dialog, and "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
-| 3s | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor on a rented GPU, and whether WSL is needed | spike | agreed 2026-10-12, waiting on the owner's machine |
-| 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | 003 (view part) | not started |
+| 2a | The review's small fixes, and its process rules | none | in review |
+| 2b | Clean-up: the review's section 3 (roadmap, "For the clean-up spec"). Nothing a person sees changes; the node contract changes once (`load` and `run`), before any model node depends on it | 007 | next: no spec yet |
+| 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
+| 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
+| 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
 | 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times steps 3 and 4 measure | 004 | not started |
-| 7 | The editor, grown from step 3's page: a canvas, wiring aids, variants side by side, the three.js and Spark viewer | new | not started |
-| 8 | The rest of 003 (import, a movable store, a queue, the page's part) and packaging | 003, new | not started |
+| 7 | The editor, grown from step 3's page: a canvas, variants side by side, the three.js and Spark viewer; wiring aids as the owner decides (roadmap) | new | not started |
+| 8 | The rest of 003 (import, a movable store, a queue, the page's part), and packaging (installer, two-tier uninstaller, signing, updates) | new | not started |
 
 ## Open, and in the way of the next steps
 
@@ -65,14 +69,16 @@ before the first model node, and the Improve-loop spike now, beside first light.
     - requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop` (review of 2026-10-02, 4.2);
     - pyright on the first node that imports torch, and a CI job with real torch on the processor
-      (review of 2026-10-02, 4.11);
+      (review of 2026-10-02, 4.11); CI does not start the app either;
     - `models.*` and `nodes.fit` are not on the page's method list;
     - on Windows a Stop kills a node's venv launcher and at once removes its folder, while the
       interpreter behind it may still be ending (unverified there).
-- **MoGe-3 may not run on the GTX 1070.** Its code imports FlexGEMM, built on Triton, which
-  supports NVIDIA cards from compute 8.0 and publishes Linux wheels only; FlexGEMM runs only in
-  MoGe-3's optional refinement, and the `moge` package requires it for every version. If MoGe-3
-  does not run there, step 3 uses MoGe-2 on that card (the owner, 2026-10-11).
+- **MoGe-3 may not run on older cards, or on Windows.** Its code imports FlexGEMM, built on
+  Triton, which supports NVIDIA cards from compute 8.0 and publishes Linux wheels only; FlexGEMM
+  runs only in MoGe-3's optional refinement, and the `moge` package requires it for every version.
+  Whether MoGe-3, or MoGe-2 through that package, installs and runs on an older card or on Windows
+  is unverified, and spec 005's to check. If MoGe-3 does not run on the 1070, step 3 uses MoGe-2
+  there (the owner, 2026-10-11).
 - **The footprint test can fail on another program's write** (once, a runner's own Firefox);
   step 2 takes it on.
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"

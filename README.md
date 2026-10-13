@@ -53,8 +53,8 @@ npm start
 Checks, the same ones CI runs on Windows and Linux:
 
 ```
-npm run check          # eslint, tsc (TypeScript 7, JSDoc types), node --test
-npm run engine:check   # ruff, pyright, pytest
+npm run check          # eslint, tsc (TypeScript 7, JSDoc types), node --test, the docs check
+npm run engine:check   # ruff, ruff format, pyright, pytest
 npm run versions       # every pin against its latest release
 ```
 
@@ -65,7 +65,8 @@ and writes a report of what it did.
 
 - [AGENTS.md](AGENTS.md): the rules and the way work is done, for people and agents
 - [specs/README.md](specs/README.md): how a change goes from spec to merged PR
-- [docs/handoff.md](docs/handoff.md): what is done, what was decided, what comes next
+- [docs/handoff.md](docs/handoff.md): what it is, what is done, what comes next and what is in the way
+- [docs/roadmap.md](docs/roadmap.md): what is decided or found but parked
 - [docs/architecture.md](docs/architecture.md): how the parts fit, and the rules that keep them apart
 - [docs/nodes.md](docs/nodes.md): writing a node
 - [docs/runtimes.md](docs/runtimes.md): writing a runtime

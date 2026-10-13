@@ -86,7 +86,7 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
       path or file system) and a moment's temporary file, in the system temporary folder.
 - **Kept files say their format.** A newer one is never overwritten, and a change of format ships
   with its migration.
-- **Deletes stay inside the root.** Only inside a folder marked as the root's or the store's (until
+- **Deletes stay inside the root or the store.** Only inside a folder marked as the root's or the store's (until
   packaging adds the mark, inside the folders the layout names), never the person's own work.
 - **Separate roots.** A dev checkout and a packaged app never share one.
 - **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
@@ -96,7 +96,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 ## Commands
 
 - `npm run check`: eslint, tsc (JSDoc types, `// @ts-check` in every JS file), node tests, and
-  the docs check (every repo path the docs name exists)
+  the docs check (every repo path the docs name exists, and no spec being worked on is over 200
+  lines)
 - `npm run engine:check`: ruff, ruff format, pyright, pytest
 - `npm run versions`: version policy
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
