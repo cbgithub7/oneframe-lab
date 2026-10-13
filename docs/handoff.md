@@ -51,7 +51,7 @@ numbers the reviews use; steps 1 and 2 (specs 006 and 003) are done.
 
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
-| 2a | The review's small fixes, and its process rules | none | in review |
+| 2a | The review's small fixes, and its process rules | none | in review: [PR #24](https://github.com/cbgithub7/oneframe-lab/pull/24) |
 | 2b | Clean-up: the review's section 3 (roadmap, "For the clean-up spec"). Nothing a person sees changes; the node contract changes once (`load` and `run`), before any model node depends on it | 007 | next: no spec yet |
 | 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
 | 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
