@@ -6,7 +6,7 @@ Owner approval: (date, once approved)
 The last of seven clean-up specs (007 to 013), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (sections 4 and 6), the
 [roadmap](../../docs/roadmap.md)'s "Tests" items and the [handoff](../../docs/handoff.md)'s open
-item on the footprint test. It can land any time after 007, whose guard then sees its one rename.
+item on the footprint test. It needs only 007, whose guard sees its one rename, and is worked last.
 
 ## Problem
 
@@ -15,11 +15,11 @@ item on the footprint test. It can land any time after 007, whose guard then see
   Roaming, on PR #11's Windows run), and it cannot see a write into a folder that already exists,
   which is where a program that ignores the environment writes. The data root's exceptions are
   prose in AGENTS.md that the test never reads; the owner asked on 2026-10-12 for them as data.
-- **Helpers are copied:** `sha` six times; `put` twice, and three pin-row builders; the `hub` and
-  in-process `engine` fixtures and `call` twice; the fast policy and the transfer options three
-  times each; a lock held by another process five times; deadline loops by hand in five files; and
-  three clients for the engine as a process. One of them, `Client`, blocks on `readline`, so its
-  timeout never fires.
+- **Helpers are copied:** `sha` six times; `put` twice; four pin-row builders for two kinds of
+  row; the `hub` and in-process `engine` fixtures and `call` twice; the fast policy and the
+  transfer options three times each; a lock held by another process five times; deadline loops by
+  hand in five files; and three clients for the engine as a process. One of them, `Client`, blocks
+  on `readline`, so its timeout never fires.
 - **Engines outlive tests.** Five places start an in-process engine and never shut it down, the
   `tiny_engine` fixture among them. The killed-install test leaves its first engine process
   running if a step fails before `kill`, and never checks its second `runtimes.install` reply: a
@@ -27,22 +27,23 @@ item on the footprint test. It can land any time after 007, whose guard then see
 - **Nine assertions bound wall-clock time**, some timed from before the event they measure, some
   telling nothing the test's other assertions do not.
 - **Two tests check details:** `test_the_key_version_is_2` asserts a constant, and two pin tests
-  call the tool's private `_claimed` and `_wait` and patch its `_print`.
+  call the tool's private `_claimed` and `_wait`; seven pin tests patch its private `_print`.
 
 ## Requirements
 
 1. **Exceptions are data.** `contracts/layout.json` gains `outside`: one entry per exception to the
    data root, as AGENTS.md lists them when this lands. Each says who writes it (the app, the
    engine, a runtime, a tool, a dev checkout or the graphics driver), on which systems, what it is
-   and why, and its paths as the environment spells them. AGENTS.md points to it (question 2).
+   and why, and its fixed paths, if any, spelled from the environment or the checkout. AGENTS.md
+   points to it (question 2).
 2. **The footprint test reads them.** A write outside the root passes only at a path an entry
    names for what the engine's process tree runs: the engine, a runtime, the driver.
 3. **The real profile is checked where our programs write** (question 1, option c). The test
    watches a list of folders, kept as data with each entry's program: the default folders of what
-   the engine's tree runs (uv's cache, Pythons, tools and settings, and CPython's per-user folder).
-   Anything new or changed anywhere under a watched folder fails it, and so does a watched folder
-   that appears; a new name elsewhere in the profile does not. The sandbox diff and the registry
-   check stay as they are, and every check is a function a test can show failing when it should.
+   the engine's tree runs (uv's cache, Pythons, executables, tools and settings, and CPython's
+   per-user folder). Anything new or changed under a watched folder fails it, and so does a watched
+   folder that appears; a new name elsewhere in the profile does not. The sandbox diff and the
+   registry check stay as they are, and every check is a function a test can show failing.
 4. **One copy of each helper, and every engine ended.** Each helper the Problem names lives once,
    in `engine/tests/conftest.py` or `engine/tests/fixtures/`. Every engine a test starts, in-process
    or as a process, comes from a fixture that ends it at teardown, pass or fail. Every wait has a
@@ -59,9 +60,9 @@ item on the footprint test. It can land any time after 007, whose guard then see
 
 ## Acceptance criteria
 
-- [ ] AC1: `test_a_write_an_exception_names_passes_only_while_it_is_listed`: given a table whose
-  `outside` names a path for the engine, a write there is not reported; with the entry removed,
-  the same write is.
+- [ ] AC1: `test_a_write_an_exception_names_passes_only_while_it_is_listed`: a write at a path an
+  `outside` entry names for the engine is not reported; the same write is reported once the entry
+  is removed, or names the app as its writer.
 - [ ] AC2: `test_a_write_inside_a_watched_folder_that_exists_is_seen`: a file made two levels inside
   a watched folder that existed before is reported. Today's check, top-level names only, misses
   it. Only with option (c).
@@ -74,8 +75,8 @@ item on the footprint test. It can land any time after 007, whose guard then see
 - [ ] AC6: `test_a_killed_install_is_not_installed_and_a_second_install_completes` fails on the
   second reply, naming it, when that reply is an error: shown once in the PR with a temporary
   change that makes the second install refuse, then reverted. Today it fails only after 180 s.
-- [ ] AC7: Each line `rg -n 'monotonic\(\) - \w+ <' engine/tests` prints is a bound Requirement 5
-  keeps; the PR pastes the output with each line's reason. Today it prints nine, four of which go.
+- [ ] AC7: `rg -n 'monotonic\(\) -' engine/tests` prints five lines, each in a test the Tests
+  section keeps a bound in. Today it prints nine.
 - [ ] AC8: `rg -n 'tools\._|tools, "_|assert KEY_VERSION' engine/tests` prints nothing. Today it
   prints six lines, in `test_model_pin.py` and `test_cache_keys.py`.
 
@@ -98,8 +99,9 @@ and its name and asks those functions; their unit tests run beside it on folders
   the command it is given, so a test starts the engine as it needs.
 - `conftest.py`: the fixtures `hub`, `make_engine` (in-process engines, each shut down at
   teardown), `engine` (one of those, for the model tests) and `engine_process` (each killed at
-  teardown if still running); `call`; `wait_until`, which `wait_free` uses; and `held_elsewhere`,
-  a lock another process holds until it lets go or is killed.
+  teardown if still running); `call`; `wait_until`, which `wait_free` uses, so no test loops to
+  a deadline of its own; and `held_elsewhere`, a lock another process holds until it lets go or is
+  killed.
 
 **Behaviour, not details.** The key-version test raises `cache.KEY_VERSION` by one, then checks
 that the key changes and that `Cache.get` misses the stored record. The tool tests use a real
@@ -109,7 +111,7 @@ code, that the store was let go, and that Ctrl+C is the tool's own again.
 
 **Docs that change:** `AGENTS.md`'s "One data root" (question 2); `docs/architecture.md`'s "One
 data root", whose exceptions become those `contracts/layout.json` lists; `docs/roadmap.md`, whose
-Tests items this spec takes on go; `docs/handoff.md`, whose open item on the footprint test goes.
+Tests items go, and the clean-up section once empty; `docs/handoff.md`, its footprint item.
 
 **Risks:**
 
@@ -117,27 +119,29 @@ Tests items this spec takes on go; `docs/handoff.md`, whose open item on the foo
   new kind of program a run starts, in the spec that adds it.
 - On a dev box a watched folder can be large (a uv cache), and uv used elsewhere during the test
   fails it, naming the folder. CI runs nothing else.
-- Helpers move across ten files. Names and case IDs stay, and 007's guard compares those, not files.
+- Helpers move across ten files; no test moves, so every ID 007's guard collects stays the same.
 - Specs 008 to 012 change some of the same tests (the Stop test, sources, waits on `engine._run`).
-  Whichever lands second adapts; the AC commands hold either way.
+  Worked last, this spec builds on what they leave; landed earlier, they would adapt instead.
 
 ## Tests
 
 - Added:
-    - `test_footprint.py`: the tests named in AC1 to AC3, and
-      `test_every_exception_says_who_writes_it_where_and_why`;
+    - `test_footprint.py`: the tests named in AC1 to AC3,
+      `test_every_exception_says_who_writes_it_where_and_why`, `test_a_registry_change_is_reported`
+      and, with (c), `test_a_file_rewritten_in_a_watched_folder_is_seen` and
+      `test_a_watched_folder_that_appears_is_seen`;
     - `test_server_and_nodes.py`: `test_an_engine_process_that_says_nothing_fails_the_wait_by_name`.
 - Renamed: `test_the_key_version_is_2` -> `test_a_record_made_under_another_key_version_is_never_served`
 - Changed, names kept:
     - `test_a_killed_install_is_not_installed_and_a_second_install_completes`: AC6, and the
       fixture ends its first engine;
-    - bounds kept as they are, already meeting the rule: spec 003's two Stop tests (in
-      `test_model_transport.py` and `test_model_jobs.py`) and
-      `test_a_stall_holds_the_connection_until_released`;
+    - bounds kept, already meeting the rule: spec 003's two Stop tests (in the transport's and the
+      jobs' tests) and `test_a_stall_holds_the_connection_until_released`;
     - bounds timed from their trigger, the slower path ten times longer:
       `test_stop_kills_a_runtime_child` (from the stop) and
       `test_a_tool_waits_for_a_store_another_process_still_holds_then_runs` (from the let-go);
-    - a deadline instead of a bound: `test_a_node_that_reads_stdin_gets_end_of_file_at_once`;
+    - a deadline instead of a bound, 008's `stop_after`:
+      `test_a_node_that_reads_stdin_gets_end_of_file_at_once`;
     - bounds that go, since other assertions tell the paths apart:
       `test_ctrl_c_while_a_tool_waits_for_the_store_ends_it_with_nothing_started` (the expiry
       cannot give STOPPED), `test_a_mistake_in_the_request_is_said_at_once_even_while_the_store_is_held`
@@ -165,11 +169,12 @@ gives the footprint test's time on Windows before and after. No step needs a GPU
 - A redundant bound goes rather than widens: it adds nothing but a way to fail on a slow runner.
 - The tool tests time Ctrl+C by the tool's output, as a person does, not by its internals.
 - No pytest-timeout: each wait has its own deadline, and a new dependency needs a reason.
+- `sha` is `hashlib`'s, not 011's file helper: a test's expected value never comes from the code.
 
 ## Out of scope
 
 - The test guard and explicit case IDs (007).
-- `alive` and `wait_gone` moving to `oneframe/processes.py`, and Stop as an `Event` (008).
+- `alive`, `wait_gone` and `stop_after`, Stop as an `Event`, and the Windows Stop hang (008).
 - Waits on `engine._run`, which become waits on a run's ending (010).
 - Runtime sources from spec 003's hosts, and starting an engine process with the test CA (011).
 - The device, vendor and OS names outside v1 (012); `allow_network` (009).
@@ -183,9 +188,10 @@ gives the footprint test's time on Windows before and after. No step needs a GPU
    engine's tree creates, deletes or renames with the system's own tools, in CI: checks the most,
    but needs administrator rights and a spike on the Windows runner first, keeping (a) until then.
    (c) Watch a list of our programs' default folders, deep: sees writes into folders that exist,
-   but no longer a new name made by a program off the list. *Recommended: (c):* it ends the flake
-   without a spike and looks deeper where our programs write. With (a), AC2 and AC3 go; with (b),
-   the profile check becomes its own spec after the spike.
+   but no longer a new name made by a program off the list, and is slower on a dev box whose uv
+   cache is large. *Recommended: (c):* it ends the flake without a spike and looks deeper where our
+   programs write. With (a) or (b), AC2 and AC3 go; with (b), the profile check becomes its own spec
+   after the spike.
 2. **AGENTS.md, "One data root".** Proposed, after "holds the two equal": "The only exceptions are
    the entries of `outside` in `contracts/layout.json`, each naming who writes it, where and why.
    The footprint test allows nothing else, and a new entry is the owner's decision, as a change to

@@ -1,6 +1,8 @@
 # 009: Tasks
 
-Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
+Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land. A task that
+adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` with
+`node scripts/test-guard.js --write` (007).
 
 - [ ] 1. **The child's parts move to `oneframe/node/`, behaviour unchanged.** Create the package:
   `failures.py`, `usage.py`, `context.py` (today's `NodeContext`), `code.py` (today's
@@ -23,8 +25,8 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `test_a_job_survives_its_json`. AC7's command prints nothing.
 - [ ] 3. **Node code as a package.** `code.py` imports the node's folder as
   `oneframe_nodes.<id>_<8 hex>` and its entry as a module in it, forgets the package's modules by
-  name before a rerun, and never touches `sys.path`. The test nodes in `test_child_env.py` and
-  `test_footprint.py` import their helper relatively. Add
+  name before a rerun, and never touches `sys.path`. The test nodes in `test_child_env.py`,
+  `test_footprint.py` and `test_cache_keys.py` import their helper relatively. Add
   `test_two_engine_nodes_with_same_named_helpers_each_run_their_own` (AC3) and
   `test_a_runtime_nodes_helper_never_hides_a_package_of_its_runtime` (AC4). `docs/nodes.md` says
   helpers are imported relatively.
@@ -42,5 +44,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `test_load_runs_once_and_run_gets_its_state` (AC5) and the `load` case of
   `test_a_context_shows_exactly_its_protocol` (AC6). `docs/nodes.md` shows `run.load` in
   `node.json` and the two functions in the code section.
-- [ ] 6. **Close.** Delete the node contract and "a job's dict" from `docs/roadmap.md`. Run AC1, AC7
-  and AC8's commands and `node scripts/check-docs.js`; the PR checks each criterion by name.
+- [ ] 6. **Close.** Delete from `docs/roadmap.md` the node contract, `child.py`'s five concerns, "a
+  job's dict", `allow_network`, and the typed job and the child's split from "Ready for spec 004".
+  Run AC1, AC7 and AC8's commands and `node scripts/check-docs.js`; the PR checks each criterion by
+  name.

@@ -155,20 +155,14 @@ Windows. No hardware steps.
 
 ## Decisions taken
 
-- The base is the committed list read with `git show`, not a collection of a `git archive` of the
-  base: it needs no base environment, survives a base whose imports differ, and its diff shows
-  which tests changed.
-- The list is sorted text, one ID per line with tab-separated flags; pytest escapes non-ASCII in
-  case IDs, and `.gitattributes` keeps it LF, so it reads the same on Windows.
-- The listing is read from pytest's output, not a file: the guard writes nothing to temp, which the
-  data-root rule forbids, and no file but the list, with `--write`.
+- The base is the committed list, read with `git show`: collecting the base needs its environment.
+- The list is sorted text, an ID and its flags per line, in LF: it reads the same on Windows.
+- The listing is read from pytest's output, so the guard writes nothing to temp (the data root rule).
 - The hooks live in a module the conftest imports, so the pytester tests load the same code.
-- Skips are compared by mark and call names, not conditions, which evaluate differently per system,
-  so the list is the same on Windows and Linux.
+- Skips are compared by mark and call names, not conditions, which differ from system to system.
 - Positional IDs are refused at every collection, not only by the guard, so they fail earliest.
 - The code-text IDs get names too: any edit to that code would otherwise read as a rename.
-- A line counts only in a spec not done or dropped, or changed on the branch: otherwise it allows a
-  name forever. No spec lists a removal today, so this changes nothing now.
+- Only specs being worked on, or changed on the branch, allow: otherwise a line allows forever.
 - With no base ref the guard still skips, as today; without the engine environment it fails.
 
 ## Out of scope

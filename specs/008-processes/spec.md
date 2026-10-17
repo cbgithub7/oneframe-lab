@@ -109,7 +109,8 @@ points to a third.
 - **Guards.** `faulthandler_timeout` in `engine/pyproject.toml`, under CI's job timeout and far
   above the slowest test. The stdin test's node asks for its standard input's type as the C runtime
   of a DLL numpy loads does at start (the inferred cause): `os.fstat(0)` and `isatty`, and on
-  Windows `GetFileType` on the standard input handle. The child's stdin watcher, the fix, stays.
+  Windows `GetFileType` on the standard input handle. It runs under `stop_after(seconds)`, a new
+  `conftest.py` helper (an `Event` a timer sets). The child's stdin watcher, the fix, stays.
 - **JavaScript.** `paths.js` exports the temporary variables and uv's settings, and `tool.js` imports
   the first; `contracts/layout.json` gains an `environment` entry, which `test_layout.py` and
   `tests/app/layout.test.js` check each side against.
@@ -170,7 +171,7 @@ requirements 6 and 7 are checked by the tests under Added. No step needs a GPU o
 - uv and runs drop one list, secrets included: uv needs no hub token either.
 - uv also loses the engine's folders on `PATH`: it is started by its full path.
 - `child_env`, `uv_environment` and `run_step` (a test's seam) keep their names: fewer test edits.
-- `uv_environment` keeps its signature: 011 feeds it the layout's paths.
+- `uv_environment` keeps its signature here: 011 changes it once, to take the layout's folders.
 - A `Child` knows nothing of jobs, so spec 004's worker can be one long-lived `Child`.
 - A job folder that will not go is logged and left to the next sweep, never hiding how a run ended.
 - JavaScript keeps its own copy (it cannot import Python), held equal by `contracts/layout.json`.
@@ -183,7 +184,8 @@ requirements 6 and 7 are checked by the tests under Added. No step needs a GPU o
 - The executor provider, `on_pid`, and `CUDA_VISIBLE_DEVICES=-1` per process (010).
 - uv's folders taken from the layout, and runtime sources through the transport (011).
 - `bench_fit` naming the torch runtime (012).
-- The tests' wall-clock bounds, including those in tests this spec changes (013).
+- The test guard (007); the tests' wall-clock bounds, including those in tests this spec
+  changes (013).
 - How the app and `scripts/tool.js` start processes, in JavaScript: unchanged.
 
 ## Open questions
