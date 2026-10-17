@@ -7,9 +7,8 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [ ] 1. **`scripts/tool.js` runs a `.py` repo path** by its absolute path, as well as a module, and
   its usage comment says so; add "a tool given as a .py path runs that file, by its absolute path"
   (AC3).
-- [ ] 2. **Spec 002's check leaves the package** (question 2). `engine/tests/fit_check.py` takes
-  the scenario, finds `hardware/` beside itself, reads its runtime from its node's manifest, and
-  probes through `run_probe`; `bench_fit`'s `node` becomes required, and its docstring loses the
+- [ ] 2. **Spec 002's check leaves the package** (question 2): `engine/tests/fit_check.py` takes
+  the scenario, as Design says; `bench_fit`'s `node` becomes required, and its docstring loses the
   scenario. Add `bench:fit-check` to `package.json`; in `tool.test.js`, the npm-script list takes
   it, the TMP test runs it, and add "bench:fit-check runs spec 002's check from the tests folder"
   (AC2). Move the five scenario tests to `test_fit_check.py`, names kept. Update `AGENTS.md`

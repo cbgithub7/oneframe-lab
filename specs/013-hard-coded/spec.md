@@ -12,8 +12,8 @@ it; and it needs 010's `run_probe`.
 ## Problem
 
 - AGENTS.md says no code outside a node's folder names a node, a model or a pipeline, and no test
-  holds it. `bench_fit`, shipped in the package, names the runtime `torch` eight times and reaches
-  into `engine/tests/hardware` for spec 002's AC8 scenario.
+  holds it. `bench_fit`, shipped in the package, names the runtime `torch` and reaches into
+  `engine/tests/hardware` for spec 002's AC8 scenario.
 - Manifests accept the devices `mps`, `xpu` and `rocm`, and `runtime.json` the vendors `amd` and
   `intel` and the OS `macos`, all outside v1's platforms. Memory keeps paths for devices it does
   not read yet, and the plan a refusal for builds of other vendors.
@@ -96,10 +96,10 @@ a new use fails the test until a person adds it there, which a review sees.
 ## Verification
 
 AC1, AC4 and the pytests above run in `npm run engine:check`, and AC2 and AC3 in `npm run check`,
-on ubuntu-latest and windows-latest. The moved scenario's card path runs nowhere else, so after
-the merge a local session (`/local-session`) on an NVIDIA card runs `npm run bench:fit-check` once;
-its report, naming the machine, goes to `specs/013-hard-coded/reports/<date>-local.md`. It also
-runs spec 002's fit through 012's packages on a card.
+on ubuntu-latest and windows-latest. After the merge, a local session (`/local-session`) on an
+NVIDIA card runs `npm run bench:fit-check` once; its report, naming the machine, goes to
+`specs/013-hard-coded/reports/<date>-local.md`. It also runs spec 002's fit through 012's packages
+on a card.
 
 ## Decisions taken
 

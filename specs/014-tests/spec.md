@@ -3,23 +3,23 @@
 Status: draft
 Owner approval: (date, once approved)
 
-The last of eight clean-up specs (007 to 014), from the
+The eighth of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (sections 4 and 6), the
-[roadmap](../../docs/roadmap.md)'s "Tests" items and the [handoff](../../docs/handoff.md)'s open
-item on the footprint test. It needs only 007, whose guard sees its one rename, and is worked last.
+[roadmap](../../docs/roadmap.md)'s "Tests" items and the [handoff](../../docs/handoff.md)'s
+footprint item. It needs only 007, whose guard sees its rename, and is worked last.
 
 ## Problem
 
-- **The footprint test** compares only the top-level names in the real `USERPROFILE`, `APPDATA`,
-  `LOCALAPPDATA` and `HOME`. It failed once on a runner's own Firefox (a new `Mozilla` folder in
-  Roaming, on PR #11's Windows run), and it cannot see a write into a folder that already exists,
-  which is where a program that ignores the environment writes. The data root's exceptions are
-  prose in AGENTS.md that the test never reads; the owner asked on 2026-10-12 for them as data.
+- **The footprint test** compares only top-level names in the real `USERPROFILE`, `APPDATA`,
+  `LOCALAPPDATA` and `HOME`. It failed once on a runner's Firefox (PR #11: a new `Mozilla` in
+  Roaming), and cannot see a write into a folder that already exists, where a program that ignores
+  the environment writes. The data root's exceptions are AGENTS.md prose the test never reads; on
+  2026-10-12 the owner asked for them as data.
 - **Helpers are copied:** `sha` six times; `put` twice; four pin-row builders for two kinds of
   row; the `hub` and in-process `engine` fixtures and `call` twice; the fast policy and the
   transfer options three times each; a lock held by another process five times; deadline loops by
-  hand in five files; and three clients for the engine as a process. One of them, `Client`, blocks
-  on `readline`, so its timeout never fires.
+  hand in five files; and three clients for the engine as a process. One, `Client`, blocks on
+  `readline`, so its timeout never fires.
 - **Engines outlive tests.** Five places start an in-process engine and never shut it down, the
   `tiny_engine` fixture among them. The killed-install test leaves its first engine process
   running if a step fails before `kill`, and never checks its second `runtimes.install` reply: a
@@ -31,19 +31,18 @@ item on the footprint test. It needs only 007, whose guard sees its one rename, 
 
 ## Requirements
 
-1. **Exceptions are data.** `contracts/layout.json` gains `outside`: one entry per exception to the
-   data root, as AGENTS.md lists them when this lands. Each says who writes it (the app, the
-   engine, a runtime, a tool, a dev checkout or the graphics driver), on which systems, what it is
-   and why, and its fixed paths, if any, spelled from the environment or the checkout. AGENTS.md
-   points to it (question 2).
+1. **Exceptions are data.** `contracts/layout.json` gains `outside`, one entry per data-root
+   exception AGENTS.md lists when this lands. Each names its writer (the app, the engine, a runtime,
+   a tool, a dev checkout or the graphics driver), its systems, what it is and why, and any fixed
+   paths, spelled from the environment or the checkout. AGENTS.md points to it (question 2).
 2. **The footprint test reads them.** A write outside the root passes only at a path an entry
    names for what the engine's process tree runs: the engine, a runtime, the driver.
 3. **The real profile is checked where our programs write** (question 1, option c). The test
-   watches a list of folders, kept as data with each entry's program: the default folders of what
-   the engine's tree runs (uv's cache, Pythons, executables, tools and settings, and CPython's
-   per-user folder). Anything new or changed under a watched folder fails it, and so does a watched
-   folder that appears; a new name elsewhere in the profile does not. The sandbox diff and the
-   registry check stay as they are, and every check is a function a test can show failing.
+   watches a list, kept as data with each entry's program, of the default folders of what the
+   engine's tree runs (uv's cache, Pythons, executables, tools and settings; CPython's per-user
+   folder). Anything new or changed under a watched folder fails it, as does a watched folder that
+   appears; a new name elsewhere in the profile does not. The sandbox diff and the registry check
+   stay as they are, and every check is a function a test can show failing.
 4. **One copy of each helper, and every engine ended.** Each helper the Problem names lives once,
    in `engine/tests/conftest.py` or `engine/tests/fixtures/`. Every engine a test starts, in-process
    or as a process, comes from a fixture that ends it at teardown, pass or fail. Every wait has a
@@ -64,8 +63,7 @@ item on the footprint test. It needs only 007, whose guard sees its one rename, 
   `outside` entry names for the engine is not reported; the same write is reported once the entry
   is removed, or names the app as its writer.
 - [ ] AC2: `test_a_write_inside_a_watched_folder_that_exists_is_seen`: a file made two levels inside
-  a watched folder that existed before is reported. Today's check, top-level names only, misses
-  it. Only with option (c).
+  a watched folder that existed before is reported. Today's check misses it. Only with option (c).
 - [ ] AC3: `test_a_new_folder_outside_the_watched_list_is_not_reported`: a new top-level folder in a
   profile, as the runner's Firefox made, is not reported. Today's check reports it. Only with (c).
 - [ ] AC4: `rg -n '^(def (sha|_sha|put|pin|pinned|hub_pinned|call|hub|engine|wait_until)\b|class (Server|Client|_Engine)\b|(FAST|TRANSFER)\b.*= )|monotonic\(\) \+|FileLock\(Path\(sys\.argv' engine/tests --glob '!conftest.py' --glob '!**/fixtures/**'`
@@ -82,40 +80,37 @@ item on the footprint test. It needs only 007, whose guard sees its one rename, 
 
 ## Design
 
-**The footprint test.** `contracts/layout.json` gains `outside` beside `roots` and `paths`, and its
-`_comment` says what it is; the two layout tests do not read it, so the app's side is unchanged.
-`engine/tests/fixtures/footprint.py` holds folder snapshots (names, sizes and times), the sandbox
-diff with its allowed paths, the profile check, the watched list, and the expansion of an entry's
-paths with a given environment (the sandbox's or the real one). `test_footprint.py` keeps its run
-and its name and asks those functions; their unit tests run beside it on folders they make.
+**The footprint test.** `outside` sits beside `roots` and `paths` in `contracts/layout.json`; the
+two layout tests do not read it, so the app's side is unchanged. `fixtures/footprint.py` holds the
+folder snapshots (names, sizes and times), the sandbox diff and its allowed paths, the profile
+check and its watched list, and the expansion of an entry's paths in a given environment (the
+sandbox's or the real one). `test_footprint.py` keeps its run and name and calls them; their unit
+tests use folders they make.
 
-**Helpers.**
-
+**Helpers**, one copy each:
 - `fixtures/store.py`: `sha` (`hosts.py`'s `sha256` becomes it); `put`, bytes placed as a finished
   download would; a pin row for a URL file and one for a hub file, the format a parameter.
 - `fixtures/hosts.py`: `FAST` and `TRANSFER`, the options every download test passes.
-- `fixtures/engine_process.py`: `EngineProcess`, the engine as a process. It reads stdout on a
-  thread and gives `call`, `event`, `wait` with a deadline, `seen`, `close` and `kill`. It starts
-  the command it is given, so a test starts the engine as it needs.
+- `fixtures/engine_process.py`: `EngineProcess`, the engine as a process, reading stdout on a
+  thread, with `call`, `event`, `wait` with a deadline, `seen`, `close` and `kill`. It starts the
+  command it is given, so a test starts the engine as it needs.
 - `conftest.py`: the fixtures `hub`, `make_engine` (in-process engines, each shut down at
   teardown), `engine` (one of those, for the model tests) and `engine_process` (each killed at
-  teardown if still running); `call`; `wait_until`, which `wait_free` uses, so no test loops to
-  a deadline of its own; and `held_elsewhere`, a lock another process holds until it lets go or is
-  killed.
+  teardown if still running); `call`; `wait_until`, which `wait_free` uses, so no test loops to a
+  deadline of its own; `held_elsewhere`, a lock another process holds until it lets go or is killed.
 
 **Behaviour, not details.** The key-version test raises `cache.KEY_VERSION` by one, then checks
-that the key changes and that `Cache.get` misses the stored record. The tool tests use a real
-holder for a refused claim, press Ctrl+C when the tool's own output says it waits, and, for a press
-during a claim that is made, wrap the public `claim_store` the tool calls. They assert the exit
-code, that the store was let go, and that Ctrl+C is the tool's own again.
+that the key changes and that `Cache.get` misses the stored record. The tool tests refuse a claim
+with a real holder, and wrap the public `claim_store` the tool calls for a Ctrl+C during a claim
+that is made. They assert the exit code, that the store was let go, and that Ctrl+C is the tool's
+own again.
 
-**Docs that change:** `AGENTS.md`'s "One data root" (question 2); `docs/architecture.md`'s "One
-data root", whose exceptions become those `contracts/layout.json` lists; `docs/roadmap.md`, whose
-Tests items go, and the clean-up section once empty; `docs/handoff.md`, its footprint item.
+**Docs that change:** `AGENTS.md`'s "One data root" (question 2); `docs/architecture.md`'s, whose
+exceptions become those `contracts/layout.json` lists; `docs/roadmap.md`, whose Tests items go, and
+its clean-up section once empty; `docs/handoff.md`, its footprint item.
 
 **Risks:**
-
-- Option (c) stops seeing a new name made by a program not on the list. The list grows with each
+- Option (c) no longer sees a new name made by a program off the list. The list grows with each
   new kind of program a run starts, in the spec that adds it.
 - On a dev box a watched folder can be large (a uv cache), and uv used elsewhere during the test
   fails it, naming the folder. CI runs nothing else.
@@ -154,9 +149,9 @@ Tests items go, and the clean-up section once empty; `docs/handoff.md`, its foot
 
 ## Verification
 
-AC1 to AC3 and every test above run in CI on ubuntu-latest and windows-latest. AC4, AC5, AC7 and
-AC8 are commands whose output the PR pastes; AC6 is the PR's one temporary change, reverted. The PR
-gives the footprint test's time on Windows before and after. No step needs a GPU.
+AC1 to AC3 and every test above run in CI on ubuntu-latest and windows-latest. The PR pastes the
+output of AC4, AC5, AC7 and AC8's commands, and the footprint test's time on Windows before and
+after. No step needs a GPU.
 
 ## Decisions taken
 
@@ -187,11 +182,11 @@ gives the footprint test's time on Windows before and after. No step needs a GPU
    top-level names: flaky, and blind to writes into folders that exist. (b) Trace the files the
    engine's tree creates, deletes or renames with the system's own tools, in CI: checks the most,
    but needs administrator rights and a spike on the Windows runner first, keeping (a) until then.
-   (c) Watch a list of our programs' default folders, deep: sees writes into folders that exist,
-   but no longer a new name made by a program off the list, and is slower on a dev box whose uv
-   cache is large. *Recommended: (c):* it ends the flake without a spike and looks deeper where our
-   programs write. With (a) or (b), AC2 and AC3 go; with (b), the profile check becomes its own spec
-   after the spike.
+   (c) Watch our programs' default folders, deep: sees writes into folders that exist, but no
+   longer a new name made by a program off the list, and is slower on a dev box with a large uv
+   cache. *Recommended: (c):* it ends the flake without a spike and looks deeper where our
+   programs write. With (a) or (b), AC2 and AC3 go; with (b) the profile check becomes its own
+   spec after the spike.
 2. **AGENTS.md, "One data root".** Proposed, after "holds the two equal": "The only exceptions are
    the entries of `outside` in `contracts/layout.json`, each naming who writes it, where and why.
    The footprint test allows nothing else, and a new entry is the owner's decision, as a change to

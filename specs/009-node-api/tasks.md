@@ -10,8 +10,8 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `__init__` (`Value`, `Stopped`, `NodeFailed`, `Emit`). Add the 3.11 entries for it to `ruff.toml`
   and `pyrightconfig.json`, the latter before `engine/src`. `child.py` becomes the bootstrap: its
   `main()` registers the stub `oneframe` and `oneframe.node`, then runs the guards and the job.
-  `errors.py`, `cache.py`, `scheduler.py` and `executors.py` import from `oneframe.node`, and
-  `executors.CHILD` is a path beside it. Switch the tests' imports; extend
+  `errors.py`, `cache.py`, `scheduler.py`, `executors.py` and 008's `processes.py` import from
+  `oneframe.node`, and `executors.CHILD` is a path beside it. Switch the tests' imports; extend
   `test_a_runtime_child_cannot_import_the_engines_own_modules` (AC2) and add
   `test_an_engine_run_leaves_its_sockets_alone`. AC1's command prints nothing. The Executors row
   of `docs/architecture.md` names `oneframe/node/`.

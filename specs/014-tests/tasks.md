@@ -19,9 +19,8 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   `Client` and `_Engine`. Add `test_an_engine_process_that_says_nothing_fails_the_wait_by_name`.
   AC4's and AC5's commands print nothing.
 - [ ] 5. **The killed install.** Its second `runtimes.install` reply is asserted before any wait
-  (AC6; the temporary change that shows it is described in the PR, not committed).
-- [ ] 6. **Bounds**, test by test as the spec's Tests section says; the stdin test's deadline is
-  008's `stop_after`. AC7's command prints five lines, in the tests that keep a bound.
+  (AC6).
+- [ ] 6. **Bounds**, test by test as the spec's Tests section says (AC7).
 - [ ] 7. **Behaviour, not details.** Rename `test_the_key_version_is_2` to
   `test_a_record_made_under_another_key_version_is_never_served`, checking what the record does.
   Rewrite the two `_claimed` and `_wait` tests through `pin_tool` and `download`, and read what the
@@ -38,5 +37,4 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   With (a): nothing. With (b): nothing here; the spike and its spec follow.
 - [ ] 10. **Docs and the PR.** `docs/roadmap.md` loses the Tests items this spec took on (and the
   clean-up section, if nothing is left in it), and `docs/handoff.md` its open item on the footprint
-  test. The PR pastes AC4, AC5, AC7 and AC8's output and the footprint test's time on Windows
-  before and after.
+  test. The PR carries what the spec's Verification asks.

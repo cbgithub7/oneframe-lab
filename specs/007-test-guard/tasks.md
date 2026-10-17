@@ -31,6 +31,5 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [ ] 8. **Docs.** `AGENTS.md` rule 6 as the owner answered open question 1, and the guard's line
   under Commands; `specs/README.md`; the template's "- Renamed: none" line; the PR template's
   "Tests removed" section; the guard's item in `docs/roadmap.md`.
-- [ ] 9. **PR.** Run Verification's demonstration (one case of `test_unsafe_paths` deleted, one
-  test skipped, `--write` run, then the guard with `--base HEAD` exits 1 naming each; both
-  reverted), note the guard's time on Windows from CI, and check each criterion by name.
+- [ ] 9. **PR.** Run Verification's demonstration, note the guard's time on Windows from CI, and
+  check each criterion by name.

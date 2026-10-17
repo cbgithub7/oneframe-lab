@@ -3,18 +3,18 @@
 Status: draft
 Owner approval: (date, once approved)
 
-From the [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (section 4) and the
-[roadmap](../../docs/roadmap.md)'s clean-up list. The first of the clean-up specs 007 to 014, so
-that the refactors after it are guarded and can rename tests honestly.
+The first of eight clean-up specs (007 to 014), from the
+[review of 2026-10-12](../../docs/reviews/2026-10-12.md) (section 4) and the
+[roadmap](../../docs/roadmap.md)'s clean-up list. It lands first, so that the refactors after it
+are guarded and can rename tests honestly.
 
 ## Problem
 
 `scripts/test-guard.js` reads test names from the source: `def test_*` in Python, `test("...")` in
-JavaScript. It sees 431 Python names, while pytest collects 570 engine test IDs, 161 of them
-cases of 22 parametrized functions. Deleting a case, adding a skip mark or emptying a body all pass
-it. A test can be renamed only by listing its old name as removed; nothing then checks that the new
-name exists, and the line allows that name to vanish for good, since every spec ever written is
-read.
+JavaScript. It sees 431 Python names, while pytest collects 570 engine test IDs, 161 of them cases
+of 22 parametrized functions: deleting a case, adding a skip mark or emptying a body all pass it. A
+test can be renamed only by listing its old name as removed; nothing then checks that the new name
+exists, and the line allows that name to vanish for good, since every spec ever written is read.
 
 ## Requirements
 
@@ -22,32 +22,28 @@ read.
    included, with those at the merge base. An ID that is gone, with no line in a spec, fails it.
    Tests match by name and case, not by file, so moving a test to another file stays free; a name
    defined in two files counts twice.
-2. **A skip or an emptied body counts as a removal.** For each ID, the listing records:
-    - its skips: a skip, skipif or xfail mark on its function, case, class or module, and a
-      `pytest.skip`, `pytest.xfail` or `pytest.importorskip` call in its body;
-    - whether its body is empty: after the docstring, nothing but `pass`, `...` and constants, or a
-      `return` before anything else.
-
-   An existing test that gains a skip, or whose body becomes empty, needs a "- Removed" line, as a
+2. **A skip or an emptied body counts as a removal.** For each ID, the listing records its skips (a
+   skip, skipif or xfail mark on its function, case, class or module, or a `pytest.skip`,
+   `pytest.xfail` or `pytest.importorskip` call in its body) and whether its body is empty (after
+   the docstring, nothing but `pass`, `...` and constants, or a `return` before anything else). An
+   existing test that gains a skip, or whose body becomes empty, needs a "- Removed" line, as a
    removal does. JavaScript tests, still read from source, carry the same two flags: a `skip` or
    `todo` option or modifier, or a `t.skip()` or `t.todo()` call; and an empty body.
 3. **Case IDs are names.** Collection refuses a case whose ID pytest made from its position
    (`memory0`, `exc3`), naming the test: otherwise removing a middle case and adding one at the end
-   leaves the set of IDs as it was. The functions with such IDs today are given explicit `ids`.
+   leaves the set of IDs as it was.
 4. **Renames.** A spec's Tests section may hold lines ``- Renamed: `old` -> `new` ``. The old test
    may go while the new one exists; a new name that matches no test fails the guard. A name is a
    function, which covers its cases, or one case. The new test is compared with the old one's
    flags, so a rename that gains a skip or an empty body still needs a "- Removed" line.
 5. **Only live specs allow.** "- Removed" and "- Renamed" lines count only in a spec that is not
    done or dropped, or that changed since the merge base.
-6. **The base comes from git.** `engine/tests/collected.txt` is the listing, committed: sorted, one
-   ID per line with its flags. The guard reads it at the merge base with `git show`, so the base is
-   never collected.
+6. **The base comes from git.** `engine/tests/collected.txt` is the listing, committed. The guard
+   reads it at the merge base with `git show`, so the base is never collected.
     - The guard fails when the list in the checkout differs from the live collection, and names
       `node scripts/test-guard.js --write`, which rewrites it. `--write` cannot hide a removal,
       since the base side comes from git.
-    - A base without the list (a branch from before this spec) is compared by source names, as
-      today.
+    - A base without the list (from before this spec) is compared by source names, as today.
 7. **No quiet pass.** The guard now needs the engine environment. Without it, or when collection
    fails, it fails and says why. Its header says what it still cannot see (Design).
 
@@ -82,33 +78,31 @@ read.
 
 ## Design
 
-**`scripts/test-guard.js`** keeps its exports, so its three existing tests stand unchanged. It
+**`scripts/test-guard.js`** keeps its exports, so its three existing tests stand unchanged, and
 gains:
 
-- `collectPython()`: runs pytest's collection in the engine environment
-  (`uv run --project engine --frozen pytest engine --collect-only`) with the listing switched on,
-  and reads the listing from pytest's output; a failed collection fails the guard with pytest's
-  own message. It takes a second or two on Linux; the PR measures Windows.
-- `jsEntries(file, text)`: JavaScript tests from source, with their flags. It reads `test(` only
-  where a statement starts; today a string in `tests/app/guards.test.js` counts as a test.
+- `collectPython()`: runs `uv run --project engine --frozen pytest engine --collect-only` with the
+  listing switched on, and reads the listing from pytest's output; a failed collection fails the
+  guard with pytest's own message. It takes a second or two on Linux; the PR measures Windows.
+- `jsEntries(file, text)`: JavaScript tests from source, with their flags, read only where a
+  statement starts; today a string in `tests/app/guards.test.js` counts as a test.
 - `allowances(...)`: the Removed and Renamed lines of the specs that count. Whether a spec is done
   or dropped is read by one function in `scripts/check-docs.js`, taken out of the length check that
-  reads `Status:` inline today, so the two checks agree. The template is skipped.
+  reads `Status:` inline today, so the two checks agree. The template, always a draft, is skipped.
 - `problems(before, after, allow)`: gone IDs, gained flags, and renames to nothing.
 - `--write`, which rewrites the committed list from the live collection.
 
-Its header lists what it cannot see: a skipif whose condition is widened, since only mark names are
-recorded; a skip inside a fixture or a helper the test calls; and a gutted assertion such as
-`assert True`, which is not an empty body. Reviewers still read a rewritten test beside the old one.
+Its header lists what it cannot see: a skipif whose condition is widened; a skip inside a fixture
+or a helper the test calls; and a gutted assertion such as `assert True`, which is not an empty
+body. Reviewers still read a rewritten test beside the old one.
 
 **`engine/tests/fixtures/listing.py`** holds two collection hooks, which `engine/tests/conftest.py`
 imports: the listing, switched on only by the guard, and the refusal of positional IDs. The conftest
 also enables pytester, for their tests.
 
-**Explicit `ids`** go to the seven functions the refusal names today (in test_child.py,
-test_memory.py, test_model_runs.py and test_scheduler.py), and to
-`test_failures_are_classified_and_leave_nothing_cached`, whose IDs are the code it runs. Bodies do
-not change.
+**Explicit `ids`** go to `test_failures_are_classified_and_leave_nothing_cached`, whose IDs are
+the code it runs, and to the seven functions the refusal names today (in test_child.py,
+test_memory.py, test_model_runs.py and test_scheduler.py). Bodies do not change.
 
 **CI and the Stop hook** need no change: both run the guard after the engine environment exists.
 
@@ -147,17 +141,16 @@ All eight criteria are tests, run in CI on windows-latest and ubuntu-latest: the
 `npm run check`, the pytester tests in `npm run engine:check`. CI green on both, with one committed
 list, shows that collection is the same on both systems.
 
-Once in the PR, with the list committed, against the new guard: delete one case of
-`test_unsafe_paths`, add `@pytest.mark.skip` to one test, and run `--write`. Then
-`node scripts/test-guard.js --base HEAD` (main has no list yet, so the default base would fall back
-to source names) exits 1 naming each; both are then reverted. The PR records the guard's time on
-Windows. No hardware steps.
+In the PR, with the list committed: delete one case of `test_unsafe_paths`, add
+`@pytest.mark.skip` to one test, and run `--write`. Then `node scripts/test-guard.js --base HEAD`
+(main has no list yet, so the default base would fall back to source names) exits 1 naming each;
+both are then reverted. The PR records the guard's time on Windows. No hardware steps.
 
 ## Decisions taken
 
 - The base is the committed list, read with `git show`: collecting the base needs its environment.
 - The list is sorted text, an ID and its flags per line, in LF: it reads the same on Windows.
-- The listing is read from pytest's output, so the guard writes nothing to temp (the data root rule).
+- The listing is read from pytest's output, so the guard writes no temp file (the data root rule).
 - The hooks live in a module the conftest imports, so the pytester tests load the same code.
 - Skips are compared by mark and call names, not conditions, which differ from system to system.
 - Positional IDs are refused at every collection, not only by the guard, so they fail earliest.

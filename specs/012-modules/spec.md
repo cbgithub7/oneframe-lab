@@ -11,15 +11,13 @@ before 013, which edits the moved modules.
 
 ## Problem
 
-- `oneframe/memory.py` (1,430 lines) is five modules: the model and its parser, the settings, the
-  estimate, the fit and the learned store. `oneframe/runtimes.py` (1,071) is three: definitions,
-  the plan and the manager, with the install beside it. Reading a `node.json` loads all of memory,
-  and with it `files`, `layout`, `errors` and, today, the child script.
-- A malformed `node.json` is accepted or crashes (each case checked). Accepted: no `version` or
-  `title` (read as `""` after the problems check), `devices` as an object, a `run.runtime` or
-  `summary` that is not text. A `run`, `licence` or `links` that is not an object, or `devices` as a
-  number, raises what `registry.discover` does not catch, and the engine fails to start; a
-  `runtime.json` not in UTF-8 does the same in `runtimes.discover`.
+- `oneframe/memory.py` (1,430 lines) is five modules, and `oneframe/runtimes.py` (1,071) three,
+  with the install beside it. Reading a `node.json` loads all of memory and what it imports.
+- A malformed `node.json` is accepted or crashes. Accepted: no `version` or `title` (read as `""`
+  after the problems check), `devices` as an object, a `run.runtime` or `summary` that is not text.
+  A `run`, `licence` or `links` that is not an object, or `devices` as a number, raises what
+  `registry.discover` does not catch, and the engine fails to start; a `runtime.json` not in UTF-8
+  does the same in `runtimes.discover`.
 - Reading a definition is written twice (the text field, the id rule, the error class, the file,
   the discover loop), and versions compare two ways (`memory._version`, `runtimes.version_tuple`).
 - `install` is 179 lines with four closures; `manifest.parse` is 118 with two.
@@ -31,8 +29,8 @@ before 013, which edits the moved modules.
    loads it alone of the five.
 2. **Runtimes is a package,** `oneframe/runtimes/`: `definition`, `plan`, `manager` and `install`
    (today's `runtime_install.py`). Planning loads neither the manager nor the install.
-3. **A package's root holds only its docstring,** as `oneframe/models/` does: callers import its
-   modules, and nothing is re-exported, so a light module stays light.
+3. **Each of the two packages' roots holds only its docstring,** as `oneframe/models/`'s does:
+   callers import its modules, and nothing is re-exported, so a light module stays light.
 4. **One way to read a definition.** `oneframe/reading.py`, standard library only, holds the text
    field, the id rule, the number test, the version compare, reading a JSON object from a file, one
    `ProblemsError`, and the discover loop. Manifests, memory models and runtimes use it.
@@ -52,7 +50,8 @@ before 013, which edits the moved modules.
   `oneframe.runtimes.install`. Fails today: there is no plan module.
 - [ ] AC3: `test_a_malformed_definition_is_a_problem_never_a_crash`: each case in Problem, through
   the one `discover`, is listed as a problem naming what is wrong, and a good sibling still loads.
-  Fails today: some cases are accepted, and the others crash.
+  Fails today: some cases are accepted, and the others crash. Only if the owner says yes to
+  question 1.
 - [ ] AC4: `rg -n 'class (ManifestError|DefinitionError|ProblemsError)\(ValueError\)|re\.compile\(r"\^\[a-z0-9\]\+\(\?:|def (_?text\((data|key)|_?number\(value|_version\(|version_tuple\()|is already used by|should hold one JSON object' engine/src/oneframe`
   prints only lines in `engine/src/oneframe/reading.py`. Today it prints 13, in `manifest.py`,
   `memory.py`, `registry.py` and `runtimes.py`.
@@ -62,6 +61,9 @@ before 013, which edits the moved modules.
 - [ ] AC6: The node test "a review may name a path that has since moved, and its links are still
   checked" (`tests/app/guards.test.js`). Fails today: the docs check fails such a review. Only if
   the owner answers (a) to question 2.
+- [ ] AC7: `test_a_package_root_holds_only_its_docstring`: the `__init__.py` of `oneframe/memory/`,
+  `oneframe/runtimes/` and `oneframe/models/` each hold a docstring and nothing else (Python's
+  `ast`), so nothing is re-exported. Fails today: the first two packages do not exist.
 
 ## Design
 
@@ -88,8 +90,8 @@ helpers that are closures today. Sync goes through `run`, with today's message. 
 **Docs that change:** with (a) to question 2, the docs check's line in `AGENTS.md` Commands; in
 `docs/architecture.md`, the Manifests, Registry, Memory and Runtimes rows; and `docs/roadmap.md`,
 whose memory, runtimes and manifest items go as each module moves (the docs check reads their
-paths), and the install and `parse` under "Long functions". With (a), `scripts/check-docs.js` skips
-backticked paths in `docs/reviews/`, as in specs, and still checks their links.
+paths), and the install and `parse` under "Long functions". With (a), `scripts/check-docs.js`
+changes as question 2 says.
 
 **Risks.** `from oneframe.memory import fit` is the module: pyright flags it called as a function,
 and ruff a local that shadows an import (`margin = margin(...)`). `runtimes.definition` imports
@@ -99,7 +101,8 @@ neither the manager nor the executors, and 010's provider imports `RuntimeSide` 
 ## Tests
 
 - Added:
-    - `test_server_and_nodes.py`: `test_reading_a_manifest_loads_only_the_memory_model`;
+    - `test_server_and_nodes.py`: `test_reading_a_manifest_loads_only_the_memory_model` and
+      `test_a_package_root_holds_only_its_docstring`, a case per package;
     - `test_runtime_plan.py`: `test_planning_loads_neither_the_manager_nor_the_install`;
     - `test_ports_and_manifests.py`: `test_a_malformed_definition_is_a_problem_never_a_crash`;
     - `guards.test.js`: "a review may name a path that has since moved, and its links are still
@@ -112,10 +115,10 @@ neither the manager nor the executors, and 010's provider imports `RuntimeSide` 
 
 ## Verification
 
-AC4 and AC5 run in the PR, with AC5's measure pasted there. AC1 to AC3 and the pytests above run
-in `npm run engine:check`, and AC6 in `npm run check`, on ubuntu-latest and windows-latest. No step
-needs a GPU or a local session: the modules move as they are, and 013's local session runs spec
-002's check on a card through them.
+AC4 and AC5 run in the PR. AC1 to AC3, AC7 and the pytests above run in `npm run engine:check`,
+and AC6 in `npm run check`, on ubuntu-latest and windows-latest. No step needs a GPU or a local
+session: the modules move as they are, and 013's local session runs spec 002's check on a card
+through them.
 
 ## Decisions taken
 

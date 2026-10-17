@@ -6,7 +6,7 @@ Owner approval: (date, once approved)
 The fifth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
 "One way each" and transport items. It lands after 010, with every stop a `threading.Event` (008),
-and before 012, which moves `runtimes.py` and `runtime_install.py` into a package.
+and before 012.
 
 ## Problem
 
@@ -17,16 +17,13 @@ Today there are several of each:
   transport's resume), and a drive's free space in two walks (the store's, the machine profile's).
 - A move into place waits on Windows in two ways (about 1 s in `write_text`, 10 s with backoff in
   the store), and not at all for a source archive, its unpacked folder or a cache entry.
-- Runtime sources have a downloader of their own, on urllib: no retry, no resume (the partial is
-  deleted), and a Stop during a stall seen only when bytes arrive, or as a failure after 60 s.
-  `runtime.json` accepts `http://` sources, which the transport refuses, and the downloader's
-  `opener` runs through the runtime manager and the install though only `test_archives.py` passes
-  one. `transport.fetch` is never called.
+- Runtime sources have a downloader of their own, on urllib, with no retry, no resume and a Stop
+  that waits for the next bytes. Its `opener` runs through the runtime manager and the install,
+  though only `test_archives.py` passes one. `transport.fetch` is never called.
 - Paths under the root are built by hand (`runtimes/`, `uv/`, `cache/objects`, a `tmp` fallback),
   and Python never reads the layout's `runtimes`, `uv_cache` and `uv_python`.
 - The transport passed spec 003's tripwire (urllib3 past about 600 lines; it is 754), and nothing
-  says why it is kept. Installs never get the test TLS context model jobs get, and `--uv-home` lets
-  uv write outside the root without being one of AGENTS.md's exceptions.
+  says why it is kept. Installs never get the test TLS context model jobs get.
 
 ## Requirements
 
@@ -35,8 +32,9 @@ Today there are several of each:
    changes: cache keys, a marker's hashes and a pin's partial name keep their values.
 2. **One move into place, one free space.** `files.replace(source, target)` is the store's rename,
    waiting on Windows while another program holds the target, but never for an existing folder: for
-   `write_text`, the store's `place` (still `os_refused`), a source and its unpacking, and a cache
-   entry. `files.free_bytes(path)` serves the store, the machine profile and sources.
+   `write_text`, the store's `place` (still `os_refused`, with today's messages), a source and its
+   unpacking, and a cache entry. `files.free_bytes(path)` serves the store, the machine profile and
+   sources.
 3. **One downloader.** A runtime source is fetched by the model store's transport into
    `downloads/<sha256>.part`, then moved into place: retried, resumed, Stop seen at once (open
    question 2). An archive already there whose sha256 matches is kept, as today, and a failure is
@@ -84,17 +82,15 @@ Today there are several of each:
   `replace` and `free_bytes` (the drive of a path's nearest existing folder). Going:
   `files._replace`, `cache.file_digest`, the store's `hash_file`, `CHUNK`, `PLACE_WAIT_S` and
   `_rename`, `archives.py`'s two loops, and the walks in `Store.free_bytes` and
-  `hardware.disk_free_mb`, which call it. `place` wraps the error into `os_refused` with today's
-  messages; the transport's resume passes its running digest. The two tree digests (a node's code, a
-  runtime's stand-ins) stay as they are, on the helpers.
+  `hardware.disk_free_mb`, which call it. The two tree digests (a node's code, a runtime's
+  stand-ins) stay as they are, on the helpers.
 - **Sources.** One function of `runtime_install` fetches a source: it keeps an archive whose sha256
   matches, else calls `transport.fetch` with the install's `stop`, progress as `runtime.progress`,
   `retrying` as a `runtime.log` line and `files.free_bytes` of the downloads folder, then moves the
   partial into place. `DownloadFailed` and `OSError` become `InstallFailed`. `archives.download`,
   `sha256_of`, urllib and `opener` go.
-- **Options and paths.** `Runtimes.__init__` decides uv's two folders once and keeps `transfer`.
-  `environment.uv_environment` (008's module) takes the two folders, not their parent.
-  `server.Engine` passes `transfer` to `Runtimes`; `bench_fit` gives its caches both folders.
+- **Paths.** `Runtimes.__init__` decides uv's two folders once. `environment.uv_environment` (008's
+  module) takes the two folders, not their parent, and `bench_fit` gives its caches both folders.
 - **Tests.** The plain-http `SourceServer` goes: sources come from spec 003's hosts, which gain a
   fault serving a body with no length, as GitHub's archive host is said to, and record a stall still
   held. The engine's process tests start through `engine/tests/fixtures/serve.py`, which calls
@@ -149,10 +145,9 @@ Today there are several of each:
 
 ## Verification
 
-AC1 to AC3 are commands run in the PR, and AC8's diff is pasted there for review. AC4 to AC7 run in
-CI on ubuntu-latest and windows-latest, with every test above. No step needs a GPU or a local
-session. No shipped runtime has a source, so the spec that adds one makes the first download from
-GitHub's real archive host.
+AC1 to AC3 and AC8 are checked in the PR; AC4 to AC7 run in CI on ubuntu-latest and
+windows-latest, with every test above. No step needs a GPU or a local session. No shipped runtime
+has a source, so the spec that adds one makes the first download from GitHub's real archive host.
 
 ## Decisions taken
 
@@ -193,7 +188,7 @@ GitHub's real archive host.
    stall window for a 60 s read timeout; a failure's text changes, not its kind or reason (a full
    disk says "the drive" for model files too). *Recommended: yes:* these are the fixes the review
    asked for, and model files already work so.
-3. **`--uv-home`** (the engine's and both benches') lets uv write outside the root: list it as a
-   folder the person names, beside `--out` (a), or keep it to tests, passed in by the driver as
-   `transfer` is (b)? *Recommended: (a):* it is never a default, the app never passes it, and the
-   tests share one uv cache through it.
+3. **`--uv-home`** (the engine's and both benches') lets uv write outside the root without being
+   one of AGENTS.md's exceptions: list it as a folder the person names, beside `--out` (a), or keep
+   it to tests, passed in by the driver as `transfer` is (b)? *Recommended: (a):* it is never a
+   default, the app never passes it, and the tests share one uv cache through it.

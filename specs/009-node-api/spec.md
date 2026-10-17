@@ -14,12 +14,11 @@ swappable. The node contract changes once, here, before any model node depends o
   `executors.py` import it, while node code in a runtime can import none of it.
 - A job is a dict built in three places (the scheduler and both benches) and read untyped;
   `allow_network` is read and never set.
-- Node code is imported with its folder put first on `sys.path`, for good. A helper `utils.py`
-  hides a runtime's `utils` package, and two engine nodes that import same-named helpers both run
-  the first one's (checked).
+- Node code is imported with its folder first on `sys.path`, for good: a helper `utils.py` hides
+  a runtime's `utils` package, and two engine nodes with same-named helpers both run the first one's.
 - The contract is `run(ctx)` alone, so spec 004 would rewrite every node to keep a model loaded.
   `ctx` has no type, every node declares it `Any`, and seven of its public members are not in
-  docs/nodes.md: `job`, `node`, `out_dir`, `outputs`, `ways`, `peaks()` and `stopped()`.
+  docs/nodes.md (open question 4 names them).
 
 ## Requirements
 
@@ -36,12 +35,10 @@ swappable. The node contract changes once, here, before any model node depends o
    `env` goes: `CUDA_VISIBLE_DEVICES=-1` belongs to the process that runs it.
 4. **Node code is a package named for the node,** its entry a module in it, and `sys.path` never
    changes. A node imports its helpers relatively, so `import utils` reaches the runtime's package
-   (open question 3). A rerun in the engine forgets the package's modules, so its code runs as it
-   is now.
-5. **`load`, then `run`.** A manifest may name `run.load` (`file.py:function`), as it names
-   `run.entry` (open question 2). Each attempt then calls `state = load(...)` once, then
-   `run(ctx, state)`; without it, `run(ctx)` as today. `load`'s context has no inputs, paths or
-   outputs, so what it returns can outlive one run when spec 004 keeps it.
+   (open question 3). An engine rerun forgets the package's modules, so its code runs as it is now.
+5. **`load`, then `run`.** A manifest may name `run.load` (`file.py:function`) as it names `run.entry`
+   (open question 2). Each attempt then calls `state = load(...)` once, then `run(ctx, state)`;
+   without it, `run(ctx)` as today. `load`'s context has no inputs, paths or outputs.
 6. **`ctx` is typed.** `Context` and `LoadContext` are Protocols holding exactly what
    docs/nodes.md documents; the context's other members become private (open question 4). Every
    node, probe and test node file in the repo annotates `ctx` with them.
@@ -87,8 +84,8 @@ they check `child.py` now. Today's code moves with its behaviour:
   `inputs`, `path()` and `output()`; and `Context`, which adds those three.
 - `job.py`: `Job`, today's keys plus the code's folder and `load`, less `env`,
   `exit_with_parent` and `allow_network`; and `Done` (outputs, seconds, peaks, ways, stats).
-- `context.py`: today's `NodeContext`, with what the runner needs (outputs, ways, peaks, the view
-  `load` gets, the `Done`) kept private.
+- `context.py`: today's `NodeContext`, every member outside its Protocol private, among them what
+  the runner needs: outputs, ways, peaks, the view `load` gets, and the `Done`.
 - `failures.py`: `NetworkForbidden`, `classify`, `describe`, `is_oom`, `is_torch_oom`.
 - `usage.py`: resident memory, the card's peaks, releasing a failed way, and the allocator's cap.
 - `code.py`: loads the folder as package `oneframe_nodes.<id as a name>_<8 hex of the folder's
@@ -101,23 +98,22 @@ they check `child.py` now. Today's code moves with its behaviour:
 
 **`child.py`** keeps its path, since the reviews name it. Its `main()` registers a stub `oneframe`
 package with an empty path, then `oneframe.node` from the `node/` folder beside it; parses
-`[--exit-with-parent] job.json`; and runs the guards, `run_job` and the error event. Nothing is
-registered at import.
+`[--exit-with-parent] job.json`; and runs the guards, `run_job` and the error event.
 
-**The engine.** `executors.py` finds `child.py` by path and stops importing it;
-`child_command(python, job, exit_with_parent=False)`; `ProcessExecutor` passes the flag. The
-scheduler builds its `Job` in one `_job` method, reads the `Done`, and its `_executor(manifest,
-device)` gives a runtime node on the processor `CUDA_VISIBLE_DEVICES=-1`, until 010's provider
-takes that over. `errors.py`, `cache.py` and `scheduler.py` import from `oneframe.node`. `manifest.py`
-parses `run.load` as it parses `run.entry`, with the same refusals. `pyrightconfig.json`'s include
-gains `runtimes`, so the torch probe's `ctx` is checked too.
+**The engine.** `executors.py` finds `child.py` by path and stops importing it, and
+`ProcessExecutor` passes the flag to `child_command(python, job, exit_with_parent=False)`. The
+scheduler builds its `Job` in one `_job` method and reads the `Done`, and its `_executor(manifest,
+device)` sets `CUDA_VISIBLE_DEVICES=-1` for a runtime node on the processor, until 010's provider
+takes that over. `errors.py`, `cache.py` and `scheduler.py` import from `oneframe.node`.
+`manifest.py` parses `run.load` as it parses `run.entry`, with the same refusals.
+`pyrightconfig.json`'s include gains `runtimes`, so the torch probe's `ctx` is checked too.
 
 **Docs that change:** [docs/nodes.md](../../docs/nodes.md) types `ctx`, shows `run.load`, `load`
-and `run`, imports helpers relatively, and lets node code import `oneframe.node` (it says "never
-imports the engine" today); the Executors row of [docs/architecture.md](../../docs/architecture.md)
-names `oneframe/node/`; [docs/roadmap.md](../../docs/roadmap.md) loses the node contract,
-`child.py`'s five concerns, a job's dict, `allow_network`, and the typed job and the child's split
-(010 takes the rest of "Ready for spec 004"). No rule or command in AGENTS.md changes.
+and `run`, imports helpers relatively, and lets node code import `oneframe.node`; the Executors row
+of [docs/architecture.md](../../docs/architecture.md) names `oneframe/node/`;
+[docs/roadmap.md](../../docs/roadmap.md) loses the node contract, `child.py`'s five concerns, a
+job's dict, `allow_network`, and the typed job and the child's split (010 takes the rest of "Ready
+for spec 004"). No rule or command in AGENTS.md changes.
 
 **Risks:**
 
@@ -154,7 +150,7 @@ names `oneframe/node/`; [docs/roadmap.md](../../docs/roadmap.md) loses the node 
 AC1, AC7 and AC8 are commands run in the PR; AC2 to AC6 and the tests above run in CI on
 ubuntu-latest and windows-latest, and `bench:runtime`'s probe through the tiny runtime, on Python
 3.11 without the engine. No GPU step here: the cap's code moves unchanged and its tests use a
-stand-in torch. The benches' probes run on a card once, after 010, which changes them again.
+stand-in torch, and the benches' probes run on a card once, after 010 (Decisions taken).
 
 ## Decisions taken
 
@@ -187,9 +183,8 @@ stand-in torch. The benches' probes run on a card once, after 010, which changes
 1. **May node code import `oneframe.node`?** `docs/nodes.md` says node code never imports the
    engine. *Recommended: yes, that package and nothing else:* the child brings it into every
    runtime, and it gives nodes a type and `Stopped`.
-2. **Is `load` named in `node.json`** (`run.load`, an added optional field), rather than found by
-   its name in the module? *Recommended: named:* a module-level `from torch import load` would
-   otherwise be called.
+2. **Is `load` named in `node.json`** (`run.load`, a new optional field), not found by name in the
+   module? *Recommended: named:* otherwise a module-level `from torch import load` would be called.
 3. **Do nodes import their own helpers relatively?** It follows from loading node code as a
    package, the review's fix. *Recommended: yes:* then no helper hides a runtime's package, and no
    two nodes' helpers meet. No node in the repo has a helper yet.

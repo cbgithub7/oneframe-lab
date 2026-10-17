@@ -19,10 +19,9 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `scripts/tool.js` imports the temporary variables, and `contracts/layout.json` gains its
   `environment` entry, checked by `test_the_temporary_and_uv_variables_match_the_contract` and its
   twin in `tests/app/layout.test.js`.
-- [ ] 4. One stop type: every `should_stop` becomes `stop: threading.Event` (the list in Design), the
-  server, the runtime manager and model jobs pass the `Event` itself, the benches a fresh one, and
-  the tests' stop callables become events, names kept (`test_model_store.py` included; the two
-  scheduler tests that count calls set theirs from the listener). AC3's command prints nothing.
+- [ ] 4. One stop type, as Design's Stop item says, and the tests' stop callables become events as
+  Tests lists (the two scheduler tests that count calls set theirs from the listener). AC3's command
+  prints nothing.
 - [ ] 5. `oneframe/processes.py`: `Child`, `run`, `output`, `alive` and `wait_gone`, with
   `engine/tests/test_processes.py` (`test_stop_during_a_step_ends_its_whole_tree`, AC7;
   `test_every_start_gets_its_own_group_and_no_window`; `test_kill_waits_for_the_processes_it_is_told_of`;
@@ -42,8 +41,6 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [ ] 10. Guards: `faulthandler_timeout = 300` in `engine/pyproject.toml`; `stop_after(seconds)` in
   `engine/tests/conftest.py`, an `Event` a timer sets; and
   `test_a_node_that_queries_its_stdin_does_not_hang`, under `stop_after`.
-- [ ] 11. Docs: `docs/architecture.md`, `docs/runtimes.md` (`environment.child_env`) and
-  `docs/nodes.md` as Design says; delete from `docs/roadmap.md` what this spec takes on, the Stop
-  hang included, and from `docs/handoff.md` the open item on Stop and the Windows launcher.
+- [ ] 11. Docs: each one Design lists under "Docs that change".
 - [ ] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one by
   one, with AC5 and AC6 from the Windows CI job.

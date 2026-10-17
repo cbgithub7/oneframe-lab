@@ -22,44 +22,40 @@ run's key caches are reset on the shared instance. Around it:
 - the type of an event sink is written eight times: six `Emit` aliases, `Say` in
   `oneframe/models/pin.py`, and the server's own;
 - `runtime.stopped`, `runtime.failed` and a run's three endings are sent before their place is let
-  go, so a page that acts on hearing one is refused `busy` or `in_use`: the slot is freed in a
-  `finally` after the send. Model jobs already let go first, a second way.
+  go, so a page acting on hearing one is refused `busy` or `in_use` (open question 1). Model jobs
+  already let go first, a second way.
 
 ## Requirements
 
 1. **The scheduler is given its executors.** `Scheduler(registry, cache, *, runtimes, executors,
-   store, machine, settings, learned, tmp_root, journal_dir)`. It asks `executors` for each
-   attempt's executor, and `runtimes` only for what a fit and a cache key read (`device_target`,
-   `key_for`). No per-runtime callable or `log_dir` is left on it, nor on `for_root` or
-   `bench_fit.make_scheduler`, to which only tests passed `runtime_python`.
+   store, machine, settings, learned, tmp_root, journal_dir)` asks `executors` for each attempt's
+   executor, and `runtimes` only for a fit's `device_target` and a cache key's `key_for`. No
+   per-runtime callable or `log_dir` is left on it, nor on `for_root` or `bench_fit.make_scheduler`.
 2. **Two Protocols in `oneframe/executors.py`:**
     - `Executor.execute(job: Job, emit: Emit, stop: threading.Event) -> Done`, which
       `EngineExecutor` and `ProcessExecutor` already are after 009;
     - `Executors.executor(manifest, device) -> Executor`, raising `RuntimeMissing` when the node's
       runtime cannot run here.
-3. **One process per run is one provider.** `OneProcessPerRun(runtimes, *, log_dir, tmp_root)`
+3. **One process per run is one provider.** `OneProcessPerRun(runtimes, *, tmp_root, log_dir=None)`
    gives engine nodes the one `EngineExecutor`, and a runtime node a new `ProcessExecutor` per
    attempt, from its runtime's interpreter, variables and cache folder. On the processor it adds
    `CUDA_VISIBLE_DEVICES=-1` to that process, and the scheduler no longer does.
 4. **One probe helper.** `executors.run_probe(runtimes, runtime_id, folder, entry, *, device,
-   params, log_dir)` runs a runtime's own code as a job and returns its `Done`. `bench:runtime`'s
-   probe and `bench:fit`'s context probe both use it. It builds its `ProcessExecutor` as the
-   provider does, and never hides the cards: the context probe runs uncapped, "on the processor",
-   to measure the card.
-5. **Step logs are pruned when one opens,** by the executor that opens it, as journals are.
+   params, log_dir)` runs a runtime's own code as a job and returns its `Done`, never hiding the
+   cards. `bench:runtime`'s probe and `bench:fit`'s context probe both use it.
+5. **Step logs are pruned when one opens,** by the executor that opens it.
 6. **`_attempt` in named steps.** A run's state and a step's state are two small dataclasses, and
    `_attempt` builds the job, runs it, keeps the result and says `node.done`, each a method of its
    own. Events, records and messages stay as they are, byte for byte.
 7. **One `Emit`,** defined in `oneframe.node` (009) and imported by every other module.
 8. **No `on_pid`.** It leaves the scheduler, `for_root`, `make_scheduler` and `ProcessExecutor`, and
-   no provider takes it; a test reads a node's process id from what the node itself reports.
+   no provider takes it.
 9. **An ending is sent after its place is free** (open question 1). One helper in
    `oneframe/journal.py` writes the ending to the journal, lets go of the place, then sends it:
     - an install's `runtime.stopped` and `runtime.failed`, after its slot and its runtime's lock
       (`runtime.done` already is);
-    - a run's `run.done`, `run.stopped` and `run.failed`, after its list of the files it reads is
-      gone and the engine's run slot is free: `Scheduler.run` takes a `release`, which the engine
-      passes;
+    - a run's three endings, after its list of the files it reads is gone and the engine's run slot
+      is free, through a `release` the engine passes to `Scheduler.run`;
     - a model job's three endings, which already work this way, through the same helper;
     - an engine crash's ending, in each of the three.
 
@@ -86,37 +82,34 @@ run's key caches are reset on the shared instance. Around it:
   ending, asks for what its place refused while it lasted (the same install; a next run, or
   removing the run's runtime or a file it read) is answered, not refused `busy` or `in_use`. Fails
   today in every case. Only if the owner says yes to question 1.
-- [ ] AC8: `Scheduler._attempt` is under 60 lines, measured once from Python's `ast` and pasted in
-  the PR. Today it is 123.
+- [ ] AC8: `Scheduler._attempt` is under 60 lines (`end_lineno - lineno + 1` from Python's `ast`),
+  measured once and pasted in the PR. Today it is 123.
 
 ## Design
 
 - **`oneframe/executors.py`** gains `Executor`, `Executors`, `OneProcessPerRun` and `run_probe`; the
   last two share one private builder of a runtime's `ProcessExecutor`. `ProcessExecutor` prunes its
-  log folder (`journal.prune_step_logs`) before it opens a step's log, and loses `on_pid`; the
-  interpreter's id the child reports still serves 008's Stop.
+  log folder (`journal.prune_step_logs`) before it opens a step's log; 008's Stop still uses the
+  interpreter's id the child reports.
 - **`oneframe/runtimes.py`** gains `RuntimeSide`, a Protocol of the five methods `Runtimes` groups
   under "what the scheduler asks" (`python_for`, `env_for`, `caches_for`, `key_for`,
   `device_target`), and `NoRuntimes`, which fails every runtime node `not_installed`. It replaces
   `scheduler.no_runtimes`, `no_env`, `no_target` and two lambdas.
-- **`oneframe/scheduler.py`** takes the signature above; `executors` defaults to
-  `OneProcessPerRun(runtimes, tmp_root=tmp_root)`, and `tmp_root` stays for the run's reading list.
-  `_executor`, `self.engine`, the caches reset on the instance and the step-log pruning go.
-  `for_root` builds the provider with the root's step logs. `for_root` and `make_scheduler` take
+- **`oneframe/scheduler.py`** makes `OneProcessPerRun(runtimes, tmp_root=tmp_root)` the default
+  `executors`. `_executor`, `self.engine`, the caches reset on the instance and the step-log pruning
+  go. `for_root` builds the provider with the root's step logs. `for_root` and `make_scheduler` take
   any `RuntimeSide`, so a test passes its double where it passed `runtime_python`. pyright holds
   both executors and the provider to their Protocols.
-- **Endings.** The helper keeps the ending from the sink, writes it to the journal, calls `release`,
-  then sends it, so the journal still ends with it. `Runtimes.run_install`, `Scheduler.run` and
-  `models/jobs.py` use it. `Engine.graph_run` passes a `release` that frees the slot only while it
-  is still this run's, and the server's crash path frees before it says.
-- **Spec 004** adds a worker pool as another `Executors`, with a `close()` the engine's shutdown
-  calls; the scheduler and the events do not change.
+- **Endings.** The helper keeps the ending from the sink until it is in the journal and `release`
+  has run, so the journal still ends with it. `Runtimes.run_install`, `Scheduler.run` and
+  `models/jobs.py` end through it, and `Engine.graph_run` passes the `release`; the server's crash
+  path frees before it says.
 - **Docs that change:** `docs/architecture.md` (the Scheduler, Executors and Journal rows, and the
-  Events paragraph on letting go before an ending, which now covers runs and installs),
-  `docs/handoff.md` (the open item on endings goes) and `docs/roadmap.md` (the swappable executor,
+  Events paragraph on letting go before an ending, now covering runs and installs),
+  `docs/handoff.md` (its open item on endings goes) and `docs/roadmap.md` (the swappable executor,
   `_attempt`, `Scheduler.__init__` and the `Emit` alias go). AGENTS.md's rules and commands stay.
 - **Risks:**
-    - A run or a job asked for on hearing an ending may send its first events before that ending;
+    - A run or job asked for on hearing an ending may send its first events before that ending;
       they carry `run` or `job`. An install's events carry no id, so `Runtimes` lets go and sends
       under its claim lock, made re-entrant: a claim from another thread waits for the ending, and
       the listener that hears it may claim at once.
@@ -149,9 +142,8 @@ run's key caches are reset on the shared instance. Around it:
 
 ## Verification
 
-AC2, AC4 and AC6 are commands run in the PR, and AC8's measure (each function's
-`end_lineno - lineno + 1`) is pasted there. AC1, AC3, AC5, AC7 and every test above run in CI on
-ubuntu-latest and windows-latest.
+AC2, AC4 and AC6 are commands run in the PR, where AC8's measure is pasted. AC1, AC3, AC5, AC7 and
+every test above run in CI on ubuntu-latest and windows-latest.
 
 After the merge, a local session (`/local-session`) on a machine with an NVIDIA card runs the
 benches' probes on a card once, for 009's changes to them and this spec's, as 009 defers to here:
@@ -165,7 +157,7 @@ check) records the CUDA context's size. The report, naming the machine, goes to
 - The provider is asked per attempt, so a retry after `oom` still gets a new process.
 - The provider, which starts the process, hides the cards: a spec 004 worker serves many jobs.
 - `key_for` and `device_target` stay the runtimes' to answer: a worker pool changes neither.
-- `run_probe` never hides the cards: the context probe runs uncapped but measures the card.
+- `run_probe` hides no card: the context probe runs uncapped "on the processor" to measure the card.
 - Step logs are pruned when one opens, as journals are, so `bench:runtime`'s are bounded too.
 - `on_pid` goes, not to the provider: only tests used it, and a node can report its own process id.
 - `tmp_root` stays on the scheduler for the reading list, and the provider gets it for job folders.
@@ -180,7 +172,8 @@ check) records the CUDA context's size. The report, naming the machine, goes to
 - The typed `Job` and `Done`, the node API and the child's split (009).
 - Processes, the one stop type and children's environments (008).
 - The test guard (007); files, hashing, downloads and paths taken from the layout (011).
-- The worker pool and `Executors.close()` (spec 004).
+- The worker pool, another `Executors` with a `close()` the engine's shutdown calls; the scheduler
+  and the events do not change for it (spec 004).
 - `RuntimeSide` moving with the manager into a package, and the install's and the parser's long
   functions (012); `bench_fit` naming the `torch` runtime, and spec 002's AC8 scenario leaving the
   package (013).

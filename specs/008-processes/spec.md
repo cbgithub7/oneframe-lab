@@ -30,24 +30,23 @@ points to a third.
 1. **One module starts, reads and ends processes.** `oneframe/processes.py` is the only engine
    module that imports `subprocess`. Every process it starts gets its own session (POSIX) or
    process group (Windows) and no console window, and is read as UTF-8, undecodable bytes replaced.
-2. **Ending a process ends its tree, and waits for it.**
-    - A Stop of a node run ends every process the node started (open question 1).
-    - On Windows it returns only once the interpreter the child reported is gone; the job folder is
-      removed after that.
-    - A Stop during an install step ends the step's tree, whether or not its output has closed.
+2. **Ending a process ends its tree, and waits for it.** A Stop of a node run ends every process
+   the node started (open question 1); on Windows it returns only once the interpreter the child
+   reported is gone, and the job folder is removed after that. A Stop during an install step ends
+   the step's tree, whether or not its output has closed.
 3. **One stop type.** A stop is a `threading.Event` in a parameter named `stop` wherever a stop flag
    or callable is passed today: the node context, the executors, the scheduler, the runtime install,
    the archive download and the model store's hashing. Nothing takes a callable that asks "stop?".
 4. **One module names what a child inherits.** `oneframe/environment.py` holds every variable the
-   engine removes from, or sets in, a child's environment, with one case rule: names compared
-   upper-cased on every system. uv and runs start from one inherited environment, without the
-   engine's own Python, its folders on `PATH`, or the secrets.
+   engine removes from, or sets in, a child's environment, names compared upper-cased on every
+   system. uv and runs start from one inherited environment, without the engine's own Python, its
+   folders on `PATH`, or the secrets.
 5. **A runtime's definition cannot set what every run sets.** `reserved_env` covers every name
    `child_env` sets after the definition's own, so `PYTHONIOENCODING` and `PYTHONUNBUFFERED` are
    refused as the cache variables are (open question 2).
 6. **One copy per language.** `app/main/paths.js` holds the temporary-folder variables, which
-   `scripts/tool.js` imports, and uv's settings, once; `contracts/layout.json` holds them equal to
-   `environment.py`'s, as it does the paths.
+   `scripts/tool.js` imports, and uv's settings, once; a new `environment` entry in
+   `contracts/layout.json` holds them equal to `environment.py`'s, as it does the paths.
 7. **A hang names itself.** A test still running long after the slowest test ends prints every
    thread's stack, and a node that asks about its stdin runs under a stop deadline, so a return of
    October's hang fails instead of hanging.
@@ -81,8 +80,8 @@ points to a third.
 - **`oneframe/processes.py`**, the standard library and `Stopped` only:
     - `Child.start(argv, *, env, cwd=None, stdin="null"|"pipe", stderr="merge"|callable)`, with
       `.pid`, `.lines(stop)`, `.close_stdin()`, `.wait(seconds)` and `.kill(also=())`. `lines`
-      yields output until its end and the exit, and raises `Stopped` once `stop` is set, after the
-      output's end too. `kill` ends the tree, then the child, closes its stdin, waits a bounded time
+      yields output until its end and the exit, and raises `Stopped` once `stop` is set, even after
+      the output's end. `kill` ends the tree, then the child, closes its stdin, waits a bounded time
       for the child and each pid in `also`, and never raises. A `Child` used as a context manager
       is killed on exit.
     - `run(argv, *, env, on_line, stop, cwd=None)` runs a command to its end or Stop, returning the
@@ -100,8 +99,8 @@ points to a third.
   two lists as one: the executors' `_ENGINE_PYTHON` plus `UV_PROJECT_ENVIRONMENT` and `UV_PYTHON`),
   `SECRETS` (today's `SECRET_OR_UNSAFE_ENV`), `FORCED_ENV`, `LIBRARY_CACHES`, `OVERRIDING_CACHES`,
   `ROOT_ENV`; `inherited(base)`, `child_env`, `uv_environment`, `reserved_env` and `reserved_why`.
-  Used by the executors, the runtime install, `bench_fit`, `scratch` and `runtimes`, which then reads
-  a runtime definition without importing the executors and, through them, the child script.
+  Its users: the executors, the runtime install, `bench_fit`, `scratch`, and `runtimes`, which then
+  reads a runtime definition without importing the executors and, through them, the child script.
 - **Stop.** Each `should_stop` becomes `stop: threading.Event`: in `child.NodeContext` and `run_node`,
   both executors, `Scheduler.run` and its steps, `runtime_install.install` and `run_step`,
   `archives.download`, and the store's `hash_file` and `adopt`. The server, the runtime manager and
@@ -111,15 +110,11 @@ points to a third.
   of a DLL numpy loads does at start (the inferred cause): `os.fstat(0)` and `isatty`, and on
   Windows `GetFileType` on the standard input handle. It runs under `stop_after(seconds)`, a new
   `conftest.py` helper (an `Event` a timer sets). The child's stdin watcher, the fix, stays.
-- **JavaScript.** `paths.js` exports the temporary variables and uv's settings, and `tool.js` imports
-  the first; `contracts/layout.json` gains an `environment` entry, which `test_layout.py` and
-  `tests/app/layout.test.js` check each side against.
 - **Docs that change:** `docs/architecture.md` (Processes and Environment rows; "killed on Stop"
   becomes "its processes ended on Stop"), `docs/runtimes.md` (`environment.child_env`; the protocol
   variables in the `env` paragraph), `docs/nodes.md` (Stop ends what the node started),
-  `docs/roadmap.md` (what this spec takes on is deleted, the Stop hang included) and
-  `docs/handoff.md` (the open item on Stop and the Windows launcher goes). No rule or command in
-  AGENTS.md changes.
+  `docs/roadmap.md` (this spec's items, the Stop hang included, go) and `docs/handoff.md` (the open
+  item on Stop and the Windows launcher goes). No rule or command in AGENTS.md changes.
 - **Risks:**
     - `taskkill` is a process of its own, a fraction of a second per Stop. If it fails, the
       launcher's job object (unverified) still ends the interpreter, and the wait covers it.
@@ -146,7 +141,7 @@ points to a third.
       `tests/app/layout.test.js`, "the temporary and uv variables match the contract".
 - Changed, names kept:
     - `test_stop_kills_a_runtime_child`: its stop is an `Event` set when the node's stage arrives,
-      and the interpreter is gone at return, with no `wait_gone`;
+      and the interpreter is gone at return, with no `wait_gone` (AC6);
     - each test passing a stop callable passes an `Event` (`test_process.py`, `test_scheduler.py`,
       `test_archives.py`, `test_errors.py`, `test_child_env.py`, `test_model_store.py`); the two
       scheduler tests whose stop counts its calls set it from their listener instead;
@@ -184,8 +179,7 @@ requirements 6 and 7 are checked by the tests under Added. No step needs a GPU o
 - The executor provider, `on_pid`, and `CUDA_VISIBLE_DEVICES=-1` per process (010).
 - uv's folders taken from the layout, and runtime sources through the transport (011).
 - `bench_fit` naming the torch runtime (013).
-- The test guard (007); the tests' wall-clock bounds, including those in tests this spec
-  changes (014).
+- The test guard (007); the tests' wall-clock bounds, even in tests this spec changes (014).
 - How the app and `scripts/tool.js` start processes, in JavaScript: unchanged.
 
 ## Open questions
