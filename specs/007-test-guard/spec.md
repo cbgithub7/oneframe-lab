@@ -4,7 +4,7 @@ Status: draft
 Owner approval: (date, once approved)
 
 From the [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (section 4) and the
-[roadmap](../../docs/roadmap.md)'s clean-up list. The first of the clean-up specs 007 to 013, so
+[roadmap](../../docs/roadmap.md)'s clean-up list. The first of the clean-up specs 007 to 014, so
 that the refactors after it are guarded and can rename tests honestly.
 
 ## Problem
@@ -168,9 +168,9 @@ Windows. No hardware steps.
 ## Out of scope
 
 - The footprint test, shared test helpers, the killed-install test, wall-clock bounds and the two
-  tests of implementation details, with the rename of `test_the_key_version_is_2` (spec 013).
-- Processes (008), the node API (009), the scheduler (010), files (011), and modules, including the
-  narrowed device, vendor and OS names (012).
+  tests of implementation details, with the rename of `test_the_key_version_is_2` (spec 014).
+- Processes (008), the node API (009), the scheduler (010), files (011), modules (012), and the
+  narrowed device, vendor and OS names (013).
 - JavaScript tests in the committed list: both ends are read from source, which needs no list.
 - Protecting `main`, which waits on the owner ([handoff](../../docs/handoff.md)).
 

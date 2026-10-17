@@ -3,7 +3,7 @@
 Status: draft
 Owner approval: (date, once approved)
 
-The fifth of seven clean-up specs (007 to 013), from section 3 of the
+The fifth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
 "One way each" and transport items. It lands after 010, with every stop a `threading.Event` (008),
 and before 012, which moves `runtimes.py` and `runtime_install.py` into a package.
@@ -103,7 +103,7 @@ Today there are several of each:
   `docs/runtimes.md` (sources are https, resumed from a `.part` under `downloads/`),
   `docs/roadmap.md` (the five hashes, the rename retry, the downloader, paths from the layout and
   the tripwire go), and with (a) to open question 3 the data root's exceptions (`AGENTS.md`, or
-  013's `outside` if it has landed). Docstrings: the transport's (the tripwire, one line),
+  014's `outside` if it has landed). Docstrings: the transport's (the tripwire, one line),
   `runtime_install`'s (resume) and `models/__init__.py`'s (the engine imports the transport at
   start; only truststore waits for a download).
 - **Risks:**
@@ -179,7 +179,7 @@ GitHub's real archive host.
 - Stop as one `threading.Event`, and `environment.py` (008); `Stopped`'s home (009).
 - An install's ending sent only after its slot is let go (010).
 - Splitting `runtimes.py` and `runtime_install.py`, and the install's long function (012).
-- The tests' wall-clock bounds, and the killed-install test's second reply (013).
+- The tests' wall-clock bounds, and the killed-install test's second reply (014).
 - urllib3, or any new capability of the transport (a later spec, if one ever needs it).
 - The app's and the scripts' own writes, in JavaScript: unchanged.
 

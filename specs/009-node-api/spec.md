@@ -3,7 +3,7 @@
 Status: draft
 Owner approval: (date, once approved)
 
-The third of seven clean-up specs (007 to 013), from section 3 of the
+The third of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
 node contract. It lands after 008, whose `stop` it takes, and before 010, which makes the executor
 swappable. The node contract changes once, here, before any model node depends on it.
@@ -179,7 +179,7 @@ stand-in torch. The benches' probes run on a card once, after 010, which changes
   `on_pid`, `Emit` imported from `oneframe.node` everywhere, and the scheduler's long functions (010).
 - Processes, children's environments and the one stop type (008, which lands first).
 - The test guard, which reads this spec's Renamed line (007); files and hashing (011); other
-  modules and the rest of the dead weight (012); the tests' wall-clock bounds (013).
+  modules (012); the rest of the dead weight (013); the tests' wall-clock bounds (014).
 - Keeping `load`'s state between runs, and the key it is kept by (spec 004).
 
 ## Open questions

@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` with
 `node scripts/test-guard.js --write` (007).
 
-- [ ] 1. **The docs check and the reviews** (question 3), before any module moves. With (a):
+- [ ] 1. **The docs check and the reviews** (question 2), before any module moves. With (a):
   `scripts/check-docs.js` skips backticked paths in `docs/reviews/` and still checks their links;
   the docs check's line in `AGENTS.md` says so; add the node test in AC6. With (b): no code; tasks 5
   and 6 edit the review's lines as they move each module.
@@ -36,28 +36,8 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [ ] 7. **`install` in named steps:** one function per `STEPS` entry over one `_Install`, uv's
   environments built once, sync through `run`; `install`, `_freeze` and `run_step` stay
   module-level. The install tests pass unchanged, the order of `runtime.step` events included.
-- [ ] 8. **`scripts/tool.js` runs a `.py` repo path** by its absolute path, as well as a module, and
-  its usage comment says so; add "a tool given as a .py path runs that file, by its absolute path".
-- [ ] 9. **Spec 002's check leaves the package** (question 4). `engine/tests/fit_check.py` takes
-  the scenario, finds `hardware/` beside itself, and reads its runtime from its node's manifest;
-  `bench_fit`'s `node` becomes required, and its docstring loses the scenario. Add
-  `bench:fit-check` to `package.json`; in `tool.test.js`, the npm-script list takes it, the TMP
-  test runs it, and add "bench:fit-check runs spec 002's check from the tests folder" (AC8). Move
-  the five scenario tests to `test_fit_check.py`, names kept. Update `AGENTS.md` Commands, the
-  `bench:fit` section of `docs/nodes.md`, the Benches row of `docs/architecture.md`, and the
-  command named in `test.vram`'s `node.json` summary and `ac8.json` comment.
-- [ ] 10. **The rule's test:** add `test_no_engine_module_names_a_runtime_a_node_or_the_tests` in
-  `engine/tests/test_rules.py` (AC7).
-- [ ] 11. **Names outside v1** (only if the owner said yes to question 1): narrow `VENDORS`, `OSES`
-  and the manifest's devices; remove memory's paths for unread devices (the parser's and the fit's)
-  and the plan's other-vendor refusal; add `test_names_outside_v1_are_refused` (AC9); remove
-  `test_devices_the_engine_does_not_read_yet_are_named`, as Tests lists; update the expected
-  problems of `test_every_problem_in_a_definition_is_listed_at_once`; `docs/runtimes.md`'s vendors
-  and OSes, and the devices in `docs/nodes.md`.
-- [ ] 12. **Docs and measures:** delete from `docs/roadmap.md` the rest of what this spec takes on
-  ("Nothing hard-coded", `install` and `parse`, the device, vendor and OS names); the Manifests and
-  Registry rows of `docs/architecture.md`. Measure AC5 and run AC4's command for the PR.
-- [ ] 13. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC9 one
+- [ ] 8. **Docs and measures:** delete from `docs/roadmap.md` the rest of what this spec takes on
+  (`install` and `parse` under "Long functions"); the Manifests and Registry rows of
+  `docs/architecture.md`. Measure AC5 and run AC4's command for the PR.
+- [ ] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC6 one
   by one, with AC5's measure pasted.
-- [ ] 14. After the merge, the local session in Verification on a machine with an NVIDIA card, and
-  its report under `specs/012-modules/reports/`.

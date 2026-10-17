@@ -3,7 +3,7 @@
 Status: draft
 Owner approval: (date, once approved)
 
-The fourth of seven clean-up specs (007 to 013), from section 3 of the
+The fourth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md), the [roadmap](../../docs/roadmap.md)'s
 "Ready for spec 004", "Long functions" and "One way each" items, and the
 [handoff](../../docs/handoff.md)'s open item on endings. It lands after 009, whose `Job` and `Done`
@@ -181,12 +181,12 @@ check) records the CUDA context's size. The report, naming the machine, goes to
 - Processes, the one stop type and children's environments (008).
 - The test guard (007); files, hashing, downloads and paths taken from the layout (011).
 - The worker pool and `Executors.close()` (spec 004).
-- `RuntimeSide` moving with the manager into a package, `bench_fit` naming the `torch` runtime,
-  spec 002's AC8 scenario leaving the package, and the install's and the parser's long functions
-  (012).
+- `RuntimeSide` moving with the manager into a package, and the install's and the parser's long
+  functions (012); `bench_fit` naming the `torch` runtime, and spec 002's AC8 scenario leaving the
+  package (013).
 - Requests answered on the engine's input loop, which can hold up `run.stop`: still open in the
   handoff, for first light.
-- The tests' wall-clock bounds, including those in tests this spec changes (013).
+- The tests' wall-clock bounds, including those in tests this spec changes (014).
 
 ## Open questions
 

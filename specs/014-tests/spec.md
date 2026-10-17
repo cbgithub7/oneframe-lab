@@ -1,9 +1,9 @@
-# 013: Tests that check behaviour
+# 014: Tests that check behaviour
 
 Status: draft
 Owner approval: (date, once approved)
 
-The last of seven clean-up specs (007 to 013), from the
+The last of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (sections 4 and 6), the
 [roadmap](../../docs/roadmap.md)'s "Tests" items and the [handoff](../../docs/handoff.md)'s open
 item on the footprint test. It needs only 007, whose guard sees its one rename, and is worked last.
@@ -177,7 +177,7 @@ gives the footprint test's time on Windows before and after. No step needs a GPU
 - `alive`, `wait_gone` and `stop_after`, Stop as an `Event`, and the Windows Stop hang (008).
 - Waits on `engine._run`, which become waits on a run's ending (010).
 - Runtime sources from spec 003's hosts, and starting an engine process with the test CA (011).
-- The device, vendor and OS names outside v1 (012); `allow_network` (009).
+- The device, vendor and OS names outside v1 (013); `allow_network` (009).
 - The app's own footprint (Electron's folders): the test runs the engine, as today.
 - Other private names tests reach, such as `engine.models._job`: the review named these two.
 

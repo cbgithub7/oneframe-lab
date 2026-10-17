@@ -3,7 +3,7 @@
 Status: draft
 Owner approval: (date, once approved)
 
-The second of seven clean-up specs (007 to 013), from section 3 of the
+The second of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
 "One way each" and Windows Stop items. It lands after 007 (the test guard) and before 009, so the
 node API is written once, around the one stop type.
@@ -183,9 +183,9 @@ requirements 6 and 7 are checked by the tests under Added. No step needs a GPU o
 - The node API module, the typed job, and `allow_network` and `exit_with_parent` (009).
 - The executor provider, `on_pid`, and `CUDA_VISIBLE_DEVICES=-1` per process (010).
 - uv's folders taken from the layout, and runtime sources through the transport (011).
-- `bench_fit` naming the torch runtime (012).
+- `bench_fit` naming the torch runtime (013).
 - The test guard (007); the tests' wall-clock bounds, including those in tests this spec
-  changes (013).
+  changes (014).
 - How the app and `scripts/tool.js` start processes, in JavaScript: unchanged.
 
 ## Open questions
