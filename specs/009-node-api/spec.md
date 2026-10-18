@@ -1,7 +1,7 @@
 # 009: The node API
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The third of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -178,16 +178,16 @@ stand-in torch, and the benches' probes run on a card once, after 010 (Decisions
   modules (012); the rest of the dead weight (013); the tests' wall-clock bounds (014).
 - Keeping `load`'s state between runs, and the key it is kept by (spec 004).
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **May node code import `oneframe.node`?** `docs/nodes.md` says node code never imports the
-   engine. *Recommended: yes, that package and nothing else:* the child brings it into every
+   engine. *Answered: yes, that package and nothing else:* the child brings it into every
    runtime, and it gives nodes a type and `Stopped`.
 2. **Is `load` named in `node.json`** (`run.load`, a new optional field), not found by name in the
-   module? *Recommended: named:* otherwise a module-level `from torch import load` would be called.
+   module? *Answered: named:* otherwise a module-level `from torch import load` would be called.
 3. **Do nodes import their own helpers relatively?** It follows from loading node code as a
-   package, the review's fix. *Recommended: yes:* then no helper hides a runtime's package, and no
+   package, the review's fix. *Answered: yes:* then no helper hides a runtime's package, and no
    two nodes' helpers meet. No node in the repo has a helper yet.
 4. **Is the public `ctx` exactly what docs/nodes.md documents?** `job`, `node`, `out_dir`,
    `outputs`, `ways`, `peaks()` and `stopped()` leave it, and `check_stop()` stays the one way to
-   ask about Stop. *Recommended: yes:* only tests read them, and no model node depends on them yet.
+   ask about Stop. *Answered: yes:* only tests read them, and no model node depends on them yet.

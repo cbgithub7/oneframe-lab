@@ -1,7 +1,7 @@
 # 012: Modules that are several, and long functions
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The sixth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -140,14 +140,14 @@ through them.
 - `bench_fit` naming the `torch` runtime, spec 002's check leaving the package, a test of
   "Nothing hard-coded", and the device, vendor and OS names outside v1 (013).
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **Is a malformed `node.json` a problem, shown beside the catalogue,** in each case in Problem?
-   *Recommended: yes, as bug fixes:* today it is listed untitled or stops the engine, and no node
+   *Answered: yes, as bug fixes:* today it is listed untitled or stops the engine, and no node
    in the repo is affected.
 2. **How does the docs check treat a review that names a moved module?** The 2026-10-12 review
    names `oneframe/memory.py` and `oneframe/runtimes.py`. (a) Skip backticked paths in
    `docs/reviews/`, as in specs, and keep checking their links; (b) edit the review.
-   *Recommended: (a):* a review is a dated record, and should stay as the owner read it.
+   *Answered: (a):* a review is a dated record, and should stay as the owner read it.
 3. **A lasting test on function length or parameter count?** It would be a new rule.
-   *Recommended: no:* measure once in the PR, so no cap later bends a design.
+   *Answered: no:* measure once in the PR, so no cap later bends a design.

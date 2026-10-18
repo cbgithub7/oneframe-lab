@@ -1,7 +1,7 @@
 # 010: The scheduler and its executors, ready for spec 004
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The fourth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md), the [roadmap](../../docs/roadmap.md)'s
@@ -181,11 +181,11 @@ check) records the CUDA context's size. The report, naming the machine, goes to
   handoff, for first light.
 - The tests' wall-clock bounds, including those in tests this spec changes (014).
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **Is an ending sent only after its place is free?** Today a page that, on hearing
    `runtime.stopped`, `runtime.failed`, `run.done`, `run.stopped` or `run.failed`, starts the next
    install or run, or removes what the run used, is refused `busy` or `in_use`. After, it is
    accepted; a next run's first events may then come before the last run's ending, told apart by
-   `run` as model jobs' are by `job`, and a next install's never do. *Recommended: yes.* Model jobs
+   `run` as model jobs' are by `job`, and a next install's never do. *Answered: yes.* Model jobs
    end this way already, so it makes one way, and a page should be able to act on what it hears.

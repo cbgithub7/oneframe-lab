@@ -1,7 +1,7 @@
 # 014: Tests that check behaviour
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The eighth of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (sections 4 and 6), the
@@ -176,7 +176,7 @@ after. No step needs a GPU.
 - The app's own footprint (Electron's folders): the test runs the engine, as today.
 - Other private names tests reach, such as `engine.models._job`: the review named these two.
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **What does the footprint test check in the real profile?** (a) Keep today's check of new
    top-level names: flaky, and blind to writes into folders that exist. (b) Trace the files the
@@ -184,11 +184,11 @@ after. No step needs a GPU.
    but needs administrator rights and a spike on the Windows runner first, keeping (a) until then.
    (c) Watch our programs' default folders, deep: sees writes into folders that exist, but no
    longer a new name made by a program off the list, and is slower on a dev box with a large uv
-   cache. *Recommended: (c):* it ends the flake without a spike and looks deeper where our
+   cache. *Answered: (c):* it ends the flake without a spike and looks deeper where our
    programs write. With (a) or (b), AC2 and AC3 go; with (b) the profile check becomes its own
    spec after the spike.
 2. **AGENTS.md, "One data root".** Proposed, after "holds the two equal": "The only exceptions are
    the entries of `outside` in `contracts/layout.json`, each naming who writes it, where and why.
    The footprint test allows nothing else, and a new entry is the owner's decision, as a change to
-   this rule is." *Recommended: yes, as worded:* the owner chose data on 2026-10-12, and the last
+   this rule is." *Answered: yes, as worded:* the owner chose data on 2026-10-12, and the last
    sentence keeps exceptions the owner's.

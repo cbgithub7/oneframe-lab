@@ -1,7 +1,7 @@
 # 011: Files, hashes, downloads and paths
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The fifth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -178,17 +178,17 @@ has a source, so the spec that adds one makes the first download from GitHub's r
 - urllib3, or any new capability of the transport (a later spec, if one ever needs it).
 - The app's and the scripts' own writes, in JavaScript: unchanged.
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **Must runtime sources be https?** No shipped runtime has a source; `runtime.json` accepts
-   `http://`, which the transport refuses. *Recommended: yes:* every example is https, and http
+   `http://`, which the transport refuses. *Answered: yes:* every example is https, and http
    would grow the transport.
 2. **May sources behave as model downloads do?** Retried; resumed from a `.part` kept under
    `downloads/` after a Stop or a kill; Stop seen at once; TLS from the system's trust store; a 30 s
    stall window for a 60 s read timeout; a failure's text changes, not its kind or reason (a full
-   disk says "the drive" for model files too). *Recommended: yes:* these are the fixes the review
+   disk says "the drive" for model files too). *Answered: yes:* these are the fixes the review
    asked for, and model files already work so.
 3. **`--uv-home`** (the engine's and both benches') lets uv write outside the root without being
    one of AGENTS.md's exceptions: list it as a folder the person names, beside `--out` (a), or keep
-   it to tests, passed in by the driver as `transfer` is (b)? *Recommended: (a):* it is never a
+   it to tests, passed in by the driver as `transfer` is (b)? *Answered: (a):* it is never a
    default, the app never passes it, and the tests share one uv cache through it.

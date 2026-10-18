@@ -1,7 +1,7 @@
 # 013: Nothing hard-coded, and v1's names
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The seventh of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -115,10 +115,10 @@ on a card.
 - "Nothing hard-coded" in JavaScript: the app names no node today.
 - macOS, AMD and Intel, which the platform matrix leaves out of v1.
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **Are names outside v1 refused?** Manifests then name only `cpu` and `cuda`, and builds only
-   `nvidia` or `none`, on `windows` or `linux`. *Recommended: yes:* nothing uses them, they are
+   `nvidia` or `none`, on `windows` or `linux`. *Answered: yes:* nothing uses them, they are
    outside the platform matrix, and widening later still reads every file written now.
 2. **Does spec 002's check get its own command,** `npm run bench:fit-check`, with `bench:fit` then
-   needing a node? *Recommended: yes:* the check lives with its node; shipped code names neither.
+   needing a node? *Answered: yes:* the check lives with its node; shipped code names neither.

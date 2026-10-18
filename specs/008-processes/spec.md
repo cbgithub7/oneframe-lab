@@ -1,7 +1,7 @@
 # 008: Processes, children's environments and Stop
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The second of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -182,12 +182,12 @@ requirements 6 and 7 are checked by the tests under Added. No step needs a GPU o
 - The test guard (007); the tests' wall-clock bounds, even in tests this spec changes (014).
 - How the app and `scripts/tool.js` start processes, in JavaScript: unchanged.
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **Does Stop end the processes a node started?** Today it kills the node's own process only, and
-   on Linux a process the node started keeps running. *Recommended: yes.* executors.py already
+   on Linux a process the node started keeps running. *Answered: yes.* executors.py already
    promises a kill "outright", and a process left behind can hold the card.
 2. **May `runtime.json` set `PYTHONIOENCODING` or `PYTHONUNBUFFERED`?** Today both are accepted, then
-   silently overwritten; no runtime sets them. *Recommended: refuse them*, as the cache variables
+   silently overwritten; no runtime sets them. *Answered: refuse them*, as the cache variables
    are: a setting that cannot take effect should say so. `PYTHONPATH`, `PYTHONHOME` and
    `PYTHONPYCACHEPREFIX` stay accepted and applied, as today: an author sets them on purpose.

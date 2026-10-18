@@ -1,7 +1,7 @@
 # 007: The test guard sees every test
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-10-18, every open question answered as recommended
 
 The first of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (section 4) and the
@@ -167,12 +167,12 @@ both are then reverted. The PR records the guard's time on Windows. No hardware 
 - JavaScript tests in the committed list: both ends are read from source, which needs no list.
 - Protecting `main`, which waits on the owner ([handoff](../../docs/handoff.md)).
 
-## Open questions
+## Open questions (answered by the owner, 2026-10-18)
 
 1. **AGENTS.md rule 6.** Proposed: "**Tests are not negotiable.** Never delete or weaken a test to
    make a check pass. A test or a case may be removed, skipped or emptied only when the spec lists
    it under "- Removed", with the reason, and renamed only when the spec lists it under
    "- Renamed". `node scripts/test-guard.js` enforces this in the hooks and in CI, over every
    collected case; it needs the engine environment." So a small fix with no spec can no more rename
-   or skip a test than it can remove one today. *Recommended: yes, as worded:* it is today's rule,
+   or skip a test than it can remove one today. *Answered: yes, as worded:* it is today's rule,
    applied to what the guard can now see.
