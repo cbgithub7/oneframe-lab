@@ -2,6 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
+Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: AC1 checks that no
+  recorded hash changes, rather than that its test file is untouched, which the new signatures would
+  break.
 
 The fifth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -55,8 +58,9 @@ Today there are several of each:
 
 ## Acceptance criteria
 
-- [ ] AC1: `git diff <its first commit> HEAD -- engine/tests/test_recorded_hashes.py` prints nothing at the PR:
-  recorded hashes keep the values `test_recorded_hashes_keep_their_values` took from today's code.
+- [ ] AC1: `git diff <its first commit> HEAD -- engine/tests/test_recorded_hashes.py | rg '^[-+].*[0-9a-f]{64}'`
+  prints nothing at the PR: the test's calls may follow the new signatures, but every recorded hash
+  keeps the value `test_recorded_hashes_keep_their_values` took from today's code.
 - [ ] AC2: `rg -ln 'def (sha256_of|file_digest|hash_file|_rename|_replace)\b|urlopen|\.read\((CHUNK|1 << 20)\)|\.replace\(\w+\)|disk_usage' engine/src/oneframe`
   prints nothing outside `engine/src/oneframe/files.py`. Today it prints six other files.
 - [ ] AC3: `rg -n '\b(data|root) / "(runtimes|uv|objects|tmp)"' engine/src/oneframe --glob '!layout.py'`

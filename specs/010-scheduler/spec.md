@@ -2,6 +2,8 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
+Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: `NoRuntimes` raises
+  only where a runtime is needed, so AC1's fake executors still get the job.
 
 The fourth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md), the [roadmap](../../docs/roadmap.md)'s
@@ -93,7 +95,9 @@ run's key caches are reset on the shared instance. Around it:
   interpreter's id the child reports.
 - **`oneframe/runtimes.py`** gains `RuntimeSide`, a Protocol of the five methods `Runtimes` groups
   under "what the scheduler asks" (`python_for`, `env_for`, `caches_for`, `key_for`,
-  `device_target`), and `NoRuntimes`, which fails every runtime node `not_installed`. It replaces
+  `device_target`), and `NoRuntimes`: its `python_for`, `env_for` and `caches_for` raise
+  `RuntimeMissing`, so a runtime node fails `not_installed`, while `key_for` and `device_target`
+  answer as today's defaults do, so a fake `Executors` still gets the job (AC1). It replaces
   `scheduler.no_runtimes`, `no_env`, `no_target` and two lambdas.
 - **`oneframe/scheduler.py`** makes `OneProcessPerRun(runtimes, tmp_root=tmp_root)` the default
   `executors`. `_executor`, `self.engine`, the caches reset on the instance and the step-log pruning

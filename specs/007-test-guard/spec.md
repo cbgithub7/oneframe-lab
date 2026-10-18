@@ -2,6 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
+Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: a Renamed line acts
+  once its old name is gone; only specs changed on the branch allow; duplicate case IDs are refused
+  through pytest's own option.
 
 The first of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (section 4) and the
@@ -30,14 +33,17 @@ exists, and the line allows that name to vanish for good, since every spec ever 
    removal does. JavaScript tests, still read from source, carry the same two flags: a `skip` or
    `todo` option or modifier, or a `t.skip()` or `t.todo()` call; and an empty body.
 3. **Case IDs are names.** Collection refuses a case whose ID pytest made from its position
-   (`memory0`, `exc3`), naming the test: otherwise removing a middle case and adding one at the end
-   leaves the set of IDs as it was.
-4. **Renames.** A spec's Tests section may hold lines ``- Renamed: `old` -> `new` ``. The old test
-   may go while the new one exists; a new name that matches no test fails the guard. A name is a
+   (`memory0`, `exc3`), naming the test, and pytest's own `strict_parametrization_ids` refuses two
+   cases of one ID (which it would number `cu126_0`, `cpu0`): otherwise removing a middle case and
+   adding one at the end leaves the set of IDs as it was.
+4. **Renames.** A spec's Tests section may hold lines ``- Renamed: `old` -> `new` ``. The line acts
+   once the old test is gone: the new one must then exist, or the guard fails. A name is a
    function, which covers its cases, or one case. The new test is compared with the old one's
    flags, so a rename that gains a skip or an empty body still needs a "- Removed" line.
-5. **Only live specs allow.** "- Removed" and "- Renamed" lines count only in a spec that is not
-   done or dropped, or that changed since the merge base.
+5. **Only specs being worked on allow.** "- Removed" and "- Renamed" lines count only in a spec
+   whose folder changed since the merge base: in a commit on the branch, in the working tree, or not
+   yet tracked. An approved spec not yet started allows nothing, nor does a done one; `plan.md` is
+   no longer read (only 001's and 002's, both done, have one).
 6. **The base comes from git.** `engine/tests/collected.txt` is the listing, committed. The guard
    reads it at the merge base with `git show`, so the base is never collected.
     - The guard fails when the list in the checkout differs from the live collection, and names
@@ -62,16 +68,17 @@ exists, and the line allows that name to vanish for good, since every spec ever 
 - [ ] AC4: The JavaScript entries of a made-up file equal their expected list, with each form of
   skip and of empty body flagged, and a `test(` inside a string not counted (node test "JavaScript
   tests are read with their skips and empty bodies").
-- [ ] AC5: Collecting a made-up suite with a case numbered by its position fails, naming the test
-  (pytester test `test_a_case_numbered_by_its_position_is_refused`). Today's suite has 57 such
-  cases, in seven functions.
-- [ ] AC6: A "- Renamed" line lets the old name go only while the new one exists: with the new name
-  present the guard passes, and without it the guard names it (node test "a rename lets the old
-  name go only to a name that exists"). Today's guard ignores the line.
-- [ ] AC7: A "- Removed" line allows a removal only from a spec not done or dropped, or changed
-  since the merge base: the same line in a done spec unchanged on the branch allows nothing (node
-  test "only specs being worked on, or changed on the branch, allow a removal"). Today a done spec
-  allows the name forever.
+- [ ] AC5: Collecting a made-up suite with a case numbered by its position, or two cases of one ID,
+  fails, naming the test (pytester test `test_a_case_numbered_by_its_position_is_refused`).
+  Today's suite has 57 cases numbered by position, in seven functions.
+- [ ] AC6: A "- Renamed" line lets the old name go only to a new one that exists: with the old
+  name gone and the new present the guard passes, without the new it names it, and while the old
+  stands the line does nothing (node test "a rename lets the old name go only to a name that
+  exists"). Today's guard ignores the line.
+- [ ] AC7: A "- Removed" line allows a removal only from a spec whose folder changed since the merge
+  base: the same line in an approved or done spec unchanged on the branch allows nothing (node
+  test "only specs being worked on, or changed on the branch, allow a removal"). Today any spec ever
+  written allows the name forever.
 - [ ] AC8: When `engine/tests/collected.txt` in the checkout differs from the live collection, the
   guard exits 1 and names `node scripts/test-guard.js --write` (node test "a committed list that
   differs from the collection fails, naming --write", with a stand-in collection).
@@ -86,9 +93,9 @@ gains:
   guard with pytest's own message. It takes a second or two on Linux; the PR measures Windows.
 - `jsEntries(file, text)`: JavaScript tests from source, with their flags, read only where a
   statement starts; today a string in `tests/app/guards.test.js` counts as a test.
-- `allowances(...)`: the Removed and Renamed lines of the specs that count. Whether a spec is done
-  or dropped is read by one function in `scripts/check-docs.js`, taken out of the length check that
-  reads `Status:` inline today, so the two checks agree. The template, always a draft, is skipped.
+- `allowances(...)`: the Removed and Renamed lines of the specs whose folder changed since the
+  merge base, found with `git diff` against it and `git ls-files --others`; no status is read, and
+  the template is skipped.
 - `problems(before, after, allow)`: gone IDs, gained flags, and renames to nothing.
 - `--write`, which rewrites the committed list from the live collection.
 
@@ -98,7 +105,8 @@ body. Reviewers still read a rewritten test beside the old one.
 
 **`engine/tests/fixtures/listing.py`** holds two collection hooks, which `engine/tests/conftest.py`
 imports: the listing, switched on only by the guard, and the refusal of positional IDs. The conftest
-also enables pytester, for their tests.
+also enables pytester, for their tests, and `engine/pyproject.toml` sets
+`strict_parametrization_ids = true` (pytest 9.1), under which today's 570 IDs still collect.
 
 **Explicit `ids`** go to `test_failures_are_classified_and_leave_nothing_cached`, whose IDs are
 the code it runs, and to the seven functions the refusal names today (in test_child.py,
@@ -150,12 +158,14 @@ both are then reverted. The PR records the guard's time on Windows. No hardware 
 
 - The base is the committed list, read with `git show`: collecting the base needs its environment.
 - The list is sorted text, an ID and its flags per line, in LF: it reads the same on Windows.
-- The listing is read from pytest's output, so the guard writes no temp file (the data root rule).
+- The listing is read from pytest's output: the guard adds no file but the list, and its collection
+  runs as `npm run engine:check` runs pytest, writing what that writes.
 - The hooks live in a module the conftest imports, so the pytester tests load the same code.
 - Skips are compared by mark and call names, not conditions, which differ from system to system.
 - Positional IDs are refused at every collection, not only by the guard, so they fail earliest.
 - The code-text IDs get names too: any edit to that code would otherwise read as a rename.
-- Only specs being worked on, or changed on the branch, allow: otherwise a line allows forever.
+- Only specs changed on the branch allow: an approved spec's lines wait for its work, and no status
+  has to be set for them to count.
 - With no base ref the guard still skips, as today; without the engine environment it fails.
 
 ## Out of scope

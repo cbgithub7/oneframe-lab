@@ -2,6 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
+Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: AC5 also catches an
+  engine named or opened another way; AC7 asks each timing line to be a marked bound, rather than
+  counting five.
 
 The eighth of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (sections 4 and 6), the
@@ -68,13 +71,15 @@ footprint item. It needs only 007, whose guard sees its rename, and is worked la
   profile, as the runner's Firefox made, is not reported. Today's check reports it. Only with (c).
 - [ ] AC4: `rg -n '^(def (sha|_sha|put|pin|pinned|hub_pinned|call|hub|engine|wait_until)\b|class (Server|Client|_Engine)\b|(FAST|TRANSFER)\b.*= )|monotonic\(\) \+|FileLock\(Path\(sys\.argv' engine/tests --glob '!conftest.py' --glob '!**/fixtures/**'`
   prints nothing. Today it prints 41 lines in 10 files.
-- [ ] AC5: `rg -n '^\s*(\w+ = |return )?(Engine|EngineProcess)\(' engine/tests --glob '!conftest.py' --glob '!**/fixtures/**'`
-  prints nothing, so every engine comes from a fixture that ends it. Today it prints 13 lines.
+- [ ] AC5: `rg -nP '^(?!\s*f?["\x27]).*\b(Engine|EngineProcess)\(' engine/tests --glob '!conftest.py' --glob '!**/fixtures/**'`
+  prints nothing: outside a script run in a Python of its own, every engine comes from a fixture
+  that ends it, however it is named or opened. Today it prints 13 lines.
 - [ ] AC6: `test_a_killed_install_is_not_installed_and_a_second_install_completes` fails on the
   second reply, naming it, when that reply is an error: shown once in the PR with a temporary
   change that makes the second install refuse, then reverted. Today it fails only after 180 s.
-- [ ] AC7: `rg -n 'monotonic\(\) -' engine/tests` prints five lines, each in a test the Tests
-  section keeps a bound in. Today it prints nine.
+- [ ] AC7: `rg -n 'monotonic\(\) -' engine/tests` prints only lines marked `# bound:`, each in a
+  test the Tests section keeps a bound in, and the PR shows its output; a later bound is marked
+  too. Today it prints nine, none marked.
 - [ ] AC8: `rg -n 'tools\._|tools, "_|assert KEY_VERSION' engine/tests` prints nothing. Today it
   prints six lines, in `test_model_pin.py` and `test_cache_keys.py`.
 

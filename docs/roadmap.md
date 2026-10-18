@@ -1,14 +1,15 @@
 # Roadmap: what is parked
 
-What has been decided or found, but that no step has taken on yet. The order of work is in
-[handoff.md](handoff.md); a step that takes an item on moves it into its spec and deletes it here.
+What has been decided or found, but that no step has finished yet. The order of work is in
+[handoff.md](handoff.md); a spec that takes an item on is named beside it, and the item leaves here
+when that spec lands.
 
 ## The clean-up (specs 007 to 014)
 
-From the [review of 2026-10-12](reviews/2026-10-12.md), section 3, which the owner asked to clean
-up before the first model node. Each item is now in the draft spec named beside it; a spec deletes
-its items here when it lands. Nothing a person sees changes, except where a spec's open questions
-say; the node contract changes once (009), before any model node depends on it.
+From the [review of 2026-10-12](reviews/2026-10-12.md), sections 3 and 4, which the owner asked to
+clean up before the first model node. Each item is in the approved spec named beside it. Nothing a
+person sees changes, except where a spec's answered questions say; the node contract changes once
+(009), before any model node depends on it.
 
 - **The node contract** (009):
     - an optional `load(ctx)` before `run(ctx, state)`, so spec 004 keeps models loaded without

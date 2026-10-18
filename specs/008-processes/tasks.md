@@ -38,8 +38,9 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `test_ctrl_c_during_a_run_ends_its_processes`; tighten `test_stop_kills_a_runtime_child` (AC6).
 - [ ] 9. `bench_fit._holding` on a `Child`: UTF-8, no window, its stderr to the tool's own, ended by
   closing its stdin and then the tree kill. AC1's command prints only `processes.py`.
-- [ ] 10. Guards: `faulthandler_timeout = 300` in `engine/pyproject.toml`; `stop_after(seconds)` in
-  `engine/tests/conftest.py`, an `Event` a timer sets; and
+- [ ] 10. Guards: `faulthandler_timeout = 300` in `engine/pyproject.toml`; `stop_after(seconds)`
+  from a fixture in `engine/tests/conftest.py`, an `Event` a daemon timer sets, cancelled at
+  teardown; and
   `test_a_node_that_queries_its_stdin_does_not_hang`, under `stop_after`.
 - [ ] 11. Docs: each one Design lists under "Docs that change".
 - [ ] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one by

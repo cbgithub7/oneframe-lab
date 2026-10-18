@@ -7,17 +7,17 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `test_failures_are_classified_and_leave_nothing_cached`. Bodies do not change, and today's guard
   sees the same function names.
 - [ ] 2. **Refuse positional IDs.** Add `engine/tests/fixtures/listing.py` with the collection hook
-  that refuses a case numbered by its position, naming the test. `engine/tests/conftest.py` imports
-  it and enables pytester. Add `engine/tests/test_listing.py` with
-  `test_a_case_numbered_by_its_position_is_refused` (AC5).
+  that refuses a case numbered by its position, naming the test, and set
+  `strict_parametrization_ids = true` in `engine/pyproject.toml`. `engine/tests/conftest.py` imports
+  the hook and enables pytester. Add `engine/tests/test_listing.py` with
+  `test_a_case_numbered_by_its_position_is_refused`, which covers a duplicate ID too (AC5).
 - [ ] 3. **The listing.** Add the second hook, switched on only when the guard asks: each ID with
   its skip marks and calls and its empty flag, sorted. Add
   `test_the_listing_of_a_made_up_suite_is_as_expected` (AC3).
-- [ ] 4. **Which lines count.** Move the reading of a spec's `Status:` into one function in
-  `scripts/check-docs.js`, used by its length check and the guard. `allowances()` reads "- Removed"
-  and "- Renamed" lines from the Tests sections of specs not done or dropped, or changed since the
-  merge base, and skips the template. Node tests for AC6 and AC7; the existing guard tests stay as
-  they are.
+- [ ] 4. **Which lines count.** `allowances()` reads "- Removed" and "- Renamed" lines from the
+  Tests sections of specs whose folder changed since the merge base (committed, in the working
+  tree, or untracked), skips the template and no longer reads `plan.md`; a Renamed line acts once
+  its old name is gone. Node tests for AC6 and AC7; the existing guard tests stay as they are.
 - [ ] 5. **JavaScript entries.** `jsEntries()` reads tests where a statement starts, with their skip
   and empty flags; `testNames` reads JavaScript through it. Node test for AC4.
 - [ ] 6. **Compare IDs.** `collectPython()` and `problems()`: gone IDs, gained flags (renamed tests

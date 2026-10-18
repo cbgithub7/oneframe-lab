@@ -2,6 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
+Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: the one list of the
+  engine's Python keeps `PYTHONDONTWRITEBYTECODE` from uv, as `DROP_ENV` does today; `stop_after` is
+  a fixture whose timer cannot outlive its test.
 
 The second of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -96,7 +99,9 @@ points to a third.
   `bench_fit._holding` is a `Child` whose stderr goes to the tool's own. `hardware` defaults its
   `run` seam to `output`, and `diagnose._uv_version` uses it.
 - **`oneframe/environment.py`**, standard library only: `TEMP_VARIABLES`, `ENGINE_PYTHON` (today's
-  two lists as one: the executors' `_ENGINE_PYTHON` plus `UV_PROJECT_ENVIRONMENT` and `UV_PYTHON`),
+  two lists as one: the executors' `_ENGINE_PYTHON` and the install's `DROP_ENV`, so
+  `UV_PROJECT_ENVIRONMENT`, `UV_PYTHON` and `PYTHONDONTWRITEBYTECODE` join it; a run sets the
+  last again),
   `SECRETS` (today's `SECRET_OR_UNSAFE_ENV`), `FORCED_ENV`, `LIBRARY_CACHES`, `OVERRIDING_CACHES`,
   `ROOT_ENV`; `inherited(base)`, `child_env`, `uv_environment`, `reserved_env` and `reserved_why`.
   Its users: the executors, the runtime install, `bench_fit`, `scratch`, and `runtimes`, which then
@@ -108,8 +113,9 @@ points to a third.
 - **Guards.** `faulthandler_timeout` in `engine/pyproject.toml`, under CI's job timeout and far
   above the slowest test. The stdin test's node asks for its standard input's type as the C runtime
   of a DLL numpy loads does at start (the inferred cause): `os.fstat(0)` and `isatty`, and on
-  Windows `GetFileType` on the standard input handle. It runs under `stop_after(seconds)`, a new
-  `conftest.py` helper (an `Event` a timer sets). The child's stdin watcher, the fix, stays.
+  Windows `GetFileType` on the standard input handle. It runs under `stop_after(seconds)`, from a
+  new `conftest.py` fixture: an `Event` a daemon timer sets, cancelled when the test ends. The
+  child's stdin watcher, the fix, stays.
 - **Docs that change:** `docs/architecture.md` (Processes and Environment rows; "killed on Stop"
   becomes "its processes ended on Stop"), `docs/runtimes.md` (`environment.child_env`; the protocol
   variables in the `env` paragraph), `docs/nodes.md` (Stop ends what the node started),

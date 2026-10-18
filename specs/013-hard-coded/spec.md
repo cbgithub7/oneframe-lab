@@ -2,6 +2,8 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
+Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: the rule test's
+  exceptions are keyed by where a name stands, never by file alone.
 
 The seventh of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -33,7 +35,7 @@ it; and it needs 010's `run_probe`.
 
 - [ ] AC1: `test_no_engine_module_names_a_runtime_a_node_or_the_tests` (`test_rules.py`): no engine
   module holds, outside a docstring, a repo runtime's or node's id (but for library names the test
-  lists by file), or `tests` as a path part. Fails today on `bench_fit.py`.
+  lists by where each stands), or `tests` as a path part. Fails today on `bench_fit.py`.
 - [ ] AC2: The node test "bench:fit-check runs spec 002's check from the tests folder"
   (`tests/app/tool.test.js`): `package.json`'s `bench:fit-check`, run with `--data <tmp>
   --runtimes <empty>`, exits 0 with a report that says "Not measured". Fails today: no such script.
@@ -56,7 +58,9 @@ anything else as a module, as today, so `bench:fit-check` starts through it as e
 a data root does, with uv's temporary files under that root.
 
 **The rule's test** walks each engine module's AST; its exceptions (docstrings, library names such
-as `torch` that are not runtime ids) live in the test, each with its file.
+as `torch` that are not runtime ids) live in the test, each keyed by where the name stands (such
+as an import, a `sys.modules` key, a cache folder's name or a check of a lock's package names),
+never by file alone: a listed file that gains a runtime id is still caught.
 
 **Names outside v1** (question 1): `VENDORS`, `OSES` and the manifest's devices narrow; memory's
 paths for devices it "does not read yet" (the parser's and the fit's) and the plan's other-vendor
@@ -69,7 +73,7 @@ loses "Nothing hard-coded" and the device, vendor and OS names. `test.vram`'s `n
 and `ac8.json` comment name the new command.
 
 **Risks.** The moved scenario's card path runs in no CI job; the local session in Verification
-runs it once. A library named like a runtime (`torch`) is allowed only in a file the test lists, so
+runs it once. A library named like a runtime (`torch`) is allowed only where the test lists it, so
 a new use fails the test until a person adds it there, which a review sees.
 
 ## Tests

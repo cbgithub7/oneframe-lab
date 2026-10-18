@@ -20,7 +20,8 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   AC4's and AC5's commands print nothing.
 - [ ] 5. **The killed install.** Its second `runtimes.install` reply is asserted before any wait
   (AC6).
-- [ ] 6. **Bounds**, test by test as the spec's Tests section says (AC7).
+- [ ] 6. **Bounds**, test by test as the spec's Tests section says; each bound kept carries a
+  `# bound:` comment saying why it is evidence (AC7).
 - [ ] 7. **Behaviour, not details.** Rename `test_the_key_version_is_2` to
   `test_a_record_made_under_another_key_version_is_never_served`, checking what the record does.
   Rewrite the two `_claimed` and `_wait` tests through `pin_tool` and `download`, and read what the
