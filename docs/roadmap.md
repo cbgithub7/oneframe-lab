@@ -1,15 +1,17 @@
 # Roadmap: what is parked
 
-What has been decided or found, but that no step has taken on yet. The order of work is in
-[handoff.md](handoff.md); a step that takes an item on moves it into its spec and deletes it here.
+What has been decided or found, but that no step has finished yet. The order of work is in
+[handoff.md](handoff.md); a spec that takes an item on is named beside it, and the item leaves here
+when that spec lands.
 
-## For the clean-up spec (007)
+## The clean-up (specs 007 to 014)
 
-From the [review of 2026-10-12](reviews/2026-10-12.md), section 3, which the owner asked to clean
-up before the first model node. Nothing a person sees changes; the node contract changes once,
-before any model node depends on it.
+From the [review of 2026-10-12](reviews/2026-10-12.md), sections 3 and 4, which the owner asked to
+clean up before the first model node. Each item is in the approved spec named beside it. Nothing a
+person sees changes, except where a spec's answered questions say; the node contract changes once
+(009), before any model node depends on it.
 
-- **The node contract:**
+- **The node contract** (009):
     - an optional `load(ctx)` before `run(ctx, state)`, so spec 004 keeps models loaded without
       rewriting nodes;
     - node code loaded as a package named for the node: a helper called `utils` hides a package of
@@ -20,43 +22,45 @@ before any model node depends on it.
       and a type for `ctx`, which nodes declare as `Any` today.
 - **Modules that are several:**
     - `oneframe/memory.py` is five: the model and its parser, settings, devices and the estimate,
-      the fit, and the learned store;
-    - `oneframe/runtimes.py` is three: definitions, the plan, the manager;
-    - `oneframe/child.py` holds five concerns;
+      the fit, and the learned store (012);
+    - `oneframe/runtimes.py` is three: definitions, the plan, the manager (012);
+    - `oneframe/child.py` holds five concerns (009);
     - `oneframe/manifest.py` imports all of memory, the learned store and settings included, to
-      parse a manifest.
+      parse a manifest (012).
 - **One way each** (review of 2026-10-02, 4.5):
-    - the variables kept from children, two lists today that differ in members and in case;
-    - starting a process, reading its lines, and killing it (three ways);
-    - `NO_WINDOW`, the `Emit` alias, stop signalling, a rename retry on Windows;
-    - a file's sha256, computed in five places;
-    - downloads: runtime sources still use urllib, without resume (`oneframe/archives.py`);
-    - a job's dict, built in three places and read untyped;
-    - paths only from the layout.
-- **Ready for spec 004:** a swappable executor and a typed job, and the child split into a
-  once-per-process bootstrap and per-job code joined by that job (spec 006's Out of scope).
-- **"Nothing hard-coded":** `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
+    - the variables kept from children, two lists today that differ in members and in case (008);
+    - starting a process, reading its lines, and killing it, three ways (008);
+    - `NO_WINDOW` and stop signalling (008); the `Emit` alias (010); a rename retry on Windows
+      (011);
+    - a file's sha256, computed in five places (011);
+    - downloads: runtime sources still use urllib, without resume (`oneframe/archives.py`) (011);
+    - a job's dict, built in three places and read untyped (009);
+    - paths only from the layout (011).
+- **Ready for spec 004:** a swappable executor (010), and a typed job with the child split into a
+  once-per-process bootstrap and per-job code joined by that job (009; spec 006's Out of scope).
+- **"Nothing hard-coded"** (013): `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
   002's AC8 scenario inside the package (review of 2026-10-02, 4.10).
-- **Long functions:** the runtime install (179 lines), the scheduler's `_attempt` (123), the
-  manifest's `parse` (118); `Scheduler.__init__` takes 15 parameters.
-- **The download transport passed its own tripwire:** spec 003's research said to switch to
+- **Long functions:** the runtime install (179 lines) and the manifest's `parse` (118) (012); the
+  scheduler's `_attempt` (123), and `Scheduler.__init__`'s 15 parameters (010).
+- **The download transport passed its own tripwire** (011): spec 003's research said to switch to
   urllib3 past about 600 lines, and it is 754. Keep it (it passed the real hosts), record why, and
   add nothing more to it.
 - **Tests:**
-    - shared helpers for the model tests;
-    - the test guard: it sees neither the 139 parametrized cases, nor skip marks, nor an emptied
-      test body, and a test cannot be renamed;
-    - a Stop hang on Windows, which failed CI twice in its last 100 runs;
+    - the test guard: it sees neither the parametrized cases, nor skip marks, nor an emptied test
+      body, and a test cannot be renamed (007);
+    - a Stop hang on Windows, which failed CI twice in its last 100 runs: two bugs already fixed,
+      so guards in place of a fix (008);
+    - shared helpers for the model tests (014);
     - the footprint test tells our writes from another program's without checking less (it failed
       once on a runner's own Firefox), and reads the data root's exceptions as data. Narrowing it
-      is the owner's call;
+      is the owner's call (014);
     - `test_a_killed_install_is_not_installed_and_a_second_install_completes` does not check its
-      second install's reply;
-    - nine assertions bound wall-clock time;
+      second install's reply (014);
+    - nine assertions bound wall-clock time (014);
     - two tests check implementation details: the cache key's version, and the tool's private
-      `_claimed` and `_wait`.
-- **Dead weight:** `allow_network` is read and never set; the device names `mps`, `xpu` and
-  `rocm`, and the `amd`, `intel` and `macos` options, are outside v1's platforms.
+      `_claimed` and `_wait` (014).
+- **Dead weight:** `allow_network` is read and never set (009); the device names `mps`, `xpu` and
+  `rocm`, and the `amd`, `intel` and `macos` options, are outside v1's platforms (013).
 
 ## The editor (step 7)
 
@@ -106,6 +110,9 @@ Generate at its fullest, beyond what steps 3 to 7 plan:
       another, and an install in another process reads as `not_installed` here;
     - spec 004's long-lived worker must keep what 006 assumes of one process per job: node code
       imported fresh, `child_env` per job, a scratch folder per process.
+- Spec 004's worker, from the clean-up's map of the child: a long-lived process cannot reset its
+  peak memory per job (`ru_maxrss`, `PeakWorkingSetSize`), and the fit's free memory must count
+  what the worker already holds.
 - `npm run versions` does not read runtime locks, so a runtime's torch pin is checked by hand.
 - Beyond paths, links and a spec's length, the docs check proves nothing about what the docs say.
 
