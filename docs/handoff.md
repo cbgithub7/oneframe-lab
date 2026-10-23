@@ -51,8 +51,9 @@ numbers the reviews use; steps 1 and 2 (specs 006 and 003) are done.
 
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
-| 2a | The review's small fixes, and its process rules | none | in review: [PR #24](https://github.com/cbgithub7/oneframe-lab/pull/24) |
-| 2b | Clean-up: the review's section 3 (roadmap, "For the clean-up spec"). Nothing a person sees changes; the node contract changes once (`load` and `run`), before any model node depends on it | 007 | next: no spec yet |
+| 2a | The review's small fixes, and its process rules | none | done: [PR #24](https://github.com/cbgithub7/oneframe-lab/pull/24) |
+| 2b | Clean-up, part 1: the node contract, once (`load` and `run`, a package per node, one node API, a typed job, executors handed to the scheduler), before any model node depends on it | [007](../specs/007-node-contract/spec.md) | draft, waiting on the owner's approval |
+| 2c | Clean-up, parts 2 to 4 ([roadmap](roadmap.md), "For the clean-up specs after 007"): modules that are one each, then one way each, then the tests. Nothing a person sees changes | new, one each | not started |
 | 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
 | 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
@@ -80,7 +81,7 @@ numbers the reviews use; steps 1 and 2 (specs 006 and 003) are done.
   is unverified, and spec 005's to check. If MoGe-3 does not run on the 1070, step 3 uses MoGe-2
   there (the owner, 2026-10-11).
 - **The footprint test can fail on another program's write** (once, a runner's own Firefox);
-  step 2b takes it on.
+  step 2c's tests spec takes it on.
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"
   is a convention. Protecting it, with the CI checks required, comes before Dependabot's minor
   updates may merge themselves.

@@ -3,46 +3,34 @@
 What has been decided or found, but that no step has taken on yet. The order of work is in
 [handoff.md](handoff.md); a step that takes an item on moves it into its spec and deletes it here.
 
-## For the clean-up spec (007)
+## For the clean-up specs after 007
 
 From the [review of 2026-10-12](reviews/2026-10-12.md), section 3, which the owner asked to clean
-up before the first model node. Nothing a person sees changes; the node contract changes once,
-before any model node depends on it.
+up before the first model node. Nothing a person sees changes. [Spec 007](../specs/007-node-contract/spec.md)
+takes the node contract, the job, the executor and the child's split; what is left is three more
+specs, in this order.
 
-- **The node contract:**
-    - an optional `load(ctx)` before `run(ctx, state)`, so spec 004 keeps models loaded without
-      rewriting nodes;
-    - node code loaded as a package named for the node: a helper called `utils` hides a package of
-      that name today, and two engine nodes with same-named helpers can run each other's code;
-    - a node API module apart from the child script, which `errors.py`, `cache.py` and
-      `scheduler.py` import today (review of 2026-10-02, 4.10), so a node can see `Stopped` too;
-    - the context's undocumented public parts (`ctx.job`, `outputs`, `ways`, `out_dir`, `node`),
-      and a type for `ctx`, which nodes declare as `Any` today.
-- **Modules that are several:**
+1. **Modules that are one each:**
     - `oneframe/memory.py` is five: the model and its parser, settings, devices and the estimate,
       the fit, and the learned store;
     - `oneframe/runtimes.py` is three: definitions, the plan, the manager;
-    - `oneframe/child.py` holds five concerns;
-    - `oneframe/manifest.py` imports all of memory, the learned store and settings included, to
-      parse a manifest.
-- **One way each** (review of 2026-10-02, 4.5):
+    - `oneframe/manifest.py` imports all of memory, to parse a manifest;
+    - long functions: the runtime install (179 lines) and the manifest's `parse` (118);
+    - "nothing hard-coded": `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
+      002's AC8 scenario inside the package (review of 2026-10-02, 4.10);
+    - dead weight: the device names `mps`, `xpu` and `rocm`, and the `amd`, `intel` and `macos`
+      options, are outside v1's platforms.
+2. **One way each** (review of 2026-10-02, 4.5):
     - the variables kept from children, two lists today that differ in members and in case;
     - starting a process, reading its lines, and killing it (three ways);
     - `NO_WINDOW`, the `Emit` alias, stop signalling, a rename retry on Windows;
     - a file's sha256, computed in five places;
     - downloads: runtime sources still use urllib, without resume (`oneframe/archives.py`);
-    - a job's dict, built in three places and read untyped;
-    - paths only from the layout.
-- **Ready for spec 004:** a swappable executor and a typed job, and the child split into a
-  once-per-process bootstrap and per-job code joined by that job (spec 006's Out of scope).
-- **"Nothing hard-coded":** `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
-  002's AC8 scenario inside the package (review of 2026-10-02, 4.10).
-- **Long functions:** the runtime install (179 lines), the scheduler's `_attempt` (123), the
-  manifest's `parse` (118); `Scheduler.__init__` takes 15 parameters.
-- **The download transport passed its own tripwire:** spec 003's research said to switch to
-  urllib3 past about 600 lines, and it is 754. Keep it (it passed the real hosts), record why, and
-  add nothing more to it.
-- **Tests:**
+    - paths only from the layout;
+    - the download transport passed its own tripwire: spec 003's research said to switch to
+      urllib3 past about 600 lines, and it is 754. Keep it (it passed the real hosts), record why,
+      and add nothing more to it.
+3. **The tests:**
     - shared helpers for the model tests;
     - the test guard: it sees neither the 139 parametrized cases, nor skip marks, nor an emptied
       test body, and a test cannot be renamed;
@@ -55,8 +43,6 @@ before any model node depends on it.
     - nine assertions bound wall-clock time;
     - two tests check implementation details: the cache key's version, and the tool's private
       `_claimed` and `_wait`.
-- **Dead weight:** `allow_network` is read and never set; the device names `mps`, `xpu` and
-  `rocm`, and the `amd`, `intel` and `macos` options, are outside v1's platforms.
 
 ## The editor (step 7)
 
