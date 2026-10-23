@@ -2,8 +2,8 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
-Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: `NoRuntimes` raises
-  only where a runtime is needed, so AC1's fake executors still get the job.
+Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23:
+  `NoRuntimes` raises only where a runtime is needed, so AC1's fake executors still get the job.
 
 The fourth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md), the [roadmap](../../docs/roadmap.md)'s

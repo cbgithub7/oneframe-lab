@@ -2,9 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
-Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: the one list of the
-  engine's Python keeps `PYTHONDONTWRITEBYTECODE` from uv, as `DROP_ENV` does today; `stop_after` is
-  a fixture whose timer cannot outlive its test.
+Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: the one
+  list of the engine's Python keeps `PYTHONDONTWRITEBYTECODE` from uv, as `DROP_ENV` does today;
+  `stop_after` is a fixture whose timer cannot outlive its test.
 
 The second of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s

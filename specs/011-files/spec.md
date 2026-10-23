@@ -2,9 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
-Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: AC1 checks that no
-  recorded hash changes, rather than that its test file is untouched, which the new signatures would
-  break.
+Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: AC1
+  checks that no recorded hash changes, rather than that its test file is untouched, which the new
+  signatures would break.
 
 The fifth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s

@@ -2,9 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
-Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: AC5 also catches an
-  engine named or opened another way; AC7 asks each timing line to be a marked bound, rather than
-  counting five.
+Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: AC5 also
+  catches an engine named or opened another way; AC7 asks each timing line to be a marked bound,
+  rather than counting five.
 
 The eighth of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (sections 4 and 6), the

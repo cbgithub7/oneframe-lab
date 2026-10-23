@@ -2,9 +2,9 @@
 
 Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
-Changed after approval (from `/code-review`, 2026-10-18), waiting on the owner: a Renamed line acts
-  once its old name is gone; only specs changed on the branch allow; duplicate case IDs are refused
-  through pytest's own option.
+Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: a
+  Renamed line acts once its old name is gone; only specs changed on the branch allow; duplicate
+  case IDs are refused through pytest's own option.
 
 The first of eight clean-up specs (007 to 014), from the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) (section 4) and the
