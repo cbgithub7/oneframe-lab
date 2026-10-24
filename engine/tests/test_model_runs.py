@@ -241,7 +241,11 @@ ROOMY = machines.machine([], 20000, 34360)
 TIGHT = machines.machine([], 3500, 8000)  # margin 1.6 GB: small (1.1 GB) fits, large (3.1 GB) does not
 
 
-@pytest.mark.parametrize(("default", "params"), [("small", {"checkpoint": "large"}), ("large", {})])
+@pytest.mark.parametrize(
+    ("default", "params"),
+    [("small", {"checkpoint": "large"}), ("large", {})],
+    ids=["large set over a small default", "large by default"],
+)
 def test_the_engine_never_switches_to_a_checkpoint_because_it_is_on_disk(
     tmp_path: Path, make_node: MakeNode, node_root: Path, events: Events, default: str, params: dict[str, Any]
 ) -> None:

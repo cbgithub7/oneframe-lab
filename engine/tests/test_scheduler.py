@@ -131,6 +131,15 @@ def test_a_file_param_is_keyed_by_content_not_name(
         ),
         ("def run(ctx):\n    import not_a_real_package\n", "missing", "not_a_real_package"),
     ],
+    ids=[
+        "no output",
+        "a missing file",
+        "no kind",
+        "contradicting facets",
+        "outside the run folder",
+        "out of memory",
+        "a missing package",
+    ],
 )
 def test_failures_are_classified_and_leave_nothing_cached(
     make_node: MakeNode,
@@ -564,6 +573,7 @@ def test_another_kind_of_failure_is_not_retried(
         ("model", Settings(fit="off"), TIGHT, {}),
         ("model", Settings(), TINY, {"resolution": 1024}),  # tried anyway
     ],
+    ids=["no model", "the fit off", "nothing fits"],
 )
 def test_nothing_is_retried_when_nothing_would_change(
     make_node: MakeNode,

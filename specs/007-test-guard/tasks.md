@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-- [ ] 1. **Name the cases.** Give explicit `ids` (or `pytest.param(..., id=...)`) to the seven
+- [x] 1. **Name the cases.** Give explicit `ids` (or `pytest.param(..., id=...)`) to the seven
   functions whose case IDs pytest numbers by position, and to
   `test_failures_are_classified_and_leave_nothing_cached`. Bodies do not change, and today's guard
   sees the same function names.
