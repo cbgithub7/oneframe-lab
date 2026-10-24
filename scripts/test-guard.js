@@ -1,6 +1,6 @@
 // @ts-check
 // No test disappears, or stops running, without a written reason (spec 007).
-// Run: node scripts/test-guard.js [--base <ref>]
+// Run: node scripts/test-guard.js [--base <ref>] [--write]
 //
 // Compares the tests that exist now (working tree, committed or not) with the tests at the merge
 // base of HEAD and <ref> (default origin/main). A test, or a parametrized case, that existed there
@@ -13,15 +13,16 @@
 // (engine/tests/fixtures/listing.py), so the guard needs the engine environment: without it, or
 // when collection fails, it fails. The base's IDs come from its committed list,
 // engine/tests/collected.txt, read with `git show`, so the base is never collected; a base without
-// the list is compared by the names in its source (`def test_*`). JavaScript tests are read from
-// the source at both ends (jsEntries).
+// the list is compared by the names in its source (`def test_*`). The list in the checkout must
+// equal the collection; --write rewrites it, and cannot hide a removal, since the base's list comes
+// from git. JavaScript tests are read from the source at both ends (jsEntries).
 //
 // What it cannot see: a skipif whose condition is widened; a skip inside a fixture or a helper the
 // test calls; a gutted assertion such as `assert True`, which is not an empty body. Reviewers
 // still read a rewritten test beside the old one.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -243,11 +244,12 @@ function collected(line) {
 }
 
 /**
- * The guard in a checkout, with its messages and exit code. `collect` stands in for pytest in tests.
- * @param {{ root: string, baseRef: string, collect?: (root: string) => string[] }} options
+ * The guard in a checkout, with its messages and exit code. `write` rewrites the committed list
+ * first; `collect` stands in for pytest in tests.
+ * @param {{ root: string, baseRef: string, write?: boolean, collect?: (root: string) => string[] }} options
  * @returns {{ code: number, out: string[] }}
  */
-export function guard({ root, baseRef, collect = collectPython }) {
+export function guard({ root, baseRef, write = false, collect = collectPython }) {
   const git = gitIn(root);
   let base;
   try {
@@ -261,8 +263,6 @@ export function guard({ root, baseRef, collect = collectPython }) {
   } catch (e) {
     return { code: 1, out: [`test-guard: ${e instanceof Error ? e.message : e}`] };
   }
-  const allow = allowances(root, base);
-  const isJs = (/** @type {string} */ f) => !f.endsWith(".py");
   /** @param {string} file */
   const readNow = (file) => {
     try {
@@ -271,6 +271,14 @@ export function guard({ root, baseRef, collect = collectPython }) {
       return null; // listed but deleted in the working tree: it has no tests now
     }
   };
+  const text = live.map((line) => `${line}\n`).join("");
+  if (write) {
+    mkdirSync(path.dirname(path.join(root, LIST)), { recursive: true });
+    writeFileSync(path.join(root, LIST), text);
+  }
+  const stale = readNow(LIST) !== text;
+  const allow = allowances(root, base);
+  const isJs = (/** @type {string} */ f) => !f.endsWith(".py");
   const thenFiles = git("ls-tree", "-r", "--name-only", base).split("\n").filter(isTestFile);
   const nowFiles = git("ls-files", "--cached", "--others", "--exclude-standard").split("\n").filter(isTestFile);
   const jsBefore = thenFiles.filter(isJs).flatMap((f) => jsEntries(f, git("show", `${base}:${f}`)));
@@ -301,8 +309,9 @@ export function guard({ root, baseRef, collect = collectPython }) {
     out.push(`test-guard: ${found.length} test(s) at ${baseRef} are gone, skipped or emptied, with no line in a spec this branch changed:`);
     out.push(...found.map((f) => `  ${f}`));
     out.push("Restore them, or list each in the Tests section of the spec being worked on: under \"- Removed:\" with the reason, or as \"- Renamed: `old` -> `new`\".");
-    return { code: 1, out };
   }
+  if (stale) out.push(`test-guard: ${LIST} differs from the tests collected now. Run node scripts/test-guard.js --write, and commit it.`);
+  if (found.length || stale) return { code: 1, out };
   out.push(`test-guard: ok (${jsBefore.length + counts[0]} tests at ${baseRef}, ${jsAfter.length + counts[1]} now).`);
   return { code: 0, out };
 }
@@ -310,7 +319,7 @@ export function guard({ root, baseRef, collect = collectPython }) {
 function main() {
   const at = process.argv.indexOf("--base");
   const baseRef = at > 0 ? process.argv[at + 1] : (process.env.TEST_GUARD_BASE ?? "origin/main");
-  const { code, out } = guard({ root: ROOT, baseRef });
+  const { code, out } = guard({ root: ROOT, baseRef, write: process.argv.includes("--write") });
   for (const line of out) console.log(line);
   process.exitCode = code;
 }

@@ -25,7 +25,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   the fallback to source names when it is missing; a failed collection fails the guard, saying why.
   The header lists what the guard cannot see. Node tests for AC2, the fallback, and the failed
   collection.
-- [ ] 7. **The committed list.** `--write`, and the failure on a list that differs from the live
+- [x] 7. **The committed list.** `--write`, and the failure on a list that differs from the live
   collection. Node tests for AC1 and AC8, each in a throwaway git repository with a stand-in
   collection. Run `node scripts/test-guard.js --write` and commit `engine/tests/collected.txt`.
 - [ ] 8. **Docs.** `AGENTS.md` rule 6 as the owner answered open question 1, and the guard's line

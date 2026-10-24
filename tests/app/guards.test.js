@@ -1,7 +1,7 @@
 // @ts-check
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -195,6 +195,40 @@ test("a collection that fails fails the guard, saying why", () => {
     assert.match(missing.out.join("\n"), /cannot collect the engine's tests: .*ENOENT.*npm run engine:sync/);
     const listed = collectPython(repo.dir, [process.execPath, "-e", "console.log('tests/x.py: 2\\nlisted\\ttest_a\\nlisted\\ttest_b\\t@skip')"]);
     assert.deepEqual(listed, ["test_a", "test_b\t@skip"]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a parametrized case that is gone fails, naming its ID, even after --write", () => {
+  const list = "engine/tests/collected.txt";
+  const repo = gitRepo({ [list]: "test_unsafe_paths[C:/model.pt-is absolute]\ntest_unsafe_paths[a//b-has an empty step]\n" });
+  try {
+    const collect = () => ["test_unsafe_paths[C:/model.pt-is absolute]"];
+    const gone = [
+      "test-guard: 1 test(s) at main are gone, skipped or emptied, with no line in a spec this branch changed:",
+      "  engine: test_unsafe_paths[a//b-has an empty step] is gone",
+    ];
+    const written = guard({ root: repo.dir, baseRef: "main", write: true, collect });
+    assert.deepEqual([written.code, written.out.slice(0, 2)], [1, gone]);
+    assert.equal(readFileSync(path.join(repo.dir, list), "utf8"), "test_unsafe_paths[C:/model.pt-is absolute]\n");
+    repo.commit("drop a case, and rewrite the list");
+    const committed = guard({ root: repo.dir, baseRef: "main", collect });
+    assert.deepEqual([committed.code, committed.out.slice(0, 2)], [1, gone]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a committed list that differs from the collection fails, naming --write", () => {
+  const repo = gitRepo({ "engine/tests/collected.txt": "test_a\n" });
+  try {
+    const collect = () => ["test_a", "test_b\t@skip"];
+    assert.deepEqual(guard({ root: repo.dir, baseRef: "main", collect }), { code: 1, out: [
+      "test-guard: engine/tests/collected.txt differs from the tests collected now. Run node scripts/test-guard.js --write, and commit it.",
+    ] });
+    assert.deepEqual(guard({ root: repo.dir, baseRef: "main", write: true, collect }),
+      { code: 0, out: ["test-guard: ok (1 tests at main, 2 now)."] });
   } finally {
     rmSync(repo.dir, { recursive: true, force: true });
   }
