@@ -60,6 +60,16 @@ def _raised(
         _raised(ValueError("while decoding"), MemoryError(), context=True),
         _raised(RuntimeError("step 3 failed"), _raised(RuntimeError("wrapped"), MemoryError())),
     ],
+    ids=[
+        "OutOfMemoryError",
+        "CUDA error",
+        "CUBLAS_STATUS_ALLOC_FAILED",
+        "CUDNN_STATUS_ALLOC_FAILED",
+        "MemoryError",
+        "the cause of a NodeFailed",
+        "the context of a ValueError",
+        "two causes deep",
+    ],
 )
 def test_ac6_out_of_memory_in_its_common_forms(exc: BaseException) -> None:
     assert classify(exc) == "oom" and is_oom(exc)

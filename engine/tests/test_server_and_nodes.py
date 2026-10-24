@@ -91,7 +91,7 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path) -> None:
     client = Client(tmp_path / "data")
     try:
         hello = client.call("engine.hello")["result"]
-        assert hello["python"].startswith("3.14") and "graph.run" in hello["methods"]
+        assert hello["python"].startswith("3.15") and "graph.run" in hello["methods"]
         listed = client.call("nodes.list")["result"]
         assert {n["id"] for n in listed["nodes"]} >= {"source.image", "convert.depth_to_points"}
         assert "Depth" in client.call("ports.list")["result"]["types"]

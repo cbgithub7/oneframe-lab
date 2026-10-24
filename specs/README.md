@@ -32,7 +32,14 @@ A change after approval is a new approval: say what changed and why in one line 
 and ask the owner.
 
 Specs 001 and 002 were written under the earlier process, with a separate `plan.md` approved after
-the spec. The test guard reads "- Removed" lists from both files.
+the spec.
+
+**Tests.** A spec's Tests section names what it adds, removes and renames. A test, or one case of
+a parametrized test, that is removed, skipped or emptied needs a line ``- Removed: `name`: the
+reason``; a rename needs ``- Renamed: `old` -> `new` ``, and the new test must exist, with no more
+skips than the old. A name is a function, which covers its cases, or one case (`test_x[case]`).
+The test guard counts these lines only in specs whose folder changed on the branch: an approved
+spec not yet started allows nothing, nor does a done one.
 
 ## Who decides
 

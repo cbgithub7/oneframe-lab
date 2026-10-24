@@ -33,7 +33,9 @@ Reference the architecture doc rather than repeating it.
 ## Tests
 
 - Added: ...
-- Removed: none (each removed test named here with its reason, or the test guard fails)
+- Removed: none (each test or case removed, skipped or emptied named here with its reason, or the
+  test guard fails)
+- Renamed: none (each renamed test as its old name -> its new one, each in backticks)
 
 ## Verification
 

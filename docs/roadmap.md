@@ -46,8 +46,6 @@ person sees changes, except where a spec's answered questions say; the node cont
   urllib3 past about 600 lines, and it is 754. Keep it (it passed the real hosts), record why, and
   add nothing more to it.
 - **Tests:**
-    - the test guard: it sees neither the parametrized cases, nor skip marks, nor an emptied test
-      body, and a test cannot be renamed (007);
     - a Stop hang on Windows, which failed CI twice in its last 100 runs: two bugs already fixed,
       so guards in place of a fix (008);
     - shared helpers for the model tests (014);

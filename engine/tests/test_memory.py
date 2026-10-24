@@ -254,66 +254,66 @@ def test_ac1_a_bad_model_is_refused_with_every_problem_named(tmp_path: Path) -> 
         assert needle in text, needle
 
 
-@pytest.mark.parametrize(
-    ("memory", "needle"),
-    [
-        ({"precisions": {}}, "precisions should list at least one"),
-        (
-            {"precisions": {"fp16": {"cuda_min_capability": "6.0", "cpu": True, "bytes": 0}}},
-            "precisions.fp16.bytes should be a positive number",
-        ),
-        (
-            {"precisions": {"fp32": {"cuda_min_capability": "eight", "cpu": True}}},
-            'cuda_min_capability should read like "8.0"',
-        ),
-        ({"weights": {"fp32": 3000, "fp16": 1500, "source": SOURCE}}, "weights has no size for bf16"),
-        ({"weights": {"fp32": -1, "fp16": 1, "bf16": 1, "source": SOURCE}}, "weights.fp32 should be MB"),
-        ({"working": None}, "working is required"),
-        ({"working": {"mb": "lots", "source": SOURCE}}, "working.mb should be a number"),
-        ({"working": {"terms": [{"of": ["chunk_size"]}], "source": SOURCE}}, "terms[0] needs a number coef"),
-        ({"working": {"terms": [{"coef": 1, "of": ["prompt"]}], "source": SOURCE}}, "a string param"),
-        (
-            {"working": {"terms": [{"coef": 1, "of": ["checkpoint"]}], "source": SOURCE}},
-            "needs a number per choice",
-        ),
-        ({"factors": {"checkpoint": {"small": 1}}}, "factors.checkpoint has no number for large"),
-        (
-            {"factors": {"resolution": {"a": 1}}},
-            "factors.resolution should name one of the node's choice params",
-        ),
-        (
-            {"outside_torch_mb": {"mb": 10, "terms": [{"coef": 1, "of": ["bytes"]}], "source": SOURCE}},
-            "without terms",
-        ),
-        (
-            {"changes": [{"set": {"chunk_size": 512}, "costs": "cheap"}]},
-            "changes[0].costs should be speed or quality",
-        ),
-        ({"changes": [{"set": {}, "costs": "speed"}]}, "changes[0] needs a set of params"),
-        (
-            {"changes": [{"set": {"precision": "fp8"}, "costs": "quality"}]},
-            "precision 'fp8', which the model",
-        ),
-        (
-            {"changes": [{"set": {"tiled": True}, "costs": "quality"}]},
-            "costs quality but sets only speed params",
-        ),
-        (
-            {"time": {"mps": {"seconds": 1, "at": {}, "source": SOURCE}}},
-            "time.mps: name one of the node's devices",
-        ),
-        (
-            {"time": {"cpu": {"seconds": 1, "at": {"steps": 4}, "source": SOURCE}}},
-            "time.cpu.at names steps",
-        ),
-        ({"budget": 4}, "memory.budget is not part of a memory model"),
-        (
-            {"changes": [{"set": {"precision": "fp16"}, "costs": "speed"}]},
-            "changes[0] costs speed but sets precision, which changes the output",
-        ),
-        ({"upgrades": [{"set": {"precision": "bf16"}}]}, "upgrades[0] costs speed but sets precision"),
-    ],
-)
+MISTAKES: list[tuple[dict[str, Any], str]] = [
+    ({"precisions": {}}, "precisions should list at least one"),
+    (
+        {"precisions": {"fp16": {"cuda_min_capability": "6.0", "cpu": True, "bytes": 0}}},
+        "precisions.fp16.bytes should be a positive number",
+    ),
+    (
+        {"precisions": {"fp32": {"cuda_min_capability": "eight", "cpu": True}}},
+        'cuda_min_capability should read like "8.0"',
+    ),
+    ({"weights": {"fp32": 3000, "fp16": 1500, "source": SOURCE}}, "weights has no size for bf16"),
+    ({"weights": {"fp32": -1, "fp16": 1, "bf16": 1, "source": SOURCE}}, "weights.fp32 should be MB"),
+    ({"working": None}, "working is required"),
+    ({"working": {"mb": "lots", "source": SOURCE}}, "working.mb should be a number"),
+    ({"working": {"terms": [{"of": ["chunk_size"]}], "source": SOURCE}}, "terms[0] needs a number coef"),
+    ({"working": {"terms": [{"coef": 1, "of": ["prompt"]}], "source": SOURCE}}, "a string param"),
+    (
+        {"working": {"terms": [{"coef": 1, "of": ["checkpoint"]}], "source": SOURCE}},
+        "needs a number per choice",
+    ),
+    ({"factors": {"checkpoint": {"small": 1}}}, "factors.checkpoint has no number for large"),
+    (
+        {"factors": {"resolution": {"a": 1}}},
+        "factors.resolution should name one of the node's choice params",
+    ),
+    (
+        {"outside_torch_mb": {"mb": 10, "terms": [{"coef": 1, "of": ["bytes"]}], "source": SOURCE}},
+        "without terms",
+    ),
+    (
+        {"changes": [{"set": {"chunk_size": 512}, "costs": "cheap"}]},
+        "changes[0].costs should be speed or quality",
+    ),
+    ({"changes": [{"set": {}, "costs": "speed"}]}, "changes[0] needs a set of params"),
+    (
+        {"changes": [{"set": {"precision": "fp8"}, "costs": "quality"}]},
+        "precision 'fp8', which the model",
+    ),
+    (
+        {"changes": [{"set": {"tiled": True}, "costs": "quality"}]},
+        "costs quality but sets only speed params",
+    ),
+    (
+        {"time": {"mps": {"seconds": 1, "at": {}, "source": SOURCE}}},
+        "time.mps: name one of the node's devices",
+    ),
+    (
+        {"time": {"cpu": {"seconds": 1, "at": {"steps": 4}, "source": SOURCE}}},
+        "time.cpu.at names steps",
+    ),
+    ({"budget": 4}, "memory.budget is not part of a memory model"),
+    (
+        {"changes": [{"set": {"precision": "fp16"}, "costs": "speed"}]},
+        "changes[0] costs speed but sets precision, which changes the output",
+    ),
+    ({"upgrades": [{"set": {"precision": "bf16"}}]}, "upgrades[0] costs speed but sets precision"),
+]
+
+
+@pytest.mark.parametrize(("memory", "needle"), MISTAKES, ids=[needle for _, needle in MISTAKES])
 def test_ac1_each_mistake_is_named(tmp_path: Path, memory: dict[str, Any], needle: str) -> None:
     assert needle in _problems(tmp_path, _node(tmp_path, **memory))
 
@@ -369,6 +369,15 @@ PROCESSOR = Device("cpu", "cpu", None, 24000, 34360, 3436)
         ({"chunk_size": 512, "precision": "fp16"}, CARD, 2352.288),
         ({"chunk_size": 512, "precision": "fp16", "resolution": 512}, CARD, 1959.072),
         ({"chunk_size": 512, "resolution": 512}, PROCESSOR, 3590.144),
+    ],
+    ids=[
+        "the card at the defaults",
+        "chunk_size 32768",
+        "chunk_size 2048",
+        "chunk_size 512",
+        "chunk_size 512 in fp16",
+        "chunk_size 512 in fp16 at 512",
+        "the processor, chunk_size 512 at 512",
     ],
 )
 def test_the_estimate_matches_the_plans_table(
@@ -545,7 +554,11 @@ TABLE = [
 ]
 
 
-@pytest.mark.parametrize(("name", "device", "changes", "upgrades", "alternative", "card", "system"), TABLE)
+@pytest.mark.parametrize(
+    ("name", "device", "changes", "upgrades", "alternative", "card", "system"),
+    TABLE,
+    ids=[r[0] for r in TABLE],
+)
 def test_ac2_the_test_table(
     tmp_path: Path,
     name: str,
@@ -801,6 +814,7 @@ def test_a_step_knows_which_params_the_graph_set(tmp_path: Path) -> None:
         {"precision": "fp16"},
         {"precision": "fp32"},
     ],
+    ids=["resolution 1024", "resolution 512", "chunk_size 8192", "precision fp16", "precision fp32"],
 )
 def test_ac2_a_setting_the_graph_sets_is_never_changed_on_any_machine(
     tmp_path: Path, explicit: dict[str, Any]
