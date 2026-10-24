@@ -23,7 +23,7 @@ decision someone made for a stated reason, not something that happened because n
    is looked at again rather than inherited.
 
 ```json
-{ "name": "numpy", "pin": "2.5.3", "reason": "2.6.0 drops the wheels one runtime needs", "review_by": "2026-11-15" }
+{ "name": "numpy", "pin": "2.5.4", "reason": "2.6.0 drops the wheels one runtime needs", "review_by": "2026-11-15" }
 ```
 
 ## What "latest" means for each part
