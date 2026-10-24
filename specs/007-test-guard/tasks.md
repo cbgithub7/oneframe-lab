@@ -14,7 +14,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 3. **The listing.** Add the second hook, switched on only when the guard asks: each ID with
   its skip marks and calls and its empty flag, sorted. Add
   `test_the_listing_of_a_made_up_suite_is_as_expected` (AC3).
-- [ ] 4. **Which lines count.** `allowances()` reads "- Removed" and "- Renamed" lines from the
+- [x] 4. **Which lines count.** `allowances()` reads "- Removed" and "- Renamed" lines from the
   Tests sections of specs whose folder changed since the merge base (committed, in the working
   tree, or untracked), skips the template and no longer reads `plan.md`; a Renamed line acts once
   its old name is gone. Node tests for AC6 and AC7; the existing guard tests stay as they are.

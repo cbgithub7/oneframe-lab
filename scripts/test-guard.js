@@ -3,8 +3,8 @@
 //
 // Compares the tests that exist now (working tree, committed or not) with the tests at the merge
 // base of HEAD and <ref> (default origin/main). A test that existed there and exists nowhere now
-// fails the check -- unless a spec names it under "Removed", which is where the reason is written:
-// in spec.md, or in plan.md for the specs written before spec and plan became one document. Moving a test to another file is fine; its name still exists.
+// fails the check -- unless a spec this branch changed names it under "- Removed", which is where
+// the reason is written. Moving a test to another file is fine; its name still exists.
 //
 // Test names are read from the source, not by running the suites, so the check is fast and
 // works with or without the engine environment: `def test_*` in Python test files and
@@ -16,6 +16,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/** @param {string} root */
+const gitIn = (root) => (/** @type {string[]} */ ...args) =>
+  execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+const git = gitIn(ROOT);
 
 /** @param {string} file */
 export function isTestFile(file) {
@@ -29,14 +34,13 @@ export function testNames(file, text) {
 }
 
 /**
- * Names listed as removed in a spec: backticked names on a line starting "- Removed", and on the
+ * The lines of one kind ("Removed", "Renamed") in a spec: a line starting "- <kind>" and the
  * indented list items under it, inside the "## Tests" section only, so that a "- Removed" bullet
  * elsewhere in a spec (a removed feature, a decision) never allows a test to go.
- * @param {string} text
- * @returns {Set<string>}
+ * @param {string} text @param {string} kind
  */
-export function allowedRemovals(text) {
-  const allowed = new Set();
+function testsLines(text, kind) {
+  const lines = [];
   let inside = false;
   let tests = false;
   for (const line of text.split(/\r?\n/)) {
@@ -46,11 +50,114 @@ export function allowedRemovals(text) {
       continue;
     }
     if (!tests) continue;
-    if (/^\s*-\s*Removed\b/i.test(line)) inside = true;
+    if (new RegExp(`^\\s*-\\s*${kind}\\b`, "i").test(line)) inside = true;
     else if (inside && !/^\s{2,}\S/.test(line)) inside = false;
-    if (inside) for (const m of line.matchAll(/`([^`]+)`/g)) allowed.add(m[1]);
+    if (inside) lines.push(line);
   }
-  return allowed;
+  return lines;
+}
+
+/**
+ * Names listed as removed in a spec: the backticked names on its "- Removed" lines.
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+export function allowedRemovals(text) {
+  return new Set(testsLines(text, "Removed").flatMap((line) => [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1])));
+}
+
+/**
+ * Renames listed in a spec: ``- Renamed: `old` -> `new` `` lines.
+ * @param {string} text
+ * @returns {[string, string][]}
+ */
+export function renamedTests(text) {
+  return testsLines(text, "Renamed").flatMap((line) =>
+    [...line.matchAll(/`([^`]+)`\s*->\s*`([^`]+)`/g)].map((m) => /** @type {[string, string]} */ ([m[1], m[2]])));
+}
+
+/** @typedef {{ removed: Set<string>, renamed: [string, string][] }} Allowances */
+
+/**
+ * The Removed and Renamed lines that count: those of the specs whose folder changed since the merge
+ * base, in a commit on the branch, in the working tree or not yet tracked. An approved spec not yet
+ * started allows nothing, nor does a done one; the template is skipped.
+ * @param {string} root @param {string} base
+ * @returns {Allowances}
+ */
+export function allowances(root, base) {
+  const git = gitIn(root);
+  const changed = [
+    ...git("diff", "--name-only", base, "--", "specs").split("\n"),
+    ...git("ls-files", "--others", "--exclude-standard", "--", "specs").split("\n"),
+  ];
+  const folders = new Set(changed.map((file) => /^specs\/([^/]+)\//.exec(file)?.[1] ?? "").filter((f) => f && f !== "_template"));
+  /** @type {Allowances} */
+  const allow = { removed: new Set(), renamed: [] };
+  for (const folder of [...folders].sort()) {
+    let text;
+    try {
+      text = readFileSync(path.join(root, "specs", folder, "spec.md"), "utf8");
+    } catch {
+      continue; // a folder without a spec, or one deleted
+    }
+    for (const name of allowedRemovals(text)) allow.removed.add(name);
+    allow.renamed.push(...renamedTests(text));
+  }
+  return allow;
+}
+
+/**
+ * A test as the guard compares it: its ID (a name, and for a parametrized engine test its case),
+ * its flags (a skip or an empty body), and where it is, for messages.
+ * @typedef {{ id: string, flags: string[], where: string }} Entry
+ */
+
+/** A name in a spec, without the file an older spec may have put before it. @param {string} name */
+const bare = (name) => name.replace(/^[\w./-]+\.(py|c?js|mjs)::/, "");
+
+/** Whether a name in a spec covers an ID: the ID itself, or a function and all its cases. @param {string} name @param {string} id */
+const covers = (name, id) => id === name || id.startsWith(`${name}[`);
+
+/**
+ * What the guard fails on: a test that is gone, or gained a flag, with no "- Removed" line; and a
+ * "- Renamed" line whose old test is gone while the new one does not exist, or gained a flag the
+ * old one did not have. Tests match by ID, not by file, and an ID listed twice counts twice.
+ * @param {Entry[]} before @param {Entry[]} after @param {Allowances} allow
+ * @returns {string[]}
+ */
+export function problems(before, after, allow) {
+  const removed = [...allow.removed].map(bare);
+  const allowed = (/** @type {string} */ id) => removed.some((name) => covers(name, id));
+  /** @type {Map<string, Entry[]>} */
+  const left = new Map();
+  for (const e of after) left.set(e.id, [...(left.get(e.id) ?? []), e]);
+  const within = (/** @type {string[]} */ a, /** @type {string[]} */ b) => a.every((f) => b.includes(f));
+  /** Take an entry of this ID with the same flags, or else with no flag these lack. @param {string} id @param {string[]} flags */
+  const take = (id, flags) => {
+    const list = left.get(id) ?? [];
+    let i = list.findIndex((e) => within(e.flags, flags) && within(flags, e.flags));
+    if (i < 0) i = list.findIndex((e) => within(e.flags, flags));
+    return i >= 0 && list.splice(i, 1).length > 0;
+  };
+  const gained = (/** @type {string} */ id, /** @type {string[]} */ flags) =>
+    (left.get(id)?.[0]?.flags ?? []).filter((f) => !flags.includes(f)).join(" ");
+  const out = [];
+  for (const b of before.filter((e) => !take(e.id, e.flags))) {
+    if (allowed(b.id)) continue;
+    const rename = allow.renamed.map(([o, n]) => [bare(o), bare(n)]).find(([o]) => covers(o, b.id));
+    if (rename) {
+      const target = rename[1] + b.id.slice(rename[0].length);
+      if (take(target, b.flags)) continue;
+      if (!left.get(target)?.length) out.push(`${b.where}: ${b.id} is renamed to ${target}, which does not exist`);
+      else if (!allowed(target)) out.push(`${b.where}: ${b.id} is renamed to ${target}, which gained ${gained(target, b.flags)}`);
+    } else if (left.get(b.id)?.length) {
+      out.push(`${b.where}: ${b.id} gained ${gained(b.id, b.flags)}`);
+    } else {
+      out.push(`${b.where}: ${b.id} is gone`);
+    }
+  }
+  return out;
 }
 
 /**
@@ -68,9 +175,6 @@ export function removedTests(before, after, allowed) {
   }
   return removed;
 }
-
-/** @param {string[]} args */
-const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 function main() {
   const at = process.argv.indexOf("--base");
@@ -95,16 +199,7 @@ function main() {
       // listed but deleted in the working tree: it has no tests now
     }
   }
-  const allowed = new Set();
-  for (const doc of git("ls-files", "--cached", "--others", "--exclude-standard", "specs").split("\n")) {
-    if (!/(^|\/)(spec|plan)\.md$/.test(doc)) continue;
-    try {
-      for (const name of allowedRemovals(readFileSync(path.join(ROOT, doc), "utf8"))) allowed.add(name);
-    } catch {
-      // deleted
-    }
-  }
-  const removed = removedTests(before, after, allowed);
+  const removed = removedTests(before, after, allowances(ROOT, base).removed);
   const count = (/** @type {Map<string, string[]>} */ m) => [...m.values()].flat().length;
   if (removed.length) {
     console.log(`test-guard: ${removed.length} test(s) that exist at ${baseRef} are gone, with no reason in a spec:`);

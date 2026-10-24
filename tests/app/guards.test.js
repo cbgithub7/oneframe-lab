@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SPEC_MAX_LINES, backtickPaths, checkDocs, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
-import { allowedRemovals, isTestFile, removedTests, testNames } from "../../scripts/test-guard.js";
+import { allowances, allowedRemovals, isTestFile, problems, removedTests, renamedTests, testNames } from "../../scripts/test-guard.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -33,6 +33,74 @@ test("only the Tests section can allow a removal", () => {
   const spec = "## Decisions taken\n\n- Removed `test_elsewhere` handling from the API\n\n"
     + "## Tests\n\n- Removed:\n  - `test_listed`: replaced\n\n## Out of scope\n\n- Removed `test_after`\n";
   assert.deepEqual([...allowedRemovals(spec)], ["test_listed"]);
+});
+
+/** A throwaway git repository on a branch "work", from a "main" that holds these files.
+ * @param {Record<string, string>} files */
+function gitRepo(files) {
+  const dir = mkdtempSync(path.join(tmpdir(), "oneframe-guard-"));
+  const git = (/** @type {string[]} */ ...a) => {
+    const r = spawnSync("git", a, { cwd: dir, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`git ${a.join(" ")}: ${r.stderr}`);
+    return r.stdout;
+  };
+  const write = (/** @type {string} */ rel, /** @type {string} */ text) => {
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    writeFileSync(path.join(dir, rel), text);
+  };
+  const commit = (/** @type {string} */ message) => {
+    git("add", "-A");
+    git("commit", "-qm", message);
+  };
+  git("init", "-q", "-b", "main");
+  git("config", "user.email", "t@t");
+  git("config", "user.name", "t");
+  for (const [rel, text] of Object.entries(files)) write(rel, text);
+  commit("main");
+  git("checkout", "-qb", "work");
+  return { dir, git, write, commit };
+}
+
+test("a rename lets the old name go only to a name that exists", () => {
+  const spec = "## Tests\n\n- Removed: none\n- Renamed: `test_old` -> `test_new`, and\n  - `test_case[a]` -> `test_case[b]`\n";
+  const allow = { removed: new Set(), renamed: renamedTests(spec) };
+  assert.deepEqual(allow.renamed, [["test_old", "test_new"], ["test_case[a]", "test_case[b]"]]);
+  const e = (/** @type {string} */ id) => ({ id, flags: [], where: "engine" });
+  const before = [e("test_old[x]"), e("test_old[y]"), e("test_case[a]"), e("test_case[c]")];
+  const renamed = [e("test_new[x]"), e("test_new[y]"), e("test_case[b]"), e("test_case[c]")];
+  assert.deepEqual(problems(before, renamed, allow), []);
+  assert.deepEqual(problems(before, [e("test_new[x]"), e("test_case[c]")], allow), [
+    "engine: test_old[y] is renamed to test_new[y], which does not exist",
+    "engine: test_case[a] is renamed to test_case[b], which does not exist",
+  ]);
+  assert.deepEqual(problems(before, before, allow), [], "while the old test stands, the line does nothing");
+  assert.equal(problems(before, renamed, { removed: new Set(), renamed: [] }).length, 3, "without the line, each is gone");
+});
+
+test("only specs being worked on, or changed on the branch, allow a removal", () => {
+  const spec = (/** @type {string} */ name, status = "approved") =>
+    `# Spec\n\nStatus: ${status}\n\n## Tests\n\n- Removed:\n  - \`${name}\`: the reason\n`;
+  const repo = gitRepo({
+    "specs/_template/spec.md": spec("test_template", "draft"),
+    "specs/001-done/spec.md": spec("test_done", "done"),
+    "specs/002-approved/spec.md": spec("test_approved"),
+    "specs/003-committed/spec.md": spec("test_committed"),
+    "specs/004-edited/spec.md": spec("test_edited"),
+  });
+  try {
+    const base = repo.git("merge-base", "HEAD", "main").trim();
+    const allowed = () => [...allowances(repo.dir, base).removed].sort();
+    assert.deepEqual(allowed(), [], "no spec changed on the branch yet");
+    repo.write("specs/003-committed/tasks.md", "- [x] 1. Started.\n");
+    repo.write("specs/003-committed/plan.md", spec("test_plan"));
+    repo.commit("start 003");
+    repo.write("specs/004-edited/spec.md", `${spec("test_edited")}\nEdited, not committed.\n`);
+    repo.write("specs/005-new/spec.md", spec("test_untracked", "draft"));
+    repo.write("specs/_template/spec.md", `${spec("test_template", "draft")}\nChanged.\n`);
+    assert.deepEqual(allowed(), ["test_committed", "test_edited", "test_untracked"]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
 });
 
 test("the docs check reads paths, placeholders and links", () => {
