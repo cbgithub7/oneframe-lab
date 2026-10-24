@@ -8,7 +8,9 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SPEC_MAX_LINES, backtickPaths, checkDocs, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
-import { allowances, allowedRemovals, isTestFile, problems, removedTests, renamedTests, testNames } from "../../scripts/test-guard.js";
+import {
+  allowances, allowedRemovals, isTestFile, jsEntries, problems, removedTests, renamedTests, testNames,
+} from "../../scripts/test-guard.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -33,6 +35,49 @@ test("only the Tests section can allow a removal", () => {
   const spec = "## Decisions taken\n\n- Removed `test_elsewhere` handling from the API\n\n"
     + "## Tests\n\n- Removed:\n  - `test_listed`: replaced\n\n## Out of scope\n\n- Removed `test_after`\n";
   assert.deepEqual([...allowedRemovals(spec)], ["test_listed"]);
+});
+
+test("JavaScript tests are read with their skips and empty bodies", () => {
+  const file = [
+    'import { test } from "node:test";',
+    'test("runs", () => { assert.ok(true); });',
+    'test("an option", { skip: process.platform === "win32" }, () => { assert.ok(true); });',
+    'test("a todo option", { timeout: 10, todo: "later" }, async () => {',
+    "  assert.ok(true);",
+    "});",
+    'test.skip("a skip modifier", () => { assert.ok(true); });',
+    'test.todo("a todo modifier", (t) => { assert.ok(t); });',
+    'test("a skip call", (t) => {',
+    '  if (process.env.CI) t.skip("not on CI");',
+    "  assert.ok(true);",
+    "});",
+    'test("a todo call", async (ctx) => { ctx.todo(); assert.ok(ctx); });',
+    'test("an empty arrow", () => {});',
+    'test("an empty function", async function () {',
+    "  // nothing yet",
+    "});",
+    'test("returns first", () => {',
+    "  return;",
+    "  assert.ok(false);",
+    "});",
+    'test("no function");',
+    "const text = 'test(\"in a string\", () => {});';",
+    "  test(`a template name`, function named(t) { assert.ok(t); });",
+  ].join("\n");
+  assert.deepEqual(jsEntries("t/x.test.js", file).map((e) => [e.id, e.flags.join(" ")]), [
+    ["runs", ""],
+    ["an option", "@skip"],
+    ["a todo option", "@todo"],
+    ["a skip modifier", "@skip"],
+    ["a todo modifier", "@todo"],
+    ["a skip call", "skip()"],
+    ["a todo call", "todo()"],
+    ["an empty arrow", "empty"],
+    ["an empty function", "empty"],
+    ["returns first", "empty"],
+    ["no function", "empty"],
+    ["a template name", ""],
+  ]);
 });
 
 /** A throwaway git repository on a branch "work", from a "main" that holds these files.

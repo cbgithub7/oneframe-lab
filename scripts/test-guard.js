@@ -30,7 +30,40 @@ export function isTestFile(file) {
 /** @param {string} file @param {string} text @returns {string[]} */
 export function testNames(file, text) {
   if (file.endsWith(".py")) return [...text.matchAll(/^\s*(?:async\s+)?def\s+(test_\w+)\s*\(/gm)].map((m) => m[1]);
-  return [...text.matchAll(/\btest\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)].map((m) => m[2]);
+  return jsEntries(file, text).map((e) => e.id);
+}
+
+/**
+ * JavaScript tests from source: a `test(` call where a line starts, so that one inside a string
+ * or after other code is not counted. Its flags: `@skip` or `@todo` for an option or a modifier,
+ * `skip()` or `todo()` for a call on its context, and `empty` for no function, or a body with
+ * nothing in it or that returns before anything else.
+ * @param {string} file @param {string} text
+ * @returns {Entry[]}
+ */
+export function jsEntries(file, text) {
+  const starts = [...text.matchAll(/^[ \t]*test(?:\.(skip|todo|only))?\(\s*(["'`])((?:\\.|(?!\2).)*)\2/gm)];
+  return starts.map((m, i) => {
+    const flags = new Set(m[1] && m[1] !== "only" ? [`@${m[1]}`] : []);
+    let rest = text.slice(/** @type {number} */ (m.index) + m[0].length, starts[i + 1]?.index ?? text.length);
+    const options = /^\s*,\s*\{([^{}]*)\}/.exec(rest);
+    if (options) {
+      for (const o of options[1].matchAll(/(?:^|,)\s*(skip|todo)\s*(?=[:,]|$)/g)) flags.add(`@${o[1]}`);
+      rest = rest.slice(options[0].length);
+    }
+    const fn = /^\s*,\s*(?:async\s+)?(?:function\s*\w*\s*\(([^)]*)\)\s*(\{)|\(([^)]*)\)\s*=>\s*(\{)?|(\w+)\s*=>\s*(\{)?)/.exec(rest);
+    if (!fn) {
+      if (/^\s*\)/.test(rest)) flags.add("empty");
+    } else {
+      const body = rest.slice(fn[0].length);
+      const context = (fn[1] ?? fn[3] ?? fn[5] ?? "").split(",")[0].trim();
+      if ((fn[2] ?? fn[4] ?? fn[6]) && /^(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*(?:\}|return\b)/.test(body)) flags.add("empty");
+      if (/^\w+$/.test(context)) {
+        for (const c of body.matchAll(new RegExp(`\\b${context}\\.(skip|todo)\\(`, "g"))) flags.add(`${c[1]}()`);
+      }
+    }
+    return { id: m[3], flags: [...flags].sort(), where: file };
+  });
 }
 
 /**

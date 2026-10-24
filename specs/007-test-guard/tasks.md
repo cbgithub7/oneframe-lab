@@ -18,7 +18,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   Tests sections of specs whose folder changed since the merge base (committed, in the working
   tree, or untracked), skips the template and no longer reads `plan.md`; a Renamed line acts once
   its old name is gone. Node tests for AC6 and AC7; the existing guard tests stay as they are.
-- [ ] 5. **JavaScript entries.** `jsEntries()` reads tests where a statement starts, with their skip
+- [x] 5. **JavaScript entries.** `jsEntries()` reads tests where a statement starts, with their skip
   and empty flags; `testNames` reads JavaScript through it. Node test for AC4.
 - [ ] 6. **Compare IDs.** `collectPython()` and `problems()`: gone IDs, gained flags (renamed tests
   compared with their old flags), renames to nothing. The base list comes through `git show`, with
