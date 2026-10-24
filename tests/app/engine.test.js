@@ -123,7 +123,7 @@ test("the real engine starts from its lock file and lists the built-in nodes", {
       const client = new EngineClient({ ...engineCommand(/** @type {string} */ (uv), data), requestTimeoutMs: 120_000 });
       try {
         const ready = await client.start();
-        assert.match(ready.python, /^3\.14\./);
+        assert.match(ready.python, /^3\.15\./);
         const { nodes } = await client.request("nodes.list");
         assert.ok(nodes.some((/** @type {any} */ n) => n.id === "source.image"));
         // Every method the page may call is one the engine has.

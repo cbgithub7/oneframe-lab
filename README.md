@@ -32,7 +32,7 @@ models.
 | Folder | What |
 | --- | --- |
 | `app/` | Electron: `main/` (process, engine client), `preload/` (the only bridge), `renderer/` (the page) |
-| `engine/` | The Python engine, `oneframe` (Python 3.14, managed by uv) |
+| `engine/` | The Python engine, `oneframe` (Python 3.15, managed by uv) |
 | `nodes/` | Built-in nodes, one folder each |
 | `runtimes/` | The Python environments heavy nodes run in, one folder each |
 | `contracts/` | Data both sides read: port types, and the data root's layout |

@@ -1,6 +1,6 @@
 # Oneframe Lab: rules for coding agents
 
-A local, single-photo 3D playground: Electron shell, a Python 3.14 engine run by uv, and nodes
+A local, single-photo 3D playground: Electron shell, a Python 3.15 engine run by uv, and nodes
 (model adapters) declared by manifests. This file is the shared rule set for any agent; keep it
 short and true. Changing a rule, a command or the layout means updating this file in the same
 change -- a stale rules file is worse than none.

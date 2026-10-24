@@ -362,7 +362,7 @@ def test_a_runtime_installs_from_its_lock_and_runs_a_node(
 
     assert result.status == "done", result.error
     seen = json.loads(result.outputs["n"]["text"].path.read_text(encoding="utf-8"))
-    assert seen["python"] == [3, 11]  # the runtime's own Python, not the engine's 3.14
+    assert seen["python"] == [3, 11]  # the runtime's own Python, not the engine's 3.15
     assert Path(seen["prefix"]).resolve() == (data / "runtimes" / "tiny" / "cpu").resolve()
     assert (seen["idna"], seen["tinyext"], seen["upstream"]) == ("3.20", "stand-in", "from the pinned source")
     assert seen["env"] == "on"
