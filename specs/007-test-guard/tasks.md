@@ -6,7 +6,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   functions whose case IDs pytest numbers by position, and to
   `test_failures_are_classified_and_leave_nothing_cached`. Bodies do not change, and today's guard
   sees the same function names.
-- [ ] 2. **Refuse positional IDs.** Add `engine/tests/fixtures/listing.py` with the collection hook
+- [x] 2. **Refuse positional IDs.** Add `engine/tests/fixtures/listing.py` with the collection hook
   that refuses a case numbered by its position, naming the test, and set
   `strict_parametrization_ids = true` in `engine/pyproject.toml`. `engine/tests/conftest.py` imports
   the hook and enables pytester. Add `engine/tests/test_listing.py` with

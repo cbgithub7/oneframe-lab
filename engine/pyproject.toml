@@ -31,3 +31,5 @@ module-name = "oneframe"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Two cases of one ID are refused, not numbered (spec 007).
+strict_parametrization_ids = true
