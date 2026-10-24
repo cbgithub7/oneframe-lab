@@ -1,6 +1,6 @@
 # 007: The test guard sees every test
 
-Status: approved
+Status: done (merged 2026-10-24 in [PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: a
   Renamed line acts once its old name is gone; only specs changed on the branch allow; duplicate
@@ -167,6 +167,10 @@ both are then reverted. The PR records the guard's time on Windows. No hardware 
 - Only specs changed on the branch allow: an approved spec's lines wait for its work, and no status
   has to be set for them to count.
 - With no base ref the guard still skips, as today; without the engine environment it fails.
+- Flags read `@skip` for a mark or an option and `skip()` for a call, so that the two stay apart.
+- A `return` with a value does not empty a body: `return check()` still runs its check.
+- JavaScript options passed as a variable are flagged `@options`: the guard cannot read them.
+- A "- Removed" line allows the names its item starts with, not those in its reason.
 
 ## Out of scope
 

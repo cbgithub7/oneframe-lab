@@ -1,14 +1,16 @@
 // @ts-check
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SPEC_MAX_LINES, backtickPaths, checkDocs, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
-import { allowedRemovals, isTestFile, removedTests, testNames } from "../../scripts/test-guard.js";
+import {
+  allowances, allowedRemovals, collectPython, guard, isTestFile, jsEntries, problems, removedTests, renamedTests, testNames,
+} from "../../scripts/test-guard.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -33,6 +35,222 @@ test("only the Tests section can allow a removal", () => {
   const spec = "## Decisions taken\n\n- Removed `test_elsewhere` handling from the API\n\n"
     + "## Tests\n\n- Removed:\n  - `test_listed`: replaced\n\n## Out of scope\n\n- Removed `test_after`\n";
   assert.deepEqual([...allowedRemovals(spec)], ["test_listed"]);
+});
+
+test("JavaScript tests are read with their skips and empty bodies", () => {
+  const file = [
+    'import { test } from "node:test";',
+    'test("runs", () => { assert.ok(true); });',
+    'test("an option", { skip: process.platform === "win32" }, () => { assert.ok(true); });',
+    'test("a todo option", { timeout: 10, todo: "later" }, async () => {',
+    "  assert.ok(true);",
+    "});",
+    'test.skip("a skip modifier", () => { assert.ok(true); });',
+    'test.todo("a todo modifier", (t) => { assert.ok(t); });',
+    'test("a skip call", (t) => {',
+    '  if (process.env.CI) t.skip("not on CI");',
+    "  assert.ok(true);",
+    "});",
+    'test("a todo call", async (ctx) => { ctx.todo(); assert.ok(ctx); });',
+    'test("an empty arrow", () => {});',
+    'test("an empty function", async function () {',
+    "  // nothing yet",
+    "});",
+    'test("returns first", () => {',
+    "  return;",
+    "  assert.ok(false);",
+    "});",
+    'test("no function");',
+    'test("options in a variable", OPTIONS, () => {});',
+    'test("a false option", { skip: false }, () => { assert.ok(true); });',
+    'test("nested options", { signal: { aborted: false }, skip: !ready }, () => { assert.ok(true); });',
+    'test("returns a check", () => {',
+    "  return check().then(assert.ok);",
+    "});",
+    "const text = 'test(\"in a string\", () => {});';",
+    "  test(`a template name`, function named(t) { assert.ok(t); });",
+  ].join("\n");
+  assert.deepEqual(jsEntries("t/x.test.js", file).map((e) => [e.id, e.flags.join(" ")]), [
+    ["runs", ""],
+    ["an option", "@skip"],
+    ["a todo option", "@todo"],
+    ["a skip modifier", "@skip"],
+    ["a todo modifier", "@todo"],
+    ["a skip call", "skip()"],
+    ["a todo call", "todo()"],
+    ["an empty arrow", "empty"],
+    ["an empty function", "empty"],
+    ["returns first", "empty"],
+    ["no function", "empty"],
+    ["options in a variable", "@options empty"],
+    ["a false option", ""],
+    ["nested options", "@skip"],
+    ["returns a check", ""],
+    ["a template name", ""],
+  ]);
+});
+
+/** A throwaway git repository on a branch "work", from a "main" that holds these files.
+ * @param {Record<string, string>} files */
+function gitRepo(files) {
+  const dir = mkdtempSync(path.join(tmpdir(), "oneframe-guard-"));
+  const git = (/** @type {string[]} */ ...a) => {
+    const r = spawnSync("git", a, { cwd: dir, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`git ${a.join(" ")}: ${r.stderr}`);
+    return r.stdout;
+  };
+  const write = (/** @type {string} */ rel, /** @type {string} */ text) => {
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    writeFileSync(path.join(dir, rel), text);
+  };
+  const commit = (/** @type {string} */ message) => {
+    git("add", "-A");
+    git("commit", "-qm", message);
+  };
+  git("init", "-q", "-b", "main");
+  git("config", "user.email", "t@t");
+  git("config", "user.name", "t");
+  for (const [rel, text] of Object.entries(files)) write(rel, text);
+  commit("main");
+  git("checkout", "-qb", "work");
+  return { dir, git, write, commit };
+}
+
+test("a rename lets the old name go only to a name that exists", () => {
+  const spec = "## Tests\n\n- Removed: none\n- Renamed: `test_old` -> `test_new`, and\n  - `test_case[a]` -> `test_case[b]`\n";
+  const allow = { removed: new Set(), renamed: renamedTests(spec) };
+  assert.deepEqual(allow.renamed, [["test_old", "test_new"], ["test_case[a]", "test_case[b]"]]);
+  const e = (/** @type {string} */ id) => ({ id, flags: [], where: "engine" });
+  const before = [e("test_old[x]"), e("test_old[y]"), e("test_case[a]"), e("test_case[c]")];
+  const renamed = [e("test_new[x]"), e("test_new[y]"), e("test_case[b]"), e("test_case[c]")];
+  assert.deepEqual(problems(before, renamed, allow), []);
+  assert.deepEqual(problems(before, [e("test_new[x]"), e("test_case[c]")], allow), [
+    "engine: test_old[y] is renamed to test_new[y], which does not exist",
+    "engine: test_case[a] is renamed to test_case[b], which does not exist",
+  ]);
+  assert.deepEqual(problems(before, before, allow), [], "while the old test stands, the line does nothing");
+  assert.deepEqual(problems([e("test_a"), e("test_b")], [e("test_b")], { removed: new Set(), renamed: [["test_a", "test_b"]] }), [],
+    "folded into a test that already exists");
+  assert.equal(problems(before, renamed, { removed: new Set(), renamed: [] }).length, 3, "without the line, each is gone");
+});
+
+test("only specs being worked on, or changed on the branch, allow a removal", () => {
+  const spec = (/** @type {string} */ name, status = "approved") =>
+    `# Spec\n\nStatus: ${status}\n\n## Tests\n\n- Removed:\n  - \`${name}\`: the reason\n`;
+  const repo = gitRepo({
+    "specs/_template/spec.md": spec("test_template", "draft"),
+    "specs/001-done/spec.md": spec("test_done", "done"),
+    "specs/002-approved/spec.md": spec("test_approved"),
+    "specs/003-committed/spec.md": spec("test_committed"),
+    "specs/004-edited/spec.md": spec("test_edited"),
+  });
+  assert.deepEqual([...allowedRemovals("## Tests\n\n- Removed: `test_a`, `test_b` and `test_c`: replaced by `test_d`\n"
+    + "  (`test_e` too)\n  - `test_f` (by `test_g`)\n")], ["test_a", "test_b", "test_c", "test_f"], "not a name in a reason");
+  try {
+    const base = repo.git("merge-base", "HEAD", "main").trim();
+    const allowed = () => [...allowances(repo.dir, base).removed].sort();
+    assert.deepEqual(allowed(), [], "no spec changed on the branch yet");
+    repo.write("specs/003-committed/tasks.md", "- [x] 1. Started.\n");
+    repo.write("specs/003-committed/plan.md", spec("test_plan"));
+    repo.commit("start 003");
+    repo.write("specs/004-edited/spec.md", `${spec("test_edited")}\nEdited, not committed.\n`);
+    repo.write("specs/005-new/spec.md", spec("test_untracked", "draft"));
+    repo.write("specs/_template/spec.md", `${spec("test_template", "draft")}\nChanged.\n`);
+    assert.deepEqual(allowed(), ["test_committed", "test_edited", "test_untracked"]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a test that gains a skip or an empty body counts as removed", () => {
+  const e = (/** @type {string} */ id, /** @type {string[]} */ ...flags) => ({ id, flags, where: "engine" });
+  const before = [e("test_a[x]"), e("test_b", "@skipif"), e("test_c"), e("test_d", "@skip"), e("test_old")];
+  const after = [e("test_a[x]", "@skip"), e("test_b", "@skipif"), e("test_c", "empty"), e("test_d"), e("test_new", "skip()")];
+  const renamed = /** @type {[string, string][]} */ ([["test_old", "test_new"]]);
+  assert.deepEqual(problems(before, after, { removed: new Set(), renamed }), [
+    "engine: test_a[x] gained @skip",
+    "engine: test_c gained empty",
+    "engine: test_old is renamed to test_new, which gained skip()",
+  ], "a flag kept or lost is fine");
+  assert.deepEqual(problems(before, after, { removed: new Set(["test_a", "test_c", "test_new"]), renamed }), []);
+  const js = (/** @type {string} */ text) => jsEntries("t/x.test.js", text);
+  assert.deepEqual(problems(js('test("x", () => { assert.ok(1); });'), js('test("x", { skip: true }, () => {});'),
+    { removed: new Set(), renamed: [] }), ["t/x.test.js: x gained @skip empty"]);
+  assert.deepEqual(problems([e("test_t", "@skip", "empty"), e("test_t", "@skip")], [e("test_t", "@skip"), e("test_t", "empty")],
+    { removed: new Set(), renamed: [] }), [], "two tests of one name, in two files, each lost a flag");
+});
+
+test("a base without a committed list is compared by source names", () => {
+  const repo = gitRepo({ "engine/tests/test_a.py": "def test_one():\n    assert True\n\n\ndef test_two():\n    assert True\n" });
+  try {
+    repo.write("engine/tests/test_a.py", "def test_one():\n    assert True\n");
+    const result = guard({ root: repo.dir, baseRef: "main", collect: () => ["test_one"] });
+    assert.deepEqual([result.code, result.out.slice(0, 3)], [1, [
+      "test-guard: main has no engine/tests/collected.txt; its engine tests are compared by the names in their source.",
+      "test-guard: 1 test(s) at main are gone, skipped or emptied, with no line in a spec this branch changed:",
+      "  engine/tests/test_a.py::test_two is gone",
+    ]]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a collection that fails fails the guard, saying why", () => {
+  const repo = gitRepo({ "README.md": "x\n" });
+  try {
+    const pytest = (/** @type {string} */ script) => () => collectPython(repo.dir, [process.execPath, "-e", script]);
+    const failed = guard({ root: repo.dir, baseRef: "main",
+      collect: pytest("console.log('E   ModuleNotFoundError: No module named numpy'); process.exit(2)") });
+    assert.equal(failed.code, 1);
+    assert.match(failed.out.join("\n"), /collecting the engine's tests failed:\nE {3}ModuleNotFoundError: No module named numpy/);
+    const none = guard({ root: repo.dir, baseRef: "main", collect: pytest("console.log('collected 0 items')") });
+    assert.equal(none.code, 1);
+    assert.match(none.out.join("\n"), /listed none/);
+    const missing = guard({ root: repo.dir, baseRef: "main", collect: () => collectPython(repo.dir, ["oneframe-no-such-uv"]) });
+    assert.equal(missing.code, 1);
+    assert.match(missing.out.join("\n"), /cannot collect the engine's tests: .*ENOENT.*npm run engine:sync/);
+    const listed = collectPython(repo.dir, [process.execPath, "-e", "console.log('tests/x.py: 2\\nlisted\\ttest_a\\nlisted\\ttest_b\\t@skip')"]);
+    assert.deepEqual(listed, ["test_a", "test_b\t@skip"]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a parametrized case that is gone fails, naming its ID, even after --write", () => {
+  const list = "engine/tests/collected.txt";
+  const repo = gitRepo({ [list]: "test_unsafe_paths[C:/model.pt-is absolute]\ntest_unsafe_paths[a//b-has an empty step]\n" });
+  try {
+    const collect = () => ["test_unsafe_paths[C:/model.pt-is absolute]"];
+    const gone = [
+      "test-guard: 1 test(s) at main are gone, skipped or emptied, with no line in a spec this branch changed:",
+      "  engine: test_unsafe_paths[a//b-has an empty step] is gone",
+    ];
+    const written = guard({ root: repo.dir, baseRef: "main", write: true, collect });
+    assert.deepEqual([written.code, written.out.slice(0, 2)], [1, gone]);
+    assert.equal(readFileSync(path.join(repo.dir, list), "utf8"), "test_unsafe_paths[C:/model.pt-is absolute]\n");
+    repo.commit("drop a case, and rewrite the list");
+    const committed = guard({ root: repo.dir, baseRef: "main", collect });
+    assert.deepEqual([committed.code, committed.out.slice(0, 2)], [1, gone]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a committed list that differs from the collection fails, naming --write", () => {
+  const repo = gitRepo({ "engine/tests/collected.txt": "test_a\n" });
+  try {
+    const collect = () => ["test_a", "test_b\t@skip"];
+    assert.deepEqual(guard({ root: repo.dir, baseRef: "main", collect }), { code: 1, out: [
+      "test-guard: engine/tests/collected.txt differs from the tests collected now. Run node scripts/test-guard.js --write, and commit it.",
+    ] });
+    assert.deepEqual(guard({ root: repo.dir, baseRef: "main", write: true, collect }),
+      { code: 0, out: ["test-guard: ok (1 tests at main, 2 now)."] });
+    const unfetched = guard({ root: repo.dir, baseRef: "origin/main", write: true, collect: () => ["test_a"] });
+    assert.deepEqual(unfetched.out, ["test-guard: wrote engine/tests/collected.txt; no origin/main to compare with, so nothing else is checked."]);
+    assert.equal(readFileSync(path.join(repo.dir, "engine/tests/collected.txt"), "utf8"), "test_a\n");
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
 });
 
 test("the docs check reads paths, placeholders and links", () => {

@@ -27,7 +27,7 @@ proposal": https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   earlier app, may be read for what it learned; nothing is ported or copied from it, and nothing
   here has to match it.
 
-## State (2026-10-12)
+## State (2026-10-24)
 
 Green in CI on Windows and Ubuntu, each spec with its reports:
 
@@ -37,9 +37,10 @@ Green in CI on Windows and Ubuntu, each spec with its reports:
 | [002](../specs/002-fit-to-memory/spec.md) | Fit to memory: a node's memory model, the fit before each load, the cap, what each machine learns, `bench:fit` | AC8 on the GTX 1070; [PR #5](https://github.com/cbgithub7/oneframe-lab/pull/5) |
 | [006](../specs/006-foundations/spec.md) | One data root, versioned files, locks, one failure model, journals, `diagnose`, cache keys from code | local checks on Windows; [PR #7](https://github.com/cbgithub7/oneframe-lab/pull/7) |
 | [003](../specs/003-model-store/spec.md) (core) | The model store: pinned files kept once by sha256, a download that heals itself, runs offline through `ctx.file`, `models:pin` and `models:download` | AC8 against the real hosts on Windows; [PR #16](https://github.com/cbgithub7/oneframe-lab/pull/16), [PR #22](https://github.com/cbgithub7/oneframe-lab/pull/22) |
+| [007](../specs/007-test-guard/spec.md) | The test guard sees every collected case, a skip or an emptied body, and renames; `engine/tests/collected.txt` is committed | CI on Windows and Ubuntu; [PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28) |
 
 Beside them: the engine's core (typed ports, manifests, graph planning with converters, the cache,
-the scheduler, the NDJSON server); an Electron 44 shell whose sandboxed page lists nodes through
+the scheduler, the NDJSON server); an Electron 45 shell whose sandboxed page lists nodes through
 one door; two built-in nodes (`source.image`, `convert.depth_to_points`); one runtime, `torch`,
 with no model code. No model node, editor or viewer yet.
 
@@ -52,7 +53,7 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
-| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 next |
+| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 next |
 | 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
 | 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |

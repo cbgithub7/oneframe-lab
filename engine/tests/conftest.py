@@ -31,6 +31,9 @@ from oneframe.files import is_free
 from oneframe.registry import Registry, discover
 from oneframe.scheduler import Scheduler
 
+# The test guard's collection hooks (spec 007), and pytester for their tests.
+pytest_plugins = ("pytester", "fixtures.listing")
+
 MakeNode = Callable[..., Path]
 
 # A node that turns an image into a constant depth plane and a pinhole camera.

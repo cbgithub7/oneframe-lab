@@ -19,7 +19,7 @@ The standard library cannot make certificates, so they were made once with `cryp
 script kept out of the repo so that no check imports it:
 
 ```python
-# uv run --no-project --python 3.14 --with cryptography make_certs.py <folder>
+# uv run --no-project --python 3.15 --with cryptography make_certs.py <folder>
 import datetime, ipaddress, sys
 from pathlib import Path
 from cryptography import x509

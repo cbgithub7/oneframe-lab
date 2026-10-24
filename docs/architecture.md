@@ -9,7 +9,7 @@ Electron main ── engine:request / engine:event ── renderer (sandboxed pa
       │
       │ NDJSON over stdin/stdout
       ▼
-Engine (Python 3.14, uv): registry · graph planner · scheduler · cache
+Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
       │
       ├── engine nodes: run in the engine process (sources, converters, evaluators)
       └── runtime nodes: one child process per run, in the node's own uv environment,

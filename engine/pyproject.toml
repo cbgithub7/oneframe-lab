@@ -2,28 +2,28 @@
 name = "oneframe-engine"
 version = "0.1.0"
 description = "Oneframe Lab's engine: node manifests, typed ports, the graph scheduler and its cache."
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.15,<3.16"
 license = "MIT"
 dependencies = [
-    "numpy>=2.3",
-    "pillow>=12",
-    "truststore>=0.10.4",
+    "numpy>=2.5.4",
+    "pillow>=13.0.0",
+    "truststore>=0.10.5",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1",
-    "ruff>=0.16",
+    "ruff>=0.17.2",
     "pyright>=1.1.414",
 ]
 
 [build-system]
-requires = ["uv_build>=0.12.20,<0.13"]
+requires = ["uv_build>=0.13.5,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv]
 # The uv this project is tested with. Older ones are refused rather than trusted.
-required-version = ">=0.12.20"
+required-version = ">=0.13.5"
 
 [tool.uv.build-backend]
 module-name = "oneframe"
@@ -31,3 +31,5 @@ module-name = "oneframe"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Two cases of one ID are refused, not numbered (spec 007).
+strict_parametrization_ids = true
