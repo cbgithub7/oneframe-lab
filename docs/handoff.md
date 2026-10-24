@@ -86,3 +86,10 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"
   is a convention. Protecting it, with the CI checks required, comes before Dependabot's minor
   updates may merge themselves.
+- **The torch runtime's lock, in a local session on the owner's PC** (the owner, 2026-10-24):
+  filelock 4.0.7 and setuptools 84.0.0 in `runtimes/torch/uv.lock` have advisories (Dependabot
+  alerts 46 to 49), fixed in 4.2.1 and 84.1.0. Neither path is reached (torch uses neither
+  filelock's read-write nor its soft locks, and uv, not setuptools, installs the wheels), but a
+  new lock changes the runtime's hash: each machine installs it again, and what the fit learned
+  starts over. So: `uv lock --project runtimes/torch --upgrade-package filelock --upgrade-package
+  setuptools`, then `npm run bench:runtime -- torch` for its report.
