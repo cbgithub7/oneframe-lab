@@ -31,8 +31,5 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 8. **Docs.** `AGENTS.md` rule 6 as the owner answered open question 1, and the guard's line
   under Commands; `specs/README.md`; the template's "- Renamed: none" line; the PR template's
   "Tests removed" section; the guard's item in `docs/roadmap.md`.
-- [ ] 9. **PR.** Run Verification's demonstration, note the guard's time on Windows from CI, and
+- [x] 9. **PR.** Run Verification's demonstration, note the guard's time on Windows from CI, and
   check each criterion by name.
-
-  Left for task 9: the demonstration and every criterion are in PR #28; the guard's time on Windows
-  comes from that PR's CI run, then task 9 is ticked.
