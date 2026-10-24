@@ -11,7 +11,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `strict_parametrization_ids = true` in `engine/pyproject.toml`. `engine/tests/conftest.py` imports
   the hook and enables pytester. Add `engine/tests/test_listing.py` with
   `test_a_case_numbered_by_its_position_is_refused`, which covers a duplicate ID too (AC5).
-- [ ] 3. **The listing.** Add the second hook, switched on only when the guard asks: each ID with
+- [x] 3. **The listing.** Add the second hook, switched on only when the guard asks: each ID with
   its skip marks and calls and its empty flag, sorted. Add
   `test_the_listing_of_a_made_up_suite_is_as_expected` (AC3).
 - [ ] 4. **Which lines count.** `allowances()` reads "- Removed" and "- Renamed" lines from the

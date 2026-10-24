@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import textwrap
+
 import pytest
 
 PLUGIN = ("-p", "fixtures.listing")
@@ -70,3 +72,95 @@ def test_a_case_numbered_by_its_position_is_refused(
             ),
         ]
     )
+
+
+def test_the_listing_of_a_made_up_suite_is_as_expected(pytester: pytest.Pytester) -> None:
+    pytester.makepyfile(
+        test_marks="""
+            import pytest
+
+            @pytest.mark.skip(reason="on the function")
+            def test_skipped_on_the_function():
+                assert True
+
+            SKIPPED = pytest.param(2, marks=pytest.mark.skipif(True, reason="a case"))
+
+            @pytest.mark.parametrize("n", [1, SKIPPED])
+            def test_skipped_in_a_case(n):
+                assert n
+
+            @pytest.mark.xfail
+            class TestOnTheClass:
+                def test_skipped_on_the_class(self):
+                    assert True
+        """,
+        test_module="""
+            import sys
+            import pytest
+
+            pytestmark = pytest.mark.skipif(sys.platform == "nowhere", reason="on the module")
+
+            def test_skipped_on_the_module():
+                assert True
+
+            def test_asserts():
+                assert True
+        """,
+        test_calls="""
+            import pytest
+
+            def test_skip_call():
+                pytest.skip("in the body")
+
+            def test_xfail_call():
+                if 1 > 2:
+                    pytest.xfail("in a branch")
+                assert True
+
+            def test_importorskip_call():
+                assert pytest.importorskip("json")
+        """,
+        test_empty="""
+            def test_pass():
+                pass
+
+            def test_ellipsis(): ...
+
+            def test_docstring_only():
+                \"\"\"Nothing here.\"\"\"
+
+            def test_constants():
+                \"\"\"Nothing but constants.\"\"\"
+                "a string"
+                0
+
+            def test_return_first():
+                return
+                assert False
+
+            def test_asserts():
+                \"\"\"The same name in a second file counts twice.\"\"\"
+                assert 1 + 1 == 2
+        """,
+    )
+    result = pytester.runpytest(*PLUGIN, "--collect-only", "--guard-listing")
+    assert result.ret == pytest.ExitCode.OK
+    listed = [line.removeprefix("listed\t") for line in result.outlines if line.startswith("listed\t")]
+    assert "\n".join(listed) == textwrap.dedent("""\
+        TestOnTheClass::test_skipped_on_the_class\t@xfail
+        test_asserts
+        test_asserts\t@skipif
+        test_constants\tempty
+        test_docstring_only\tempty
+        test_ellipsis\tempty
+        test_importorskip_call\timportorskip()
+        test_pass\tempty
+        test_return_first\tempty
+        test_skip_call\tskip()
+        test_skipped_in_a_case[1]
+        test_skipped_in_a_case[2]\t@skipif
+        test_skipped_on_the_function\t@skip
+        test_skipped_on_the_module\t@skipif
+        test_xfail_call\txfail()""")
+    unasked = pytester.runpytest(*PLUGIN, "--collect-only")
+    assert unasked.ret == pytest.ExitCode.OK and not [line for line in unasked.outlines if "listed" in line]
