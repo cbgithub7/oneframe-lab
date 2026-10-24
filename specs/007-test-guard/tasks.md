@@ -20,7 +20,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   its old name is gone. Node tests for AC6 and AC7; the existing guard tests stay as they are.
 - [x] 5. **JavaScript entries.** `jsEntries()` reads tests where a statement starts, with their skip
   and empty flags; `testNames` reads JavaScript through it. Node test for AC4.
-- [ ] 6. **Compare IDs.** `collectPython()` and `problems()`: gone IDs, gained flags (renamed tests
+- [x] 6. **Compare IDs.** `collectPython()` and `problems()`: gone IDs, gained flags (renamed tests
   compared with their old flags), renames to nothing. The base list comes through `git show`, with
   the fallback to source names when it is missing; a failed collection fails the guard, saying why.
   The header lists what the guard cannot see. Node tests for AC2, the fallback, and the failed

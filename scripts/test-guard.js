@@ -1,26 +1,38 @@
 // @ts-check
-// No test disappears without a written reason. Run: node scripts/test-guard.js [--base <ref>]
+// No test disappears, or stops running, without a written reason (spec 007).
+// Run: node scripts/test-guard.js [--base <ref>]
 //
 // Compares the tests that exist now (working tree, committed or not) with the tests at the merge
-// base of HEAD and <ref> (default origin/main). A test that existed there and exists nowhere now
-// fails the check -- unless a spec this branch changed names it under "- Removed", which is where
-// the reason is written. Moving a test to another file is fine; its name still exists.
+// base of HEAD and <ref> (default origin/main). A test, or a parametrized case, that existed there
+// fails the check when it is gone, or when it gained a skip or an empty body -- unless a spec this
+// branch changed lists it under "- Removed", which is where the reason is written. A line
+// "- Renamed: `old` -> `new`" lets the old one go once the new one exists, with no more skips. A
+// test may move to another file; tests match by name and case.
 //
-// Test names are read from the source, not by running the suites, so the check is fast and
-// works with or without the engine environment: `def test_*` in Python test files and
-// `test("...")` in JavaScript test files.
+// The engine's tests are collected by pytest, which prints each ID with its flags
+// (engine/tests/fixtures/listing.py), so the guard needs the engine environment: without it, or
+// when collection fails, it fails. The base's IDs come from its committed list,
+// engine/tests/collected.txt, read with `git show`, so the base is never collected; a base without
+// the list is compared by the names in its source (`def test_*`). JavaScript tests are read from
+// the source at both ends (jsEntries).
+//
+// What it cannot see: a skipif whose condition is widened; a skip inside a fixture or a helper the
+// test calls; a gutted assertion such as `assert True`, which is not an empty body. Reviewers
+// still read a rewritten test beside the old one.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const LIST = "engine/tests/collected.txt";
+const PREFIX = "listed\t"; // engine/tests/fixtures/listing.py
+const PYTEST = ["uv", "run", "--project", "engine", "--frozen", "pytest", "engine", "--collect-only", "-q", "--guard-listing"];
 
 /** @param {string} root */
 const gitIn = (root) => (/** @type {string[]} */ ...args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-const git = gitIn(ROOT);
 
 /** @param {string} file */
 export function isTestFile(file) {
@@ -209,39 +221,98 @@ export function removedTests(before, after, allowed) {
   return removed;
 }
 
-function main() {
-  const at = process.argv.indexOf("--base");
-  const baseRef = at > 0 ? process.argv[at + 1] : (process.env.TEST_GUARD_BASE ?? "origin/main");
+/**
+ * The engine's tests, collected: one line per ID with its flags, sorted. Throws, saying why, when
+ * the command cannot run or collection fails.
+ * @param {string} root @param {string[]} command
+ * @returns {string[]}
+ */
+export function collectPython(root, command = PYTEST) {
+  const r = spawnSync(command[0], command.slice(1), { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (r.error) throw new Error(`cannot collect the engine's tests: ${r.error.message}. It needs the engine environment (npm run engine:sync).`);
+  if (r.status !== 0) throw new Error(`collecting the engine's tests failed:\n${`${r.stdout}${r.stderr}`.trim()}`);
+  const lines = r.stdout.split(/\r?\n/).filter((l) => l.startsWith(PREFIX)).map((l) => l.slice(PREFIX.length));
+  if (!lines.length) throw new Error(`collecting the engine's tests listed none; ${command.join(" ")} printed:\n${r.stdout.trim()}`);
+  return lines;
+}
+
+/** @param {string} line @returns {Entry} */
+function collected(line) {
+  const [id, flags = ""] = line.split("\t");
+  return { id, flags: flags ? flags.split(" ") : [], where: "engine" };
+}
+
+/**
+ * The guard in a checkout, with its messages and exit code. `collect` stands in for pytest in tests.
+ * @param {{ root: string, baseRef: string, collect?: (root: string) => string[] }} options
+ * @returns {{ code: number, out: string[] }}
+ */
+export function guard({ root, baseRef, collect = collectPython }) {
+  const git = gitIn(root);
   let base;
   try {
     base = git("merge-base", "HEAD", baseRef).trim();
   } catch {
-    console.log(`test-guard: no ${baseRef} to compare with; skipped.`);
-    return;
+    return { code: 0, out: [`test-guard: no ${baseRef} to compare with; skipped.`] };
   }
-  const before = new Map();
-  for (const file of git("ls-tree", "-r", "--name-only", base).split("\n").filter(isTestFile)) {
-    before.set(file, testNames(file, git("show", `${base}:${file}`)));
+  let live;
+  try {
+    live = collect(root);
+  } catch (e) {
+    return { code: 1, out: [`test-guard: ${e instanceof Error ? e.message : e}`] };
   }
-  const after = new Map();
-  const files = git("ls-files", "--cached", "--others", "--exclude-standard").split("\n").filter(isTestFile);
-  for (const file of files) {
+  const allow = allowances(root, base);
+  const isJs = (/** @type {string} */ f) => !f.endsWith(".py");
+  /** @param {string} file */
+  const readNow = (file) => {
     try {
-      after.set(file, testNames(file, readFileSync(path.join(ROOT, file), "utf8")));
+      return readFileSync(path.join(root, file), "utf8");
     } catch {
-      // listed but deleted in the working tree: it has no tests now
+      return null; // listed but deleted in the working tree: it has no tests now
     }
+  };
+  const thenFiles = git("ls-tree", "-r", "--name-only", base).split("\n").filter(isTestFile);
+  const nowFiles = git("ls-files", "--cached", "--others", "--exclude-standard").split("\n").filter(isTestFile);
+  const jsBefore = thenFiles.filter(isJs).flatMap((f) => jsEntries(f, git("show", `${base}:${f}`)));
+  const jsAfter = nowFiles.filter(isJs).flatMap((f) => jsEntries(f, readNow(f) ?? ""));
+  const found = problems(jsBefore, jsAfter, allow);
+  const out = [];
+  let list = null;
+  try {
+    list = git("show", `${base}:${LIST}`);
+  } catch {
+    // a base from before spec 007
   }
-  const removed = removedTests(before, after, allowances(ROOT, base).removed);
-  const count = (/** @type {Map<string, string[]>} */ m) => [...m.values()].flat().length;
-  if (removed.length) {
-    console.log(`test-guard: ${removed.length} test(s) that exist at ${baseRef} are gone, with no reason in a spec:`);
-    for (const r of removed) console.log(`  ${r}`);
-    console.log("Restore them, or list each under \"- Removed:\" in the spec's Tests section with the reason.");
-    process.exitCode = 1;
-    return;
+  let counts;
+  if (list !== null) {
+    const before = list.split("\n").filter(Boolean).map(collected);
+    found.push(...problems(before, live.map(collected), allow));
+    counts = [before.length, live.length];
+  } else {
+    out.push(`test-guard: ${baseRef} has no ${LIST}; its engine tests are compared by the names in their source.`);
+    const names = (/** @type {string[]} */ files, /** @type {(f: string) => string} */ read) =>
+      new Map(files.filter((f) => !isJs(f)).map((f) => [f, testNames(f, read(f))]));
+    const before = names(thenFiles, (f) => git("show", `${base}:${f}`));
+    const after = names(nowFiles, (f) => readNow(f) ?? "");
+    found.push(...removedTests(before, after, allow.removed).map((r) => `${r} is gone`));
+    counts = [before, after].map((m) => [...m.values()].flat().length);
   }
-  console.log(`test-guard: ok (${count(before)} tests at ${baseRef}, ${count(after)} now).`);
+  if (found.length) {
+    out.push(`test-guard: ${found.length} test(s) at ${baseRef} are gone, skipped or emptied, with no line in a spec this branch changed:`);
+    out.push(...found.map((f) => `  ${f}`));
+    out.push("Restore them, or list each in the Tests section of the spec being worked on: under \"- Removed:\" with the reason, or as \"- Renamed: `old` -> `new`\".");
+    return { code: 1, out };
+  }
+  out.push(`test-guard: ok (${jsBefore.length + counts[0]} tests at ${baseRef}, ${jsAfter.length + counts[1]} now).`);
+  return { code: 0, out };
+}
+
+function main() {
+  const at = process.argv.indexOf("--base");
+  const baseRef = at > 0 ? process.argv[at + 1] : (process.env.TEST_GUARD_BASE ?? "origin/main");
+  const { code, out } = guard({ root: ROOT, baseRef });
+  for (const line of out) console.log(line);
+  process.exitCode = code;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

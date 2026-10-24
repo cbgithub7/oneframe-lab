@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { SPEC_MAX_LINES, backtickPaths, checkDocs, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
 import {
-  allowances, allowedRemovals, isTestFile, jsEntries, problems, removedTests, renamedTests, testNames,
+  allowances, allowedRemovals, collectPython, guard, isTestFile, jsEntries, problems, removedTests, renamedTests, testNames,
 } from "../../scripts/test-guard.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -143,6 +143,58 @@ test("only specs being worked on, or changed on the branch, allow a removal", ()
     repo.write("specs/005-new/spec.md", spec("test_untracked", "draft"));
     repo.write("specs/_template/spec.md", `${spec("test_template", "draft")}\nChanged.\n`);
     assert.deepEqual(allowed(), ["test_committed", "test_edited", "test_untracked"]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a test that gains a skip or an empty body counts as removed", () => {
+  const e = (/** @type {string} */ id, /** @type {string[]} */ ...flags) => ({ id, flags, where: "engine" });
+  const before = [e("test_a[x]"), e("test_b", "@skipif"), e("test_c"), e("test_d", "@skip"), e("test_old")];
+  const after = [e("test_a[x]", "@skip"), e("test_b", "@skipif"), e("test_c", "empty"), e("test_d"), e("test_new", "skip()")];
+  const renamed = /** @type {[string, string][]} */ ([["test_old", "test_new"]]);
+  assert.deepEqual(problems(before, after, { removed: new Set(), renamed }), [
+    "engine: test_a[x] gained @skip",
+    "engine: test_c gained empty",
+    "engine: test_old is renamed to test_new, which gained skip()",
+  ], "a flag kept or lost is fine");
+  assert.deepEqual(problems(before, after, { removed: new Set(["test_a", "test_c", "test_new"]), renamed }), []);
+  const js = (/** @type {string} */ text) => jsEntries("t/x.test.js", text);
+  assert.deepEqual(problems(js('test("x", () => { assert.ok(1); });'), js('test("x", { skip: true }, () => {});'),
+    { removed: new Set(), renamed: [] }), ["t/x.test.js: x gained @skip empty"]);
+});
+
+test("a base without a committed list is compared by source names", () => {
+  const repo = gitRepo({ "engine/tests/test_a.py": "def test_one():\n    assert True\n\n\ndef test_two():\n    assert True\n" });
+  try {
+    repo.write("engine/tests/test_a.py", "def test_one():\n    assert True\n");
+    const result = guard({ root: repo.dir, baseRef: "main", collect: () => ["test_one"] });
+    assert.deepEqual([result.code, result.out.slice(0, 3)], [1, [
+      "test-guard: main has no engine/tests/collected.txt; its engine tests are compared by the names in their source.",
+      "test-guard: 1 test(s) at main are gone, skipped or emptied, with no line in a spec this branch changed:",
+      "  engine/tests/test_a.py::test_two is gone",
+    ]]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test("a collection that fails fails the guard, saying why", () => {
+  const repo = gitRepo({ "README.md": "x\n" });
+  try {
+    const pytest = (/** @type {string} */ script) => () => collectPython(repo.dir, [process.execPath, "-e", script]);
+    const failed = guard({ root: repo.dir, baseRef: "main",
+      collect: pytest("console.log('E   ModuleNotFoundError: No module named numpy'); process.exit(2)") });
+    assert.equal(failed.code, 1);
+    assert.match(failed.out.join("\n"), /collecting the engine's tests failed:\nE {3}ModuleNotFoundError: No module named numpy/);
+    const none = guard({ root: repo.dir, baseRef: "main", collect: pytest("console.log('collected 0 items')") });
+    assert.equal(none.code, 1);
+    assert.match(none.out.join("\n"), /listed none/);
+    const missing = guard({ root: repo.dir, baseRef: "main", collect: () => collectPython(repo.dir, ["oneframe-no-such-uv"]) });
+    assert.equal(missing.code, 1);
+    assert.match(missing.out.join("\n"), /cannot collect the engine's tests: .*ENOENT.*npm run engine:sync/);
+    const listed = collectPython(repo.dir, [process.execPath, "-e", "console.log('tests/x.py: 2\\nlisted\\ttest_a\\nlisted\\ttest_b\\t@skip')"]);
+    assert.deepEqual(listed, ["test_a", "test_b\t@skip"]);
   } finally {
     rmSync(repo.dir, { recursive: true, force: true });
   }
