@@ -167,6 +167,10 @@ both are then reverted. The PR records the guard's time on Windows. No hardware 
 - Only specs changed on the branch allow: an approved spec's lines wait for its work, and no status
   has to be set for them to count.
 - With no base ref the guard still skips, as today; without the engine environment it fails.
+- Flags read `@skip` for a mark or an option and `skip()` for a call, so that the two stay apart.
+- A `return` with a value does not empty a body: `return check()` still runs its check.
+- JavaScript options passed as a variable are flagged `@options`: the guard cannot read them.
+- A "- Removed" line allows the names its item starts with, not those in its reason.
 
 ## Out of scope
 

@@ -119,6 +119,11 @@ def test_the_listing_of_a_made_up_suite_is_as_expected(pytester: pytest.Pytester
 
             def test_importorskip_call():
                 assert pytest.importorskip("json")
+
+            def test_bare_xfail_call():
+                from pytest import xfail
+
+                xfail("imported by name")
         """,
         test_empty="""
             def test_pass():
@@ -138,6 +143,12 @@ def test_the_listing_of_a_made_up_suite_is_as_expected(pytester: pytest.Pytester
                 return
                 assert False
 
+            def check():
+                assert True
+
+            def test_returns_a_check():
+                return check()
+
             def test_asserts():
                 \"\"\"The same name in a second file counts twice.\"\"\"
                 assert 1 + 1 == 2
@@ -150,12 +161,14 @@ def test_the_listing_of_a_made_up_suite_is_as_expected(pytester: pytest.Pytester
         TestOnTheClass::test_skipped_on_the_class\t@xfail
         test_asserts
         test_asserts\t@skipif
+        test_bare_xfail_call\txfail()
         test_constants\tempty
         test_docstring_only\tempty
         test_ellipsis\tempty
         test_importorskip_call\timportorskip()
         test_pass\tempty
         test_return_first\tempty
+        test_returns_a_check
         test_skip_call\tskip()
         test_skipped_in_a_case[1]
         test_skipped_in_a_case[2]\t@skipif

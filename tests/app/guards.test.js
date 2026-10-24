@@ -61,6 +61,12 @@ test("JavaScript tests are read with their skips and empty bodies", () => {
     "  assert.ok(false);",
     "});",
     'test("no function");',
+    'test("options in a variable", OPTIONS, () => {});',
+    'test("a false option", { skip: false }, () => { assert.ok(true); });',
+    'test("nested options", { signal: { aborted: false }, skip: !ready }, () => { assert.ok(true); });',
+    'test("returns a check", () => {',
+    "  return check().then(assert.ok);",
+    "});",
     "const text = 'test(\"in a string\", () => {});';",
     "  test(`a template name`, function named(t) { assert.ok(t); });",
   ].join("\n");
@@ -76,6 +82,10 @@ test("JavaScript tests are read with their skips and empty bodies", () => {
     ["an empty function", "empty"],
     ["returns first", "empty"],
     ["no function", "empty"],
+    ["options in a variable", "@options empty"],
+    ["a false option", ""],
+    ["nested options", "@skip"],
+    ["returns a check", ""],
     ["a template name", ""],
   ]);
 });
@@ -119,6 +129,8 @@ test("a rename lets the old name go only to a name that exists", () => {
     "engine: test_case[a] is renamed to test_case[b], which does not exist",
   ]);
   assert.deepEqual(problems(before, before, allow), [], "while the old test stands, the line does nothing");
+  assert.deepEqual(problems([e("test_a"), e("test_b")], [e("test_b")], { removed: new Set(), renamed: [["test_a", "test_b"]] }), [],
+    "folded into a test that already exists");
   assert.equal(problems(before, renamed, { removed: new Set(), renamed: [] }).length, 3, "without the line, each is gone");
 });
 
@@ -132,6 +144,8 @@ test("only specs being worked on, or changed on the branch, allow a removal", ()
     "specs/003-committed/spec.md": spec("test_committed"),
     "specs/004-edited/spec.md": spec("test_edited"),
   });
+  assert.deepEqual([...allowedRemovals("## Tests\n\n- Removed: `test_a`, `test_b` and `test_c`: replaced by `test_d`\n"
+    + "  (`test_e` too)\n  - `test_f` (by `test_g`)\n")], ["test_a", "test_b", "test_c", "test_f"], "not a name in a reason");
   try {
     const base = repo.git("merge-base", "HEAD", "main").trim();
     const allowed = () => [...allowances(repo.dir, base).removed].sort();
@@ -162,6 +176,8 @@ test("a test that gains a skip or an empty body counts as removed", () => {
   const js = (/** @type {string} */ text) => jsEntries("t/x.test.js", text);
   assert.deepEqual(problems(js('test("x", () => { assert.ok(1); });'), js('test("x", { skip: true }, () => {});'),
     { removed: new Set(), renamed: [] }), ["t/x.test.js: x gained @skip empty"]);
+  assert.deepEqual(problems([e("test_t", "@skip", "empty"), e("test_t", "@skip")], [e("test_t", "@skip"), e("test_t", "empty")],
+    { removed: new Set(), renamed: [] }), [], "two tests of one name, in two files, each lost a flag");
 });
 
 test("a base without a committed list is compared by source names", () => {
@@ -229,6 +245,9 @@ test("a committed list that differs from the collection fails, naming --write", 
     ] });
     assert.deepEqual(guard({ root: repo.dir, baseRef: "main", write: true, collect }),
       { code: 0, out: ["test-guard: ok (1 tests at main, 2 now)."] });
+    const unfetched = guard({ root: repo.dir, baseRef: "origin/main", write: true, collect: () => ["test_a"] });
+    assert.deepEqual(unfetched.out, ["test-guard: wrote engine/tests/collected.txt; no origin/main to compare with, so nothing else is checked."]);
+    assert.equal(readFileSync(path.join(repo.dir, "engine/tests/collected.txt"), "utf8"), "test_a\n");
   } finally {
     rmSync(repo.dir, { recursive: true, force: true });
   }

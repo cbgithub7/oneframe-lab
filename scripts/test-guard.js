@@ -17,9 +17,10 @@
 // equal the collection; --write rewrites it, and cannot hide a removal, since the base's list comes
 // from git. JavaScript tests are read from the source at both ends (jsEntries).
 //
-// What it cannot see: a skipif whose condition is widened; a skip inside a fixture or a helper the
-// test calls; a gutted assertion such as `assert True`, which is not an empty body. Reviewers
-// still read a rewritten test beside the old one.
+// What it cannot see: a skipif, or a JavaScript skip option, whose condition is widened; a skip
+// inside a fixture or a helper the test calls, or called through pytest imported under another
+// name; a gutted assertion such as `assert True`, which is not an empty body. Reviewers still read
+// a rewritten test beside the old one.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -48,9 +49,10 @@ export function testNames(file, text) {
 
 /**
  * JavaScript tests from source: a `test(` call where a line starts, so that one inside a string
- * or after other code is not counted. Its flags: `@skip` or `@todo` for an option or a modifier,
+ * or after other code is not counted. Its flags: `@skip` or `@todo` for an option (unless it is
+ * `false`) or a modifier, `@options` for options passed as a variable the guard cannot read,
  * `skip()` or `todo()` for a call on its context, and `empty` for no function, or a body with
- * nothing in it or that returns before anything else.
+ * nothing in it or a bare `return` before anything else.
  * @param {string} file @param {string} text
  * @returns {Entry[]}
  */
@@ -59,10 +61,20 @@ export function jsEntries(file, text) {
   return starts.map((m, i) => {
     const flags = new Set(m[1] && m[1] !== "only" ? [`@${m[1]}`] : []);
     let rest = text.slice(/** @type {number} */ (m.index) + m[0].length, starts[i + 1]?.index ?? text.length);
-    const options = /^\s*,\s*\{([^{}]*)\}/.exec(rest);
-    if (options) {
-      for (const o of options[1].matchAll(/(?:^|,)\s*(skip|todo)\s*(?=[:,]|$)/g)) flags.add(`@${o[1]}`);
-      rest = rest.slice(options[0].length);
+    const comma = /^\s*,\s*/.exec(rest)?.[0].length ?? -1;
+    if (comma >= 0 && rest[comma] === "{") {
+      let end = comma;
+      for (let depth = 0; end < rest.length; end++) {
+        if (rest[end] === "{") depth++;
+        else if (rest[end] === "}" && --depth === 0) break;
+      }
+      for (const o of rest.slice(comma + 1, end).matchAll(/(?:^|,)\s*(skip|todo)\s*(?::\s*([^,}]*))?(?=[,}]|$)/g)) {
+        if (!/^(?:false|null|undefined)\s*$/.test(o[2] ?? "")) flags.add(`@${o[1]}`);
+      }
+      rest = rest.slice(end + 1);
+    } else if (/^\s*,\s*[A-Za-z_$][\w$.]*\s*,/.test(rest)) {
+      flags.add("@options");
+      rest = rest.replace(/^\s*,\s*[A-Za-z_$][\w$.]*/, "");
     }
     const fn = /^\s*,\s*(?:async\s+)?(?:function\s*\w*\s*\(([^)]*)\)\s*(\{)|\(([^)]*)\)\s*=>\s*(\{)?|(\w+)\s*=>\s*(\{)?)/.exec(rest);
     if (!fn) {
@@ -70,7 +82,7 @@ export function jsEntries(file, text) {
     } else {
       const body = rest.slice(fn[0].length);
       const context = (fn[1] ?? fn[3] ?? fn[5] ?? "").split(",")[0].trim();
-      if ((fn[2] ?? fn[4] ?? fn[6]) && /^(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*(?:\}|return\b)/.test(body)) flags.add("empty");
+      if ((fn[2] ?? fn[4] ?? fn[6]) && /^(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*(?:\}|return[ \t]*(?:;|\}|\r?\n))/.test(body)) flags.add("empty");
       if (/^\w+$/.test(context)) {
         for (const c of body.matchAll(new RegExp(`\\b${context}\\.(skip|todo)\\(`, "g"))) flags.add(`${c[1]}()`);
       }
@@ -104,12 +116,19 @@ function testsLines(text, kind) {
 }
 
 /**
- * Names listed as removed in a spec: the backticked names on its "- Removed" lines.
+ * Names listed as removed in a spec: the backticked names a "- Removed" line or an item under it
+ * starts with (`` `a`, `b` and `c`: why ``), and not those in the reason after them.
  * @param {string} text
  * @returns {Set<string>}
  */
 export function allowedRemovals(text) {
-  return new Set(testsLines(text, "Removed").flatMap((line) => [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1])));
+  const names = new Set();
+  for (const line of testsLines(text, "Removed")) {
+    const item = /^\s*-\s*(?:Removed\b:?\s*)?(.*)$/i.exec(line)?.[1] ?? "";
+    const lead = /^`[^`]+`(?:\s*(?:,|and)?\s*`[^`]+`)*/.exec(item)?.[0] ?? "";
+    for (const m of lead.matchAll(/`([^`]+)`/g)) names.add(m[1]);
+  }
+  return names;
 }
 
 /**
@@ -176,31 +195,30 @@ export function problems(before, after, allow) {
   const removed = [...allow.removed].map(bare);
   const allowed = (/** @type {string} */ id) => removed.some((name) => covers(name, id));
   /** @type {Map<string, Entry[]>} */
-  const left = new Map();
-  for (const e of after) left.set(e.id, [...(left.get(e.id) ?? []), e]);
+  const all = new Map();
+  for (const e of after) all.set(e.id, [...(all.get(e.id) ?? []), e]);
+  const left = new Map([...all].map(([id, list]) => [id, [...list]]));
   const within = (/** @type {string[]} */ a, /** @type {string[]} */ b) => a.every((f) => b.includes(f));
-  /** Take an entry of this ID with the same flags, or else with no flag these lack. @param {string} id @param {string[]} flags */
-  const take = (id, flags) => {
-    const list = left.get(id) ?? [];
-    let i = list.findIndex((e) => within(e.flags, flags) && within(flags, e.flags));
-    if (i < 0) i = list.findIndex((e) => within(e.flags, flags));
+  /** Take a test of this ID with the same flags, or with no flag these lack. @param {Entry} b @param {boolean} same */
+  const take = (b, same) => {
+    const list = left.get(b.id) ?? [];
+    const i = list.findIndex((e) => within(e.flags, b.flags) && (!same || within(b.flags, e.flags)));
     return i >= 0 && list.splice(i, 1).length > 0;
   };
-  const gained = (/** @type {string} */ id, /** @type {string[]} */ flags) =>
-    (left.get(id)?.[0]?.flags ?? []).filter((f) => !flags.includes(f)).join(" ");
+  const gained = (/** @type {Entry} */ e, /** @type {string[]} */ flags) => e.flags.filter((f) => !flags.includes(f)).join(" ");
   const out = [];
-  for (const b of before.filter((e) => !take(e.id, e.flags))) {
+  for (const b of before.filter((e) => !take(e, true)).filter((e) => !take(e, false))) {
     if (allowed(b.id)) continue;
     const rename = allow.renamed.map(([o, n]) => [bare(o), bare(n)]).find(([o]) => covers(o, b.id));
     if (rename) {
       const target = rename[1] + b.id.slice(rename[0].length);
-      if (take(target, b.flags)) continue;
-      if (!left.get(target)?.length) out.push(`${b.where}: ${b.id} is renamed to ${target}, which does not exist`);
-      else if (!allowed(target)) out.push(`${b.where}: ${b.id} is renamed to ${target}, which gained ${gained(target, b.flags)}`);
-    } else if (left.get(b.id)?.length) {
-      out.push(`${b.where}: ${b.id} gained ${gained(b.id, b.flags)}`);
+      const now = all.get(target) ?? [];
+      if (now.some((e) => within(e.flags, b.flags))) continue;
+      if (!now.length) out.push(`${b.where}: ${b.id} is renamed to ${target}, which does not exist`);
+      else if (!allowed(target)) out.push(`${b.where}: ${b.id} is renamed to ${target}, which gained ${gained(now[0], b.flags)}`);
     } else {
-      out.push(`${b.where}: ${b.id} is gone`);
+      const flagged = left.get(b.id)?.shift();
+      out.push(flagged ? `${b.where}: ${b.id} gained ${gained(flagged, b.flags)}` : `${b.where}: ${b.id} is gone`);
     }
   }
   return out;
@@ -251,11 +269,11 @@ function collected(line) {
  */
 export function guard({ root, baseRef, write = false, collect = collectPython }) {
   const git = gitIn(root);
-  let base;
+  let base = "";
   try {
     base = git("merge-base", "HEAD", baseRef).trim();
   } catch {
-    return { code: 0, out: [`test-guard: no ${baseRef} to compare with; skipped.`] };
+    if (!write) return { code: 0, out: [`test-guard: no ${baseRef} to compare with; skipped.`] };
   }
   let live;
   try {
@@ -276,6 +294,7 @@ export function guard({ root, baseRef, write = false, collect = collectPython })
     mkdirSync(path.dirname(path.join(root, LIST)), { recursive: true });
     writeFileSync(path.join(root, LIST), text);
   }
+  if (!base) return { code: 0, out: [`test-guard: wrote ${LIST}; no ${baseRef} to compare with, so nothing else is checked.`] };
   const stale = readNow(LIST) !== text;
   const allow = allowances(root, base);
   const isJs = (/** @type {string} */ f) => !f.endsWith(".py");

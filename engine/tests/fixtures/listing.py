@@ -11,9 +11,9 @@ the guard compares: a line per test ID, prefixed `listed<TAB>`, sorted. An ID is
 its file, so a test can move between files; after a tab come its flags, if any, apart by spaces:
 
     @skip @skipif @xfail          a mark on its function, case, class or module
-    skip() xfail() importorskip()  a call of pytest's in its body
+    skip() xfail() importorskip()  a call of pytest's in its body (`pytest.skip()`, or `skip()`)
     empty                         after the docstring, nothing but `pass`, `...` and constants,
-                                  or a `return` before anything else
+                                  or a `return` without a value before anything else
 
 Pytest escapes tabs and line ends in a case's ID, so neither can appear in one."""
 
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import ast
 import enum
-import functools
 import inspect
 import re
 import textwrap
@@ -57,7 +56,8 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> Generator[None]:
 
 def pytest_make_parametrize_id(config: pytest.Config, val: object, argname: str) -> str | None:
     """Called for each value of a case that has no ID of its own: leave the values pytest names
-    (as `_pytest.python.IdMaker._idval_from_value` does) and refuse the rest."""
+    (as `_pytest.python.IdMaker._idval_from_value` does) and refuse the rest. A pytest that names
+    other types shows: one more fails collection here, one fewer fails test_listing.py's IDs."""
     if (
         isinstance(val, str | bytes | float | int | bool | complex | re.Pattern | enum.Enum)
         or val is None
@@ -80,37 +80,42 @@ def pytest_report_collectionfinish(config: pytest.Config, items: Sequence[pytest
 
 def listing(items: Sequence[pytest.Item]) -> list[str]:
     lines: list[str] = []
+    bodies: dict[Callable[..., Any], frozenset[str]] = {}  # a function's cases share its body
     for item in items:
         flags = {f"@{mark.name}" for mark in item.iter_markers() if mark.name in SKIP_MARKS}
         if isinstance(item, pytest.Function):
-            flags |= _body_flags(item.function)
+            if item.function not in bodies:
+                bodies[item.function] = _body_flags(item.function)
+            flags |= bodies[item.function]
         test = item.nodeid.split("::", 1)[1]
         lines.append(f"{test}\t{' '.join(sorted(flags))}" if flags else test)
     return sorted(lines)
 
 
-@functools.cache
 def _body_flags(function: Callable[..., Any]) -> frozenset[str]:
     tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
     definition = tree.body[0]
     assert isinstance(definition, ast.FunctionDef | ast.AsyncFunctionDef), function
     flags = {
-        f"{node.func.attr}()"
+        f"{name}()"
         for statement in definition.body
         for node in ast.walk(statement)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "pytest"
-        and node.func.attr in SKIP_CALLS
+        if isinstance(node, ast.Call) and (name := _called(node.func)) in SKIP_CALLS
     }
     return frozenset(flags | {"empty"} if _empty(definition.body) else flags)
+
+
+def _called(func: ast.expr) -> str | None:
+    """`skip` for `pytest.skip(...)` or a bare `skip(...)`."""
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "pytest":
+        return func.attr
+    return func.id if isinstance(func, ast.Name) else None
 
 
 def _empty(body: list[ast.stmt]) -> bool:
     for statement in body:
         if isinstance(statement, ast.Return):
-            return True
+            return statement.value is None or isinstance(statement.value, ast.Constant)
         if not (
             isinstance(statement, ast.Pass)
             or (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant))
