@@ -42,7 +42,7 @@ models.
 ## Running
 
 Needs [Node](https://nodejs.org) (the LTS in `.node-version`) and [uv](https://docs.astral.sh/uv/)
-(0.12.20 or newer). uv fetches the right Python itself.
+(0.13.5 or newer). uv fetches the right Python itself.
 
 ```
 npm install

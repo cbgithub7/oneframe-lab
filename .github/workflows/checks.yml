@@ -39,7 +39,7 @@ jobs:
           cache: npm
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.12.20"
+          version: "0.13.5"
       - name: Engine environment (exactly engine/uv.lock)
         run: uv sync --project engine --frozen
       - name: Engine checks (ruff, pyright, pytest)
@@ -62,7 +62,7 @@ jobs:
           node-version-file: .node-version
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.12.20"
+          version: "0.13.5"
       # Everywhere: the rules a change can break (exact pins, actions pinned by commit, Node and
       # engines agreeing, exceptions naming what is pinned).
       - name: Pins follow the rules

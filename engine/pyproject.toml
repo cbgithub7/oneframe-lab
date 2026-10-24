@@ -18,12 +18,12 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.12.20,<0.13"]
+requires = ["uv_build>=0.13.5,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv]
 # The uv this project is tested with. Older ones are refused rather than trusted.
-required-version = ">=0.12.20"
+required-version = ">=0.13.5"
 
 [tool.uv.build-backend]
 module-name = "oneframe"
