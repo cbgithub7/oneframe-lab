@@ -15,9 +15,10 @@ Each criterion from the spec, ticked only with how it was checked.
 - [ ] Hardware steps: report committed under `specs/NNN-name/reports/`, or "none needed"
 - [ ] Docs, AGENTS.md, the handoff and the roadmap updated if anything structural changed
 
-## Tests removed
+## Tests removed, skipped or renamed
 
-None, or each one listed under "- Removed" in the spec's Tests section, with the reason.
+None, or each one listed in the spec's Tests section: a test or case removed, skipped or emptied
+under "- Removed", with the reason, and a renamed one under "- Renamed".
 
 ## How the work went
 

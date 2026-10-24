@@ -28,9 +28,11 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 4. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
 5. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
    and before a PR. Acceptance criteria in the spec are checked one by one in the PR.
-6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test may
-   be removed only when the spec lists it under "- Removed", with the reason.
-   `node scripts/test-guard.js` enforces this in the hooks and in CI.
+6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test or a
+   case may be removed, skipped or emptied only when the spec lists it under "- Removed", with the
+   reason, and renamed only when the spec lists it under "- Renamed". `node scripts/test-guard.js`
+   enforces this in the hooks and in CI, over every collected case; it needs the engine
+   environment.
 7. **The PR is where the owner decides.** An agent's job ends when it opens the pull request.
    Nothing merges to `main` except through a PR with green CI.
 8. **Hardware claims need a report.** Nothing is called tested or working on a GPU without
@@ -114,7 +116,11 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 - `npm run diagnose`: one file in the data root's `reports/` to hand over when something failed:
   versions, machine, runtimes, settings, what was learned, the latest journals and logs, with the
   user's name taken out of every path and hub tokens scrubbed
-- `node scripts/test-guard.js`: no test removed without a listed reason
+- `node scripts/test-guard.js [--write]`: no test or case removed, skipped, emptied or renamed
+  without a line in a spec the branch changed. It compares the engine's collected IDs with
+  `engine/tests/collected.txt` at the merge base, and fails when the list in the checkout differs
+  from the collection; `--write` rewrites it, so a change that adds or renames a test commits the
+  list
 - The tools that open a data root (`bench:runtime`, `bench:fit`, `diagnose`, `models:*`) start
   through `scripts/tool.js`, which keeps uv's temporary files under that root
 - `npm start`: the app (needs `npm run engine:sync` once)
