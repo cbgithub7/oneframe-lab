@@ -1,6 +1,6 @@
 # 007: The test guard sees every test
 
-Status: in progress (every task done; in review)
+Status: in progress (every task done; in review in [PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: a
   Renamed line acts once its old name is gone; only specs changed on the branch allow; duplicate
