@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import textwrap
+import threading
 from pathlib import Path
 
 import pytest
@@ -116,7 +117,7 @@ def test_a_child_writes_no_bytecode_and_sees_the_roots_folders(tmp_path: Path) -
         "out_dir": str(tmp_path / "out"),
     }
     ProcessExecutor(Path(sys.executable), tmp_root=jobs, caches=caches).execute(
-        {**job, "device": "cpu"}, seen.append, lambda: False
+        {**job, "device": "cpu"}, seen.append, threading.Event()
     )
     env = json.loads(str(seen[0]["message"]))
     for name, folder in LIBRARY_CACHES.items():

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import tarfile
+import threading
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
@@ -74,8 +75,10 @@ def test_a_file_on_disk_that_does_not_match_is_fetched_again(tmp_path: Path) -> 
 def test_stop_during_a_download_keeps_nothing(tmp_path: Path) -> None:
     data = b"y" * (2 * archives.CHUNK)
     dest = tmp_path / "up.tar.gz"
+    stop = threading.Event()
+    stop.set()
     with pytest.raises(archives.Stopped):
-        archives.download("https://example.test/up", _sha(data), dest, None, lambda: True, _opener(data))
+        archives.download("https://example.test/up", _sha(data), dest, None, stop, _opener(data))
     assert list(tmp_path.iterdir()) == []
 
 

@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import stat
+import threading
 from pathlib import Path
 
 import pytest
@@ -167,8 +168,14 @@ def test_hashing_stops_between_chunks(tmp_path: Path) -> None:
     path.write_bytes(b"z" * (store_module.CHUNK * 3))
     assert hash_file(path) == hashlib.sha256(path.read_bytes()).hexdigest()
     seen: list[int] = []
+    stop = threading.Event()
+
+    def progress(done: int) -> None:
+        seen.append(done)
+        stop.set()
+
     with pytest.raises(Stopped):
-        hash_file(path, lambda: len(seen) >= 1, seen.append)
+        hash_file(path, stop, progress)
     assert seen == [store_module.CHUNK]
 
 

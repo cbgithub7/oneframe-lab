@@ -992,7 +992,7 @@ class Runtimes:
             try:
                 emit({**base, "event": "runtime.start"})
                 done = runtime_install.install(
-                    runtime, build, self.data, str(self.uv), emit, stop.is_set, self.uv_home, **extra
+                    runtime, build, self.data, str(self.uv), emit, stop, self.uv_home, **extra
                 )
             except Stopped:
                 emit(

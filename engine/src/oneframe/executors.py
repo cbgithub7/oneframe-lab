@@ -42,7 +42,6 @@ def child_command(python: Path, job: Path) -> list[str]:
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 Emit = Callable[[dict[str, Any]], None]
-ShouldStop = Callable[[], bool]
 
 
 class NodeError(Failure):
@@ -82,9 +81,9 @@ def died_message(code: int | None, platform: str = sys.platform) -> str:
 class EngineExecutor:
     """Runs a node in the engine's process. Stop is cooperative: the node checks ctx.stopped()."""
 
-    def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
+    def execute(self, job: dict[str, Any], emit: Emit, stop: threading.Event) -> dict[str, Any]:
         try:
-            return child.run_node(job, emit, should_stop)
+            return child.run_node(job, emit, stop)
         except Stopped:
             raise
         except Exception as exc:
@@ -150,7 +149,7 @@ class ProcessExecutor:
         self.log_dir = log_dir
         self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
-    def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
+    def execute(self, job: dict[str, Any], emit: Emit, stop: threading.Event) -> dict[str, Any]:
         # Every child ends when the process that started it does, even one killed without a chance
         # to stop it (an engine, a bench tool), so no orphan keeps holding the card. It watches
         # the stdin pipe this process holds, and closes.
@@ -187,7 +186,7 @@ class ProcessExecutor:
             try:
                 open_stream = True
                 while open_stream or proc.poll() is None:
-                    if should_stop():
+                    if stop.is_set():
                         raise Stopped()
                     try:
                         line = lines.get(timeout=self.poll)

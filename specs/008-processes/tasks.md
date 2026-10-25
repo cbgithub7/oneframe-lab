@@ -19,7 +19,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `scripts/tool.js` imports the temporary variables, and `contracts/layout.json` gains its
   `environment` entry, checked by `test_the_temporary_and_uv_variables_match_the_contract` and its
   twin in `tests/app/layout.test.js`.
-- [ ] 4. One stop type, as Design's Stop item says, and the tests' stop callables become events as
+- [x] 4. One stop type, as Design's Stop item says, and the tests' stop callables become events as
   Tests lists (the two scheduler tests that count calls set theirs from the listener). AC3's command
   prints nothing.
 - [ ] 5. `oneframe/processes.py`: `Child`, `run`, `output`, `alive` and `wait_gone`, with

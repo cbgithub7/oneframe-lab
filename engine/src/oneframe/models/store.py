@@ -25,6 +25,7 @@ import re
 import shutil
 import stat
 import sys
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -81,14 +82,14 @@ def check_sha256(sha: str) -> str:
 
 
 def hash_file(
-    path: Path, should_stop: Callable[[], bool] | None = None, progress: Callable[[int], None] | None = None
+    path: Path, stop: threading.Event | None = None, progress: Callable[[int], None] | None = None
 ) -> str:
-    """The file's sha256, read in chunks; Stopped when `should_stop` says so between chunks."""
+    """The file's sha256, read in chunks; Stopped when `stop` is set, seen between chunks."""
     digest = hashlib.sha256()
     done = 0
     with path.open("rb") as handle:
         while chunk := handle.read(CHUNK):
-            if should_stop is not None and should_stop():
+            if stop is not None and stop.is_set():
                 raise Stopped()
             digest.update(chunk)
             done += len(chunk)
@@ -294,7 +295,7 @@ class Store:
         except OSError as exc:
             raise StoreRefused(f"The store could not record {sha[:12]}… ({exc}).", "os_refused") from exc
 
-    def adopt(self, sha: str, should_stop: Callable[[], bool] | None = None) -> bool:
+    def adopt(self, sha: str, stop: threading.Event | None = None) -> bool:
         """A stored file without a good record is hashed again: recorded if it matches, deleted
         if not. Whether it is present now. A newer record is left alone (False)."""
         found = self.record(sha)
@@ -305,7 +306,7 @@ class Store:
             if isinstance(found, Record) or found == "unreadable":
                 _delete(self.record_path(sha))
             return False
-        if hash_file(blob, should_stop) != sha:
+        if hash_file(blob, stop) != sha:
             self.drop(sha)
             return False
         self._write_record(sha, blob)

@@ -39,6 +39,7 @@ its inputs, so a mesh built from synthetic views never comes out labelled measur
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -193,7 +194,7 @@ class Scheduler:
         self,
         graph: Graph,
         emit: Emit,
-        should_stop: Callable[[], bool] = lambda: False,
+        stop: threading.Event | None = None,
         run_id: str | None = None,
     ) -> RunResult:
         run_id = run_id or uuid.uuid4().hex[:12]
@@ -205,9 +206,9 @@ class Scheduler:
             return engine_crash(exc, event="run.failed", run=run_id)
 
         with journalled(emit, self.journal_dir, f"run-{run_id}", crashed) as kept:
-            return self._run(graph, kept, should_stop, run_id)
+            return self._run(graph, kept, stop if stop is not None else threading.Event(), run_id)
 
-    def _run(self, graph: Graph, emit: Emit, should_stop: Callable[[], bool], run_id: str) -> RunResult:
+    def _run(self, graph: Graph, emit: Emit, stop: threading.Event, run_id: str) -> RunResult:
         result = RunResult(run=run_id, status="done")
 
         def say(event: dict[str, Any]) -> None:
@@ -219,19 +220,19 @@ class Scheduler:
         # so a remove in any process leaves them alone until it ends.
         files = sorted({spec.sha256 for step in the_plan.steps for spec in step.manifest.files})
         with reading(self.tmp_root, files):
-            return self._steps(the_plan, result, say, should_stop, run_id)
+            return self._steps(the_plan, result, say, stop, run_id)
 
     def _steps(
-        self, the_plan: Plan, result: RunResult, say: Emit, should_stop: Callable[[], bool], run_id: str
+        self, the_plan: Plan, result: RunResult, say: Emit, stop: threading.Event, run_id: str
     ) -> RunResult:
         for step in the_plan.steps:
-            if should_stop():
+            if stop.is_set():
                 result.status = "stopped"
                 say({"event": "run.stopped", "step": step.id})
                 return result
             trail = _Trail()
             try:
-                outputs, record = self._step(run_id, step, result.outputs, say, should_stop, trail)
+                outputs, record = self._step(run_id, step, result.outputs, say, stop, trail)
             except Stopped:
                 result.status = "stopped"
                 say({"event": "run.stopped", "step": step.id})
@@ -281,7 +282,7 @@ class Scheduler:
         step: Step,
         done: dict[str, dict[str, Value]],
         say: Emit,
-        should_stop: Callable[[], bool],
+        stop: threading.Event,
         trail: _Trail,
     ) -> tuple[dict[str, Value], dict[str, Any]]:
         manifest = step.manifest
@@ -303,7 +304,7 @@ class Scheduler:
         # An engine node without a memory model runs as it always has: on its first device, with
         # no fit and no cap (spec 002, plan decision 12).
         if manifest.memory is None and manifest.run.where == "engine":
-            return self._attempt(run_id, step, inputs, say, should_stop, None, None, 1, trail)
+            return self._attempt(run_id, step, inputs, say, stop, None, None, 1, trail)
 
         context = self._context(step, _meta(step, inputs))
         found = self._fit(step, context, say, 1, None, trail)
@@ -311,7 +312,7 @@ class Scheduler:
         if served is not None:
             return served
         try:
-            return self._attempt(run_id, step, inputs, say, should_stop, found, context, 1, trail)
+            return self._attempt(run_id, step, inputs, say, stop, found, context, 1, trail)
         except NodeError as first:
             if first.kind != "oom":
                 raise
@@ -323,7 +324,7 @@ class Scheduler:
             if served is not None:
                 return served
             try:
-                return self._attempt(run_id, step, inputs, say, should_stop, again, context, 2, trail)
+                return self._attempt(run_id, step, inputs, say, stop, again, context, 2, trail)
             except NodeError as second:
                 if second.kind != "oom":
                     raise
@@ -439,7 +440,7 @@ class Scheduler:
         step: Step,
         inputs: dict[str, Value],
         say: Emit,
-        should_stop: Callable[[], bool],
+        stop: threading.Event,
         found: Fit | None,
         context: _Context | None,
         attempt: int,
@@ -502,7 +503,7 @@ class Scheduler:
 
         try:
             try:
-                finished = executor.execute(job, forward, should_stop)
+                finished = executor.execute(job, forward, stop)
             except NodeError as exc:
                 trail.peaks.append({"attempt": attempt, **exc.peaks})
                 if exc.kind == "oom":

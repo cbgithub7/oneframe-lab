@@ -53,7 +53,6 @@ PTH = "oneframe-runtime.pth"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 Emit = Callable[[dict[str, Any]], None]
-ShouldStop = Callable[[], bool]
 STEPS = ("marker", "python", "sync", "sources", "stand-ins", "paths", "freeze", "record")
 
 
@@ -131,7 +130,7 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
 
 
 def run_step(
-    argv: list[str], env: dict[str, str], on_line: Callable[[str], None], should_stop: ShouldStop
+    argv: list[str], env: dict[str, str], on_line: Callable[[str], None], stop: threading.Event
 ) -> tuple[int, list[str]]:
     """Run one command to its end, or until Stop. Its output is passed on line by line; the last
     lines come back with the exit code, for the message when it fails."""
@@ -159,7 +158,7 @@ def run_step(
     tail: deque[str] = deque(maxlen=40)
     try:
         while True:
-            if should_stop():
+            if stop.is_set():
                 raise Stopped()
             try:
                 line = lines.get(timeout=0.2)
@@ -216,20 +215,21 @@ def install(
     data: Path,
     uv: str,
     emit: Emit,
-    should_stop: ShouldStop = lambda: False,
+    stop: threading.Event | None = None,
     uv_home: Path | None = None,
     opener: Callable[..., Any] = urllib.request.urlopen,
 ) -> dict[str, Any]:
     """Build `runtime`'s `build` under the data root. Raises Stopped or InstallFailed; the
     marker exists only when this returns."""
     started = time.monotonic()
+    stop = stop if stop is not None else threading.Event()
     uv_home = uv_home or data / "uv"
     env = env_dir(data, runtime.id, build)
     python = interpreter(env)
     base = {"runtime": runtime.id, "build": build}
 
     def step(name: str, message: str) -> None:
-        if should_stop():
+        if stop.is_set():
             raise Stopped()
         emit(
             {
@@ -246,7 +246,7 @@ def install(
         emit({**base, "event": "runtime.log", "line": line})
 
     def run(argv: list[str], what: str, environment: dict[str, str]) -> None:
-        code, tail = run_step(argv, environment, log, should_stop)
+        code, tail = run_step(argv, environment, log, stop)
         if code != 0:
             raise InstallFailed(f"{what} failed (exit {code}).", "\n".join(tail))
 
@@ -288,7 +288,7 @@ def install(
     ]
     # A failure leaves the folder as it is: uv recreates an environment it cannot use, and a
     # failure for any other reason (the network, a registry) must not cost what is already there.
-    code, tail = run_step(sync, uv_environment(uv_home, env), log, should_stop)
+    code, tail = run_step(sync, uv_environment(uv_home, env), log, stop)
     if code != 0:
         raise InstallFailed(f"uv sync failed (exit {code}).", "\n".join(tail))
 
@@ -314,7 +314,7 @@ def install(
 
         try:
             archive = archives.download(
-                source.url, source.sha256, downloads / source.sha256, progress, should_stop, opener
+                source.url, source.sha256, downloads / source.sha256, progress, stop, opener
             )
         except (archives.ArchiveError, OSError) as exc:
             raise InstallFailed(f"The source {source.name} could not be fetched: {exc}") from exc
@@ -351,7 +351,7 @@ def install(
         # a best effort: an upstream archive may hold files that are not this Python's code.
         folders = [str(p) for p in (env / "src", env / "stand-ins") if p.is_dir()]
         compiled, _tail = run_step(
-            [str(python), "-m", "compileall", "-q", *folders], uv_environment(uv_home), log, should_stop
+            [str(python), "-m", "compileall", "-q", *folders], uv_environment(uv_home), log, stop
         )
         if compiled != 0:
             log(f"Some source files did not compile (exit {compiled}); they are left as they are.")

@@ -36,6 +36,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -332,7 +333,7 @@ def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
         try:
             done = ProcessExecutor(
                 python, env=manager.env_for("torch"), caches=manager.caches_for("torch")
-            ).execute(job, lambda _e: None, lambda: False)
+            ).execute(job, lambda _e: None, threading.Event())
         except NodeError as exc:
             return {"why": f"{exc.kind}: {exc}"}
     return dict(done.get("stats") or {})

@@ -8,9 +8,11 @@ import os
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import Events, MakeNode, wait_gone
@@ -107,11 +109,14 @@ def test_stop_kills_a_runtime_child(
 ) -> None:
     _runtime_node(make_node, "test.hang", HANG)
     started = time.monotonic()
+    stop = threading.Event()
 
-    def stop_when_hanging() -> bool:
-        return any(e["event"] == "stage" for e in events)
+    def listen(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] == "stage":
+            stop.set()
 
-    result = scheduler_for().run(_one("test.hang"), events.append, stop_when_hanging)
+    result = scheduler_for().run(_one("test.hang"), listen, stop)
     assert result.status == "stopped"
     assert time.monotonic() - started < 20
     # The interpreter itself, not only the process the engine started (on Windows a venv's
@@ -232,7 +237,9 @@ def test_a_runtime_child_cannot_import_the_engines_own_modules(tmp_path: Path) -
     ctx.stage("path", json.dumps({"found": found, "on_path": sys.argv[0].rsplit(os.sep, 1)[0] in sys.path}))
     """
     seen: list[dict[str, object]] = []
-    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    ProcessExecutor(Path(sys.executable)).execute(
+        _executor_job(tmp_path, body), seen.append, threading.Event()
+    )
     assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False}
 
 
@@ -243,7 +250,7 @@ def test_a_node_fails_in_its_own_words(tmp_path: Path) -> None:
     words = "The photo is 32 pixels wide; this node needs at least 256."
     for executor in (ProcessExecutor(Path(sys.executable)), EngineExecutor()):
         with pytest.raises(NodeError) as info:
-            executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
+            executor.execute(_executor_job(tmp_path, body), lambda _e: None, threading.Event())
         assert (info.value.kind, str(info.value)) == ("node", words)
 
 
@@ -253,7 +260,7 @@ def test_any_other_error_is_reported_with_its_type(tmp_path: Path) -> None:
     body = "raise ValueError('expected 3 channels, got 4')\n"
     for executor in (ProcessExecutor(Path(sys.executable)), EngineExecutor()):
         with pytest.raises(NodeError) as info:
-            executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
+            executor.execute(_executor_job(tmp_path, body), lambda _e: None, threading.Event())
         assert (info.value.kind, str(info.value)) == ("error", "ValueError: expected 3 channels, got 4")
 
 
@@ -265,7 +272,7 @@ def test_a_failure_carries_the_peaks_of_the_run(tmp_path: Path) -> None:
     """
     with pytest.raises(NodeError) as info:
         ProcessExecutor(Path(sys.executable)).execute(
-            _executor_job(tmp_path, body), lambda _e: None, lambda: False
+            _executor_job(tmp_path, body), lambda _e: None, threading.Event()
         )
     assert info.value.kind == "oom"
     assert set(info.value.peaks) == {"peak_reserved_mb", "peak_vram_mb", "peak_ram_mb"}
@@ -276,9 +283,9 @@ def test_a_job_brings_its_own_environment(tmp_path: Path) -> None:
     seen: list[dict[str, object]] = []
     executor = ProcessExecutor(Path(sys.executable), env={"CUDA_VISIBLE_DEVICES": "0", "KEEP": "1"})
     executor.execute(
-        _executor_job(tmp_path, body, env={"CUDA_VISIBLE_DEVICES": "-1"}), seen.append, lambda: False
+        _executor_job(tmp_path, body, env={"CUDA_VISIBLE_DEVICES": "-1"}), seen.append, threading.Event()
     )
-    executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    executor.execute(_executor_job(tmp_path, body), seen.append, threading.Event())
     assert [e["message"] for e in seen] == ["-1", "0"]  # a processor job sees no card; the next is unchanged
 
 
@@ -315,7 +322,7 @@ def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) ->
         env={"TRANSFORMERS_OFFLINE": "0", "HF_TOKEN": "hf_runtime", "hf_hub_offline": "0"},
         base_env=person,
     )
-    executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    executor.execute(_executor_job(tmp_path, body), seen.append, threading.Event())
     assert json.loads(str(seen[0]["message"])) == {
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
@@ -335,7 +342,9 @@ def test_a_node_that_reads_stdin_gets_end_of_file_at_once(tmp_path: Path) -> Non
     body = "try:\n    input()\nexcept EOFError:\n    ctx.stage('stdin', 'eof')\n"
     seen: list[dict[str, object]] = []
     started = time.monotonic()
-    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    ProcessExecutor(Path(sys.executable)).execute(
+        _executor_job(tmp_path, body), seen.append, threading.Event()
+    )
     assert seen[0]["message"] == "eof"
     assert time.monotonic() - started < 20
 
@@ -345,7 +354,7 @@ def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:
     seen: list[dict[str, object]] = []
     body = "ctx.stage('pid', str(os.getpid()))\n"
     ProcessExecutor(Path(sys.executable), on_pid=pids.append).execute(
-        _executor_job(tmp_path, body), seen.append, lambda: False
+        _executor_job(tmp_path, body), seen.append, threading.Event()
     )
     assert len(pids) == 1 and str(pids[0]) == seen[0]["message"]
 
@@ -371,6 +380,6 @@ def test_a_child_killed_as_the_oom_killer_does_is_reported_as_maybe_out_of_memor
     body = "import signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
     with pytest.raises(NodeError) as info:
         ProcessExecutor(Path(sys.executable)).execute(
-            _executor_job(tmp_path, body), lambda _e: None, lambda: False
+            _executor_job(tmp_path, body), lambda _e: None, threading.Event()
         )
     assert info.value.kind == "died" and "may have run out of system memory" in str(info.value)
