@@ -111,7 +111,10 @@ smaller fit; to refuse for good instead, call it after the `except` block. Any o
 reported with its type. Stop ends a runtime
 node's process at once, with every process it started; a node in the engine's process is stopped
 only where it calls `ctx.check_stop()`. Node code never imports the engine: in a runtime, `import models` finds the
-runtime's package of that name. A run is cached by its inputs and output-affecting params, so it
+runtime's package of that name. The node's folder is imported as a package of its own, so a node
+imports its helpers relatively (`from . import utils`), and `import utils` still finds the runtime's
+package of that name; the import path is never changed. A process the node starts itself (a
+DataLoader worker) cannot import the node's modules by name. A run is cached by its inputs and output-affecting params, so it
 must be deterministic for them (seed any randomness from a `seed` parameter).
 
 **Loading weights.** Prefer `.safetensors`. A `.pt`, `.pth`, `.ckpt` or `.bin` file is a pickle, and

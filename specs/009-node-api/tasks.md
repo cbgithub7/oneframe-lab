@@ -23,7 +23,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   scheduler's `_executor(manifest, device)`. Tests build `Job`s; the two exit-with-parent tests use
   the argument; rename `test_a_job_brings_its_own_environment` as the spec lists it; add
   `test_a_job_survives_its_json`. AC7's command prints nothing.
-- [ ] 3. **Node code as a package.** `code.py` imports the node's folder as
+- [x] 3. **Node code as a package.** `code.py` imports the node's folder as
   `oneframe_nodes.<id>_<8 hex>` and its entry as a module in it, forgets the package's modules by
   name before a rerun, and never touches `sys.path`. The test nodes in `test_child_env.py`,
   `test_footprint.py` and `test_cache_keys.py` import their helper relatively. Add

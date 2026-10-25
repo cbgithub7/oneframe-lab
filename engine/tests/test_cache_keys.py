@@ -168,7 +168,7 @@ def test_an_engine_node_runs_its_helpers_as_they_are_now(
 ) -> None:
     folder = make_node(
         {**NODE, "id": "test.with_helper"},
-        "import fresh_helper_for_keys as helper\n\n"
+        "from . import fresh_helper_for_keys as helper\n\n"
         "def run(ctx):\n"
         "    p = ctx.path('t.txt')\n"
         "    p.write_text(helper.WORD, encoding='utf-8')\n    ctx.output('text', p)\n",

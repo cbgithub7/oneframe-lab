@@ -14,7 +14,7 @@ import threading
 import time
 
 from oneframe.node import Emit, usage
-from oneframe.node.code import load_entry
+from oneframe.node.code import load_code
 from oneframe.node.context import NodeContext
 from oneframe.node.job import Done, Job
 from oneframe.node.process import Process
@@ -36,8 +36,7 @@ def run_job(job: Job, say: Emit, stop: threading.Event | None = None, process: P
     started = time.monotonic()
     try:
         ctx.out_dir.mkdir(parents=True, exist_ok=True)
-        file, _, function = job.entry.partition(":")
-        fn = load_entry(job.folder / file, function)
+        fn = load_code(job.node, job.folder, job.entry)
         stats = fn(ctx) or {}
     except BaseException:
         if process is not None:

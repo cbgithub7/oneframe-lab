@@ -97,9 +97,8 @@ def test_a_child_writes_no_bytecode_and_sees_the_roots_folders(tmp_path: Path) -
     code.write_text(
         textwrap.dedent(
             f"""
-            import json, os, sys, tempfile
-            sys.path.insert(0, os.path.dirname(__file__))
-            import helper
+            import json, os, tempfile
+            from . import helper
 
             def run(ctx):
                 seen = {{n: os.environ.get(n) for n in {names!r}}}

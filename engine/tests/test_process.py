@@ -291,6 +291,56 @@ def test_a_runtime_child_cannot_import_the_engines_own_modules(tmp_path: Path) -
     assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False, "api": "oneframe.node"}
 
 
+def test_two_engine_nodes_with_same_named_helpers_each_run_their_own(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Each node's folder is a package of its own: two `utils.py` never meet, and the engine's
+    import path is left as it was."""
+    for name in ("first", "second"):
+        folder = make_node(
+            {
+                "id": f"test.{name}",
+                "version": "1",
+                "title": name,
+                "category": "test",
+                "outputs": {"text": "Text"},
+                "run": {"where": "engine", "entry": "node.py:run"},
+            },
+            "from . import utils\n"
+            "def run(ctx):\n"
+            "    p = ctx.path('t.txt'); p.write_text(utils.WORD, encoding='utf-8'); ctx.output('text', p)\n",
+        )
+        (folder / "utils.py").write_text(f"WORD = {name!r}\n", encoding="utf-8")
+    graph = Graph.from_json(
+        {"version": 1, "nodes": {"a": {"node": "test.first"}, "b": {"node": "test.second"}}, "edges": []}
+    )
+    path = list(sys.path)
+    result = scheduler_for().run(graph, events.append)
+    assert result.status == "done", result.error
+    words = {step: outs["text"].path.read_text(encoding="utf-8") for step, outs in result.outputs.items()}
+    assert words == {"a": "first", "b": "second"}
+    assert sys.path == path
+
+
+def test_a_runtime_nodes_helper_never_hides_a_package_of_its_runtime(tmp_path: Path) -> None:
+    """A helper beside the node is reached relatively; `import utils` is the runtime's own."""
+    site = tmp_path / "site" / "utils"
+    site.mkdir(parents=True)
+    (site / "__init__.py").write_text("WORD = 'the runtime'\n", encoding="utf-8")
+    body = """
+    from . import utils as mine
+    import utils as theirs
+    ctx.stage("utils", json.dumps([mine.WORD, theirs.WORD]))
+    """
+    job = _executor_job(tmp_path, body)
+    (job.folder / "utils.py").write_text("WORD = 'the node'\n", encoding="utf-8")
+    seen: list[dict[str, object]] = []
+    ProcessExecutor(Path(sys.executable), env={"PYTHONPATH": str(site.parent)}).execute(
+        job, seen.append, threading.Event()
+    )
+    assert json.loads(str(seen[0]["message"])) == ["the node", "the runtime"]
+
+
 def test_an_engine_run_leaves_its_sockets_alone(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
