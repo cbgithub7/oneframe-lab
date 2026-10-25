@@ -34,7 +34,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   `test_a_source_that_is_not_https_is_refused`, and the definition test's expected problem.
 - [x] 10. Docstrings: the transport's tripwire line and "the drive"; `runtime_install`'s resume;
   `models/__init__.py`.
-- [ ] 11. Docs: `docs/architecture.md`'s three rows, `docs/runtimes.md`, the roadmap's items, and
+- [x] 11. Docs: `docs/architecture.md`'s three rows, `docs/runtimes.md`, the roadmap's items, and
   `AGENTS.md`'s "One data root" as question 3 was answered.
 - [ ] 12. The PR: AC1 to AC3's commands and AC8's diff pasted, `node scripts/test-guard.js` green,
   and each criterion checked by name.

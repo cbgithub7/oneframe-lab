@@ -16,17 +16,9 @@ person sees changes, except where a spec's answered questions say.
     - `oneframe/runtimes.py` is three: definitions, the plan, the manager (012);
     - `oneframe/manifest.py` imports all of memory, the learned store and settings included, to
       parse a manifest (012).
-- **One way each** (review of 2026-10-02, 4.5):
-    - a rename retry on Windows (011);
-    - a file's sha256, computed in five places (011);
-    - downloads: runtime sources still use urllib, without resume (`oneframe/archives.py`) (011);
-    - paths only from the layout (011).
 - **"Nothing hard-coded"** (013): `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
   002's AC8 scenario inside the package (review of 2026-10-02, 4.10).
 - **Long functions:** the runtime install (179 lines) and the manifest's `parse` (118) (012).
-- **The download transport passed its own tripwire** (011): spec 003's research said to switch to
-  urllib3 past about 600 lines, and it is 754. Keep it (it passed the real hosts), record why, and
-  add nothing more to it.
 - **Tests:**
     - shared helpers for the model tests (014);
     - the footprint test tells our writes from another program's without checking less (it failed
