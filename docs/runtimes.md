@@ -95,9 +95,10 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
     - `required`: needs a compiler. The runtime is blocked on every machine, and the reason names
       the package and `needs`. Prebuilt wheels will be added per runtime when a node needs one.
 - `sources`: upstream code that is not on an index, as a pinned archive at an https address. It is
-  fetched as a model file is, by the model store's transport: retried, and resumed from a `.part`
-  under `downloads/` after a Stop or a kill. Its sha256 is checked, every file in it must stay
-  inside its folder, and `paths` inside it are made importable.
+  fetched as a model file is, by the model store's transport: retried, and after a Stop or a kill
+  resumed from a `.part` under `downloads/` where the host honours a range (GitHub's archive host
+  does not, so there it starts again). Its sha256 is checked, every file in it must stay inside its
+  folder, and `paths` inside it are made importable.
 - `env`: variables set for every node run in this runtime. It may not set what the engine sets or
   removes for every run: the hub libraries' offline flags, hub tokens and endpoints, torch's
   `weights_only` switches, what keeps a run under the data root (the library caches, the

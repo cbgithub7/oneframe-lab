@@ -54,13 +54,15 @@ def test_a_source_with_the_wrong_sha256_is_refused(hosts: Hosts, tmp_path: Path)
 
 
 def test_a_pinned_download_is_kept_and_not_fetched_again(hosts: Hosts, tmp_path: Path) -> None:
-    source = _source(hosts)
+    data = DATA * 3 + b"tail!"  # three of the transport's chunks and a few bytes more
+    sha = hashlib.sha256(data).hexdigest()
+    source = _source(hosts, data)
     seen: list[tuple[int, int | None]] = []
     archive = _fetch(source, tmp_path, progress=lambda done, total: seen.append((done, total)))
-    assert archive == tmp_path / SHA and archive.read_bytes() == DATA
-    assert seen[-1] == (len(DATA), len(DATA))
+    assert archive == tmp_path / sha and archive.read_bytes() == data
+    assert seen[-1] == (len(data), len(data)) and len(seen) >= 4  # a read takes a chunk at most
     assert _fetch(source, tmp_path) == archive
-    assert len(hosts.served(DATA)) == 1 and [p.name for p in tmp_path.iterdir()] == [SHA]
+    assert len(hosts.served(data)) == 1 and [p.name for p in tmp_path.iterdir()] == [sha]
 
 
 def test_a_file_on_disk_that_does_not_match_is_fetched_again(hosts: Hosts, tmp_path: Path) -> None:

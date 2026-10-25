@@ -53,8 +53,8 @@ Today there are several of each:
    `app/main/paths.js` and `contracts/layout.json`, and `Cache(objects, work)` takes both.
 7. **The transport is kept and grows no further.** Its docstring records that the tripwire fired and
    why. Its only edits: the resume hashes with the helper, "the store's drive" becomes "the drive",
-   and its socket stays open until a response's file is closed. Needing more (http, auth, parallel ranges, a new phase or Policy field) is a new spec
-   that reopens urllib3.
+   and its socket stays open until a response's file is closed. Needing more (http, auth, parallel
+   ranges, a new phase or Policy field) is a new spec that reopens urllib3.
 8. **Nothing else a person sees changes:** paths on disk, events, kinds and reasons are as today.
 
 ## Acceptance criteria
@@ -115,8 +115,8 @@ Today there are several of each:
     - `write_text` may wait up to the deadline, not about 1 s, while another process holds the
       file: only under contention, where the alternative is a failure.
     - On Windows truststore reads only the system's store, so the driver passes the test CA in.
-    - GitHub's archive host sends no length (chunked, `Connection: close`) and ignores ranges: a
-      resume there starts again, and free space is not checked.
+    - GitHub's archive host sends chunks with no length and ignores ranges: a resume there starts
+      again, and free space is unchecked; a body without length or chunks cut short fails its hash.
     - The engine stays light, as the heavy-modules test holds: truststore loads only to download.
 
 ## Tests

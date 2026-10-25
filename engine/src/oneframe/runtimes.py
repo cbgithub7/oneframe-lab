@@ -25,10 +25,11 @@ import re
 import shutil
 import threading
 import tomllib
+import urllib.parse
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeGuard
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.environment import reserved_env, reserved_why
@@ -279,6 +280,19 @@ def _extensions(rows: Any, folder: Path, problems: list[str]) -> tuple[Extension
     return tuple(out)
 
 
+def _https(url: object) -> TypeGuard[str]:
+    """Whether `url` is an address the transport fetches: https, a host, and a port if any that is
+    a number up to 65535."""
+    if not isinstance(url, str):
+        return False
+    parts = urllib.parse.urlsplit(url)
+    try:
+        parts.port  # noqa: B018 -- raises ValueError for a port that is not one
+    except ValueError:
+        return False
+    return parts.scheme == "https" and bool(parts.hostname)
+
+
 def _sources(rows: Any, problems: list[str]) -> tuple[Source, ...]:
     if rows is None:
         return ()
@@ -299,7 +313,7 @@ def _sources(rows: Any, problems: list[str]) -> tuple[Source, ...]:
             problems.append(f"{where} is listed twice")
             continue
         url = row.get("url")
-        if not isinstance(url, str) or not url.startswith("https://"):  # what the transport fetches
+        if not _https(url):
             problems.append(f"{where}.url should be an https address")
             continue
         sha = row.get("sha256")
@@ -748,13 +762,13 @@ class Runtimes:
         self.data = Path(data).resolve()
         self.roots = [Path(r).resolve() for r in roots] if roots is not None else [RUNTIMES_DIR]
         self.uv = uv
-        # uv's cache and Pythons: the layout's, or the two folders under the one --uv-home names
+        # uv's cache and Pythons: the layout's, or folders of the same names under --uv-home's
         layout = Layout(self.data)
         if uv_home is None:
             self.uv_cache, self.uv_python = layout.uv_cache, layout.uv_python
         else:
             home = Path(uv_home).resolve()
-            self.uv_cache, self.uv_python = home / "cache", home / "python"
+            self.uv_cache, self.uv_python = home / layout.uv_cache.name, home / layout.uv_python.name
         self.transfer = dict(transfer or {})
         self._read_profile = profile or (lambda: hardware.profile(data))
         self._profile: dict[str, Any] | None = None

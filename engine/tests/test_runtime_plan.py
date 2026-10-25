@@ -187,10 +187,20 @@ def test_a_runtime_id_must_match_its_folder(make_runtime: MakeRuntime, runtime_r
     assert problems == ["id 'other' should match its folder, demo"]
 
 
-def test_a_source_that_is_not_https_is_refused(make_runtime: MakeRuntime, runtime_root: Path) -> None:
-    """A source is fetched as model files are, and never over plain http (spec 011, AC7)."""
-    source = {"name": "up", "url": "http://example.com/up.tar.gz", "sha256": "0" * 64}
-    make_runtime(_definition(sources=[source]))
+NOT_HTTPS = {
+    "http": "http://example.com/up.tar.gz",
+    "no host": "https:///up.tar.gz",
+    "a port that is not one": "https://example.com:99999/up.tar.gz",
+}
+
+
+@pytest.mark.parametrize("url", list(NOT_HTTPS.values()), ids=list(NOT_HTTPS))
+def test_a_source_that_is_not_https_is_refused(
+    make_runtime: MakeRuntime, runtime_root: Path, url: str
+) -> None:
+    """A source is fetched as model files are, and never over plain http (spec 011, AC7); an
+    address the transport could not fetch is refused when it is read, not when it is installed."""
+    make_runtime(_definition(sources=[{"name": "up", "url": url, "sha256": "0" * 64}]))
     [problems] = runtimes.discover([runtime_root]).problems.values()
     assert problems == ["sources.up.url should be an https address"]
 

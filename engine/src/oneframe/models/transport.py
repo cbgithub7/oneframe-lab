@@ -387,6 +387,7 @@ class Connector:
             if parts.scheme != "https" or not parts.hostname:
                 raise DownloadFailed(f"{url} is not https; nothing here leaves https.", "tls")
             conn: http.client.HTTPSConnection | None = None
+            response: http.client.HTTPResponse | None = None
             try:
                 conn = self.connect(parts.hostname, parts.port or 443)
                 path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
@@ -415,6 +416,8 @@ class Connector:
                     raise DownloadFailed(f"The certificate of {parts.hostname} was refused.", "tls") from exc
                 raise _Retry(f"{type(exc).__name__}: {exc}") from exc
             finally:
+                if response is not None:
+                    response.close()  # one read to the end of the stream holds the socket (_Socket)
                 if conn is not None:
                     conn.close()
         raise _Retry(f"more than {self.policy.redirects} redirects")
@@ -603,6 +606,7 @@ class Transfer:
             if self.have:
                 headers["Range"] = f"bytes={self.have}-"
             conn: http.client.HTTPSConnection | None = None
+            response: http.client.HTTPResponse | None = None
             try:
                 conn = self._connector.connect(origin[1], origin[2])
                 path = parts.path or "/"
@@ -632,6 +636,8 @@ class Transfer:
                 why = "" if isinstance(exc, http.client.InvalidURL) else f": {exc}"
                 raise _Retry(f"{type(exc).__name__}{why}") from exc
             finally:
+                if response is not None:
+                    response.close()  # one read to the end of the stream holds the socket (_Socket)
                 if conn is not None:
                     conn.close()
         raise _Retry(f"more than {self.policy.redirects} redirects")

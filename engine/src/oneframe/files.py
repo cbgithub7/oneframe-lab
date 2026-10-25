@@ -127,13 +127,13 @@ def write_text(path: Path, text: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def replace(source: Path, target: Path, windows: bool | None = None, wait_s: float | None = None) -> None:
+def replace(source: Path, target: Path, windows: bool | None = None) -> None:
     """os.replace, waiting on Windows while another program holds the target, with a growing pause
     between tries. A target that is a folder is never tried again: Windows refuses to replace one
     as it refuses a held file, and never stops refusing. Anything else, or a hold that outlasts the
-    wait (MOVE_WAIT_S unless told), raises the system's error."""
+    wait (MOVE_WAIT_S, read when called), raises the system's error."""
     windows = sys.platform == "win32" if windows is None else windows
-    deadline = time.monotonic() + (MOVE_WAIT_S if wait_s is None else wait_s)
+    deadline = time.monotonic() + MOVE_WAIT_S
     pause = 0.05
     while True:
         try:
