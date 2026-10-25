@@ -72,20 +72,10 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **The torch runtime's lock** (the owner, 2026-10-24), after spec 010's probes on a card (passed
-   2026-10-25), since it makes each machine install torch again: filelock 4.0.7 and setuptools 84.0.0 in `runtimes/torch/uv.lock` have
-   advisories (Dependabot alerts 46 to 49), fixed in 4.2.1 and 84.1.0. Neither path is reached
-   (torch uses neither filelock's read-write nor its soft locks, and uv, not setuptools, installs
-   the wheels), but a new lock changes the runtime's hash, and what the fit learned starts over.
-   On a `fix/torch-lock` branch from `main`:
-
-   ```
-   uv lock --project runtimes/torch --upgrade-package filelock --upgrade-package setuptools
-   npm run bench:runtime -- torch --out specs/001-runtime-manager/reports/<date>-torch-lock.md
-   ```
-
-   It passes when the install finishes and the probe runs on the card; the new lock, its report
-   and this item out of the list go in one PR.
+Nothing is waiting. The last two items passed on 2026-10-25 on the GTX 1070: spec 010's probes
+on a card ([report](../specs/010-scheduler/reports/2026-10-25-local.md)) and the torch runtime's
+new lock, filelock 4.2.4 and setuptools 84.2.1
+([report](../specs/001-runtime-manager/reports/2026-10-25-torch-lock-local.md)).
 
 ## Open, and in the way of the next steps
 
@@ -103,6 +93,12 @@ leaves this list in the PR that commits its report.
   there (the owner, 2026-10-11).
 - **The footprint test can fail on another program's write** (once, a runner's own Firefox);
   spec 014 takes it on.
+- **A runtime install started from inside Claude desktop fails on the owner's PC** (2026-10-25):
+  four times uv stopped with os error 32 on a folder it had just emptied, with uv 0.13.5 and
+  0.12.20 and either lock, while the same installs from outside the package passed
+  ([report](../specs/001-runtime-manager/reports/2026-10-25-torch-lock-local.md)). The
+  local-session skill sends only footprint checks outside the package; whether installs go there
+  too, and whether the engine's install should outlast such a refusal, is open.
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"
   is a convention. Protecting it, with the CI checks required, comes before Dependabot's minor
   updates may merge themselves.
