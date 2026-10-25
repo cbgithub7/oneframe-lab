@@ -16,9 +16,10 @@ from typing import Any
 from oneframe.node import Emit
 
 RESERVE_MB = 256  # kept free under the cap: comfy-aimdo's default headroom (spec 002, research.md)
+PEAKS = ("peak_reserved_mb", "peak_vram_mb", "peak_ram_mb")  # what a `done` or `error` event carries
 
 
-def cap_allocator(job: dict[str, Any], say: Emit) -> float | None:
+def cap_allocator(device: str, budget: float | None, outside: float, say: Emit) -> float | None:
     """Cap torch's allocator on the card, before any node code runs, and return the cap in MB.
 
     On Windows an overrun would spill into system memory and freeze the desktop; with the cap it is
@@ -28,10 +29,8 @@ def cap_allocator(job: dict[str, Any], say: Emit) -> float | None:
     allocates outside torch. In "tried anyway" and with the fit off the job carries no budget, and
     only the free memory counts. A runtime without torch runs uncapped, and its `ceiling` event
     says so."""
-    if not str(job.get("device") or "").startswith("cuda"):
+    if not device.startswith("cuda"):
         return None
-    budget = job.get("vram_cap_mb")
-    outside = float(job.get("outside_torch_mb") or 0)
     try:
         import torch  # type: ignore[import-not-found]
     except ImportError:

@@ -27,6 +27,7 @@ from oneframe.environment import (
 from oneframe.executors import ProcessExecutor
 from oneframe.layout import CACHEDIR_TAG, Layout, claim_root, keep_bytecode_under
 from oneframe.manifest import parse
+from oneframe.node.job import Job
 from oneframe.server import Engine
 
 
@@ -111,13 +112,9 @@ def test_a_child_writes_no_bytecode_and_sees_the_roots_folders(tmp_path: Path) -
     caches, jobs = tmp_path / "root" / "cache" / "runtime" / "tiny", tmp_path / "root" / "cache" / "tmp" / "0"
     jobs.mkdir(parents=True)
     seen: list[dict[str, object]] = []
-    job = {
-        "node": "test.env",
-        "entry": {"file": str(code), "function": "run"},
-        "out_dir": str(tmp_path / "out"),
-    }
+    job = Job(node="test.env", folder=code.parent, entry="node.py:run", out_dir=tmp_path / "out")
     ProcessExecutor(Path(sys.executable), tmp_root=jobs, caches=caches).execute(
-        {**job, "device": "cpu"}, seen.append, threading.Event()
+        job, seen.append, threading.Event()
     )
     env = json.loads(str(seen[0]["message"]))
     for name, folder in LIBRARY_CACHES.items():
@@ -147,7 +144,7 @@ def test_an_engine_gives_each_runtime_node_its_runtimes_cache_folder(tmp_path: P
             "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
         }
         manifest = parse(row, folder)
-        executor = engine.scheduler._executor(manifest)
+        executor = engine.scheduler._executor(manifest, "cpu")
         assert isinstance(executor, ProcessExecutor)
         assert executor.caches == Layout(tmp_path).runtime_caches / "tiny"
         assert executor.tmp_root == engine.scratch.folder

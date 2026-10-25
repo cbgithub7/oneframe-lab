@@ -10,6 +10,7 @@ from typing import Any, NoReturn, TypeVar
 
 from oneframe.node import Emit, NodeFailed, Stopped, Value, usage
 from oneframe.node.failures import is_torch_oom
+from oneframe.node.job import Job
 
 T = TypeVar("T")
 
@@ -28,7 +29,7 @@ class NodeContext:
 
     def __init__(
         self,
-        job: dict[str, Any],
+        job: Job,
         say: Emit,
         stop: threading.Event | None = None,
         stage: dict[str, str] | None = None,
@@ -36,17 +37,17 @@ class NodeContext:
         ram_start: float | None = None,
     ):
         self.job = job
-        self.node = str(job.get("node", ""))
-        self.inputs: dict[str, Value] = {k: Value.from_json(v) for k, v in (job.get("inputs") or {}).items()}
-        self.params: dict[str, Any] = dict(job.get("params") or {})
-        self.out_dir = Path(job["out_dir"])
-        self.device = str(job.get("device") or "cpu")
-        self.precision = str(job.get("precision") or "fp32")
-        self.attempt = int(job.get("attempt") or 1)  # 2 on the engine's retry after running out
+        self.node = job.node
+        self.inputs: dict[str, Value] = dict(job.inputs)
+        self.params: dict[str, Any] = dict(job.params)
+        self.out_dir = job.out_dir
+        self.device = job.device or "cpu"
+        self.precision = job.precision or "fp32"
+        self.attempt = job.attempt  # 2 on the engine's retry after running out
         # The fit's budget on this device in MB, or None when the node was not fitted.
-        self.memory_budget_mb: float | None = job.get("memory_budget_mb")
+        self.memory_budget_mb: float | None = job.memory_budget_mb
         # The files this run reads (spec 003), by their name in the manifest: ctx.file(name).
-        self._files: dict[str, str] = dict(job.get("files") or {})
+        self._files: dict[str, str] = dict(job.files)
         self.outputs: dict[str, dict[str, Any]] = {}
         self._say = say
         self._stop = stop if stop is not None else threading.Event()

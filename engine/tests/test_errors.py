@@ -21,6 +21,7 @@ from oneframe.errors import KINDS, Failure, UndeclaredFailure, check, failure
 from oneframe.executors import NodeError
 from oneframe.graph import Graph
 from oneframe.node import failures
+from oneframe.node.job import Job
 from oneframe.runtimes import InstallRefused, RuntimeMissing
 from oneframe.scheduler import Scheduler
 from oneframe.server import Engine
@@ -180,14 +181,10 @@ def test_a_child_that_names_an_undeclared_kind_still_fails_as_a_node(
 ) -> None:
     code = tmp_path / "node.py"
     code.write_text("def run(ctx):\n    raise RuntimeError('boom')\n", encoding="utf-8")
-    job = {
-        "node": "test.x",
-        "entry": {"file": str(code), "function": "run"},
-        "out_dir": str(tmp_path / "out"),
-    }
+    job = Job(node="test.x", folder=tmp_path, entry="node.py:run", out_dir=tmp_path / "out")
     monkeypatch.setattr(failures, "classify", lambda _exc: "made_up")  # a kind nobody declared
     with pytest.raises(NodeError) as caught:
-        executors.EngineExecutor().execute({**job, "device": "cpu"}, lambda _e: None, threading.Event())
+        executors.EngineExecutor().execute(job, lambda _e: None, threading.Event())
     assert caught.value.kind == "error" and "boom" in str(caught.value)
     assert executors.declared_kind("made_up") == "error" and executors.declared_kind("oom") == "oom"
 

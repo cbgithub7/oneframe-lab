@@ -51,6 +51,7 @@ from oneframe.graph import Graph
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
+from oneframe.node.job import Job
 from oneframe.processes import Child
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
@@ -318,25 +319,24 @@ def three_settings(
 
 def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
     python = manager.python_for("torch")
-    file, _, function = plan.context.partition(":")
     with tempfile.TemporaryDirectory(prefix="oneframe-context-") as out:
-        job = {
-            "run": "bench",
-            "step": "context",
-            "node": "probe:context",
-            "entry": {"file": str(plan.folder / file), "function": function},
-            "inputs": {},
-            "params": {"card": card},
-            "out_dir": out,
-            "device": "cpu",  # no cap: the probe starts CUDA itself, after its first reading
-        }
+        job = Job(
+            node="probe:context",
+            folder=plan.folder,
+            entry=plan.context,
+            out_dir=Path(out),
+            run="bench",
+            step="context",
+            params={"card": card},
+            device="cpu",  # no cap: the probe starts CUDA itself, after its first reading
+        )
         try:
             done = ProcessExecutor(
                 python, env=manager.env_for("torch"), caches=manager.caches_for("torch")
             ).execute(job, lambda _e: None, threading.Event())
         except NodeError as exc:
             return {"why": f"{exc.kind}: {exc}"}
-    return dict(done.get("stats") or {})
+    return dict(done.stats)
 
 
 def _to_stderr(line: str) -> None:

@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -59,6 +58,7 @@ from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
 from oneframe.node import Value
+from oneframe.node.job import Job
 from oneframe.registry import Registry
 from oneframe.runtimes import RuntimeMissing, Runtimes
 
@@ -176,14 +176,17 @@ class Scheduler:
             self._code_keys[manifest.folder] = code_digest(manifest.folder)
         return self.cache.key(manifest, values, inputs, runtime, self._code_keys[manifest.folder])
 
-    def _executor(self, manifest: Manifest) -> EngineExecutor | ProcessExecutor:
+    def _executor(self, manifest: Manifest, device: str) -> EngineExecutor | ProcessExecutor:
         if manifest.run.where == "engine":
             return self.engine
         runtime = str(manifest.run.runtime)
         python = self.runtime_python(runtime)
+        env = self.runtime_env(runtime)
+        if device == "cpu":
+            env = {**env, "CUDA_VISIBLE_DEVICES": "-1"}  # a processor run sees no card
         return ProcessExecutor(
             python,
-            env=self.runtime_env(runtime),
+            env=env,
             log_dir=self.log_dir,
             on_pid=self.on_pid,
             tmp_root=self.tmp_root,
@@ -450,7 +453,7 @@ class Scheduler:
         values = dict(found.values) if found is not None else dict(step.params)
         device = (found.device if found is not None else None) or manifest.devices[0]
         key = self._key(manifest, values, inputs)
-        executor = self._executor(manifest)  # the runtime check, then the files check
+        executor = self._executor(manifest, device)  # the runtime check, then the files check
         files = check_files(self.store, manifest, values)
         say(
             {
@@ -463,38 +466,8 @@ class Scheduler:
             }
         )
         work = self.cache.begin(key)
-        job: dict[str, Any] = {
-            "run": run_id,
-            "step": step.id,
-            "node": manifest.id,
-            "entry": {"file": str(manifest.code_path), "function": manifest.run.function},
-            "inputs": {p: v.to_json() for p, v in inputs.items()},
-            "params": values,
-            "out_dir": str(work),
-            "device": device,
-            "files": files,
-            "attempt": attempt,
-        }
-        outside = 0.0
-        if found is not None and context is not None:
-            if manifest.memory is not None:
-                outside = (
-                    memory.evaluate(manifest.memory.outside_torch, manifest.memory, values, context.inputs)[0]
-                    or 0.0
-                )
-            # No budget in the cap where the fit knows it is too small, or where there is none left
-            # (the card already more than full): the child then caps at the free memory alone.
-            budget = found.budget
-            uncapped = found.outcome in ("tried_anyway", "off") or budget is None or budget <= 0
-            job.update(
-                precision=values.get(memory.PRECISION_PARAM),
-                memory_budget_mb=found.budget,
-                vram_cap_mb=budget if device == "cuda" and not uncapped else None,
-                outside_torch_mb=outside,
-            )
-            if manifest.run.where == "runtime" and device == "cpu":
-                job["env"] = {"CUDA_VISIBLE_DEVICES": "-1"}  # a processor run sees no card
-        started = time.monotonic()
+        job = self._job(run_id, step, inputs, values, device, work, files, attempt, found, context)
+        outside = job.outside_torch_mb
 
         def forward(event: dict[str, Any]) -> None:
             if event.get("event") == "step_oom":
@@ -509,12 +482,12 @@ class Scheduler:
                 if exc.kind == "oom":
                     self._learn(step, found, context, exc.peaks, ok=False, seconds=None, outside=outside)
                 raise
-            outputs = self._check_outputs(step, inputs, finished.get("outputs") or {}, key)
+            outputs = self._check_outputs(step, inputs, finished.outputs, key)
             made_with = {
                 "device": device,
                 "precision": values.get(memory.PRECISION_PARAM),
                 "changed": {k: v for k, v in values.items() if step.params.get(k) != v},
-                "ways": finished.get("ways") or {},
+                "ways": finished.ways,
                 "reduced": bool(found is not None and found.reduced),
             }
             reduced_input = any(_reduced(v) for v in inputs.values())
@@ -527,19 +500,19 @@ class Scheduler:
                 "key": key,
                 "node": manifest.id,
                 "version": manifest.version,
-                "seconds": finished.get("seconds", round(time.monotonic() - started, 3)),
-                "peak_vram_mb": finished.get("peak_vram_mb"),
-                "peak_reserved_mb": finished.get("peak_reserved_mb"),
-                "peak_ram_mb": finished.get("peak_ram_mb"),
+                "seconds": finished.seconds,
+                "peak_vram_mb": finished.peaks.get("peak_vram_mb"),
+                "peak_reserved_mb": finished.peaks.get("peak_reserved_mb"),
+                "peak_ram_mb": finished.peaks.get("peak_ram_mb"),
                 "device": device,
                 "made_with": made_with,
-                "stats": finished.get("stats") or {},
+                "stats": finished.stats,
             }
             outputs = self.cache.commit(key, work, outputs, record)
         except BaseException:
             self.cache.abandon(work)
             raise
-        self._learn(step, found, context, finished, ok=True, seconds=record["seconds"], outside=outside)
+        self._learn(step, found, context, finished.peaks, ok=True, seconds=record["seconds"], outside=outside)
         say(
             {
                 "event": "node.done",
@@ -557,6 +530,52 @@ class Scheduler:
             }
         )
         return outputs, record
+
+    def _job(
+        self,
+        run_id: str,
+        step: Step,
+        inputs: dict[str, Value],
+        values: dict[str, Any],
+        device: str,
+        work: Path,
+        files: dict[str, str],
+        attempt: int,
+        found: Fit | None,
+        context: _Context | None,
+    ) -> Job:
+        """The job an attempt asks of its node: what to run, on what, and within what memory."""
+        manifest = step.manifest
+        precision = budget = cap = None
+        outside = 0.0
+        if found is not None and context is not None:
+            if manifest.memory is not None:
+                outside = (
+                    memory.evaluate(manifest.memory.outside_torch, manifest.memory, values, context.inputs)[0]
+                    or 0.0
+                )
+            # No budget in the cap where the fit knows it is too small, or where there is none left
+            # (the card already more than full): the child then caps at the free memory alone.
+            precision, budget = values.get(memory.PRECISION_PARAM), found.budget
+            uncapped = found.outcome in ("tried_anyway", "off") or budget is None or budget <= 0
+            cap = budget if device == "cuda" and not uncapped else None
+        return Job(
+            node=manifest.id,
+            folder=manifest.folder,
+            entry=f"{manifest.run.file}:{manifest.run.function}",
+            out_dir=work,
+            run=run_id,
+            step=step.id,
+            inputs=dict(inputs),
+            params=values,
+            device=device,
+            files=files,
+            attempt=attempt,
+            precision=precision,
+            memory_budget_mb=budget,
+            vram_cap_mb=cap,
+            outside_torch_mb=outside,
+        )
 
     def _learn(
         self,

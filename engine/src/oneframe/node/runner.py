@@ -1,6 +1,6 @@
 """What runs one job, the same in the engine's process and in a runtime child.
 
-    run_job(job, say, stop, process=None) -> the `done` payload
+    run_job(job, say, stop, process=None) -> Done
 
 In a child, `process` is its Process (process.py), whose guards are up: the allocator is capped on a
 card before any node code is imported, progress names the stage tqdm's patch reads, and a run that
@@ -12,22 +12,19 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
 
 from oneframe.node import Emit, usage
 from oneframe.node.code import load_entry
 from oneframe.node.context import NodeContext
+from oneframe.node.job import Done, Job
 from oneframe.node.process import Process
 
 
-def run_job(
-    job: dict[str, Any],
-    say: Emit,
-    stop: threading.Event | None = None,
-    process: Process | None = None,
-) -> dict[str, Any]:
-    """Run one node and return the `done` payload. Raises on failure."""
-    cap = usage.cap_allocator(job, say) if process is not None else None
+def run_job(job: Job, say: Emit, stop: threading.Event | None = None, process: Process | None = None) -> Done:
+    """Run one node and return what it gave. Raises on failure."""
+    cap = None
+    if process is not None:
+        cap = usage.cap_allocator(job.device, job.vram_cap_mb, job.outside_torch_mb, say)
     ctx = NodeContext(
         job,
         say,
@@ -39,17 +36,17 @@ def run_job(
     started = time.monotonic()
     try:
         ctx.out_dir.mkdir(parents=True, exist_ok=True)
-        fn = load_entry(job["entry"]["file"], job["entry"]["function"])
+        file, _, function = job.entry.partition(":")
+        fn = load_entry(job.folder / file, function)
         stats = fn(ctx) or {}
     except BaseException:
         if process is not None:
             process.peaks = ctx.peaks()
         raise
-    return {
-        "event": "done",
-        "outputs": ctx.outputs,
-        "seconds": round(time.monotonic() - started, 3),
-        **ctx.peaks(),
-        "ways": dict(ctx.ways),
-        "stats": stats if isinstance(stats, dict) else {},
-    }
+    return Done(
+        outputs=ctx.outputs,
+        seconds=round(time.monotonic() - started, 3),
+        peaks=ctx.peaks(),
+        ways=dict(ctx.ways),
+        stats=stats if isinstance(stats, dict) else {},
+    )

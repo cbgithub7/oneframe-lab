@@ -30,6 +30,7 @@ from oneframe.executors import (
     died_message,
 )
 from oneframe.graph import Graph
+from oneframe.node.job import Job
 from oneframe.processes import alive, wait_gone
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
@@ -181,7 +182,7 @@ def test_a_runtime_child_is_told_to_end_with_the_engine(
     _runtime_node(
         make_node,
         "test.told",
-        "def run(ctx):\n    ctx.stage('told', str(ctx.job.get('exit_with_parent')))\n" + WRITE,
+        "import sys\ndef run(ctx):\n    ctx.stage('told', str('--exit-with-parent' in sys.argv))\n" + WRITE,
     )
     result = scheduler_for().run(_one("test.told"), events.append)
     assert result.status == "done", result.error
@@ -191,11 +192,10 @@ def test_a_runtime_child_is_told_to_end_with_the_engine(
 def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
     """A killed engine cannot stop its children; the child sees its stdin close and ends itself."""
     job = _executor_job(tmp_path, "ctx.stage('hang', str(os.getpid()))\nimport time\ntime.sleep(60)\n")
-    job["exit_with_parent"] = True
     job_path = tmp_path / "job.json"
-    job_path.write_text(json.dumps(job), encoding="utf-8")
+    job_path.write_text(job.to_json(), encoding="utf-8")
     proc = subprocess.Popen(
-        child_command(Path(sys.executable), job_path),
+        child_command(Path(sys.executable), job_path, exit_with_parent=True),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         env=child_env(None, {}),
@@ -262,20 +262,14 @@ def test_engine_and_runtime_nodes_mix_in_one_graph(
 # -- spec 002: what the executor carries ---------------------------------------------------------
 
 
-def _executor_job(tmp_path: Path, body: str, **extra: object) -> dict[str, object]:
+def _executor_job(tmp_path: Path, body: str) -> Job:
     code = tmp_path / "node" / "node.py"
     code.parent.mkdir(parents=True, exist_ok=True)
     code.write_text(
         "import os, json\n\n\ndef run(ctx):\n" + textwrap.indent(textwrap.dedent(body), "    "),
         encoding="utf-8",
     )
-    return {
-        "node": "test.exec",
-        "entry": {"file": str(code), "function": "run"},
-        "out_dir": str(tmp_path / "out"),
-        "device": "cpu",
-        **extra,
-    }
+    return Job(node="test.exec", folder=code.parent, entry="node.py:run", out_dir=tmp_path / "out")
 
 
 def test_a_runtime_child_cannot_import_the_engines_own_modules(tmp_path: Path) -> None:
@@ -354,17 +348,6 @@ def test_a_failure_carries_the_peaks_of_the_run(tmp_path: Path) -> None:
         )
     assert info.value.kind == "oom"
     assert set(info.value.peaks) == {"peak_reserved_mb", "peak_vram_mb", "peak_ram_mb"}
-
-
-def test_a_job_brings_its_own_environment(tmp_path: Path) -> None:
-    body = "ctx.stage('env', os.environ.get('CUDA_VISIBLE_DEVICES', 'unset'))\n"
-    seen: list[dict[str, object]] = []
-    executor = ProcessExecutor(Path(sys.executable), env={"CUDA_VISIBLE_DEVICES": "0", "KEEP": "1"})
-    executor.execute(
-        _executor_job(tmp_path, body, env={"CUDA_VISIBLE_DEVICES": "-1"}), seen.append, threading.Event()
-    )
-    executor.execute(_executor_job(tmp_path, body), seen.append, threading.Event())
-    assert [e["message"] for e in seen] == ["-1", "0"]  # a processor job sees no card; the next is unchanged
 
 
 def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) -> None:

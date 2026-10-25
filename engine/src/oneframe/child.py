@@ -1,6 +1,6 @@
 """The far side of a node run: the script a runtime's Python starts by path.
 
-    <runtime python> -P -u child.py <job.json>
+    <runtime python> -P -u child.py [--exit-with-parent] <job.json>
 
 A heavy node runs in its own runtime -- a separate interpreter with its own packages, where
 nothing of the engine is installed. This script is therefore standard library only, and makes the
@@ -11,7 +11,8 @@ it holds the engine's own modules (`models`, `graph`, `errors`, ...), and a node
 must find the runtime's package, never the engine's.
 
 It then puts up the process's guards (oneframe/node/process.py) before any node code is imported,
-runs the job (runner.py), and reports how it ended. Nothing imports this file: in the engine's
+among them, with `--exit-with-parent`, ending when its stdin closes; runs the job (runner.py); and
+reports how it ended. Nothing imports this file: in the engine's
 process the stub would replace the real `oneframe`, and the guards would close its downloads.
 
 This file runs in every runtime's own Python, which may be older than the engine's: it is checked
@@ -20,8 +21,8 @@ for Python 3.11 (ruff.toml, pyrightconfig.json).
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
-import json
 import sys
 import traceback
 import types
@@ -47,22 +48,24 @@ def _node_api() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(prog="child.py")
+    parser.add_argument("--exit-with-parent", action="store_true")
+    parser.add_argument("job", type=Path)
+    args = parser.parse_args(argv)
     _node_api()
     from oneframe.node import failures, process, usage
+    from oneframe.node.job import Job
     from oneframe.node.runner import run_job
 
     process.open_protocol()
-    with Path(argv[0]).open(encoding="utf-8") as handle:
-        job = json.load(handle)
-    if job.get("exit_with_parent"):
+    if args.exit_with_parent:
         process.exit_with_parent()
+    job = Job.from_json(args.job.read_text(encoding="utf-8"))
     this = process.Process()
     try:
-        if not job.get("allow_network"):
-            process.forbid_network()
+        process.forbid_network()
         process.report_tqdm(process.emit, this.stage)
-        process.emit(run_job(job, process.emit, process=this))
+        process.emit(run_job(job, process.emit, process=this).to_event())
         return 0
     except BaseException as exc:  # the engine decides what it means; report everything
         process.emit(
@@ -72,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
                 "stage": this.stage.get("stage"),
                 "message": failures.describe(exc),
                 "trace": traceback.format_exc()[-4000:],
-                **(this.peaks or usage.peaks(str(job.get("device") or ""), this.ram_start)),
+                **(this.peaks or usage.peaks(job.device, this.ram_start)),
             }
         )
         return 1

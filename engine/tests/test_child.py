@@ -24,6 +24,7 @@ from oneframe.executors import child_command
 from oneframe.node import NodeFailed, Stopped, usage
 from oneframe.node.context import NodeContext
 from oneframe.node.failures import NetworkForbidden, classify, is_oom
+from oneframe.node.job import Job
 
 
 class OutOfMemoryError(RuntimeError):
@@ -163,24 +164,16 @@ def _write_node(folder: Path, body: str) -> Path:
     return code
 
 
-def _job(tmp_path: Path, code: Path, **extra: Any) -> dict[str, Any]:
-    return {
-        "node": "test.child",
-        "entry": {"file": str(code), "function": "run"},
-        "out_dir": str(tmp_path / "out"),
-        "params": {},
-        "inputs": {},
-        "device": "cpu",
-        **extra,
-    }
+def _job(tmp_path: Path, code: Path, **extra: Any) -> Job:
+    return Job(
+        node="test.child", folder=code.parent, entry=f"{code.name}:run", out_dir=tmp_path / "out", **extra
+    )
 
 
-def _run_child(
-    tmp_path: Path, job: dict[str, Any], *, torch: bool = False, **env: str
-) -> list[dict[str, Any]]:
+def _run_child(tmp_path: Path, job: Job, *, torch: bool = False, **env: str) -> list[dict[str, Any]]:
     """child.py run as a runtime runs it, with the engine's Python; its events in order."""
     job_path = tmp_path / "job.json"
-    job_path.write_text(json.dumps(job), encoding="utf-8")
+    job_path.write_text(job.to_json(), encoding="utf-8")
     extra = dict(env)
     if torch:
         site = tmp_path / "site"
@@ -389,7 +382,7 @@ class FakeCuda:
 
 
 def _ctx(tmp_path: Path, events: list[dict[str, Any]], device: str = "cuda") -> NodeContext:
-    job = {"node": "t", "out_dir": str(tmp_path / "out"), "device": device}
+    job = Job(node="t", folder=tmp_path, entry="node.py:run", out_dir=tmp_path / "out", device=device)
     return NodeContext(job, events.append)
 
 

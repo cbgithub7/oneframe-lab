@@ -15,7 +15,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `test_a_runtime_child_cannot_import_the_engines_own_modules` (AC2) and add
   `test_an_engine_run_leaves_its_sockets_alone`. AC1's command prints nothing. The Executors row
   of `docs/architecture.md` names `oneframe/node/`.
-- [ ] 2. **A typed job.** `job.py` with `Job` and `Done`, `to_json` keeping `default=str`. The
+- [x] 2. **A typed job.** `job.py` with `Job` and `Done`, `to_json` keeping `default=str`. The
   scheduler builds its job in one `_job` method and reads the `Done`; each bench builds a `Job`;
   both executors take a `Job` and return a `Done`, and `ProcessExecutor` writes the job and reads
   the `done` event through them. `child_command(python, job, exit_with_parent=False)` and the
