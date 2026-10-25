@@ -24,6 +24,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from oneframe.files import free_bytes
 from oneframe.processes import CompletedProcess, TimeoutExpired, output
 
 FIELDS = ("index", "name", "compute_cap", "memory.total", "memory.free", "driver_version")
@@ -151,11 +152,8 @@ def disk_free_mb(path: Path | None) -> int | None:
     """Free space on the volume that holds `path`, or on its nearest parent that exists."""
     if path is None:
         return None
-    probe = Path(path).resolve()
-    while not probe.exists() and probe.parent != probe:
-        probe = probe.parent
     try:
-        return shutil.disk_usage(probe).free // 1_000_000
+        return free_bytes(path) // 1_000_000
     except OSError:
         return None
 

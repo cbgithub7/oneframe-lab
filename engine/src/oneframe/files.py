@@ -15,7 +15,8 @@ processes each hold a lock on a different file of the same name).
 
 `sha256_file` is the one loop that hashes a file, whatever the hash is for (a cache key, a check
 of a stored file, a download resuming its partial), so no recorded hash depends on which caller
-read the bytes. `replace` is the one move into place, of a file or a folder.
+read the bytes. `replace` is the one move into place, of a file or a folder, and `free_bytes` the
+one reading of a drive's free space.
 """
 
 from __future__ import annotations
@@ -171,6 +172,14 @@ def text_sha256(path: Path) -> str:
     """The sha256 of a text file with its line endings made LF, so a checkout that turned them into
     CRLF does not make an installed runtime look out of date."""
     return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def free_bytes(path: Path) -> int:
+    """Free space on the drive that holds `path`, or will: that of its nearest folder that exists."""
+    probe = Path(path).resolve()
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    return shutil.disk_usage(probe).free
 
 
 def _clear_readonly(func: Callable[..., Any], path: str, _exc: BaseException) -> None:

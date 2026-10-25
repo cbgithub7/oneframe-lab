@@ -22,13 +22,13 @@ import contextlib
 import hashlib
 import json
 import re
-import shutil
 import stat
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from oneframe import files
 from oneframe.errors import Failure
 from oneframe.files import NewerFormat, format_of, replace, sha256_file, write_json
 from oneframe.layout import Layout
@@ -312,8 +312,5 @@ class Store:
             return []
 
     def free_bytes(self) -> int:
-        """Free space on the store's drive (its nearest existing folder's)."""
-        folder = self.layout.models
-        while not folder.exists() and folder != folder.parent:
-            folder = folder.parent
-        return shutil.disk_usage(folder).free
+        """Free space on the store's drive."""
+        return files.free_bytes(self.layout.models)

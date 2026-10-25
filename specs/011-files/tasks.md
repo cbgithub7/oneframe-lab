@@ -15,7 +15,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   into `os_refused`), `archives.extract` and `cache.commit` use it; `_rename` and `_replace` go,
   the tests that patch them patch `files.replace`, and the store's placing test reads `os_refused`
   from `Store.place`.
-- [ ] 4. One free space: `files.free_bytes`, which `Store.free_bytes` and `hardware.disk_free_mb`
+- [x] 4. One free space: `files.free_bytes`, which `Store.free_bytes` and `hardware.disk_free_mb`
   call, and `test_free_space_is_read_from_the_nearest_folder_that_exists`.
 - [ ] 5. `Layout.objects` in `layout.py`, `app/main/paths.js` and `contracts/layout.json` together;
   `Cache(objects, work)` at every call site (the engine, `bench_fit`, the tests).

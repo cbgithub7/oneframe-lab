@@ -6,6 +6,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -225,3 +226,20 @@ def test_a_move_onto_an_existing_folder_is_never_tried_again(
         files.replace(source, target, windows=True)
     assert tries == [target]
     assert (source / "outputs.json").is_file() and (target / "outputs.json").is_file()
+
+
+def test_free_space_is_read_from_the_nearest_folder_that_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = shutil.disk_usage
+    asked: list[Path] = []
+
+    def usage(path: Path) -> object:
+        asked.append(Path(path))
+        return real(path)
+
+    monkeypatch.setattr(files.shutil, "disk_usage", usage)
+    assert files.free_bytes(tmp_path / "not" / "yet" / "made") > 0
+    (tmp_path / "made").mkdir()
+    assert files.free_bytes(tmp_path / "made" / "file.part") > 0
+    assert asked == [tmp_path.resolve(), (tmp_path / "made").resolve()]
