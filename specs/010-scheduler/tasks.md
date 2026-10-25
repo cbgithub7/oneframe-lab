@@ -37,7 +37,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   release and the send under it; `Scheduler.run`'s `release`; the server's slot and crash path. Add
   `test_an_ending_is_sent_after_its_place_is_free` (AC7), and turn the waits on `engine._run` in
   `test_runtime_server.py` into waits on the ending.
-- [ ] 11. Docs: `docs/architecture.md`'s Scheduler, Executors and Journal rows and its Events
+- [x] 11. Docs: `docs/architecture.md`'s Scheduler, Executors and Journal rows and its Events
   paragraph on endings; the open item on endings out of `docs/handoff.md` (only with task 10); and
   from `docs/roadmap.md` what this spec takes on.
 - [ ] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one

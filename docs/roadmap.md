@@ -17,15 +17,13 @@ person sees changes, except where a spec's answered questions say.
     - `oneframe/manifest.py` imports all of memory, the learned store and settings included, to
       parse a manifest (012).
 - **One way each** (review of 2026-10-02, 4.5):
-    - the `Emit` alias (010); a rename retry on Windows (011);
+    - a rename retry on Windows (011);
     - a file's sha256, computed in five places (011);
     - downloads: runtime sources still use urllib, without resume (`oneframe/archives.py`) (011);
     - paths only from the layout (011).
-- **Ready for spec 004:** a swappable executor (010).
 - **"Nothing hard-coded"** (013): `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
   002's AC8 scenario inside the package (review of 2026-10-02, 4.10).
-- **Long functions:** the runtime install (179 lines) and the manifest's `parse` (118) (012); the
-  scheduler's `_attempt` (123), and `Scheduler.__init__`'s 15 parameters (010).
+- **Long functions:** the runtime install (179 lines) and the manifest's `parse` (118) (012).
 - **The download transport passed its own tripwire** (011): spec 003's research said to switch to
   urllib3 past about 600 lines, and it is 754. Keep it (it passed the real hosts), record why, and
   add nothing more to it.

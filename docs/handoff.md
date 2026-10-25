@@ -67,9 +67,6 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 ## Open, and in the way of the next steps
 
 - **For first light (step 3):**
-    - `runtime.stopped`, `runtime.failed` and a run's `run.done` are sent before their place is let
-      go, as model jobs' endings were: a page that acts on hearing one can be refused `busy` (spec
-      010);
     - requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop` (review of 2026-10-02, 4.2);
     - pyright on the first node that imports torch, and a CI job with real torch on the processor
