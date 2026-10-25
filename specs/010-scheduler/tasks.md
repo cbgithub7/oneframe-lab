@@ -28,7 +28,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 7. `run_probe`, used by `bench_runtime._probe` and `bench_fit._probe_context`; add
   `test_a_probe_on_the_processor_sees_the_cards_its_runtime_does` (AC5). AC4's command prints only
   `executors.py`.
-- [ ] 8. A run's and a step's state as two dataclasses, the per-run caches off the instance, and
+- [x] 8. A run's and a step's state as two dataclasses, the per-run caches off the instance, and
   `_attempt` in named steps, every event, record and message unchanged (the scheduler's tests hold
   them). Measure AC8 for the PR.
 - [ ] 9. If the owner said yes to question 1: the ending helper in `journal.py`, and model jobs

@@ -50,7 +50,7 @@ from typing import Any
 from oneframe import memory, ports
 from oneframe.cache import Cache, code_digest
 from oneframe.errors import ContractError, EdgeMismatch
-from oneframe.executors import Executors, NodeError, OneProcessPerRun, Stopped
+from oneframe.executors import Executor, Executors, NodeError, OneProcessPerRun, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
 from oneframe.journal import engine_crash, journalled
 from oneframe.layout import Layout
@@ -59,7 +59,7 @@ from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
 from oneframe.node import Emit, Value
-from oneframe.node.job import Job
+from oneframe.node.job import Done, Job
 from oneframe.registry import Registry
 from oneframe.runtimes import NoRuntimes, RuntimeMissing, RuntimeSide
 
@@ -82,14 +82,6 @@ def no_machine(_cards: bool) -> dict[str, Any]:
 
 
 @dataclass
-class _Trail:
-    """What a step's attempts left, for node.failed: each fit and each failed attempt's peaks."""
-
-    fits: list[Fit] = field(default_factory=list)
-    peaks: list[dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
 class _Context:
     """What a step's fits read, gathered once per step."""
 
@@ -97,6 +89,30 @@ class _Context:
     target: Target
     key: StoreKey
     cards: bool
+
+
+@dataclass
+class _RunState:
+    """One run: its id, where its events go (each carrying the id), its stop, and what it reads once,
+    since neither changes under a run: each runtime's part of a cache key, and each node's code."""
+
+    id: str
+    say: Emit
+    stop: threading.Event
+    runtime_parts: dict[str, dict[str, str] | None] = field(default_factory=dict)
+    code_keys: dict[Path, str] = field(default_factory=dict)
+
+
+@dataclass
+class _StepState:
+    """One step across its attempts: its inputs, what its fits read (none for an engine node without
+    a memory model), and for node.failed each fit and each failed attempt's peaks."""
+
+    step: Step
+    inputs: dict[str, Value] = field(default_factory=dict)
+    context: _Context | None = None
+    fits: list[Fit] = field(default_factory=list)
+    peaks: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -144,19 +160,19 @@ class Scheduler:
         self.learned = learned or LearnedStore(None)
         self.tmp_root = tmp_root  # where the files a run reads are listed
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
-        self._runtime_parts: dict[str, dict[str, str] | None] = {}
-        self._code_keys: dict[Path, str] = {}
 
-    def _key(self, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]) -> str:
+    def _key(
+        self, run: _RunState, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]
+    ) -> str:
         runtime = None
         if manifest.run.where == "runtime":
             name = str(manifest.run.runtime)
-            if name not in self._runtime_parts:
-                self._runtime_parts[name] = self.runtimes.key_for(name)
-            runtime = self._runtime_parts[name]
-        if manifest.folder not in self._code_keys:
-            self._code_keys[manifest.folder] = code_digest(manifest.folder)
-        return self.cache.key(manifest, values, inputs, runtime, self._code_keys[manifest.folder])
+            if name not in run.runtime_parts:
+                run.runtime_parts[name] = self.runtimes.key_for(name)
+            runtime = run.runtime_parts[name]
+        if manifest.folder not in run.code_keys:
+            run.code_keys[manifest.folder] = code_digest(manifest.folder)
+        return self.cache.key(manifest, values, inputs, runtime, run.code_keys[manifest.folder])
 
     def run(
         self,
@@ -166,8 +182,6 @@ class Scheduler:
         run_id: str | None = None,
     ) -> RunResult:
         run_id = run_id or uuid.uuid4().hex[:12]
-        self._runtime_parts = {}  # read once per run: a runtime does not change under a run
-        self._code_keys = {}  # nor does a node's code
 
         def crashed(exc: BaseException) -> dict[str, Any]:  # what the server reports to the page
             return engine_crash(exc, event="run.failed", run=run_id)
@@ -176,30 +190,29 @@ class Scheduler:
             return self._run(graph, kept, stop if stop is not None else threading.Event(), run_id)
 
     def _run(self, graph: Graph, emit: Emit, stop: threading.Event, run_id: str) -> RunResult:
-        result = RunResult(run=run_id, status="done")
-
         def say(event: dict[str, Any]) -> None:
             emit(dict(event, run=run_id))
 
+        run = _RunState(run_id, say, stop)
         the_plan: Plan = plan(graph, self.registry)
         say({"event": "run.start", "order": the_plan.order, "notes": the_plan.notes})
         # Every file the graph's nodes could read, at any checkpoint, is listed for the whole run,
         # so a remove in any process leaves them alone until it ends.
         files = sorted({spec.sha256 for step in the_plan.steps for spec in step.manifest.files})
         with reading(self.tmp_root, files):
-            return self._steps(the_plan, result, say, stop, run_id)
+            return self._steps(the_plan, run)
 
-    def _steps(
-        self, the_plan: Plan, result: RunResult, say: Emit, stop: threading.Event, run_id: str
-    ) -> RunResult:
+    def _steps(self, the_plan: Plan, run: _RunState) -> RunResult:
+        result = RunResult(run=run.id, status="done")
+        say = run.say
         for step in the_plan.steps:
-            if stop.is_set():
+            if run.stop.is_set():
                 result.status = "stopped"
                 say({"event": "run.stopped", "step": step.id})
                 return result
-            trail = _Trail()
+            state = _StepState(step)
             try:
-                outputs, record = self._step(run_id, step, result.outputs, say, stop, trail)
+                outputs, record = self._step(run, state, result.outputs)
             except Stopped:
                 result.status = "stopped"
                 say({"event": "run.stopped", "step": step.id})
@@ -211,10 +224,10 @@ class Scheduler:
                 return result
             except (NodeError, RuntimeMissing, ContractError, FilesMissing) as exc:
                 error = exc.to_json(step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""))
-                if trail.fits:
-                    error["fits"] = [f.to_json() for f in trail.fits]
-                if trail.peaks:
-                    error["peaks"] = trail.peaks
+                if state.fits:
+                    error["fits"] = [f.to_json() for f in state.fits]
+                if state.peaks:
+                    error["peaks"] = state.peaks
                 result.status = "failed"
                 result.error = error
                 say(dict(error, event="node.failed"))
@@ -244,20 +257,15 @@ class Scheduler:
         return inputs
 
     def _step(
-        self,
-        run_id: str,
-        step: Step,
-        done: dict[str, dict[str, Value]],
-        say: Emit,
-        stop: threading.Event,
-        trail: _Trail,
+        self, run: _RunState, state: _StepState, done: dict[str, dict[str, Value]]
     ) -> tuple[dict[str, Value], dict[str, Any]]:
+        step = state.step
         manifest = step.manifest
-        inputs = self._gather(step, done)
-        key = self._key(manifest, step.params, inputs)
+        state.inputs = self._gather(step, done)
+        key = self._key(run, manifest, step.params, state.inputs)
         cached = self.cache.get(key)
         if cached is not None:
-            say(
+            run.say(
                 {
                     "event": "node.cached",
                     "step": step.id,
@@ -271,31 +279,31 @@ class Scheduler:
         # An engine node without a memory model runs as it always has: on its first device, with
         # no fit and no cap (spec 002, plan decision 12).
         if manifest.memory is None and manifest.run.where == "engine":
-            return self._attempt(run_id, step, inputs, say, stop, None, None, 1, trail)
+            return self._attempt(run, state, None, 1)
 
-        context = self._context(step, _meta(step, inputs))
-        found = self._fit(step, context, say, 1, None, trail)
-        served = self._cached_down(step, found, inputs, say)
+        state.context = self._context(step, _meta(step, state.inputs))
+        found = self._fit(run, state, 1, None)
+        served = self._cached_down(run, state, found)
         if served is not None:
             return served
         try:
-            return self._attempt(run_id, step, inputs, say, stop, found, context, 1, trail)
+            return self._attempt(run, state, found, 1)
         except NodeError as first:
             if first.kind != "oom":
                 raise
-            self._said_oom(step, 1, first, say)
+            self._said_oom(run, step, 1, first)
             if not memory.can_retry(found):
                 raise
-            again = self._fit(step, context, say, 2, found, trail)
-            served = self._cached_down(step, again, inputs, say)
+            again = self._fit(run, state, 2, found)
+            served = self._cached_down(run, state, again)
             if served is not None:
                 return served
             try:
-                return self._attempt(run_id, step, inputs, say, stop, again, context, 2, trail)
+                return self._attempt(run, state, again, 2)
             except NodeError as second:
                 if second.kind != "oom":
                     raise
-                self._said_oom(step, 2, second, say)
+                self._said_oom(run, step, 2, second)
                 message = (
                     f"Ran out of memory twice: first {_described(found, first.peaks)}, "
                     f"then {_described(again, second.peaks)}. {second}"
@@ -334,18 +342,17 @@ class Scheduler:
         )
         return found, settings
 
-    def _fit(
-        self, step: Step, context: _Context, say: Emit, attempt: int, after: Fit | None, trail: _Trail
-    ) -> Fit:
+    def _fit(self, run: _RunState, state: _StepState, attempt: int, after: Fit | None) -> Fit:
         """Fit with a fresh look at the machine, and say so; a fit that finds no room fails here."""
-        manifest = step.manifest
-        found, settings = self._fit_now(step, context, after)
-        trail.fits.append(found)
-        say(
+        step = state.step
+        assert state.context is not None
+        found, settings = self._fit_now(step, state.context, after)
+        state.fits.append(found)
+        run.say(
             {
                 "event": "node.fit",
                 "step": step.id,
-                "node": manifest.id,
+                "node": step.manifest.id,
                 "attempt": attempt,
                 **found.to_json(),
                 "settings": settings.to_json(),
@@ -360,10 +367,11 @@ class Scheduler:
         return found
 
     def _cached_down(
-        self, step: Step, found: Fit, inputs: dict[str, Value], say: Emit
+        self, run: _RunState, state: _StepState, found: Fit
     ) -> tuple[dict[str, Value], dict[str, Any]] | None:
         """The best cached result the fit allows: after each change that costs quality, in order,
         up to the fitted values. Changes to settings the graph sets are never among them."""
+        step = state.step
         model = step.manifest.memory
         if model is None or not found.reduced:
             return None
@@ -373,10 +381,10 @@ class Scheduler:
             values.update(change.set)
             if change.costs != "quality":
                 continue
-            key = self._key(step.manifest, values, inputs)
+            key = self._key(run, step.manifest, values, state.inputs)
             cached = self.cache.get(key)
             if cached is not None:
-                say(
+                run.say(
                     {
                         "event": "node.cached",
                         "step": step.id,
@@ -389,8 +397,8 @@ class Scheduler:
                 return cached, {"cached": True, "key": key}
         return None
 
-    def _said_oom(self, step: Step, attempt: int, exc: NodeError, say: Emit) -> None:
-        say(
+    def _said_oom(self, run: _RunState, step: Step, attempt: int, exc: NodeError) -> None:
+        run.say(
             {
                 "event": "node.oom",
                 "step": step.id,
@@ -402,24 +410,18 @@ class Scheduler:
         )
 
     def _attempt(
-        self,
-        run_id: str,
-        step: Step,
-        inputs: dict[str, Value],
-        say: Emit,
-        stop: threading.Event,
-        found: Fit | None,
-        context: _Context | None,
-        attempt: int,
-        trail: _Trail,
+        self, run: _RunState, state: _StepState, found: Fit | None, attempt: int
     ) -> tuple[dict[str, Value], dict[str, Any]]:
+        """One attempt at a step, at the fitted values (its own, with no fit): the runtime check, the
+        files check, node.start, then the job run, its result kept, and node.done."""
+        step = state.step
         manifest = step.manifest
         values = dict(found.values) if found is not None else dict(step.params)
         device = (found.device if found is not None else None) or manifest.devices[0]
-        key = self._key(manifest, values, inputs)
+        key = self._key(run, manifest, values, state.inputs)
         executor = self.executors.executor(manifest, device)  # the runtime check, then the files check
         files = check_files(self.store, manifest, values)
-        say(
+        run.say(
             {
                 "event": "node.start",
                 "step": step.id,
@@ -430,85 +432,32 @@ class Scheduler:
             }
         )
         work = self.cache.begin(key)
-        job = self._job(run_id, step, inputs, values, device, work, files, attempt, found, context)
-        outside = job.outside_torch_mb
-
-        def forward(event: dict[str, Any]) -> None:
-            if event.get("event") == "step_oom":
-                event = dict(event, event="node.step_oom")
-            say(dict(event, step=step.id))
-
         try:
-            try:
-                finished = executor.execute(job, forward, stop)
-            except NodeError as exc:
-                trail.peaks.append({"attempt": attempt, **exc.peaks})
-                if exc.kind == "oom":
-                    self._learn(step, found, context, exc.peaks, ok=False, seconds=None, outside=outside)
-                raise
-            outputs = self._check_outputs(step, inputs, finished.outputs, key)
-            made_with = {
-                "device": device,
-                "precision": values.get(memory.PRECISION_PARAM),
-                "changed": {k: v for k, v in values.items() if step.params.get(k) != v},
-                "ways": finished.ways,
-                "reduced": bool(found is not None and found.reduced),
-            }
-            reduced_input = any(_reduced(v) for v in inputs.values())
-            for value in outputs.values():
-                value.meta["made_with"] = made_with  # a node cannot claim a fit it did not get
-                if reduced_input:
-                    value.meta["reduced_input"] = True
-            record = {
-                "cached": False,
-                "key": key,
-                "node": manifest.id,
-                "version": manifest.version,
-                "seconds": finished.seconds,
-                "peak_vram_mb": finished.peaks.get("peak_vram_mb"),
-                "peak_reserved_mb": finished.peaks.get("peak_reserved_mb"),
-                "peak_ram_mb": finished.peaks.get("peak_ram_mb"),
-                "device": device,
-                "made_with": made_with,
-                "stats": finished.stats,
-            }
-            outputs = self.cache.commit(key, work, outputs, record)
+            job = self._job(run, state, values, device, work, files, attempt, found)
+            finished = self._execute(run, state, executor, job, found)
+            outputs, record = self._keep(state, job, finished, key, found)
         except BaseException:
             self.cache.abandon(work)
             raise
-        self._learn(step, found, context, finished.peaks, ok=True, seconds=record["seconds"], outside=outside)
-        say(
-            {
-                "event": "node.done",
-                "step": step.id,
-                "node": manifest.id,
-                "key": key,
-                "attempt": attempt,
-                "seconds": record["seconds"],
-                "peak_vram_mb": record["peak_vram_mb"],
-                "peak_reserved_mb": record["peak_reserved_mb"],
-                "peak_ram_mb": record["peak_ram_mb"],
-                "made_with": made_with,
-                **({"fit": found.to_json()} if found is not None else {}),
-                "outputs": {p: v.to_json() for p, v in outputs.items()},
-            }
+        self._learn(
+            state, found, finished.peaks, ok=True, seconds=finished.seconds, outside=job.outside_torch_mb
         )
+        self._said_done(run, job, found, outputs, record)
         return outputs, record
 
     def _job(
         self,
-        run_id: str,
-        step: Step,
-        inputs: dict[str, Value],
+        run: _RunState,
+        state: _StepState,
         values: dict[str, Any],
         device: str,
         work: Path,
         files: dict[str, str],
         attempt: int,
         found: Fit | None,
-        context: _Context | None,
     ) -> Job:
         """The job an attempt asks of its node: what to run, on what, and within what memory."""
+        step, context = state.step, state.context
         manifest = step.manifest
         precision = budget = cap = None
         outside = 0.0
@@ -529,9 +478,9 @@ class Scheduler:
             entry=f"{manifest.run.file}:{manifest.run.function}",
             out_dir=work,
             load=manifest.run.load,
-            run=run_id,
+            run=run.id,
             step=step.id,
-            inputs=dict(inputs),
+            inputs=dict(state.inputs),
             params=values,
             device=device,
             files=files,
@@ -542,11 +491,89 @@ class Scheduler:
             outside_torch_mb=outside,
         )
 
+    def _execute(
+        self, run: _RunState, state: _StepState, executor: Executor, job: Job, found: Fit | None
+    ) -> Done:
+        """Run the job, its events forwarded with the step. A failed attempt's peaks are kept for
+        node.failed, and running out of memory teaches this machine."""
+        step_id = state.step.id
+
+        def forward(event: dict[str, Any]) -> None:
+            if event.get("event") == "step_oom":
+                event = dict(event, event="node.step_oom")
+            run.say(dict(event, step=step_id))
+
+        try:
+            return executor.execute(job, forward, run.stop)
+        except NodeError as exc:
+            state.peaks.append({"attempt": job.attempt, **exc.peaks})
+            if exc.kind == "oom":
+                self._learn(state, found, exc.peaks, ok=False, seconds=None, outside=job.outside_torch_mb)
+            raise
+
+    def _keep(
+        self, state: _StepState, job: Job, finished: Done, key: str, found: Fit | None
+    ) -> tuple[dict[str, Value], dict[str, Any]]:
+        """Check what the node made, say how it was made, and commit it to the cache with its record."""
+        step = state.step
+        manifest = step.manifest
+        outputs = self._check_outputs(step, state.inputs, finished.outputs, key)
+        made_with = {
+            "device": job.device,
+            "precision": job.params.get(memory.PRECISION_PARAM),
+            "changed": {k: v for k, v in job.params.items() if step.params.get(k) != v},
+            "ways": finished.ways,
+            "reduced": bool(found is not None and found.reduced),
+        }
+        reduced_input = any(_reduced(v) for v in state.inputs.values())
+        for value in outputs.values():
+            value.meta["made_with"] = made_with  # a node cannot claim a fit it did not get
+            if reduced_input:
+                value.meta["reduced_input"] = True
+        record = {
+            "cached": False,
+            "key": key,
+            "node": manifest.id,
+            "version": manifest.version,
+            "seconds": finished.seconds,
+            "peak_vram_mb": finished.peaks.get("peak_vram_mb"),
+            "peak_reserved_mb": finished.peaks.get("peak_reserved_mb"),
+            "peak_ram_mb": finished.peaks.get("peak_ram_mb"),
+            "device": job.device,
+            "made_with": made_with,
+            "stats": finished.stats,
+        }
+        return self.cache.commit(key, job.out_dir, outputs, record), record
+
+    def _said_done(
+        self,
+        run: _RunState,
+        job: Job,
+        found: Fit | None,
+        outputs: dict[str, Value],
+        record: dict[str, Any],
+    ) -> None:
+        run.say(
+            {
+                "event": "node.done",
+                "step": job.step,
+                "node": job.node,
+                "key": record["key"],
+                "attempt": job.attempt,
+                "seconds": record["seconds"],
+                "peak_vram_mb": record["peak_vram_mb"],
+                "peak_reserved_mb": record["peak_reserved_mb"],
+                "peak_ram_mb": record["peak_ram_mb"],
+                "made_with": record["made_with"],
+                **({"fit": found.to_json()} if found is not None else {}),
+                "outputs": {p: v.to_json() for p, v in outputs.items()},
+            }
+        )
+
     def _learn(
         self,
-        step: Step,
+        state: _StepState,
         found: Fit | None,
-        context: _Context | None,
         peaks: dict[str, Any],
         *,
         ok: bool,
@@ -555,7 +582,7 @@ class Scheduler:
     ) -> None:
         """What this run teaches this machine. Only runtime nodes learn: an engine node's peak is
         the whole engine's."""
-        manifest = step.manifest
+        manifest, context = state.step.manifest, state.context
         if manifest.run.where != "runtime" or found is None or context is None or found.kind is None:
             return
         model = manifest.memory
