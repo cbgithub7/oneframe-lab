@@ -35,11 +35,14 @@ reading anything else, because the rules, the spec, and this skill itself may ha
 
     If either refuses because local `main` has diverged, stop. Local commits on `main` break the
     rules, so show them to the owner.
-4. **Pick the branch to verify:**
-    - the PR or spec the owner named (a PR's branch is its head branch on GitHub);
-    - otherwise, list what may be waiting: open PRs whose description says "pending hardware", if
-      GitHub access is available, and branches under `spec/` newer than `main`. Ask the owner which
-      one.
+4. **Pick what to verify, and its branch:**
+    - the PR, spec or item the owner named (a PR's branch is its head branch on GitHub);
+    - otherwise, list what may be waiting, and ask the owner which:
+        - each item under "Waiting on a local session" in `docs/handoff.md`, as the updated `main`
+          has it: a hardware step a spec left for after its merge, with the branch it runs on
+          (most often `main`), its commands, what passing looks like and where its report goes;
+        - open PRs whose description says "pending hardware", if GitHub access is available;
+        - branches under `spec/` newer than `main`.
     - If nothing is waiting, verify `main` itself (checks only; there are no hardware steps to run).
 5. **Check out and update it:** `git checkout <branch>`, then `git pull --ff-only`. If the local copy
    has diverged from `origin`, stop and ask. Never reset over local commits.
@@ -53,7 +56,8 @@ reading anything else, because the rules, the spec, and this skill itself may ha
 
 Read `AGENTS.md`. Read the chosen spec's `spec.md`: the acceptance criteria marked hardware, and its
 Verification section, with the exact commands and the report each writes. (Specs 001 and 002 keep
-their Verification section in `plan.md`.)
+their Verification section in `plan.md`.) For an item from the handoff's list, read its entry
+there too; if it and the spec disagree, stop and ask.
 
 If the spec gives no command for a hardware criterion, stop and say so. Do not invent a
 procedure: the cloud session that wrote the spec owes one.
@@ -97,7 +101,7 @@ Record, for the report:
 
 ## 5. Run the hardware steps
 
-For each hardware acceptance criterion, in the spec's order:
+For each hardware acceptance criterion, or each step a handoff item names, in the spec's order:
 
 1. Tell the owner what is about to run, and what it will download (with size) if anything.
 2. Run the spec's command exactly. Keep its full output.
@@ -140,6 +144,9 @@ code still never key on it.
 ## 7. Hand back
 
 - Commit the reports on the PR's branch ("Add hardware report for NNN ACx: passed"), and push.
+  For an item run on `main`, commit them on a new branch from `main` (the name the item gives, or
+  `report/NNN-<step>`), with the spec's task ticked and the item taken out of the handoff's list,
+  and open a PR for it: nothing reaches `main` but through a PR.
 - If you have GitHub access, comment on the PR with one line per criterion: outcome, headline
   numbers, report path. Otherwise tell the owner the same, ready to paste.
 - A failed or blocked criterion goes back to a cloud session as a finding. Add it to the spec's
