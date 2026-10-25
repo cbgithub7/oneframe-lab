@@ -9,6 +9,8 @@ import shutil
 import subprocess
 from typing import Any
 
+from oneframe.node import Context
+
 MIB = 1.048576  # MB per MiB
 
 
@@ -29,7 +31,7 @@ def _used_mb(card: int) -> float | None:
         return None
 
 
-def run(ctx: Any) -> dict[str, Any]:
+def run(ctx: Context) -> dict[str, Any]:
     card = int(ctx.params.get("card", 0))
     before = _used_mb(card)
     import torch  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]

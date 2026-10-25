@@ -35,17 +35,11 @@ def run_job(job: Job, say: Emit, stop: threading.Event | None = None, process: P
     )
     started = time.monotonic()
     try:
-        ctx.out_dir.mkdir(parents=True, exist_ok=True)
+        job.out_dir.mkdir(parents=True, exist_ok=True)
         fn = load_code(job.node, job.folder, job.entry)
-        stats = fn(ctx) or {}
+        stats = fn(ctx)
     except BaseException:
         if process is not None:
-            process.peaks = ctx.peaks()
+            process.peaks = ctx._peaks()
         raise
-    return Done(
-        outputs=ctx.outputs,
-        seconds=round(time.monotonic() - started, 3),
-        peaks=ctx.peaks(),
-        ways=dict(ctx.ways),
-        stats=stats if isinstance(stats, dict) else {},
-    )
+    return ctx._done(round(time.monotonic() - started, 3), stats)

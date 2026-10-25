@@ -30,7 +30,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `test_two_engine_nodes_with_same_named_helpers_each_run_their_own` (AC3) and
   `test_a_runtime_nodes_helper_never_hides_a_package_of_its_runtime` (AC4). `docs/nodes.md` says
   helpers are imported relatively.
-- [ ] 4. **The Protocols.** `Context` and `LoadContext` in `oneframe/node/__init__.py`. The
+- [x] 4. **The Protocols.** `Context` and `LoadContext` in `oneframe/node/__init__.py`. The
   context's `job`, `node`, `out_dir`, `outputs`, `ways` and `peaks()` become private and
   `stopped()` goes; the runner gets the `Done` from it, and the fallbacks tests read their `ways`
   and peaks there. Add `test_a_context_shows_exactly_its_protocol` with its `run` case (AC6).

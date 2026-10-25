@@ -11,10 +11,12 @@ from typing import Any
 
 from PIL import ExifTags, Image, ImageOps
 
+from oneframe.node import Context
+
 FOCAL_35MM = next(k for k, v in ExifTags.TAGS.items() if v == "FocalLengthIn35mmFilm")
 
 
-def run(ctx: Any) -> dict[str, Any]:
+def run(ctx: Context) -> dict[str, Any]:
     with Image.open(ctx.params["path"]) as src:
         exif = src.getexif()
         image = ImageOps.exif_transpose(src)

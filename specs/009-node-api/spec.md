@@ -169,6 +169,7 @@ stand-in torch, and the benches' probes run on a card once, after 010 (Decisions
 - `Stopped` stays a `RuntimeError`: a new base would touch every `except Exception` in the engine.
 - No `.pyi` stub and no published node API package: nodes outside the repo are not a v1 target.
 - A failed run's peaks wait on the child's `Process` for its `error` event: a node's exception goes up unchanged.
+- pyright checks `runtimes/torch` as its own root at its runtime's Python: from the repo root, `import torch` there is the folder.
 
 ## Out of scope
 

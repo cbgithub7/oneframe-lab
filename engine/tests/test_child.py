@@ -403,7 +403,8 @@ def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(
         return "mesh"
 
     assert ctx.fallbacks("decode", [("whole", whole), ("tiled", tiled)]) == "mesh"
-    assert ctx.ways == {"decode": "tiled"}
+    done = ctx._done(0.0, None)
+    assert done.ways == {"decode": "tiled"}
     assert events == [
         {
             "event": "step_oom",
@@ -416,7 +417,7 @@ def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(
     ]
     assert cuda.calls == ["empty_cache", "reset"]
     # The way that ran out is a lower bound on what this run needed.
-    assert ctx.peaks()["peak_reserved_mb"] == 4000.0
+    assert done.peaks["peak_reserved_mb"] == 4000.0
 
 
 def test_the_failed_way_is_released_before_the_next_starts(tmp_path: Path) -> None:
@@ -476,7 +477,7 @@ def test_when_every_way_runs_out_the_last_error_goes_up_as_oom(tmp_path: Path) -
         ctx.fallbacks("step", [("a", way("a")), ("b", way("b")), ("c", way("c"))])
     assert classify(info.value) == "oom"
     assert [(e["way"], e["next"]) for e in events] == [("a", "b"), ("b", "c")]
-    assert ctx.ways == {}
+    assert ctx._done(0.0, None).ways == {}
     with pytest.raises(ValueError, match="at least one way"):
         ctx.fallbacks("step", [])
 
@@ -484,7 +485,7 @@ def test_when_every_way_runs_out_the_last_error_goes_up_as_oom(tmp_path: Path) -
 def test_a_first_way_that_works_is_the_way_recorded(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path, [])
     assert ctx.fallbacks("load", [("on the card", lambda: 1), ("offloaded", lambda: 2)]) == 1
-    assert ctx.ways == {"load": "on the card"}
+    assert ctx._done(0.0, None).ways == {"load": "on the card"}
 
 
 def test_the_ways_reach_the_done_event(tmp_path: Path) -> None:

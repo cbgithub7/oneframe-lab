@@ -1,11 +1,42 @@
-"""The node API (spec 009): a job's JSON, written and read in one module."""
+"""The node API (spec 009): a job's JSON, written and read in one module, and contexts that show
+exactly their Protocols."""
 
 from __future__ import annotations
 
+import json
+import typing
 from pathlib import Path
+from typing import Any
 
-from oneframe.node import Value
+import pytest
+
+from oneframe.node import Context, Value
 from oneframe.node.job import Done, Job
+from oneframe.node.runner import run_job
+
+# A node that says, as a stage named for the function, the public members of the context it got.
+MEMBERS = """
+import json
+
+def _public(ctx):
+    return json.dumps(sorted(name for name in dir(ctx) if not name.startswith("_")))
+
+def run(ctx):
+    ctx.stage("run", _public(ctx))
+"""
+
+
+@pytest.mark.parametrize(("function", "protocol"), [("run", Context)], ids=["run"])
+def test_a_context_shows_exactly_its_protocol(tmp_path: Path, function: str, protocol: Any) -> None:
+    folder = tmp_path / "node"
+    folder.mkdir()
+    (folder / "node.py").write_text(MEMBERS, encoding="utf-8")
+    events: list[dict[str, Any]] = []
+    run_job(
+        Job(node="test.members", folder=folder, entry="node.py:run", out_dir=tmp_path / "out"), events.append
+    )
+    shown = {e["stage"]: json.loads(e["message"]) for e in events if e["event"] == "stage"}
+    assert shown[function] == sorted(typing.get_protocol_members(protocol))
 
 
 def test_a_job_survives_its_json(tmp_path: Path) -> None:

@@ -83,7 +83,7 @@ def died_message(code: int | None, platform: str = sys.platform) -> str:
 
 
 class EngineExecutor:
-    """Runs a node in the engine's process. Stop is cooperative: the node checks ctx.stopped()."""
+    """Runs a node in the engine's process. Stop is cooperative: the node calls ctx.check_stop()."""
 
     def execute(self, job: Job, emit: Emit, stop: threading.Event) -> Done:
         try:
@@ -216,7 +216,7 @@ class ProcessExecutor:
             if done is not None:
                 return done
             if failed is not None and failed.get("kind") == "stopped":
-                raise Stopped()  # the node stopped itself, as ctx.stopped() told it to
+                raise Stopped()  # the node let ctx.check_stop()'s Stopped go up
             if failed is not None:
                 raise NodeError(
                     declared_kind(str(failed.get("kind") or "error")),

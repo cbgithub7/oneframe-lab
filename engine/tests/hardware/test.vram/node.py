@@ -16,6 +16,8 @@ from typing import Any
 
 import torch  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports]
 
+from oneframe.node import Context
+
 MB = 1_000_000
 
 
@@ -26,7 +28,7 @@ def _block(mb: float, device: str, dtype: Any) -> Any:
     return block
 
 
-def run(ctx: Any) -> dict[str, Any]:
+def run(ctx: Context) -> dict[str, Any]:
     p = ctx.params
     device = ctx.device
     on_card = device.startswith("cuda")

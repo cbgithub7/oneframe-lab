@@ -1,4 +1,7 @@
-"""The context a node's run function is handed, in the engine's process or in a runtime child."""
+"""The context a node's run function is handed, in the engine's process or in a runtime child.
+
+Its public members are exactly its Protocol's (`oneframe.node.Context`); what the runner reads --
+the outputs, the ways, the peaks, and the `Done` they make -- is private."""
 
 from __future__ import annotations
 
@@ -8,17 +11,17 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, NoReturn, TypeVar
 
-from oneframe.node import Emit, NodeFailed, Stopped, Value, usage
+from oneframe.node import Context, Emit, NodeFailed, Stopped, Value, usage
 from oneframe.node.failures import is_torch_oom
-from oneframe.node.job import Job
+from oneframe.node.job import Done, Job
 
 T = TypeVar("T")
 
 
-class NodeContext:
+class NodeContext(Context):
     """What a node's run function receives.
 
-        def run(ctx):
+        def run(ctx: Context):
             image = ctx.inputs["image"]            # a Value
             depth = infer(image.path, ctx.params["resolution"])
             path = ctx.path("depth.npz")          # a file in this run's output folder
@@ -36,11 +39,9 @@ class NodeContext:
         cap_mb: float | None = None,
         ram_start: float | None = None,
     ):
-        self.job = job
-        self.node = job.node
         self.inputs: dict[str, Value] = dict(job.inputs)
         self.params: dict[str, Any] = dict(job.params)
-        self.out_dir = job.out_dir
+        self._out_dir = job.out_dir
         self.device = job.device or "cpu"
         self.precision = job.precision or "fp32"
         self.attempt = job.attempt  # 2 on the engine's retry after running out
@@ -48,14 +49,14 @@ class NodeContext:
         self.memory_budget_mb: float | None = job.memory_budget_mb
         # The files this run reads (spec 003), by their name in the manifest: ctx.file(name).
         self._files: dict[str, str] = dict(job.files)
-        self.outputs: dict[str, dict[str, Any]] = {}
+        self._outputs: dict[str, dict[str, Any]] = {}
         self._say = say
         self._stop = stop if stop is not None else threading.Event()
         self._stage = stage if stage is not None else {"stage": "start"}
         self._cap_mb = cap_mb
         self._ram_start = ram_start if ram_start is not None else usage.resident_mb()[0]
         self._reserved_floor: float | None = None
-        self.ways: dict[str, str] = {}  # each ctx.fallbacks step, and the way it finished with
+        self._ways: dict[str, str] = {}  # each ctx.fallbacks step, and the way it finished with
 
     def memory_free_mb(self) -> float | None:
         """The memory still free for this run, in MB, or None when it is not known.
@@ -72,8 +73,18 @@ class NodeContext:
             return None
         return float(self.memory_budget_mb) - max(now - self._ram_start, 0.0)
 
-    def peaks(self) -> dict[str, Any]:
+    def _peaks(self) -> dict[str, Any]:
         return usage.peaks(self.device, self._ram_start, self._reserved_floor)
+
+    def _done(self, seconds: float, stats: Any) -> Done:
+        """What the run gave, once its function has returned `stats`."""
+        return Done(
+            outputs=dict(self._outputs),
+            seconds=seconds,
+            peaks=self._peaks(),
+            ways=dict(self._ways),
+            stats=stats if isinstance(stats, dict) else {},
+        )
 
     def fallbacks(self, step: str, ways: Sequence[tuple[str, Callable[[], T]]]) -> T:
         """Run one step of the node, trying each way in turn when torch runs out of memory.
@@ -99,7 +110,7 @@ class NodeContext:
                 # It ran out. Only its text outlives this block, so the failed way's frames can go.
                 message = str(exc)
             else:
-                self.ways[step] = name
+                self._ways[step] = name
                 return result
             peak = usage.peak_vram_mb(self.device, reserved=True)
             if peak is not None:
@@ -117,7 +128,7 @@ class NodeContext:
             )
         name, fn = ways[-1]
         result = fn()
-        self.ways[step] = name
+        self._ways[step] = name
         return result
 
     def file(self, name: str) -> Path:
@@ -132,8 +143,8 @@ class NodeContext:
 
     def path(self, name: str) -> Path:
         """A path for a file this run writes. Names stay inside the output folder."""
-        target = (self.out_dir / name).resolve()
-        if self.out_dir.resolve() not in target.parents:
+        target = (self._out_dir / name).resolve()
+        if self._out_dir.resolve() not in target.parents:
             raise NodeFailed(f"{name!r} is outside this run's output folder.")
         target.parent.mkdir(parents=True, exist_ok=True)
         return target
@@ -147,8 +158,8 @@ class NodeContext:
     ) -> None:
         target = Path(path)
         if not target.is_absolute():
-            target = self.out_dir / target
-        self.outputs[port] = {"path": str(target), "facets": dict(facets or {}), "meta": dict(meta or {})}
+            target = self._out_dir / target
+        self._outputs[port] = {"path": str(target), "facets": dict(facets or {}), "meta": dict(meta or {})}
 
     def stage(self, name: str, message: str = "") -> None:
         self._stage["stage"] = name
@@ -158,10 +169,6 @@ class NodeContext:
         self._say(
             {"event": "progress", "stage": self._stage["stage"], "done": done, "total": total, "what": what}
         )
-
-    def stopped(self) -> bool:
-        """For a loop that can end early: check it, and raise Stopped (or return) when true."""
-        return self._stop.is_set()
 
     def check_stop(self) -> None:
         """Raises Stopped when Stop was pressed. A node in a runtime never sees it: Stop ends its
