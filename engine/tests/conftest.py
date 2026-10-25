@@ -111,6 +111,25 @@ def wait_free(*paths: Path, seconds: float = 30) -> None:
 
 
 @pytest.fixture
+def stop_after() -> Iterator[Callable[[float], threading.Event]]:
+    """A Stop that sets itself `seconds` from now, for a test that would hang if what it checks came
+    back: the run is stopped and the test fails instead. Its timer cannot outlive the test."""
+    timers: list[threading.Timer] = []
+
+    def make(seconds: float) -> threading.Event:
+        stop = threading.Event()
+        timer = threading.Timer(seconds, stop.set)
+        timer.daemon = True
+        timer.start()
+        timers.append(timer)
+        return stop
+
+    yield make
+    for timer in timers:
+        timer.cancel()
+
+
+@pytest.fixture
 def node_root(tmp_path: Path) -> Path:
     root = tmp_path / "nodes"
     root.mkdir()

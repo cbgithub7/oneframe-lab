@@ -6,6 +6,7 @@ from __future__ import annotations
 import _thread
 import json
 import os
+import stat
 import subprocess
 import sys
 import textwrap
@@ -395,6 +396,32 @@ def test_a_node_that_reads_stdin_gets_end_of_file_at_once(tmp_path: Path) -> Non
     )
     assert seen[0]["message"] == "eof"
     assert time.monotonic() - started < 20
+
+
+def test_a_node_that_queries_its_stdin_does_not_hang(
+    tmp_path: Path, stop_after: Callable[[float], threading.Event]
+) -> None:
+    """October's hang, as inferred: the C runtime of a DLL numpy loads asks at start what its standard
+    input is, and on Windows that waited behind the child's watcher, reading the same pipe. The node
+    asks the same; a hang come back is stopped at the deadline and fails, rather than hanging."""
+    body = """
+    import stat, sys
+    answers = {"mode": stat.S_IFMT(os.fstat(0).st_mode), "tty": os.isatty(0)}
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetStdHandle.restype = wintypes.HANDLE
+        kernel32.GetFileType.argtypes = (wintypes.HANDLE,)
+        answers["type"] = kernel32.GetFileType(kernel32.GetStdHandle(-10))  # STD_INPUT_HANDLE
+    ctx.stage("stdin", json.dumps(answers))
+    """
+    seen: list[dict[str, object]] = []
+    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, stop_after(60))
+    answers = json.loads(str(seen[0]["message"]))
+    # The null device, not the pipe the watcher reads: a character device, FILE_TYPE_CHAR on Windows.
+    assert answers["mode"] == stat.S_IFCHR and answers["tty"] is False
+    assert answers.get("type", 2) == 2
 
 
 def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:
