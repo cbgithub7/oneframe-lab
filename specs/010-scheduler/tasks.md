@@ -31,7 +31,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 8. A run's and a step's state as two dataclasses, the per-run caches off the instance, and
   `_attempt` in named steps, every event, record and message unchanged (the scheduler's tests hold
   them). Measure AC8 for the PR.
-- [ ] 9. If the owner said yes to question 1: the ending helper in `journal.py`, and model jobs
+- [x] 9. If the owner said yes to question 1: the ending helper in `journal.py`, and model jobs
   ending through it (`test_model_jobs.py` unchanged).
 - [ ] 10. Then installs and runs end through it: `Runtimes`' claim lock made re-entrant, with the
   release and the send under it; `Scheduler.run`'s `release`; the server's slot and crash path. Add

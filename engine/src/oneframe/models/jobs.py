@@ -31,7 +31,7 @@ from typing import Any
 
 from oneframe.errors import Failure, Stopped
 from oneframe.files import FileLock, lock_file
-from oneframe.journal import engine_crash, journalled
+from oneframe.journal import end_when_free, engine_crash
 from oneframe.manifest import Manifest
 from oneframe.models.schema import FileSpec
 from oneframe.models.store import Store, StoreRefused, hash_file
@@ -219,26 +219,18 @@ class Jobs:
         crashed: Callable[[BaseException], dict[str, Any]] = lambda exc: engine_crash(  # noqa: E731
             exc, event="model.failed", job=job.id, files=[f.to_json() for f in job.files]
         )
-        ending: list[dict[str, Any]] = []  # journalled first, sent once the store is free
-
-        def say(event: dict[str, Any]) -> None:
-            if not (ending and event is ending[0]):
-                self.say(event)
-
         try:
-            with journalled(say, self.store.layout.journals, what, crashed) as emit:
-                ending.append(self._work(job, emit))
-                emit(ending[0])  # the journal's last line, not yet sent
-                self._free(job, held)  # whoever hears the ending may start the next job at once
-                self.say(ending[0])  # in the block: a listener that raises is journalled as a bug
-        except Exception as exc:  # a bug: the journal ends with it, and the page hears of it too
+            # Whoever hears the ending may start the next job at once.
+            end_when_free(
+                self.say,
+                self.store.layout.journals,
+                what,
+                lambda emit: (None, self._work(job, emit)),
+                lambda: self._free(job, held),
+                crashed,
+            )
+        except Exception:  # a bug: the journal ends with it, and the page heard of it once free
             LOGGER.exception("model job %s crashed", job.id)
-            try:
-                self._free(job, held)
-            finally:
-                self.say(crashed(exc))
-        finally:
-            self._free(job, held)
 
     def _free(self, job: Job, held: FileLock) -> None:
         """Let go of the store's lock and of this job's place, together under the lock `_start`
