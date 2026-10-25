@@ -40,6 +40,7 @@ Green in CI on Windows and Ubuntu, each spec with its reports:
 | [007](../specs/007-test-guard/spec.md) | The test guard sees every collected case, a skip or an emptied body, and renames; `engine/tests/collected.txt` is committed | CI on Windows and Ubuntu; [PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28) |
 | [008](../specs/008-processes/spec.md) | One module starts, reads and ends processes, and Stop ends a node's whole tree; one module names what a child inherits; one stop type; a hang names itself | CI on Windows and Ubuntu; [PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35) |
 | [009](../specs/009-node-api/spec.md) | The node API apart from the child script, which is a bootstrap; a typed job; node code loaded as a package named for the node; an optional `load` before `run`; `ctx` typed by `Context` and `LoadContext` | CI on Windows and Ubuntu; [PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37) |
+| [010](../specs/010-scheduler/spec.md) | The scheduler is given its executors (one process per run by default, so spec 004's worker pool can take its place); one `Emit`; one probe helper for the benches; `_attempt` in named steps; every ending sent after its place is free | CI on Windows and Ubuntu; [PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39); the probes on a card wait on a local session (below) |
 
 Beside them: the engine's core (typed ports, manifests, graph planning with converters, the cache,
 the scheduler, the NDJSON server); an Electron 45 shell whose sandboxed page lists nodes through
@@ -55,7 +56,7 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
-| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 in review ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)), then 011 |
+| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 done ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)); 011 next |
 | 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
 | 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
@@ -63,6 +64,44 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 | 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times steps 3 and 4 measure | 004 | not started |
 | 7 | The editor, grown from step 3's page: a canvas, variants side by side, the three.js and Spark viewer; wiring aids as the owner decides (roadmap) | new | not started |
 | 8 | The rest of 003 (import, a movable store, a queue, the page's part), and packaging (installer, two-tier uninstaller, signing, updates) | new | not started |
+
+## Waiting on a local session
+
+What only real hardware can run, for `/local-session` (`.claude/skills/local-session/SKILL.md`)
+to take up on the owner's PC, in this order; the owner picks which. Each item gives its branch,
+its commands (run from the repo's root), what passing looks like and where its report goes, and
+leaves this list in the PR that commits its report.
+
+1. **Spec 010's task 13: the benches' probes on a card,** on `main` as merged in PR #39 (1f86f77)
+   or later. Both probes now run through `run_probe` in `oneframe/executors.py`, which never hides
+   the cards; this is also the check spec 009 deferred for its changes to them. On a machine with
+   an NVIDIA card, with the app closed:
+
+   ```
+   npm run bench:runtime -- torch --out specs/010-scheduler/reports/<date>-runtime-torch.md
+   npm run bench:fit -- --out specs/010-scheduler/reports/
+   ```
+
+   The first installs the torch runtime if it is not installed (several GB: say so first), and
+   passes when its report shows the probe ran on the card, with its result. The second, with no
+   node, is spec 002's check; for this task it passes when its report records the CUDA context's
+   size, not why it could not. Then the skill's `<date>-local.json` and `.md` beside them, task 13
+   ticked in the spec's tasks.md, this item out of the list, and one PR from a `report/010-probes`
+   branch.
+2. **The torch runtime's lock** (the owner, 2026-10-24), after item 1, since it makes each machine
+   install torch again: filelock 4.0.7 and setuptools 84.0.0 in `runtimes/torch/uv.lock` have
+   advisories (Dependabot alerts 46 to 49), fixed in 4.2.1 and 84.1.0. Neither path is reached
+   (torch uses neither filelock's read-write nor its soft locks, and uv, not setuptools, installs
+   the wheels), but a new lock changes the runtime's hash, and what the fit learned starts over.
+   On a `fix/torch-lock` branch from `main`:
+
+   ```
+   uv lock --project runtimes/torch --upgrade-package filelock --upgrade-package setuptools
+   npm run bench:runtime -- torch --out specs/001-runtime-manager/reports/<date>-torch-lock.md
+   ```
+
+   It passes when the install finishes and the probe runs on the card; the new lock, its report
+   and this item out of the list go in one PR.
 
 ## Open, and in the way of the next steps
 
@@ -83,10 +122,3 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"
   is a convention. Protecting it, with the CI checks required, comes before Dependabot's minor
   updates may merge themselves.
-- **The torch runtime's lock, in a local session on the owner's PC** (the owner, 2026-10-24):
-  filelock 4.0.7 and setuptools 84.0.0 in `runtimes/torch/uv.lock` have advisories (Dependabot
-  alerts 46 to 49), fixed in 4.2.1 and 84.1.0. Neither path is reached (torch uses neither
-  filelock's read-write nor its soft locks, and uv, not setuptools, installs the wheels), but a
-  new lock changes the runtime's hash: each machine installs it again, and what the fit learned
-  starts over. So: `uv lock --project runtimes/torch --upgrade-package filelock --upgrade-package
-  setuptools`, then `npm run bench:runtime -- torch` for its report.

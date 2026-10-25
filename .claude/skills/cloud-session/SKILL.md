@@ -85,7 +85,10 @@ Then do the next action. While working:
   stop and add it to the spec's open questions rather than guessing.
 - **No GPU here.** For every acceptance criterion marked hardware, make sure the spec's
   Verification section gives the exact commands for `/local-session` and the report they write.
-  Mark those criteria "pending hardware" in the PR, never as passed.
+  Mark those criteria "pending hardware" in the PR, never as passed. A hardware step the spec
+  leaves for after its merge goes under "Waiting on a local session" in `docs/handoff.md`, in the
+  PR that marks the spec done: its branch, commands, what passing looks like and its report's
+  path, so a local session finds it.
 
 ## 7. Opening the PR
 

@@ -43,4 +43,5 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one
   by one, with AC8's measure pasted.
 - [ ] 13. After the merge, the local session in Verification on a machine with an NVIDIA card, and
-  its report under `specs/010-scheduler/reports/`.
+  its report under `specs/010-scheduler/reports/`: item 1 under "Waiting on a local session" in
+  `docs/handoff.md` gives its commands, what passing looks like, and its branch.
