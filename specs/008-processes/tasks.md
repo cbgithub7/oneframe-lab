@@ -43,5 +43,5 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   teardown; and
   `test_a_node_that_queries_its_stdin_does_not_hang`, under `stop_after`.
 - [x] 11. Docs: each one Design lists under "Docs that change".
-- [ ] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one by
+- [x] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one by
   one, with AC5 and AC6 from the Windows CI job.
