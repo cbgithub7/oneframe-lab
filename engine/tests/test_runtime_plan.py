@@ -125,7 +125,7 @@ def test_every_problem_in_a_definition_is_listed_at_once(
         "extensions.c is required, so it needs a needs: what building it takes",
         "extensions.d.class should be one of stand-in, optional, required",
         "sources[0].name should be one folder name",
-        "sources.up.url should be an http(s) address",
+        "sources.up.url should be an https address",
         "sources.up2.sha256 should be 64 lower-case hex digits",
         "env should map names to strings",
         "probe should read file.py:function, with the file in many/",
@@ -185,6 +185,14 @@ def test_a_runtime_id_must_match_its_folder(make_runtime: MakeRuntime, runtime_r
     (folder / "runtime.json").write_text(json.dumps(data), encoding="utf-8")
     [problems] = runtimes.discover([runtime_root]).problems.values()
     assert problems == ["id 'other' should match its folder, demo"]
+
+
+def test_a_source_that_is_not_https_is_refused(make_runtime: MakeRuntime, runtime_root: Path) -> None:
+    """A source is fetched as model files are, and never over plain http (spec 011, AC7)."""
+    source = {"name": "up", "url": "http://example.com/up.tar.gz", "sha256": "0" * 64}
+    make_runtime(_definition(sources=[source]))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems == ["sources.up.url should be an https address"]
 
 
 def test_builds_must_be_one_conflict_set(runtime_root: Path) -> None:

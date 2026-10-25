@@ -30,7 +30,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   hosts (the server tests through the driver); the three download tests moved to
   `test_runtime_sources.py`; AC4 to AC6 and the no-length test; the removed test;
   `test_there_is_one_stopped` naming the transport. AC2's command prints only `files.py`.
-- [ ] 9. If the owner said yes to question 1: `runtime.json` refuses a source that is not https,
+- [x] 9. If the owner said yes to question 1: `runtime.json` refuses a source that is not https,
   `test_a_source_that_is_not_https_is_refused`, and the definition test's expected problem.
 - [ ] 10. Docstrings: the transport's tripwire line and "the drive"; `runtime_install`'s resume;
   `models/__init__.py`.

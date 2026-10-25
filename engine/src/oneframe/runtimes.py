@@ -299,8 +299,8 @@ def _sources(rows: Any, problems: list[str]) -> tuple[Source, ...]:
             problems.append(f"{where} is listed twice")
             continue
         url = row.get("url")
-        if not isinstance(url, str) or not url.startswith(("https://", "http://")):
-            problems.append(f"{where}.url should be an http(s) address")
+        if not isinstance(url, str) or not url.startswith("https://"):  # what the transport fetches
+            problems.append(f"{where}.url should be an https address")
             continue
         sha = row.get("sha256")
         if not isinstance(sha, str) or not _SHA256.match(sha):
