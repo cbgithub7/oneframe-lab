@@ -10,7 +10,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   The cache, the store's `adopt`, jobs' verify, the transport's resume and `archives.sha256_of`'s
   callers use them; the old loops go. Move `test_hashing_stops_between_chunks` to `test_files.py`;
   the jobs test patches `jobs.sha256_file`.
-- [ ] 3. One move: `files.replace`, the store's rename with the folder rule, and
+- [x] 3. One move: `files.replace`, the store's rename with the folder rule, and
   `test_a_move_onto_an_existing_folder_is_never_tried_again`. `write_text`, `Store.place` (wrapping
   into `os_refused`), `archives.extract` and `cache.commit` use it; `_rename` and `_replace` go,
   the tests that patch them patch `files.replace`, and the store's placing test reads `os_refused`

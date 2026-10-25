@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.errors import ContractError
-from oneframe.files import is_temporary, sha256_file
+from oneframe.files import is_temporary, replace, sha256_file
 from oneframe.manifest import Manifest
 from oneframe.node import Value
 
@@ -166,7 +166,7 @@ class Cache:
             shutil.rmtree(work, ignore_errors=True)
         else:
             try:
-                work.replace(final)
+                replace(work, final)  # a folder that is there already is never waited for
             except OSError:
                 if not final.exists():
                     raise

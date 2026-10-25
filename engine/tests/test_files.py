@@ -47,7 +47,7 @@ def test_a_write_cut_short_leaves_the_old_file_whole(tmp_path: Path, monkeypatch
     def interrupted(_source: Path, _target: Path) -> None:  # written, and stopped before it lands
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(files, "_replace", interrupted)
+    monkeypatch.setattr(files, "replace", interrupted)
     with pytest.raises(KeyboardInterrupt):
         write_text(target, '{"id": "new"}\n')
     assert target.read_text(encoding="utf-8") == '{"id": "old"}\n'
@@ -196,3 +196,32 @@ def test_hashing_stops_between_chunks(tmp_path: Path) -> None:
     with pytest.raises(Stopped):
         sha256_file(path, stop, progress)
     assert seen == [files.CHUNK]
+
+
+def test_a_move_onto_an_existing_folder_is_never_tried_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows refuses to replace a folder as it refuses a file another program holds, and never
+    stops refusing: a cache entry another run finished first must not wait out the deadline."""
+    source, target = tmp_path / "work", tmp_path / "final"
+    for folder in (source, target):
+        folder.mkdir()
+        (folder / "outputs.json").write_text("{}", encoding="utf-8")
+    real = Path.replace
+    tries: list[Path] = []
+
+    def refused(self: Path, other: Path) -> Path:
+        tries.append(other)
+        if sys.platform != "win32":  # what Windows says; elsewhere a folder with files is ENOTEMPTY
+            raise PermissionError(13, "Access is denied", str(other))
+        return real(self, other)
+
+    def no_wait(_seconds: float) -> None:
+        raise AssertionError("a move onto a folder waited")
+
+    monkeypatch.setattr(Path, "replace", refused)
+    monkeypatch.setattr(files.time, "sleep", no_wait)
+    with pytest.raises(PermissionError):
+        files.replace(source, target, windows=True)
+    assert tries == [target]
+    assert (source / "outputs.json").is_file() and (target / "outputs.json").is_file()

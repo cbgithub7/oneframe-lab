@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.errors import Stopped  # raised when Stop is pressed during a download
-from oneframe.files import sha256_file
+from oneframe.files import replace, sha256_file
 
 CHUNK = 1 << 20
 TIMEOUT_S = 60
@@ -155,7 +155,7 @@ def extract(archive: Path, dest: Path) -> Path:
                 tar.extractall(work, filter="data")
         else:
             raise ArchiveError(f"{archive.name} is neither a tar nor a zip archive.")
-        _single_top(work).replace(dest)
+        replace(_single_top(work), dest)
         return dest
     finally:
         shutil.rmtree(work, ignore_errors=True)

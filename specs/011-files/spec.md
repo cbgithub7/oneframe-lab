@@ -159,6 +159,8 @@ has a source, so the spec that adds one makes the first download from GitHub's r
 - The two tree digests stay apart: one would change their order and bases, and so recorded hashes.
 - One deadline for every move, `write_text`'s too: the store's 10 s, about what uv waits.
 - A move onto an existing folder is never tried again: Windows can never replace a folder.
+- `files.replace` keeps the store's `windows` and `wait_s` for tests, and reads `MOVE_WAIT_S` when
+  called, so a test through `Store.place` can shorten the wait.
 - Free space joins `files.py`: a source's check would otherwise be a third walk to the same answer.
 - Sources reuse `transport.fetch`, and the transport stays in `oneframe/models/`: less churn.
 - The transport is kept: it passed the real hosts (spec 003's AC8), and urllib3 saves ~15 lines.
