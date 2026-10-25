@@ -1,6 +1,6 @@
 # 009: The node API
 
-Status: in progress (every task done; in review in [PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37))
+Status: done (merged 2026-10-25 in [PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37))
 Owner approval: 2026-10-18, every open question answered as recommended
 
 The third of eight clean-up specs (007 to 014), from section 3 of the
