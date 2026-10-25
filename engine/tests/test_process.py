@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, HostRuntimes, MakeNode
 
 import oneframe
 from oneframe.environment import child_env
@@ -28,11 +28,13 @@ from oneframe.executors import (
     ProcessExecutor,
     child_command,
     died_message,
+    run_probe,
 )
 from oneframe.graph import Graph
 from oneframe.node.job import Job
 from oneframe.processes import alive, wait_gone
-from oneframe.scheduler import RuntimeMissing, Scheduler
+from oneframe.runtimes import NoRuntimes
+from oneframe.scheduler import Scheduler
 
 
 def _runtime_node(make_node: MakeNode, node_id: str, code: str, **extra: object) -> None:
@@ -220,15 +222,23 @@ def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
             proc.wait()
 
 
+def test_a_probe_on_the_processor_sees_the_cards_its_runtime_does(tmp_path: Path) -> None:
+    """bench:fit's context probe runs "on the processor" so that nothing caps the card it measures;
+    were the cards hidden from it, as from a processor run, it would find none."""
+    folder = tmp_path / "probe"
+    folder.mkdir()
+    code = "import os\n\ndef run(ctx):\n    return {'cuda_visible': os.environ.get('CUDA_VISIBLE_DEVICES')}\n"
+    (folder / "probe.py").write_text(code, encoding="utf-8")
+    runtimes = HostRuntimes(env={"CUDA_VISIBLE_DEVICES": "1"})
+    done = run_probe(runtimes, "test", folder, "probe.py:run", device="cpu", params={"card": 1})
+    assert done.stats == {"cuda_visible": "1"}
+
+
 def test_a_missing_runtime_is_its_own_failure(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
     _runtime_node(make_node, "test.needs_runtime", "def run(ctx):\n" + WRITE)
-
-    def none(runtime: str) -> object:
-        raise RuntimeMissing(f"The runtime {runtime!r} is not installed.")
-
-    result = scheduler_for(runtime_python=none).run(_one("test.needs_runtime"), events.append)
+    result = scheduler_for(runtimes=NoRuntimes()).run(_one("test.needs_runtime"), events.append)
     assert result.error is not None and result.error["kind"] == "runtime"
 
 
@@ -518,16 +528,6 @@ def test_a_node_that_queries_its_stdin_does_not_hang(
     # whose C runtime counts every character device, the null one too, as a terminal.
     assert answers["mode"] == stat.S_IFCHR and answers["tty"] is (sys.platform == "win32")
     assert answers.get("type", 2) == 2
-
-
-def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:
-    pids: list[int] = []
-    seen: list[dict[str, object]] = []
-    body = "ctx.stage('pid', str(os.getpid()))\n"
-    ProcessExecutor(Path(sys.executable), on_pid=pids.append).execute(
-        _executor_job(tmp_path, body), seen.append, threading.Event()
-    )
-    assert len(pids) == 1 and str(pids[0]) == seen[0]["message"]
 
 
 @pytest.mark.parametrize(

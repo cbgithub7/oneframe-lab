@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, HostRuntimes, MakeNode
 from fixtures import fit_node, machines
 
 from oneframe import bench_fit
@@ -37,6 +37,7 @@ import hashlib, json, os
 from pathlib import Path
 
 def run(ctx):
+    ctx.stage("pid", str(os.getpid()))
     seen = {}
     for name in ("config", "weights"):
         path = ctx.file(name)
@@ -101,20 +102,16 @@ def graph(**params: Any) -> Graph:
     )
 
 
-def scheduler(
-    data: Path, node_root: Path, pids: list[int] | None = None, machine: dict[str, Any] | None = None
-) -> Scheduler:
+def scheduler(data: Path, node_root: Path, machine: dict[str, Any] | None = None) -> Scheduler:
     return for_root(
         data,
         discover([node_root]),
-        None,
+        HostRuntimes(),
         Cache(data / "cache"),
         machine=(lambda _cards: machine)
         if machine is not None
         else lambda _cards: machines.get("no GPU, 32 GB"),
-        runtime_python=lambda _runtime: Path(sys.executable),
         tmp_root=data / "cache" / "tmp" / "0",
-        on_pid=pids.append if pids is not None else None,
     )
 
 
@@ -126,9 +123,8 @@ def test_before_any_download_the_node_fails_with_kind_files_and_no_process_start
     tmp_path: Path, make_node: MakeNode, node_root: Path, events: Events
 ) -> None:
     reader_node(make_node)
-    pids: list[int] = []
-    result = scheduler(tmp_path / "data", node_root, pids).run(graph(), events.append)
-    assert result.status == "failed" and pids == [] and events.of("node.start") == []
+    result = scheduler(tmp_path / "data", node_root).run(graph(), events.append)
+    assert result.status == "failed" and events.of("stage") == [] and events.of("node.start") == []
     failed = failure(events)
     assert (failed["kind"], failed["reason"], failed["retry"]) == ("files", "not_downloaded", False)
     assert failed["bytes_left"] == len(CONFIG) + len(SMALL)
@@ -295,12 +291,8 @@ def test_bench_fit_reads_files_too(tmp_path: Path, make_node: MakeNode, node_roo
     data = tmp_path / "data"
     put(data, CONFIG, SMALL)
     manager = Runtimes(data, [tiny.parent], uv=sys.executable, profile=lambda: machines.get("no GPU, 32 GB"))
-    found = bench_fit.make_scheduler(
-        discover([node_root]),
-        manager,
-        tmp_path / "bench-cache",
-        runtime_python=lambda _r: Path(sys.executable),
-    )
+    manager.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
+    found = bench_fit.make_scheduler(data, discover([node_root]), manager, tmp_path / "bench-cache")
     report = bench_fit.bench_node(found, "test.reader", [{}])
     assert report["runs"][0]["status"] == "done", report["runs"][0]
 

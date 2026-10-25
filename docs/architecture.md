@@ -25,20 +25,20 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Registry | `oneframe/registry.py` | Find nodes by looking in folders; a broken node never hides the others |
 | Graph | `oneframe/graph.py` | Recipes (graphs as JSON); `plan()` checks them, inserts converters, orders them |
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params, input keys, the node's code and its runtime's build; atomic writes |
-| Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; checks every value at every port; carries trust; one retry after `oom` |
+| Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; asks the `Executors` it is given where each attempt runs; checks every value at every port; carries trust; one retry after `oom` |
 | Memory | `oneframe/memory.py` | A node's memory model; the estimate; the margins and the person's settings; the fit (pure); what each machine learns |
 | Errors | `oneframe/errors.py` | Every kind and reason of failure, declared once, and whose fault each is ([Failures](#failures)) |
-| Executors | `oneframe/executors.py`, `oneframe/child.py`, `oneframe/node/` | In-process or child-process runs; one node API and one runner either way, and the child a bootstrap that makes only `oneframe.node` importable |
+| Executors | `oneframe/executors.py`, `oneframe/child.py`, `oneframe/node/` | In-process or child-process runs behind one `Executor` Protocol; `OneProcessPerRun`, the engine's `Executors`, starts a child per attempt and hides the cards from a processor run; `run_probe` runs a runtime's own code for the benches; one node API and one runner either way, and the child a bootstrap that makes only `oneframe.node` importable |
 | Processes | `oneframe/processes.py` | The one module that starts, reads and ends processes: each in its own group, with no window, read as UTF-8; a kill ends the tree and waits for it |
 | Environment | `oneframe/environment.py`, `app/main/paths.js` | What every child inherits (never the engine's own Python or a hub token) and what the engine sets: a run offline, its writes under the root; uv's folders under the root |
-| Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
+| Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the executors its interpreter, variables and cache folder, and the scheduler its fit's target and cache key ([runtimes.md](runtimes.md)) |
 | Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, system memory (total and available), free disk |
 | Model store | `oneframe/models/` | The files nodes read ([spec 003](../specs/003-model-store/spec.md)): declared in manifests (`schema.py`), kept once each by sha256 under `models/` (`store.py`), fetched on `http.client` by a transport that heals itself (`transport.py`), as download and verify jobs (`jobs.py`), checked before a run (`runs.py`), listed and removed (`catalog.py`), pinned (`pin.py`); the two command-line tools (`tools.py`) |
 | Archives | `oneframe/archives.py` | Pinned downloads kept only when their sha256 matches; unpacking that stays inside its folder |
 | Layout | `oneframe/layout.py`, `app/main/paths.js`, `contracts/layout.json` | The data root, defined once, and every path under it; the root file and its format |
 | Files | `oneframe/files.py` | Writing a file in one step (`write_text`), the one JSON writer, which never replaces a newer format; operating-system locks |
 | Scratch | `oneframe/scratch.py` | Each process's locked folder under `cache/tmp/`; a start removes only dead processes' folders |
-| Journal | `oneframe/journal.py` | Every event of a run or an install, kept in a journal; journals and step logs pruned |
+| Journal | `oneframe/journal.py` | Every event of a run, an install or a model job, kept in a journal; journals and step logs pruned when one opens; one helper ends each after its place is free |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
 | Server | `oneframe/server.py` | The engine's NDJSON protocol |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py` | The reports a hardware claim needs: a runtime's install, and a node's memory on a card |
@@ -134,14 +134,21 @@ its job id, which every event carries ([spec 003](../specs/003-model-store/spec.
 failed file's kind and reason) | `model.stopped`, each listing every file's outcome. `downloading`,
 `retrying` and a failed file name the hosts that attempt asked, in order: names and ports, never a
 path or a query, since a signed URL's are a credential. `models.stop`
-ends a job within 2 s and keeps its partial; one job runs at a time across processes. A job lets go
-of the store before its ending is sent, so the next may be asked for on hearing it; its events may
-then come before that ending, and a listener tells jobs apart by `job`.
+ends a job within 2 s and keeps its partial; one job runs at a time across processes.
 `models.list` answers what the store holds for each node, by shared files and by checkpoint, and
 what no node pins, without the network; `models.remove {node, checkpoint?}` or
 `{unpinned: [...]}` deletes only that, keeping a file another node pins, and is refused while the
 registry has problems, a folder of nodes is missing, a job runs, or a running graph may read the
 file. None of these is on the page's method list yet.
+
+**An ending is sent after its place is free** (`journal.end_when_free`, spec 010). A run lets go of
+its list of the files it reads and of the engine's run slot, an install of its slot and its
+runtime's lock, and a job of the store's lock, each after its ending is in the journal and before it
+is sent, an engine crash's ending too. So a page that acts on hearing one (a next run, the same
+install again, removing the run's runtime or a file it read) is answered, not refused `busy` or
+`in_use`. A next run's or job's first events may then come before the last one's ending, told apart
+by `run` or `job`; a next install's never do, since an install lets go and sends under its claim
+lock.
 
 ## Failures
 

@@ -41,6 +41,7 @@ from oneframe.memory import LearnedStore, read_settings
 from oneframe.models.catalog import listing, remove_node, remove_unpinned
 from oneframe.models.jobs import Jobs
 from oneframe.models.runs import in_use
+from oneframe.node import Emit
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, Runtimes, find_uv
 from oneframe.scheduler import for_root
@@ -65,7 +66,7 @@ class Engine:
         self,
         data: Path,
         node_roots: list[Path],
-        say: Callable[[dict[str, Any]], None],
+        say: Emit,
         runtime_roots: list[Path] | None = None,
         uv: str | None = None,
         uv_home: Path | None = None,
@@ -199,15 +200,20 @@ class Engine:
         run_id = uuid.uuid4().hex[:12]
         stop = threading.Event()
 
+        def release() -> None:
+            """The run slot, before the run's ending is sent, so a page that acts on hearing it is
+            not refused; only while it is still this run's, since a next run may have taken it."""
+            with self._lock:
+                if self._run is not None and self._run[0] == run_id:
+                    self._run = None
+
         def work() -> None:
             try:
-                self.scheduler.run(graph, self.say, stop, run_id)
-            except Exception as exc:  # a bug, not a node failure: say so rather than die silently
+                self.scheduler.run(graph, self.say, stop, run_id, release)
+            except Exception:  # a bug, not a node failure: journalled, and said once the slot was free
                 LOGGER.exception("run %s crashed", run_id)
-                self.say(engine_crash(exc, event="run.failed", run=run_id))  # the run's journal has it too
             finally:
-                with self._lock:
-                    self._run = None
+                release()
 
         thread = threading.Thread(target=work, name=f"run-{run_id}", daemon=True)
         with self._lock:  # the run and its thread are recorded together, so shutdown sees both

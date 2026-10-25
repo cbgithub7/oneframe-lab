@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -15,9 +17,11 @@ from conftest import NO_GPU, Events
 
 from oneframe import diagnose, journal, runtime_install
 from oneframe.cache import Cache
+from oneframe.executors import ProcessExecutor
 from oneframe.graph import Graph
 from oneframe.journal import Journal, prune
 from oneframe.layout import Layout
+from oneframe.node.job import Job
 from oneframe.runtimes import Runtimes
 from oneframe.scheduler import Scheduler
 
@@ -85,6 +89,47 @@ def test_pruning_keeps_its_bound(tmp_path: Path) -> None:
     os.utime(big, ns=(10**12, 10**12))
     prune(tmp_path, keep=10, max_bytes=100, pattern="*.ndjson")
     assert [p.name for p in tmp_path.iterdir()] == ["99.ndjson"]  # the newest stays, whatever its size
+
+
+def test_an_ending_the_journal_cannot_take_still_lets_go_and_is_sent(tmp_path: Path) -> None:
+    """A message the journal cannot write (a lone surrogate, as an fsdecoded path can hold) still lets
+    go of the place and reaches the listener, and the error goes on up."""
+    released: list[bool] = []
+    sent: list[dict[str, Any]] = []
+    ending = {"event": "runtime.failed", "message": "bad path /data/\udcff"}
+    with pytest.raises(UnicodeEncodeError):
+        journal.end_when_free(
+            sent.append,
+            tmp_path,
+            "install-x",
+            lambda _emit: (None, ending),
+            lambda: released.append(True),
+            lambda exc: {"event": "runtime.failed", "message": str(exc)},
+        )
+    assert released == [True] and sent == [ending]
+    assert "can't encode" in _journal_events(tmp_path)[-1]["message"]  # the journal keeps why
+
+
+def test_a_new_step_log_prunes_the_old(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Step logs are bounded as journals are: the executor that opens one prunes the old first, so a
+    bench's step logs are bounded too, not only a run's."""
+    monkeypatch.setattr(journal, "STEP_LOGS_KEEP", 3)
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    for age in range(5):
+        old = logs / f"old-{age}.log"
+        old.write_text("x\n", encoding="utf-8")
+        os.utime(old, ns=((age + 1) * 10**9, (age + 1) * 10**9))  # old-0 the oldest
+    folder = tmp_path / "node"
+    folder.mkdir()
+    code = "import sys\n\ndef run(ctx):\n    print('into the log', file=sys.stderr)\n"
+    (folder / "node.py").write_text(code, encoding="utf-8")
+    job = Job(
+        node="test.log", folder=folder, entry="node.py:run", out_dir=tmp_path / "out", run="r", step="s"
+    )
+    ProcessExecutor(Path(sys.executable), log_dir=logs).execute(job, lambda _e: None, threading.Event())
+    assert sorted(p.name for p in logs.iterdir()) == ["old-3.log", "old-4.log", "r-s.log"]
+    assert "into the log" in (logs / "r-s.log").read_text(encoding="utf-8")
 
 
 def test_a_new_journal_prunes_the_old_and_a_full_one_stops(

@@ -4,6 +4,7 @@ shut (AC4, AC6)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import queue
 import socket
@@ -20,6 +21,8 @@ from conftest import NO_GPU, Events, MakeNode, SourceServer, add_source, upstrea
 from fixtures import fit_node, machines
 
 from oneframe import BUILTIN_NODES_DIR, runtime_install
+from oneframe.errors import Stopped
+from oneframe.models.store import Store
 from oneframe.server import Engine
 
 WAIT_S = 180  # the first install in a session fetches Python 3.11
@@ -296,11 +299,129 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
     engine.handle({"id": 4, "method": "run.stop", "params": {}})
     while not events.of("run.stopped") and time.monotonic() < end:
         time.sleep(0.1)
-    assert events.of("run.stopped")
-    while engine._run is not None and time.monotonic() < end:
-        time.sleep(0.05)
+    assert events.of("run.stopped")  # sent once the run let go of its runtime
     removed = engine.handle({"id": 5, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
     assert removed is not None and removed["result"]["removed"] is not None
+
+
+def _until(check: Callable[[], bool], what: str, seconds: float = WAIT_S) -> None:
+    end = time.monotonic() + seconds
+    while not check():
+        assert time.monotonic() < end, f"{what} did not happen"
+        time.sleep(0.05)
+
+
+def _one(node: str, **params: Any) -> dict[str, Any]:
+    return {"version": 1, "nodes": {"n": {"node": node, "params": params}}, "edges": []}
+
+
+WRITES = "    p = ctx.path('t.txt')\n    p.write_text('x', encoding='utf-8')\n    ctx.output('text', p)\n"
+
+
+@pytest.mark.parametrize(
+    "ending", ["runtime.stopped", "runtime.failed", "run.done", "run.stopped", "run.failed"]
+)
+def test_an_ending_is_sent_after_its_place_is_free(
+    ending: str,
+    tmp_path: Path,
+    tiny: Path,
+    uv_exe: str,
+    uv_home: Path,
+    make_node: MakeNode,
+    node_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A listener that acts on hearing an ending is answered, never refused busy or in_use: on an
+    install's, the same install again; on a run's, removing a file it read and the runtime it used,
+    and a next run."""
+    weights = b"what the run reads\n" * 64
+    sha = hashlib.sha256(weights).hexdigest()
+    make_node(
+        {
+            "id": "test.reads_in_tiny",
+            "version": "1",
+            "title": "Reads",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "params": {
+                "end": {"type": "choice", "choices": ["done", "stopped", "failed"], "default": "done"}
+            },
+            "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
+            "devices": ["cpu"],
+            "files": [
+                {
+                    "name": "weights",
+                    "url": "https://files.example/w.pt",
+                    "size": len(weights),
+                    "sha256": sha,
+                    "format": "other",
+                }
+            ],
+        },
+        "import time\n\ndef run(ctx):\n"
+        "    ctx.file('weights').read_bytes()\n"
+        "    if ctx.params['end'] == 'failed':\n        raise ValueError('as the test asks')\n"
+        "    if ctx.params['end'] == 'stopped':\n        ctx.stage('wait')\n        time.sleep(60)\n"
+        + WRITES,
+    )
+    make_node(
+        {"id": "test.next", "version": "1", "title": "Next", "category": "test", "outputs": {"text": "Text"}},
+        "def run(ctx):\n" + WRITES,
+    )
+    events = Events()
+    asked: dict[str, dict[str, Any]] = {}
+    answered = threading.Event()
+
+    def ask(method: str, **params: Any) -> dict[str, Any]:
+        return engine.handle({"id": 1, "method": method, "params": params}) or {}
+
+    def listen(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] != ending or answered.is_set():
+            return
+        if ending.startswith("runtime."):
+            asked["install"] = ask("runtimes.install", runtime="tiny")
+        else:
+            asked["file"] = ask("models.remove", node="test.reads_in_tiny")
+            asked["runtime"] = ask("runtimes.remove", runtime="tiny")
+            asked["run"] = ask("graph.run", graph=_one("test.next"))
+        answered.set()
+
+    engine = Engine(tmp_path / "data", [node_root], listen, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU)
+    try:
+        if ending.startswith("runtime."):
+
+            def install(*_args: Any, **_kw: Any) -> dict[str, Any]:  # how the install ends, at once
+                if ending == "runtime.stopped":
+                    raise Stopped()
+                raise runtime_install.InstallFailed("as the test asks", "")
+
+            monkeypatch.setattr(runtime_install, "install", install)
+            assert "result" in ask("runtimes.install", runtime="tiny")
+            assert answered.wait(30)
+            assert "result" in asked["install"], asked
+            _until(lambda: len(events.of(ending)) == 2, "the end of the install asked for")
+            return
+        store = Store(engine.data)
+        store.claim()
+        store.partial(sha).parent.mkdir(parents=True, exist_ok=True)
+        store.partial(sha).write_bytes(weights)
+        store.place(store.partial(sha), sha)
+        engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
+        end = ending.removeprefix("run.")
+        assert "result" in ask("graph.run", graph=_one("test.reads_in_tiny", end=end))
+        if end == "stopped":
+            _until(lambda: bool(events.of("stage")), "the node's stage")
+            ask("run.stop")
+        assert answered.wait(WAIT_S)
+        assert [row["sha256"] for row in asked["file"]["result"]["removed"]] == [sha], asked
+        assert asked["runtime"]["result"] == {"runtime": "tiny", "removed": None}, asked
+        following = asked["run"]["result"]["run"]
+        _until(
+            lambda: any(e.get("run") == following and e["event"] == "run.done" for e in events), "a next run"
+        )
+    finally:
+        engine.shutdown()
 
 
 def test_an_engine_that_shuts_down_stops_its_install(
@@ -388,7 +509,7 @@ def _run_graph(engine: Engine, events: Events, node: str, **params: Any) -> list
             for e in events
             if e.get("run") == run and e["event"] in ("run.done", "run.failed", "run.stopped")
         ]
-        if ended and engine._run is None:
+        if ended:
             return [e for e in events if e.get("run") == run]
         time.sleep(0.05)
     raise TimeoutError(f"run {run} did not end")
@@ -464,7 +585,10 @@ def test_ac3_a_second_oom_another_failure_or_stop_ends_the_node(
     ):
         time.sleep(0.05)
     engine.handle({"id": 3, "method": "run.stop", "params": {}})
-    while engine._run is not None and time.monotonic() < end:
+    while (
+        not [e for e in events if e.get("run") == run_id and e["event"] == "run.stopped"]
+        and time.monotonic() < end
+    ):
         time.sleep(0.05)
     stopped = [e for e in events if e.get("run") == run_id]
     assert stopped[-1]["event"] == "run.stopped" and _kinds(stopped) == ["node.fit", "node.start"]

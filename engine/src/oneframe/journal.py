@@ -6,8 +6,13 @@ one JSON object per line, each with the time it was written, in the order they w
 a first line that says the journal's format. A journal stops taking progress at JOURNAL_MAX_BYTES,
 saying so, but still takes how the run or install ended (`*.failed`, `*.done`, `*.stopped`).
 
-Journals and the per-step logs (`logs/steps/`) are pruned when a journal opens: the newest are
-kept, up to a count and a total size set here, so evidence never fills the disk.
+A run, an install and a model job end through `end_when_free`: the ending is written to the journal,
+then the place it held is let go of, then the ending is sent, so a listener that acts on hearing it
+is not refused.
+
+Journals are pruned when one opens, and the per-step logs (`logs/steps/`) when one opens (by the
+executor that opens it): the newest are kept, up to a count and a total size set here, so evidence
+never fills the disk.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from oneframe.errors import failure
+from oneframe.node import Emit
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +42,6 @@ ENDINGS_MAX_BYTES = 2**20  # what a full journal may still take of them
 STEP_LOGS_KEEP = 200
 STEP_LOGS_MAX_BYTES = 128 * 2**20
 
-Emit = Callable[[dict[str, Any]], None]
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -149,6 +154,65 @@ def journalled(
         journal.close()
 
 
+def end_when_free[T](
+    emit: Emit,
+    folder: Path | None,
+    what: str,
+    work: Callable[[Emit], tuple[T, dict[str, Any]]],
+    release: Callable[[], None],
+    crashed: Callable[[BaseException], dict[str, Any]],
+    *,
+    under: contextlib.AbstractContextManager[Any] | None = None,
+) -> T:
+    """Run `work` with `emit` journalled, as `journalled` does, and end it: the ending it returns
+    beside its result is written to the journal as its last line, then `release` lets go of the
+    run's, install's or job's place, then the ending is sent, so whoever hears it may take the place
+    at once. When `work` raises (an engine bug), the ending is `crashed(exc)`, ended the same way
+    before the error goes on up. The place is let go of and the ending sent whatever the journal
+    does, and an ending that cannot be journalled or sent leaves why in the journal. `under` is held
+    while the place is let go of and the ending sent: an install's events carry no id, so the next
+    install waits to start until this one's ending is out."""
+    held = under if under is not None else contextlib.nullcontext()
+    freed = False
+    journal: Journal | None = None
+
+    def end(ending: dict[str, Any]) -> None:
+        nonlocal freed
+        with held:
+            try:
+                if journal is not None:
+                    journal.write(ending)  # the journal ends with it, before anyone has heard it
+            finally:
+                freed = True
+                try:
+                    release()
+                finally:
+                    emit(ending)
+
+    try:
+        journal = Journal(folder, what) if folder is not None else None
+        try:
+            result, ending = work(journal.wrap(emit) if journal is not None else emit)
+        except Exception as exc:
+            end(crashed(exc))
+            raise
+        try:
+            end(ending)
+        except Exception as exc:  # the ending could not be sent: the journal keeps why
+            if journal is not None:
+                journal.write(crashed(exc))
+            raise
+        return result
+    finally:
+        try:
+            if not freed:  # whatever went wrong before the ending, the place is let go of
+                with held:
+                    release()
+        finally:
+            if journal is not None:
+                journal.close()
+
+
 def engine_crash(exc: BaseException, **fields: Any) -> dict[str, Any]:
     """The failure an engine bug is reported as, with its trace: call it while handling `exc`."""
     message = f"{type(exc).__name__}: {exc}"
@@ -156,5 +220,6 @@ def engine_crash(exc: BaseException, **fields: Any) -> dict[str, Any]:
 
 
 def prune_step_logs(folder: Path | None) -> None:
+    """Before a step's log opens, so that with it there are at most STEP_LOGS_KEEP."""
     if folder is not None:
-        prune(folder, STEP_LOGS_KEEP, STEP_LOGS_MAX_BYTES, "*.log")
+        prune(folder, STEP_LOGS_KEEP - 1, STEP_LOGS_MAX_BYTES, "*.log")

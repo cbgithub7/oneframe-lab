@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import AMPERE, NO_GPU, Events, MakeNode
+from conftest import AMPERE, NO_GPU, Events, HostRuntimes, MakeNode
 
 from oneframe import runtime_install
 from oneframe.cache import KEY_VERSION, Cache
@@ -150,7 +150,7 @@ def test_a_runtime_node_runs_again_when_its_runtime_changes(
         "    p = ctx.path('t.txt')\n    p.write_text('x', encoding='utf-8')\n    ctx.output('text', p)\n",
     )
     built = {"build": "cpu", "lock_sha256": "a"}
-    scheduler = scheduler_for(runtime_key=lambda _runtime: dict(built))
+    scheduler = scheduler_for(runtimes=HostRuntimes(key=built))
     graph = Graph.from_json({"version": 1, "nodes": {"n": {"node": "test.in_runtime"}}, "edges": []})
 
     def ran() -> bool:

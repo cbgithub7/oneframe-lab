@@ -128,9 +128,7 @@ def test_an_engine_gives_each_runtime_node_its_runtimes_cache_folder(tmp_path: P
     engine = Engine(tmp_path, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU)
     try:
         engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
-        engine.scheduler.runtime_python = engine.runtimes.python_for
         engine.runtimes.env_for = lambda _r: {}  # type: ignore[method-assign]
-        engine.scheduler.runtime_env = engine.runtimes.env_for
         folder = tmp_path / "node"
         folder.mkdir()
         (folder / "node.py").write_text("def run(ctx):\n    pass\n", encoding="utf-8")
@@ -143,13 +141,13 @@ def test_an_engine_gives_each_runtime_node_its_runtimes_cache_folder(tmp_path: P
             "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
         }
         manifest = parse(row, folder)
-        executor = engine.scheduler._executor(manifest, "cpu")
+        executor = engine.scheduler.executors.executor(manifest, "cpu")
         assert isinstance(executor, ProcessExecutor)
         assert executor.caches == Layout(tmp_path).runtime_caches / "tiny"
         assert executor.tmp_root == engine.scratch.folder
         # A runtime node's cache key takes the build and marker hashes from the engine's runtimes;
         # the scheduler's default (no runtime part) would serve results from before a reinstall.
-        assert engine.scheduler.runtime_key == engine.runtimes.key_for
+        assert engine.scheduler.runtimes is engine.runtimes
     finally:
         engine.shutdown()
 

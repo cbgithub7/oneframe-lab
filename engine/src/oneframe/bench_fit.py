@@ -46,15 +46,14 @@ from typing import Any
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
 from oneframe.cache import Cache
 from oneframe.environment import child_env
-from oneframe.executors import NodeError, ProcessExecutor
+from oneframe.executors import NodeError, run_probe
 from oneframe.graph import Graph
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
-from oneframe.node.job import Job
 from oneframe.processes import Child
 from oneframe.registry import Registry, discover
-from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
+from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, RuntimeSide, find_uv
 from oneframe.scheduler import Scheduler, for_root
 from oneframe.scratch import for_tool
 
@@ -171,12 +170,11 @@ class _Unlearned(LearnedStore):
 
 
 def make_scheduler(
+    data: Path | None,
     registry: Registry,
-    manager: Runtimes | None,
+    runtimes: RuntimeSide | None,
     cache_root: Path,
     settings: Callable[[], Settings] = Settings,
-    on_pid: Callable[[int], None] | None = None,
-    runtime_python: Callable[[str], Path] | None = None,
     tmp_root: Path | None = None,
 ) -> Scheduler:
     """A scheduler for the bench, built as the engine's is (scheduler.for_root), so a node reads its
@@ -184,19 +182,17 @@ def make_scheduler(
     served), nothing learned (estimates stay uncorrected), and the person's settings left alone."""
 
     def machine(cards: bool) -> dict[str, Any]:
-        return hardware.profile(manager.data if manager else None, cards=cards)
+        return hardware.profile(data, cards=cards)
 
     return for_root(
-        manager.data if manager else None,
+        data,
         registry,
-        manager,
+        runtimes,
         Cache(cache_root),
         machine=machine,
         settings=settings,
         learned=_Unlearned(),
         tmp_root=tmp_root,
-        on_pid=on_pid,
-        runtime_python=runtime_python,
     )
 
 
@@ -318,24 +314,11 @@ def three_settings(
 
 
 def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
-    python = manager.python_for("torch")
-    with tempfile.TemporaryDirectory(prefix="oneframe-context-") as out:
-        job = Job(
-            node="probe:context",
-            folder=plan.folder,
-            entry=plan.context,
-            out_dir=Path(out),
-            run="bench",
-            step="context",
-            params={"card": card},
-            device="cpu",  # no cap: the probe starts CUDA itself, after its first reading
-        )
-        try:
-            done = ProcessExecutor(
-                python, env=manager.env_for("torch"), caches=manager.caches_for("torch")
-            ).execute(job, lambda _e: None, threading.Event())
-        except NodeError as exc:
-            return {"why": f"{exc.kind}: {exc}"}
+    try:
+        # On the processor, so no cap: the probe starts CUDA itself, after its first reading.
+        done = run_probe(manager, "torch", plan.folder, plan.context, device="cpu", params={"card": card})
+    except NodeError as exc:
+        return {"why": f"{exc.kind}: {exc}"}
     return dict(done.stats)
 
 
@@ -392,7 +375,7 @@ def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
         return record
     record["card"] = card
     registry = discover([plan.folder.parent])
-    scheduler = make_scheduler(registry, manager, cache_root)
+    scheduler = make_scheduler(manager.data, registry, manager, cache_root)
     manifest = registry.get(plan.node)
     model = manifest.memory
     assert model is not None
@@ -743,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 print(str(exc), file=sys.stderr)
                 return 2
-            scheduler = make_scheduler(registry, manager, work / "cache", tmp_root=mine.folder)
+            scheduler = make_scheduler(data, registry, manager, work / "cache", tmp_root=mine.folder)
             record.update(bench_node(scheduler, args.node, groups))
     path = report_path(args.out or Layout(data).reports, record)
     path.parent.mkdir(parents=True, exist_ok=True)

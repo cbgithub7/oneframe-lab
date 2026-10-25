@@ -1,7 +1,9 @@
 """Where a node's code runs: in the engine's own process, or in a child in the node's runtime.
 
-Both take the same `Job` and give the same `Done` (oneframe/node/job.py), so the scheduler does not
-care which.
+Both are an `Executor`: they take the same `Job` and give the same `Done` (oneframe/node/job.py), so
+the scheduler does not care which. It asks its `Executors` for one at each attempt; the engine's is
+`OneProcessPerRun`, and spec 004's worker pool is another. `run_probe` runs a runtime's own code, for
+the benches.
 The engine process runs only light nodes (sources, converters, evaluators) whose code ships with
 the app. Anything that imports a model library runs in a child: a different interpreter with its
 own packages, started per node run and, on Stop, ended outright with every process it started -- a
@@ -21,18 +23,22 @@ import sys
 import tempfile
 import threading
 from collections import deque
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from oneframe.environment import child_env
 from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
-from oneframe.node import Stopped, failures
+from oneframe.journal import prune_step_logs
+from oneframe.node import Emit, Stopped, failures
 from oneframe.node.job import Done, Job
 from oneframe.node.runner import run_job
 from oneframe.node.usage import PEAKS
 from oneframe.processes import Child
+
+if TYPE_CHECKING:
+    from oneframe.manifest import Manifest
+    from oneframe.runtimes import RuntimeSide
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(__file__).resolve().parent / "child.py"  # started by path, never imported
@@ -44,9 +50,6 @@ def child_command(python: Path, job: Path, exit_with_parent: bool = False) -> li
     when its stdin closes, so it needs a stdin pipe the parent holds."""
     flag = ["--exit-with-parent"] if exit_with_parent else []
     return [str(python), "-P", "-u", str(CHILD), *flag, str(job)]
-
-
-Emit = Callable[[dict[str, Any]], None]
 
 
 class NodeError(Failure):
@@ -150,7 +153,6 @@ class ProcessExecutor:
         env: dict[str, str] | None = None,
         base_env: dict[str, str] | None = None,
         log_dir: Path | None = None,
-        on_pid: Callable[[int], None] | None = None,
         tmp_root: Path | None = None,
         caches: Path | None = None,
     ):
@@ -162,7 +164,6 @@ class ProcessExecutor:
         self.env = dict(env or {})
         self.base_env = base_env
         self.log_dir = log_dir
-        self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
     def execute(self, job: Job, emit: Emit, stop: threading.Event) -> Done:
         tmp = Path(tempfile.mkdtemp(prefix="job-", dir=self.tmp_root))
@@ -171,6 +172,7 @@ class ProcessExecutor:
         log = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
+            prune_step_logs(self.log_dir)
             log = self.log_dir / f"{job.run or 'run'}-{job.step or 'node'}.log"
         tail = _Tail(log)
         try:
@@ -200,8 +202,6 @@ class ProcessExecutor:
                     kind = event.get("event")
                     if kind == "pid":
                         interpreter.append(int(event["pid"]))
-                        if self.on_pid is not None:
-                            self.on_pid(interpreter[-1])
                     elif kind == "done":
                         done = Done.from_event(event)
                     elif kind == "error":
@@ -228,3 +228,77 @@ class ProcessExecutor:
         finally:
             tail.close()
             _remove(tmp)
+
+
+class Executor(Protocol):
+    """Runs one job and gives its result, or raises NodeError or Stopped."""
+
+    def execute(self, job: Job, emit: Emit, stop: threading.Event) -> Done: ...
+
+
+class Executors(Protocol):
+    """Where a node runs, asked for each attempt, so a retry after `oom` can get a new process.
+    Raises RuntimeMissing when the node's runtime cannot run here."""
+
+    def executor(self, manifest: Manifest, device: str) -> Executor: ...
+
+
+class OneProcessPerRun:
+    """An engine node in the engine's own process; a runtime node in a new child of its runtime for
+    each attempt, from the runtime's interpreter, variables and cache folder. A child on the
+    processor sees no card: the process that runs a job hides them, not the job."""
+
+    def __init__(self, runtimes: RuntimeSide, *, tmp_root: Path | None = None, log_dir: Path | None = None):
+        self.runtimes = runtimes
+        self.tmp_root = tmp_root  # where each job's own folder is made
+        self.log_dir = log_dir  # where each step's log is kept
+        self.engine = EngineExecutor()
+
+    def executor(self, manifest: Manifest, device: str) -> Executor:
+        if manifest.run.where == "engine":
+            return self.engine
+        hidden = {"CUDA_VISIBLE_DEVICES": "-1"} if device == "cpu" else {}
+        return _in_runtime(self.runtimes, str(manifest.run.runtime), hidden, self.tmp_root, self.log_dir)
+
+
+def run_probe(
+    runtimes: RuntimeSide,
+    runtime_id: str,
+    folder: Path,
+    entry: str,
+    *,
+    device: str,
+    params: dict[str, Any] | None = None,
+    log_dir: Path | None = None,
+) -> Done:
+    """Run a runtime's own code (its probe, or a bench's) as a job in a child of that runtime, and
+    give its `Done`. It never hides the cards, even on the processor: a probe that measures a card
+    starts CUDA itself, uncapped."""
+    with tempfile.TemporaryDirectory(prefix="oneframe-probe-") as out:
+        job = Job(
+            node=f"probe:{runtime_id}",
+            folder=folder,
+            entry=entry,
+            out_dir=Path(out),
+            run="bench",
+            step="probe",
+            params=dict(params or {}),
+            device=device,
+        )
+        executor = _in_runtime(runtimes, runtime_id, {}, None, log_dir)
+        return executor.execute(job, lambda _e: None, threading.Event())
+
+
+def _in_runtime(
+    runtimes: RuntimeSide, runtime_id: str, env: dict[str, str], tmp_root: Path | None, log_dir: Path | None
+) -> ProcessExecutor:
+    """A child of a runtime, with `env` over the runtime's own variables. The interpreter is asked
+    for first, so a runtime that cannot run here says why before anything else is read."""
+    python = runtimes.python_for(runtime_id)
+    return ProcessExecutor(
+        python,
+        env={**runtimes.env_for(runtime_id), **env},
+        log_dir=log_dir,
+        tmp_root=tmp_root,
+        caches=runtimes.caches_for(runtime_id),
+    )
