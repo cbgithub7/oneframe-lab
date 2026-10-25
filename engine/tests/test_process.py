@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode, wait_gone
+from conftest import Events, MakeNode
 
 from oneframe.environment import child_env
 from oneframe.executors import (
@@ -26,6 +26,7 @@ from oneframe.executors import (
     died_message,
 )
 from oneframe.graph import Graph
+from oneframe.processes import wait_gone
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
 

@@ -22,7 +22,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 4. One stop type, as Design's Stop item says, and the tests' stop callables become events as
   Tests lists (the two scheduler tests that count calls set theirs from the listener). AC3's command
   prints nothing.
-- [ ] 5. `oneframe/processes.py`: `Child`, `run`, `output`, `alive` and `wait_gone`, with
+- [x] 5. `oneframe/processes.py`: `Child`, `run`, `output`, `alive` and `wait_gone`, with
   `engine/tests/test_processes.py` (`test_stop_during_a_step_ends_its_whole_tree`, AC7;
   `test_every_start_gets_its_own_group_and_no_window`; `test_kill_waits_for_the_processes_it_is_told_of`;
   `test_kill_after_the_end_never_raises`). `conftest.py` imports `alive` (its `process_alive`) and
