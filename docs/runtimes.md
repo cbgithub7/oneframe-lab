@@ -155,7 +155,7 @@ Nothing is installed until a person asks. The engine picks the build this machin
   system releases the lock when its holder dies.
 - **What a run writes** stays under the root: the child's library caches go to
   `cache/runtime/<id>/`, its temporary files to its job's folder, and it writes no bytecode
-  (`executors.child_env`). A node's cache key includes the build and the marker's hashes, so a
+  (`environment.child_env`). A node's cache key includes the build and the marker's hashes, so a
   rebuilt runtime never serves results from before.
 - **Several cards:** the build is planned for the NVIDIA card with the most memory, and a node's
   child sees only that card (`CUDA_DEVICE_ORDER=PCI_BUS_ID`, `CUDA_VISIBLE_DEVICES`), so its

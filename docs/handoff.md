@@ -72,9 +72,7 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop` (review of 2026-10-02, 4.2);
     - pyright on the first node that imports torch, and a CI job with real torch on the processor
       (review of 2026-10-02, 4.11); CI does not start the app either;
-    - `models.*` and `nodes.fit` are not on the page's method list;
-    - on Windows a Stop kills a node's venv launcher and at once removes its folder, while the
-      interpreter behind it may still be ending (unverified there; spec 008).
+    - `models.*` and `nodes.fit` are not on the page's method list.
 - **MoGe-3 may not run on older cards, or on Windows.** Its code imports FlexGEMM, built on
   Triton, which supports NVIDIA cards from compute 8.0 and publishes Linux wheels only; FlexGEMM
   runs only in MoGe-3's optional refinement, and the `moge` package requires it for every version.

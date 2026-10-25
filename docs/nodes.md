@@ -109,8 +109,8 @@ the run fails with kind `node`, and the person reads the message as written, wha
 Called while handling an out-of-memory error, it keeps kind `oom`, so the engine can retry with a
 smaller fit; to refuse for good instead, call it after the `except` block. Any other error is
 reported with its type. Stop ends a runtime
-node's process at once; a node in the engine's process is stopped only where it calls
-`ctx.check_stop()`. Node code never imports the engine: in a runtime, `import models` finds the
+node's process at once, with every process it started; a node in the engine's process is stopped
+only where it calls `ctx.check_stop()`. Node code never imports the engine: in a runtime, `import models` finds the
 runtime's package of that name. A run is cached by its inputs and output-affecting params, so it
 must be deterministic for them (seed any randomness from a `seed` parameter).
 

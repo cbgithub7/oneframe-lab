@@ -28,10 +28,7 @@ person sees changes, except where a spec's answered questions say; the node cont
     - `oneframe/manifest.py` imports all of memory, the learned store and settings included, to
       parse a manifest (012).
 - **One way each** (review of 2026-10-02, 4.5):
-    - the variables kept from children, two lists today that differ in members and in case (008);
-    - starting a process, reading its lines, and killing it, three ways (008);
-    - `NO_WINDOW` and stop signalling (008); the `Emit` alias (010); a rename retry on Windows
-      (011);
+    - the `Emit` alias (010); a rename retry on Windows (011);
     - a file's sha256, computed in five places (011);
     - downloads: runtime sources still use urllib, without resume (`oneframe/archives.py`) (011);
     - a job's dict, built in three places and read untyped (009);
@@ -46,8 +43,6 @@ person sees changes, except where a spec's answered questions say; the node cont
   urllib3 past about 600 lines, and it is 754. Keep it (it passed the real hosts), record why, and
   add nothing more to it.
 - **Tests:**
-    - a Stop hang on Windows, which failed CI twice in its last 100 runs: two bugs already fixed,
-      so guards in place of a fix (008);
     - shared helpers for the model tests (014);
     - the footprint test tells our writes from another program's without checking less (it failed
       once on a runner's own Firefox), and reads the data root's exceptions as data. Narrowing it
