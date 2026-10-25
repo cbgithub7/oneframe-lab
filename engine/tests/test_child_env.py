@@ -64,7 +64,9 @@ def test_a_persons_own_hub_and_triton_caches_never_reach_a_child(tmp_path: Path)
 
 
 def test_uv_never_sees_the_engines_bytecode_prefix() -> None:
-    env = uv_environment(Path("/root/uv"), base={"PYTHONPYCACHEPREFIX": "/x", "KEEP": "1"})
+    env = uv_environment(
+        Path("/root/uv/cache"), Path("/root/uv/python"), base={"PYTHONPYCACHEPREFIX": "/x", "KEEP": "1"}
+    )
     assert "PYTHONPYCACHEPREFIX" not in env and env["KEEP"] == "1"
 
 
@@ -81,7 +83,8 @@ def test_uv_and_runs_drop_the_same_names_in_any_case(tmp_path: Path) -> None:
         "Path": os.pathsep.join([str(engine_bin), str(tmp_path / "bin")]),
         "KEEP": "1",
     }
-    for env in (uv_environment(tmp_path / "uv", base=person), child_env(person, {})):
+    uv = uv_environment(tmp_path / "uv" / "cache", tmp_path / "uv" / "python", base=person)
+    for env in (uv, child_env(person, {})):
         assert not {"CONDA_DEFAULT_ENV", "HF_TOKEN", "VIRTUAL_ENV", "PYTHONPATH", "UV_PYTHON"} & {
             name.upper() for name in env
         }

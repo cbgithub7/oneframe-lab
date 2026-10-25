@@ -79,7 +79,7 @@ def test_the_temporary_and_uv_variables_match_the_contract() -> None:
     assert list(TEMP_VARIABLES) == table["temporary"]
     assert table["uv_settings"] == UV_SETTINGS
     layout = Layout(Path("root"))
-    env = uv_environment(layout.uv_cache.parent, base={})
-    assert list(UV_FOLDERS) == list(table["uv_folders"])
+    env = uv_environment(layout.uv_cache, layout.uv_python, base={})
+    assert table["uv_folders"] == UV_FOLDERS
     for name, path in table["uv_folders"].items():
         assert env[name] == str(getattr(layout, path)), name

@@ -5,7 +5,8 @@
     <data>/runtimes/<id>/<build>/stand-ins/<package>/    stand-ins for compiled extensions
     <data>/runtimes/<id>/<build>/oneframe-runtime.json   the marker, written last
     <data>/runtimes/<id>/downloads/<sha256>              source archives
-    <data>/uv/cache/, <data>/uv/python/                  uv's cache and the Pythons it fetches
+    <data>/uv/cache/, <data>/uv/python/                  uv's cache and the Pythons it fetches,
+                                                         unless `--uv-home` names another folder
 
 A runtime counts as installed only once the marker exists, and the marker is the last thing
 written: it holds its format, the hashes of the lock and definition it was built from, the build,
@@ -39,6 +40,7 @@ from oneframe import archives, processes
 from oneframe.environment import uv_environment
 from oneframe.errors import Failure, Stopped
 from oneframe.files import format_of, remove_tree, write_json
+from oneframe.layout import Layout
 from oneframe.node import Emit
 
 if TYPE_CHECKING:
@@ -64,7 +66,7 @@ class InstallFailed(Failure):
 
 
 def runtime_dir(data: Path, runtime_id: str) -> Path:
-    return data / "runtimes" / runtime_id
+    return Layout(data).runtimes / runtime_id
 
 
 def env_dir(data: Path, runtime_id: str, build: str) -> Path:
@@ -143,14 +145,15 @@ def install(
     uv: str,
     emit: Emit,
     stop: threading.Event | None = None,
-    uv_home: Path | None = None,
     opener: Callable[..., Any] = urllib.request.urlopen,
+    *,
+    uv_cache: Path,
+    uv_python: Path,
 ) -> dict[str, Any]:
-    """Build `runtime`'s `build` under the data root. Raises Stopped or InstallFailed; the
-    marker exists only when this returns."""
+    """Build `runtime`'s `build` under the data root, with uv's cache and Pythons in the two
+    folders given. Raises Stopped or InstallFailed; the marker exists only when this returns."""
     started = time.monotonic()
     stop = stop if stop is not None else threading.Event()
-    uv_home = uv_home or data / "uv"
     env = env_dir(data, runtime.id, build)
     python = interpreter(env)
     base = {"runtime": runtime.id, "build": build}
@@ -172,6 +175,9 @@ def install(
     def log(line: str) -> None:
         emit({**base, "event": "runtime.log", "line": line})
 
+    def uv_env(environment: Path | None = None) -> dict[str, str]:
+        return uv_environment(uv_cache, uv_python, environment)
+
     def run(argv: list[str], what: str, environment: dict[str, str]) -> None:
         code, tail = run_step(argv, environment, log, stop)
         if code != 0:
@@ -192,7 +198,7 @@ def install(
     run(
         [uv, "python", "install", "--no-config", runtime.python],
         f"Installing Python {runtime.python}",
-        uv_environment(uv_home),
+        uv_env(),
     )
 
     step("sync", f"The {build} build's packages, exactly as {runtime.lock_path.name} lists them.")
@@ -215,7 +221,7 @@ def install(
     ]
     # A failure leaves the folder as it is: uv recreates an environment it cannot use, and a
     # failure for any other reason (the network, a registry) must not cost what is already there.
-    code, tail = run_step(sync, uv_environment(uv_home, env), log, stop)
+    code, tail = run_step(sync, uv_env(env), log, stop)
     if code != 0:
         raise InstallFailed(f"uv sync failed (exit {code}).", "\n".join(tail))
 
@@ -266,7 +272,7 @@ def install(
     site = Path(
         _output(
             [str(python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
-            uv_environment(uv_home),
+            uv_env(),
         ).strip()
     )
     lines = [str((env / "src" / s.name / p).resolve()) for s in runtime.sources for p in s.paths]
@@ -277,19 +283,17 @@ def install(
         # Compiled now, as uv compiled the packages, so a run writes nothing into the runtime. Only
         # a best effort: an upstream archive may hold files that are not this Python's code.
         folders = [str(p) for p in (env / "src", env / "stand-ins") if p.is_dir()]
-        compiled, _tail = run_step(
-            [str(python), "-m", "compileall", "-q", *folders], uv_environment(uv_home), log, stop
-        )
+        compiled, _tail = run_step([str(python), "-m", "compileall", "-q", *folders], uv_env(), log, stop)
         if compiled != 0:
             log(f"Some source files did not compile (exit {compiled}); they are left as they are.")
     else:
         (site / PTH).unlink(missing_ok=True)
 
     step("freeze", "Recording what arrived.")
-    freeze = _freeze(uv, python, uv_environment(uv_home))
-    uv_version = _output([uv, "--version"], uv_environment(uv_home)).strip()
+    freeze = _freeze(uv, python, uv_env())
+    uv_version = _output([uv, "--version"], uv_env()).strip()
     python_version = _output(
-        [str(python), "-c", "import sys; print(sys.version.split()[0])"], uv_environment(uv_home)
+        [str(python), "-c", "import sys; print(sys.version.split()[0])"], uv_env()
     ).strip()
     size = folder_size(env)
 

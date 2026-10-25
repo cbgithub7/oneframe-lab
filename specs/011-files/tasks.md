@@ -19,7 +19,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   call, and `test_free_space_is_read_from_the_nearest_folder_that_exists`.
 - [x] 5. `Layout.objects` in `layout.py`, `app/main/paths.js` and `contracts/layout.json` together;
   `Cache(objects, work)` at every call site (the engine, `bench_fit`, the tests).
-- [ ] 6. A runtime's folder and the delete guard's root from `Layout.runtimes`; uv's folders decided
+- [x] 6. A runtime's folder and the delete guard's root from `Layout.runtimes`; uv's folders decided
   once in `Runtimes.__init__`, and `uv_environment` and `install` take the two (`test_formats.py`'s
   direct call too). AC3's command prints nothing.
 - [ ] 7. The test side, with no change in behaviour: `Runtimes(transfer=)` and the engine passing

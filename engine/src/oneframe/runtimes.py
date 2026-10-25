@@ -745,7 +745,13 @@ class Runtimes:
         self.data = Path(data).resolve()
         self.roots = [Path(r).resolve() for r in roots] if roots is not None else [RUNTIMES_DIR]
         self.uv = uv
-        self.uv_home = uv_home
+        # uv's cache and Pythons: the layout's, or the two folders under the one --uv-home names
+        layout = Layout(self.data)
+        if uv_home is None:
+            self.uv_cache, self.uv_python = layout.uv_cache, layout.uv_python
+        else:
+            home = Path(uv_home).resolve()
+            self.uv_cache, self.uv_python = home / "cache", home / "python"
         self._read_profile = profile or (lambda: hardware.profile(data))
         self._profile: dict[str, Any] | None = None
         # The install slot's. Re-entrant: an install lets go of its slot and sends its ending under
@@ -1026,7 +1032,15 @@ class Runtimes:
             kept({**base, "event": "runtime.start"})
             try:
                 done = runtime_install.install(
-                    runtime, build, self.data, str(self.uv), kept, stop, self.uv_home, **extra
+                    runtime,
+                    build,
+                    self.data,
+                    str(self.uv),
+                    kept,
+                    stop,
+                    uv_cache=self.uv_cache,
+                    uv_python=self.uv_python,
+                    **extra,
                 )
             except Stopped:
                 message = "Install stopped. Installing again picks up where it was."
@@ -1076,7 +1090,7 @@ class Runtimes:
             return self._remove(runtime_id)
 
     def _remove(self, runtime_id: str) -> dict[str, Any]:
-        root = (self.data / "runtimes").resolve()
+        root = Layout(self.data).runtimes.resolve()
         target = runtime_install.runtime_dir(self.data, runtime_id)
         if not target.exists():
             return {"runtime": runtime_id, "removed": None}
