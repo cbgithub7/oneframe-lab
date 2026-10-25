@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, HostRuntimes, MakeNode
 
 import oneframe
 from oneframe.environment import child_env
@@ -28,6 +28,7 @@ from oneframe.executors import (
     ProcessExecutor,
     child_command,
     died_message,
+    run_probe,
 )
 from oneframe.graph import Graph
 from oneframe.node.job import Job
@@ -219,6 +220,18 @@ def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
         if proc.poll() is None:
             proc.kill()
             proc.wait()
+
+
+def test_a_probe_on_the_processor_sees_the_cards_its_runtime_does(tmp_path: Path) -> None:
+    """bench:fit's context probe runs "on the processor" so that nothing caps the card it measures;
+    were the cards hidden from it, as from a processor run, it would find none."""
+    folder = tmp_path / "probe"
+    folder.mkdir()
+    code = "import os\n\ndef run(ctx):\n    return {'cuda_visible': os.environ.get('CUDA_VISIBLE_DEVICES')}\n"
+    (folder / "probe.py").write_text(code, encoding="utf-8")
+    runtimes = HostRuntimes(env={"CUDA_VISIBLE_DEVICES": "1"})
+    done = run_probe(runtimes, "test", folder, "probe.py:run", device="cpu", params={"card": 1})
+    assert done.stats == {"cuda_visible": "1"}
 
 
 def test_a_missing_runtime_is_its_own_failure(

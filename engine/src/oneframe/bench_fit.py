@@ -46,12 +46,11 @@ from typing import Any
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
 from oneframe.cache import Cache
 from oneframe.environment import child_env
-from oneframe.executors import NodeError, ProcessExecutor
+from oneframe.executors import NodeError, run_probe
 from oneframe.graph import Graph
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
-from oneframe.node.job import Job
 from oneframe.processes import Child
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, RuntimeSide, find_uv
@@ -315,24 +314,11 @@ def three_settings(
 
 
 def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
-    python = manager.python_for("torch")
-    with tempfile.TemporaryDirectory(prefix="oneframe-context-") as out:
-        job = Job(
-            node="probe:context",
-            folder=plan.folder,
-            entry=plan.context,
-            out_dir=Path(out),
-            run="bench",
-            step="context",
-            params={"card": card},
-            device="cpu",  # no cap: the probe starts CUDA itself, after its first reading
-        )
-        try:
-            done = ProcessExecutor(
-                python, env=manager.env_for("torch"), caches=manager.caches_for("torch")
-            ).execute(job, lambda _e: None, threading.Event())
-        except NodeError as exc:
-            return {"why": f"{exc.kind}: {exc}"}
+    try:
+        # On the processor, so no cap: the probe starts CUDA itself, after its first reading.
+        done = run_probe(manager, "torch", plan.folder, plan.context, device="cpu", params={"card": card})
+    except NodeError as exc:
+        return {"why": f"{exc.kind}: {exc}"}
     return dict(done.stats)
 
 
