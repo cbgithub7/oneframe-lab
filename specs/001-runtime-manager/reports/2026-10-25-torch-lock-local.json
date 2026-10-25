@@ -1,0 +1,79 @@
+{
+  "spec": "001-runtime-manager",
+  "criterion": "the torch runtime's lock (handoff item, the owner 2026-10-24): the install finishes and the probe runs on the card",
+  "outcome": "passed",
+  "date": "2026-10-25",
+  "commit": "4315328d583d41c9a8f23b5ba0b1488d0761c139",
+  "previous_runs": [
+    "2026-10-25-torch-lock-attempt-1.md (commit 4315328's lock, inside Claude desktop's package, upgrading the 2026-10-11 install: failed, os error 32 removing filelock\\_soft_rw\\__pycache__)",
+    "2026-10-25-torch-lock-attempt-2.md (the same, a second time: failed, os error 32 removing setuptools\\config\\_validate_pyproject\\__pycache__)",
+    "2026-10-25-torch-lock-attempt-3.md (the same lock, inside the package, a fresh install after Runtimes.remove: failed, os error 32 removing sympy-1.14.0.data)",
+    "2026-10-25-torch-main-lock-uv-0.12.20.md (main's lock at f766403 with uv 0.12.20, the pair that installed on 2026-10-11, inside the package, fresh: failed, os error 32 removing sympy-1.14.0.data; a diagnostic, not this item's evidence)"
+  ],
+  "machine": {
+    "os": "Microsoft Windows [Version 10.0.19045.6466]",
+    "gpu": "NVIDIA GeForce GTX 1070",
+    "compute_capability": "6.1",
+    "vram_mb": 8192,
+    "driver": "582.66",
+    "free_disk_gb": 339.0,
+    "antivirus": "Bitdefender Antivirus Free 27.0.64.366 (Windows Defender off), the same in every run",
+    "other_gpu_processes": [
+      "explorer.exe",
+      "SearchApp.exe",
+      "ShellExperienceHost.exe",
+      "TextInputHost.exe",
+      "lghub_system_tray.exe",
+      "WindowsTerminal.exe",
+      "brave.exe (2)",
+      "claude.exe (2)",
+      "Discord.exe",
+      "Grok Bot.exe (2)",
+      "Cursor.exe",
+      "1 process not readable without elevation"
+    ]
+  },
+  "tools": {
+    "node": "v24.22.1",
+    "uv": "0.13.5 (and 0.12.20 for the diagnostic only, from astral-sh's release, sha256 checked, deleted after)",
+    "git": "2.28.0.windows.1",
+    "python": "3.15.1 (engine), 3.14.7 (torch runtime)",
+    "torch": "2.14.0+cu126 (CUDA 12.6), runtime build cu126"
+  },
+  "commands": [
+    "uv lock --project runtimes/torch --upgrade-package filelock --upgrade-package setuptools",
+    "npm run bench:runtime -- torch --out specs/001-runtime-manager/reports/2026-10-25-torch-lock.md (attempts 1 to 3, inside the package)",
+    "Runtimes.remove('torch') through the engine, before attempt 3, before the diagnostic and before the passing runs",
+    "npm run bench:runtime -- torch --uv <uv 0.12.20> --out specs/001-runtime-manager/reports/2026-10-25-torch-main-lock-uv-0.12.20.md (on report/010-probes, inside the package)",
+    "npm run bench:runtime -- torch --out specs/001-runtime-manager/reports/2026-10-25-torch-main-lock-outside.md (on report/010-probes, outside the package)",
+    "npm run bench:runtime -- torch --out specs/001-runtime-manager/reports/2026-10-25-torch-lock.md (on fix/torch-lock, outside the package)"
+  ],
+  "how_each_ran": {
+    "inside the package": "the lock, attempts 1 to 3 and the diagnostic ran from this Claude desktop Code-tab session, whose processes inherit Claude's MSIX package",
+    "outside the package": "the two passing runs were run by another agent app, Grok Bot, at the owner's request, from PowerShell; its process chain was pwsh.exe <- Grok Bot.exe <- Grok Bot.exe <- explorer.exe (Grok Bot has no MSIX package). It ran exactly the commands given, plus a Get-Location, and both exited 0. The reports are the bench's own; this session read them from the checkout."
+  },
+  "checks": {
+    "npm run check": "passed at eb7928e and again after the lock (see the PR)",
+    "npm run engine:check": "passed at eb7928e (598 passed, 4 skipped by design on Windows)",
+    "test-guard": "passed (651 tests)"
+  },
+  "results": {
+    "seconds": 8.0,
+    "peak_vram_mb": 209.8,
+    "fit": "not applicable: no node ran",
+    "notes": "The lock went further than the advisories' fixes: filelock 4.0.7 -> 4.2.4 and setuptools 84.0.0 -> 84.2.1, each the latest release; uv 0.13.5 raised the lock's revision from 3 to 5. From outside the package, main's lock installed fresh in 55.1 s (4,359 MB; probe on cuda, 0.179 s, peak 209.8 MB), then the new lock upgraded that install in place in 8.0 s (4,360 MB; probe on cuda, 0.183 s, peak 209.8 MB). Inside the package every install stopped at uv's step 3 with os error 32 on a folder uv had just emptied, with uv 0.13.5 or 0.12.20 and either lock; no process of ours was running afterwards, and the folder was empty. Attempt 3 re-downloaded torch (2.4 GiB): uv 0.13.5 does not read the cache entries 0.12.20 wrote (wheels-v6 against wheels-v7). Every half-installed runtime was removed through the engine's Runtimes.remove; the data root holds one good install and nothing else from these runs. Paths in the attempts' reports have the home folder written %USERPROFILE%.",
+    "parts": [
+      {
+        "part": "the new lock installs over an existing install, and the probe runs on the card",
+        "outcome": "passed (outside the package)",
+        "numbers": "8.0 s, 4,360 MB, filelock 4.2.4 and setuptools 84.2.1; probe device cuda, capability 6.1, cuda_available true, 0.183 s, peak 209.8 MB, a 4096 matmul in 0.0316 s"
+      },
+      {
+        "part": "a runtime install started from inside Claude desktop's package",
+        "outcome": "failed, four times (a finding)",
+        "numbers": "os error 32 'being used by another process' removing filelock\\_soft_rw\\__pycache__, setuptools\\config\\_validate_pyproject\\__pycache__, then sympy-1.14.0.data twice; uv 0.13.5 and 0.12.20; the new lock and main's"
+      }
+    ]
+  },
+  "local_changes": "none to code. The new runtimes/torch/uv.lock is this item's change."
+}
