@@ -25,6 +25,7 @@ from conftest import (
 from oneframe import runtime_install, runtimes
 from oneframe.cache import Cache
 from oneframe.graph import Graph
+from oneframe.layout import Layout
 from oneframe.registry import discover
 from oneframe.scheduler import Scheduler
 
@@ -228,6 +229,31 @@ def test_remove_refuses_a_runtime_folder_that_is_a_link(
     with pytest.raises(runtimes.InstallRefused, match="not a runtime folder"):
         _manager(data, tiny, uv_exe, uv_home).remove("tiny")
     assert (precious / "cpu").is_dir()
+
+
+def test_uv_folders_are_the_layouts_unless_named(
+    tmp_path: Path, tiny: Path, uv_exe: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """uv's cache and Pythons are the layout's folders, or under the folder `--uv-home` names."""
+    seen: list[dict[str, str]] = []
+
+    def refused(_argv: list[str], env: dict[str, str], *_rest: Any) -> tuple[int, list[str]]:
+        seen.append(env)
+        return 1, ["refused here"]
+
+    monkeypatch.setattr(runtime_install, "run_step", refused)
+    data = tmp_path / "data"
+    named = tmp_path / "named"
+    for uv_home, cache, python in (
+        (None, Layout(data).uv_cache, Layout(data).uv_python),
+        (named, named / "cache", named / "python"),
+    ):
+        seen.clear()
+        manager = runtimes.Runtimes(data, [tiny.parent], uv=uv_exe, profile=lambda: NO_GPU, uv_home=uv_home)
+        assert manager.install("tiny") is None
+        [env] = seen
+        assert runtime_install.same_path(env["UV_CACHE_DIR"], cache)
+        assert runtime_install.same_path(env["UV_PYTHON_INSTALL_DIR"], python)
 
 
 def test_a_failure_before_the_marker_leaves_no_marker(

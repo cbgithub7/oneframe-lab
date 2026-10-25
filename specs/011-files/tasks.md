@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds, moves or removes a test rewrites `engine/tests/collected.txt` with
 `node scripts/test-guard.js --write` (007).
 
-- [ ] 1. Recorded hashes, on today's code and in a commit of their own (AC1's diff starts here):
+- [x] 1. Recorded hashes, on today's code and in a commit of their own (AC1's diff starts here):
   `test_recorded_hashes.py` with its four cases, and `test_uv_folders_are_the_layouts_unless_named`.
 - [ ] 2. One hash: `files.CHUNK`, `files.sha256_file`, and `text_sha256` moved from `runtimes.py`.
   The cache, the store's `adopt`, jobs' verify, the transport's resume and `archives.sha256_of`'s
