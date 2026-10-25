@@ -29,6 +29,7 @@ from typing import Any, Protocol
 from oneframe.environment import child_env
 from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
+from oneframe.journal import prune_step_logs
 from oneframe.manifest import Manifest
 from oneframe.node import Emit, Stopped, failures
 from oneframe.node.job import Done, Job
@@ -169,6 +170,7 @@ class ProcessExecutor:
         log = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
+            prune_step_logs(self.log_dir)
             log = self.log_dir / f"{job.run or 'run'}-{job.step or 'node'}.log"
         tail = _Tail(log)
         try:

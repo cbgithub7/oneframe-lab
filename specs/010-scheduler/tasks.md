@@ -23,7 +23,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `runtime_python`, the processor's `CUDA_VISIBLE_DEVICES` out of the scheduler, and `server.py`.
   The tests' seams move to the fixture or to `executors=`, names kept. Add
   `test_the_scheduler_runs_a_node_through_the_executors_it_is_given` (AC1).
-- [ ] 6. `ProcessExecutor` prunes the step logs when it opens one, and the scheduler no longer does;
+- [x] 6. `ProcessExecutor` prunes the step logs when it opens one, and the scheduler no longer does;
   add `test_a_new_step_log_prunes_the_old`. AC2's command prints nothing.
 - [ ] 7. `run_probe`, used by `bench_runtime._probe` and `bench_fit._probe_context`; add
   `test_a_probe_on_the_processor_sees_the_cards_its_runtime_does` (AC5). AC4's command prints only

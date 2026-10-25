@@ -144,16 +144,16 @@ class Scheduler:
         self.learned = learned or LearnedStore(None)
         self.tmp_root = tmp_root  # where the files a run reads are listed
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
-        self._runtime_keys: dict[str, dict[str, str] | None] = {}
+        self._runtime_parts: dict[str, dict[str, str] | None] = {}
         self._code_keys: dict[Path, str] = {}
 
     def _key(self, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]) -> str:
         runtime = None
         if manifest.run.where == "runtime":
             name = str(manifest.run.runtime)
-            if name not in self._runtime_keys:
-                self._runtime_keys[name] = self.runtimes.key_for(name)
-            runtime = self._runtime_keys[name]
+            if name not in self._runtime_parts:
+                self._runtime_parts[name] = self.runtimes.key_for(name)
+            runtime = self._runtime_parts[name]
         if manifest.folder not in self._code_keys:
             self._code_keys[manifest.folder] = code_digest(manifest.folder)
         return self.cache.key(manifest, values, inputs, runtime, self._code_keys[manifest.folder])
@@ -166,7 +166,7 @@ class Scheduler:
         run_id: str | None = None,
     ) -> RunResult:
         run_id = run_id or uuid.uuid4().hex[:12]
-        self._runtime_keys = {}  # read once per run: a runtime does not change under a run
+        self._runtime_parts = {}  # read once per run: a runtime does not change under a run
         self._code_keys = {}  # nor does a node's code
 
         def crashed(exc: BaseException) -> dict[str, Any]:  # what the server reports to the page

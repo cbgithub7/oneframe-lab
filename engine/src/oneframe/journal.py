@@ -6,8 +6,9 @@ one JSON object per line, each with the time it was written, in the order they w
 a first line that says the journal's format. A journal stops taking progress at JOURNAL_MAX_BYTES,
 saying so, but still takes how the run or install ended (`*.failed`, `*.done`, `*.stopped`).
 
-Journals and the per-step logs (`logs/steps/`) are pruned when a journal opens: the newest are
-kept, up to a count and a total size set here, so evidence never fills the disk.
+Journals are pruned when one opens, and the per-step logs (`logs/steps/`) when one opens (by the
+executor that opens it): the newest are kept, up to a count and a total size set here, so evidence
+never fills the disk.
 """
 
 from __future__ import annotations
@@ -156,5 +157,6 @@ def engine_crash(exc: BaseException, **fields: Any) -> dict[str, Any]:
 
 
 def prune_step_logs(folder: Path | None) -> None:
+    """Before a step's log opens, so that with it there are at most STEP_LOGS_KEEP."""
     if folder is not None:
-        prune(folder, STEP_LOGS_KEEP, STEP_LOGS_MAX_BYTES, "*.log")
+        prune(folder, STEP_LOGS_KEEP - 1, STEP_LOGS_MAX_BYTES, "*.log")
