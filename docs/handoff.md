@@ -40,7 +40,7 @@ Green in CI on Windows and Ubuntu, each spec with its reports:
 | [007](../specs/007-test-guard/spec.md) | The test guard sees every collected case, a skip or an emptied body, and renames; `engine/tests/collected.txt` is committed | CI on Windows and Ubuntu; [PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28) |
 | [008](../specs/008-processes/spec.md) | One module starts, reads and ends processes, and Stop ends a node's whole tree; one module names what a child inherits; one stop type; a hang names itself | CI on Windows and Ubuntu; [PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35) |
 | [009](../specs/009-node-api/spec.md) | The node API apart from the child script, which is a bootstrap; a typed job; node code loaded as a package named for the node; an optional `load` before `run`; `ctx` typed by `Context` and `LoadContext` | CI on Windows and Ubuntu; [PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37) |
-| [010](../specs/010-scheduler/spec.md) | The scheduler is given its executors (one process per run by default, so spec 004's worker pool can take its place); one `Emit`; one probe helper for the benches; `_attempt` in named steps; every ending sent after its place is free | CI on Windows and Ubuntu; [PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39); the probes on a card wait on a local session (below) |
+| [010](../specs/010-scheduler/spec.md) | The scheduler is given its executors (one process per run by default, so spec 004's worker pool can take its place); one `Emit`; one probe helper for the benches; `_attempt` in named steps; every ending sent after its place is free | CI on Windows and Ubuntu; [PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39); the probes on the GTX 1070 ([report](../specs/010-scheduler/reports/2026-10-25-local.md)) |
 
 Beside them: the engine's core (typed ports, manifests, graph planning with converters, the cache,
 the scheduler, the NDJSON server); an Electron 45 shell whose sandboxed page lists nodes through
@@ -72,24 +72,8 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **Spec 010's task 13: the benches' probes on a card,** on `main` as merged in PR #39 (1f86f77)
-   or later. Both probes now run through `run_probe` in `oneframe/executors.py`, which never hides
-   the cards; this is also the check spec 009 deferred for its changes to them. On a machine with
-   an NVIDIA card, with the app closed:
-
-   ```
-   npm run bench:runtime -- torch --out specs/010-scheduler/reports/<date>-runtime-torch.md
-   npm run bench:fit -- --out specs/010-scheduler/reports/
-   ```
-
-   The first installs the torch runtime if it is not installed (several GB: say so first), and
-   passes when its report shows the probe ran on the card, with its result. The second, with no
-   node, is spec 002's check; for this task it passes when its report records the CUDA context's
-   size, not why it could not. Then the skill's `<date>-local.json` and `.md` beside them, task 13
-   ticked in the spec's tasks.md, this item out of the list, and one PR from a `report/010-probes`
-   branch.
-2. **The torch runtime's lock** (the owner, 2026-10-24), after item 1, since it makes each machine
-   install torch again: filelock 4.0.7 and setuptools 84.0.0 in `runtimes/torch/uv.lock` have
+1. **The torch runtime's lock** (the owner, 2026-10-24), after spec 010's probes on a card (passed
+   2026-10-25), since it makes each machine install torch again: filelock 4.0.7 and setuptools 84.0.0 in `runtimes/torch/uv.lock` have
    advisories (Dependabot alerts 46 to 49), fixed in 4.2.1 and 84.1.0. Neither path is reached
    (torch uses neither filelock's read-write nor its soft locks, and uv, not setuptools, installs
    the wheels), but a new lock changes the runtime's hash, and what the fit learned starts over.
