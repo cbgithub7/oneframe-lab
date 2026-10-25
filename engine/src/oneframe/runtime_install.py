@@ -25,21 +25,17 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import queue
 import shutil
-import signal
-import subprocess
 import sys
 import threading
 import time
 import urllib.request
-from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from oneframe import archives
+from oneframe import archives, processes
 from oneframe.environment import uv_environment
 from oneframe.errors import Failure, Stopped
 from oneframe.files import format_of, remove_tree, write_json
@@ -50,8 +46,6 @@ if TYPE_CHECKING:
 MARKER = "oneframe-runtime.json"
 MARKER_FORMAT = 1
 PTH = "oneframe-runtime.pth"
-NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 Emit = Callable[[dict[str, Any]], None]
 STEPS = ("marker", "python", "sync", "sources", "stand-ins", "paths", "freeze", "record")
 
@@ -108,85 +102,18 @@ def marker_problem(env: Path, marker: dict[str, Any]) -> str | None:
     return None
 
 
-def _kill_tree(proc: subprocess.Popen[str]) -> None:
-    """End a step and everything it started: uv starts Python workers to compile bytecode."""
-    if proc.poll() is not None:
-        return
-    try:
-        if sys.platform == "win32":
-            subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                capture_output=True,
-                check=False,
-                creationflags=NO_WINDOW,
-            )
-        else:
-            os.killpg(proc.pid, signal.SIGKILL)
-    except OSError:
-        pass
-    if proc.poll() is None:
-        proc.kill()
-    proc.wait(timeout=30)
-
-
 def run_step(
     argv: list[str], env: dict[str, str], on_line: Callable[[str], None], stop: threading.Event
 ) -> tuple[int, list[str]]:
-    """Run one command to its end, or until Stop. Its output is passed on line by line; the last
+    """Run one command to its end, or until Stop, which ends it and everything it started (uv
+    starts Python workers to compile bytecode). Its output is passed on line by line; the last
     lines come back with the exit code, for the message when it fails."""
-    proc = subprocess.Popen(
-        argv,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        start_new_session=sys.platform != "win32",
-        creationflags=(NO_WINDOW | NEW_GROUP) if sys.platform == "win32" else 0,
-    )
-    lines: queue.Queue[str | None] = queue.Queue()
-
-    def read() -> None:
-        assert proc.stdout is not None
-        for line in iter(proc.stdout.readline, ""):
-            lines.put(line.rstrip())
-        lines.put(None)
-
-    threading.Thread(target=read, daemon=True).start()
-    tail: deque[str] = deque(maxlen=40)
-    try:
-        while True:
-            if stop.is_set():
-                raise Stopped()
-            try:
-                line = lines.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            if line is None:
-                break
-            if line:
-                tail.append(line)
-                on_line(line)
-        return proc.wait(), list(tail)
-    finally:
-        _kill_tree(proc)
+    return processes.run(argv, env=env, on_line=on_line, stop=stop)
 
 
 def _output(argv: list[str], env: dict[str, str]) -> str:
     """A short command's standard output, or InstallFailed with what it said."""
-    done = subprocess.run(
-        argv,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-        stdin=subprocess.DEVNULL,
-        check=False,
-        creationflags=NO_WINDOW,
-    )
+    done = processes.output(argv, env=env)
     if done.returncode != 0:
         raise InstallFailed(
             f"{Path(argv[0]).name} {argv[1]} failed (exit {done.returncode}).", done.stderr[-4000:]
