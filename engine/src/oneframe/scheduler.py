@@ -564,6 +564,7 @@ class Scheduler:
             folder=manifest.folder,
             entry=f"{manifest.run.file}:{manifest.run.function}",
             out_dir=work,
+            load=manifest.run.load,
             run=run_id,
             step=step.id,
             inputs=dict(inputs),

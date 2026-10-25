@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from oneframe.node import Context, Value
+from oneframe.node import Context, LoadContext, Value
 from oneframe.node.job import Done, Job
 from oneframe.node.runner import run_job
 
@@ -21,20 +21,28 @@ import json
 def _public(ctx):
     return json.dumps(sorted(name for name in dir(ctx) if not name.startswith("_")))
 
-def run(ctx):
+def load(ctx):
+    ctx.stage("load", _public(ctx))
+
+def run(ctx, state=None):
     ctx.stage("run", _public(ctx))
 """
 
 
-@pytest.mark.parametrize(("function", "protocol"), [("run", Context)], ids=["run"])
-def test_a_context_shows_exactly_its_protocol(tmp_path: Path, function: str, protocol: Any) -> None:
+@pytest.mark.parametrize(
+    ("function", "protocol", "load"),
+    [("run", Context, None), ("load", LoadContext, "node.py:load")],
+    ids=["run", "load"],
+)
+def test_a_context_shows_exactly_its_protocol(
+    tmp_path: Path, function: str, protocol: Any, load: str | None
+) -> None:
     folder = tmp_path / "node"
     folder.mkdir()
     (folder / "node.py").write_text(MEMBERS, encoding="utf-8")
     events: list[dict[str, Any]] = []
-    run_job(
-        Job(node="test.members", folder=folder, entry="node.py:run", out_dir=tmp_path / "out"), events.append
-    )
+    job = Job(node="test.members", folder=folder, entry="node.py:run", out_dir=tmp_path / "out", load=load)
+    run_job(job, events.append)
     shown = {e["stage"]: json.loads(e["message"]) for e in events if e["event"] == "stage"}
     assert shown[function] == sorted(typing.get_protocol_members(protocol))
 

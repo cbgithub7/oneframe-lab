@@ -19,12 +19,14 @@ from oneframe.node.usage import PEAKS
 
 @dataclass(frozen=True)
 class Job:
-    """One node run. `entry` is `file.py:function`, a file in `folder`, the node's code."""
+    """One node run. `entry` is `file.py:function`, a file in `folder`, the node's code; `load`,
+    when the node has one, is the function called once before it, in the same form."""
 
     node: str
     folder: Path
     entry: str
     out_dir: Path
+    load: str | None = None
     run: str = ""
     step: str = ""
     inputs: dict[str, Value] = field(default_factory=dict)
@@ -44,6 +46,7 @@ class Job:
                 "node": self.node,
                 "folder": str(self.folder),
                 "entry": self.entry,
+                "load": self.load,
                 "out_dir": str(self.out_dir),
                 "run": self.run,
                 "step": self.step,
@@ -67,6 +70,7 @@ class Job:
             node=row["node"],
             folder=Path(row["folder"]),
             entry=row["entry"],
+            load=row["load"],
             out_dir=Path(row["out_dir"]),
             run=row["run"],
             step=row["step"],

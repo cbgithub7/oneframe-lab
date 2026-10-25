@@ -24,7 +24,7 @@ the code it names. The folder is named after the node's id.
     "resolution": { "type": "int", "default": 1024, "min": 256, "max": 2048, "doc": "Longest side." },
     "tile_batch": { "type": "int", "default": 4, "min": 1, "affects": "speed" }
   },
-  "run": { "where": "runtime", "runtime": "example", "entry": "node.py:run" },
+  "run": { "where": "runtime", "runtime": "example", "entry": "node.py:run", "load": "node.py:load" },
   "devices": ["cuda", "cpu"],
   "licence": { "code": "MIT", "weights": "CC BY-NC 4.0", "commercial": false },
   "links": { "repo": "https://github.com/..." }
@@ -43,6 +43,9 @@ the code it names. The folder is named after the node's id.
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
   node fails with kind `runtime` and a reason such as `not_installed`, `out_of_date` or `blocked`
   (every reason is in [architecture.md](architecture.md#failures)).
+- **run.entry** names the function each run calls, `file.py:function` in the node's folder.
+  **run.load**, optional and in the same form, names one called once before it, to load the model
+  (below).
 - **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
   repair, texture, convert, evaluate, export.
 
@@ -89,22 +92,32 @@ fetch it and what its bytes must be ([spec 003](../specs/003-model-store/spec.md
 ## The code
 
 ```python
-from oneframe.node import Context
+from oneframe.node import Context, LoadContext
 
 
-def run(ctx: Context):
+def load(ctx: LoadContext):
+    return Model.from_file(ctx.file("weights")).to(ctx.device)  # the state `run` is handed
+
+
+def run(ctx: Context, model):
     image = ctx.inputs["image"]  # Value: .path, .facets, .meta, .trust
     ctx.stage("infer", "Estimating depth")
     if image.meta["width"] < 256:
         ctx.fail("The photo is narrower than 256 pixels.")  # kind `node`, in these words
     for i, tile in enumerate(tiles):
         ctx.check_stop()  # in the engine's process, raises if Stop was pressed
+        depth[tile.window] = model(tile.pixels)
         ctx.progress(i + 1, len(tiles))
     path = ctx.path("depth.npz")  # a file in this run's own folder
     np.savez(path, depth=depth)
     ctx.output("depth", path)
     return {"tiles": len(tiles)}  # stats, kept with the run record
 ```
+
+A node whose manifest names `run.load` has it called once on each attempt, then `run(ctx, state)`
+with what it returned; without it, `run(ctx)` alone. `load`'s context has everything `run`'s has but
+the run's inputs, paths and outputs, so what it returns depends on nothing one run was given. Its
+seconds count with the run's.
 
 Every output in the manifest must be declared with `ctx.output` before `run` returns. A node writes
 only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`: the run

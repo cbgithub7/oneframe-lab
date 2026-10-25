@@ -38,7 +38,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   tiny runtime's probe, and add `runtimes` to pyright's include. AC8's command prints nothing.
   `docs/nodes.md` types `ctx` and says node code may import `oneframe.node`, and nothing else of
   the engine.
-- [ ] 5. **`load`, then `run`.** `run.load` in the manifest, parsed with `run.entry`'s refusals
+- [x] 5. **`load`, then `run`.** `run.load` in the manifest, parsed with `run.entry`'s refusals
   (`test_run_load_is_refused_as_run_entry_is`); the scheduler puts it in the `Job`; `code.py`
   returns it; the runner calls it once with the view, then `run(ctx, state)`. Add
   `test_load_runs_once_and_run_gets_its_state` (AC5) and the `load` case of

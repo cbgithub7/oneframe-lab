@@ -113,6 +113,25 @@ def test_manifest_entry_must_exist_and_stay_inside_the_folder(tmp_path: Path) ->
         parse(_manifest(run={"where": "runtime", "entry": "node.py:run"}), tmp_path)
 
 
+def test_run_load_is_refused_as_run_entry_is(tmp_path: Path) -> None:
+    (tmp_path / "node.py").write_text("def load(ctx): pass\ndef run(ctx, state): pass\n", encoding="utf-8")
+
+    def problems(run: dict[str, str]) -> list[str]:
+        with pytest.raises(ManifestError) as info:
+            parse(_manifest(run=run), tmp_path)
+        return info.value.problems
+
+    for bad in ("node.py", "../evil.py:load", str(tmp_path / "node.py") + ":load", "other.py:load"):
+        as_entry = problems({"where": "engine", "entry": bad})
+        as_load = problems({"where": "engine", "entry": "node.py:run", "load": bad})
+        assert as_load and as_load == [p.replace("run.entry", "run.load") for p in as_entry], bad
+    named = parse(
+        _manifest(run={"where": "engine", "entry": "node.py:run", "load": "node.py:load"}), tmp_path
+    )
+    assert named.run.load == "node.py:load"
+    assert parse(_manifest(), tmp_path).run.load is None
+
+
 def test_a_runtime_node_names_its_runtime_and_its_code_file(tmp_path: Path) -> None:
     (tmp_path / "adapter.py").write_text("def run(ctx): pass\n", encoding="utf-8")
     m = parse(_manifest(run={"where": "runtime", "runtime": "moge", "entry": "adapter.py:run"}), tmp_path)

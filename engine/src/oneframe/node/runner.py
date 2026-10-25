@@ -2,6 +2,10 @@
 
     run_job(job, say, stop, process=None) -> Done
 
+For a node whose manifest names `run.load`, each attempt calls `state = load(view)` once, where the
+view is the context without the run's inputs, paths or outputs, then `run(ctx, state)`; otherwise
+`run(ctx)`. The run's seconds span both.
+
 In a child, `process` is its Process (process.py), whose guards are up: the allocator is capped on a
 card before any node code is imported, progress names the stage tqdm's patch reads, and a run that
 fails leaves its peaks there for the child's `error` event. A failure goes up as it was raised; the
@@ -36,8 +40,8 @@ def run_job(job: Job, say: Emit, stop: threading.Event | None = None, process: P
     started = time.monotonic()
     try:
         job.out_dir.mkdir(parents=True, exist_ok=True)
-        fn = load_code(job.node, job.folder, job.entry)
-        stats = fn(ctx)
+        run, load = load_code(job.node, job.folder, job.entry, job.load)
+        stats = run(ctx) if load is None else run(ctx, load(ctx._view()))
     except BaseException:
         if process is not None:
             process.peaks = ctx._peaks()

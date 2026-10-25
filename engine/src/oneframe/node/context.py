@@ -1,7 +1,8 @@
 """The context a node's run function is handed, in the engine's process or in a runtime child.
 
 Its public members are exactly its Protocol's (`oneframe.node.Context`); what the runner reads --
-the outputs, the ways, the peaks, and the `Done` they make -- is private."""
+the outputs, the ways, the peaks, the `Done` they make, and the view `load` is handed -- is
+private."""
 
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, NoReturn, TypeVar
 
-from oneframe.node import Context, Emit, NodeFailed, Stopped, Value, usage
+from oneframe.node import Context, Emit, LoadContext, NodeFailed, Stopped, Value, usage
 from oneframe.node.failures import is_torch_oom
 from oneframe.node.job import Done, Job
 
@@ -75,6 +76,10 @@ class NodeContext(Context):
 
     def _peaks(self) -> dict[str, Any]:
         return usage.peaks(self.device, self._ram_start, self._reserved_floor)
+
+    def _view(self) -> LoadContext:
+        """What `load` is handed: this context without the run's inputs, paths or outputs."""
+        return _LoadView(self)
 
     def _done(self, seconds: float, stats: Any) -> Done:
         """What the run gave, once its function has returned `stats`."""
@@ -181,3 +186,37 @@ class NodeContext(Context):
         while handling an out-of-memory error (or a download), the run keeps that kind, so the engine
         can answer it; the message's own words never change the kind."""
         raise NodeFailed(message)
+
+
+class _LoadView(LoadContext):
+    """A run's context as `load` sees it. Everything it does is the run's own: a stage, a way
+    ctx.fallbacks took, a peak."""
+
+    def __init__(self, ctx: NodeContext):
+        self.params = dict(ctx.params)
+        self.device = ctx.device
+        self.precision = ctx.precision
+        self.attempt = ctx.attempt
+        self.memory_budget_mb = ctx.memory_budget_mb
+        self._ctx = ctx
+
+    def memory_free_mb(self) -> float | None:
+        return self._ctx.memory_free_mb()
+
+    def fallbacks(self, step: str, ways: Sequence[tuple[str, Callable[[], T]]]) -> T:
+        return self._ctx.fallbacks(step, ways)
+
+    def file(self, name: str) -> Path:
+        return self._ctx.file(name)
+
+    def stage(self, name: str, message: str = "") -> None:
+        self._ctx.stage(name, message)
+
+    def progress(self, done: float, total: float | None = None, what: str = "") -> None:
+        self._ctx.progress(done, total, what)
+
+    def check_stop(self) -> None:
+        self._ctx.check_stop()
+
+    def fail(self, message: str) -> NoReturn:
+        self._ctx.fail(message)

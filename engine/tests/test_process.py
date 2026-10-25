@@ -341,6 +341,38 @@ def test_a_runtime_nodes_helper_never_hides_a_package_of_its_runtime(tmp_path: P
     assert json.loads(str(seen[0]["message"])) == ["the node", "the runtime"]
 
 
+@pytest.mark.parametrize("where", ["engine", "runtime"])
+def test_load_runs_once_and_run_gets_its_state(
+    where: str, make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    make_node(
+        {
+            "id": "test.loads",
+            "version": "1",
+            "title": "loads",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "run": {
+                "where": where,
+                "entry": "node.py:run",
+                "load": "node.py:load",
+                **({"runtime": "test"} if where == "runtime" else {}),
+            },
+        },
+        "import os\n"
+        "def load(ctx):\n"
+        "    ctx.stage('load', str(os.getpid()))\n"
+        "    return {'weights': 'loaded', 'pid': os.getpid()}\n"
+        "def run(ctx, state):\n"
+        "    p = ctx.path('t.txt'); p.write_text(repr(state == {'weights': 'loaded', 'pid': os.getpid()}))\n"
+        "    ctx.output('text', p)\n",
+    )
+    result = scheduler_for().run(_one("test.loads"), events.append)
+    assert result.status == "done", result.error
+    assert [e["stage"] for e in events.of("stage")] == ["load"]
+    assert result.outputs["n"]["text"].path.read_text(encoding="utf-8") == "True"
+
+
 def test_an_engine_run_leaves_its_sockets_alone(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:

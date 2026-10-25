@@ -36,10 +36,13 @@ def package_name(node: str, folder: Path) -> str:
     return f"{ROOT}.{name}_{digest}"
 
 
-def load_code(node: str, folder: Path, entry: str) -> Callable[..., Any]:
-    """The function `entry` (`file.py:function`) names, in a fresh import of the node's folder."""
+def load_code(
+    node: str, folder: Path, entry: str, load: str | None = None
+) -> tuple[Callable[..., Any], Callable[..., Any] | None]:
+    """The functions `entry` and `load` (each `file.py:function`) name, in a fresh import of the
+    node's folder; None for a node without `load`."""
     package = _package(package_name(node, folder), folder)
-    return _function(package, entry)
+    return _function(package, entry), None if load is None else _function(package, load)
 
 
 def _package(name: str, folder: Path) -> ModuleType:
