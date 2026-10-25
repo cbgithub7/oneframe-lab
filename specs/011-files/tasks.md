@@ -36,5 +36,5 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   `models/__init__.py`.
 - [x] 11. Docs: `docs/architecture.md`'s three rows, `docs/runtimes.md`, the roadmap's items, and
   `AGENTS.md`'s "One data root" as question 3 was answered.
-- [ ] 12. The PR: AC1 to AC3's commands and AC8's diff pasted, `node scripts/test-guard.js` green,
+- [x] 12. The PR: AC1 to AC3's commands and AC8's diff pasted, `node scripts/test-guard.js` green,
   and each criterion checked by name.
