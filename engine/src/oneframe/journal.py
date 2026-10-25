@@ -179,7 +179,8 @@ def end_when_free[T](
         _end(journal, crashed(exc), release, emit, under)
         raise
     except BaseException:
-        release()
+        with under or contextlib.nullcontext():
+            release()
         raise
     else:
         _end(journal, ending, release, emit, under)

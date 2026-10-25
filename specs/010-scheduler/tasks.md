@@ -33,7 +33,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   them). Measure AC8 for the PR.
 - [x] 9. If the owner said yes to question 1: the ending helper in `journal.py`, and model jobs
   ending through it (`test_model_jobs.py` unchanged).
-- [ ] 10. Then installs and runs end through it: `Runtimes`' claim lock made re-entrant, with the
+- [x] 10. Then installs and runs end through it: `Runtimes`' claim lock made re-entrant, with the
   release and the send under it; `Scheduler.run`'s `release`; the server's slot and crash path. Add
   `test_an_ending_is_sent_after_its_place_is_free` (AC7), and turn the waits on `engine._run` in
   `test_runtime_server.py` into waits on the ending.

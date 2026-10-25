@@ -172,6 +172,7 @@ check) records the CUDA context's size. The report, naming the machine, goes to
 - `Emit` lives in `oneframe.node`: it is standard library only, so any engine module may import it.
 - `make_scheduler` takes the data root first, as `for_root` does: a `RuntimeSide` has no root.
 - `caches_for` and `key_for` may answer None (no cache folder, no runtime part), as the defaults did.
+- The helper says a crash's ending too, so the server's run crash path frees and logs, saying nothing twice.
 
 ## Out of scope
 

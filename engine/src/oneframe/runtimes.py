@@ -25,7 +25,6 @@ import re
 import shutil
 import threading
 import tomllib
-import traceback
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,9 +32,9 @@ from typing import Any, Protocol
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.environment import reserved_env, reserved_why
-from oneframe.errors import Failure, Stopped, failure
+from oneframe.errors import Failure, Stopped
 from oneframe.files import FileLock, lock_file
-from oneframe.journal import journalled
+from oneframe.journal import end_when_free, engine_crash
 from oneframe.layout import Layout
 from oneframe.memory import Target
 from oneframe.node import Emit
@@ -755,7 +754,9 @@ class Runtimes:
         self.uv_home = uv_home
         self._read_profile = profile or (lambda: hardware.profile(data))
         self._profile: dict[str, Any] | None = None
-        self._lock = threading.Lock()
+        # The install slot's. Re-entrant: an install lets go of its slot and sends its ending under
+        # it, so a listener that hears the ending may claim at once, and another thread waits for it.
+        self._lock = threading.RLock()
         self._busy: tuple[str, threading.Event] | None = None
         self._held: FileLock | None = None  # the busy runtime's lock, across processes
 
@@ -1022,40 +1023,37 @@ class Runtimes:
         opener: Callable[..., Any] | None = None,
     ) -> dict[str, Any] | None:
         """Carry out a claimed install, reporting it as runtime.* events. Returns the result, or
-        None when it stopped or failed (the events say which)."""
+        None when it stopped or failed (the events say which). The slot and the runtime's lock go
+        before the ending is sent, so a next install may start at once."""
         base = {"runtime": runtime.id, "build": build}
         extra: dict[str, Any] = {"opener": opener} if opener is not None else {}
-        with journalled(emit, Layout(self.data).journals, f"install-{runtime.id}") as emit:
+
+        def work(kept: Emit) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+            kept({**base, "event": "runtime.start"})
             try:
-                emit({**base, "event": "runtime.start"})
                 done = runtime_install.install(
-                    runtime, build, self.data, str(self.uv), emit, stop, self.uv_home, **extra
+                    runtime, build, self.data, str(self.uv), kept, stop, self.uv_home, **extra
                 )
             except Stopped:
-                emit(
-                    {
-                        **base,
-                        "event": "runtime.stopped",
-                        "message": "Install stopped. Installing again picks up where it was.",
-                    }
-                )
-                return None
+                message = "Install stopped. Installing again picks up where it was."
+                return None, {**base, "event": "runtime.stopped", "message": message}
             except runtime_install.InstallFailed as exc:
-                emit({**base, "event": "runtime.failed", **exc.to_json(detail=exc.detail)})
-                return None
-            except Exception as exc:
-                trace = traceback.format_exc()[-4000:]
-                crashed = failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)
-                emit({**base, "event": "runtime.failed", **crashed})
-                raise
-            finally:  # the slot and the lock go before runtime.done, so a next install may start at once
-                with self._lock:
-                    self._busy = None
-                    held, self._held = self._held, None
-                    if held is not None:
-                        held.release()
-            emit({**base, "event": "runtime.done", **done})
-            return done
+                return None, {**base, "event": "runtime.failed", **exc.to_json(detail=exc.detail)}
+            return done, {**base, "event": "runtime.done", **done}
+
+        def release() -> None:
+            self._busy = None
+            held, self._held = self._held, None
+            if held is not None:
+                held.release()
+
+        def crashed(exc: BaseException) -> dict[str, Any]:
+            return engine_crash(exc, **base, event="runtime.failed")
+
+        journals = Layout(self.data).journals
+        return end_when_free(
+            emit, journals, f"install-{runtime.id}", work, release, crashed, under=self._lock
+        )
 
     def install(
         self, runtime_id: str, build: str | None = None, emit: Emit = lambda _e: None

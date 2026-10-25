@@ -52,7 +52,7 @@ from oneframe.cache import Cache, code_digest
 from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import Executor, Executors, NodeError, OneProcessPerRun, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
-from oneframe.journal import engine_crash, journalled
+from oneframe.journal import end_when_free, engine_crash
 from oneframe.layout import Layout
 from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
@@ -180,16 +180,23 @@ class Scheduler:
         emit: Emit,
         stop: threading.Event | None = None,
         run_id: str | None = None,
+        release: Callable[[], None] = lambda: None,
     ) -> RunResult:
+        """Run a graph, its events journalled. Its ending (run.done, run.stopped or run.failed, or an
+        engine bug's run.failed before the bug goes on up) is sent once the files it reads are no
+        longer listed and `release` has let go of what the caller holds for it: the engine's run slot."""
         run_id = run_id or uuid.uuid4().hex[:12]
+        stop = stop if stop is not None else threading.Event()
 
-        def crashed(exc: BaseException) -> dict[str, Any]:  # what the server reports to the page
+        def crashed(exc: BaseException) -> dict[str, Any]:
             return engine_crash(exc, event="run.failed", run=run_id)
 
-        with journalled(emit, self.journal_dir, f"run-{run_id}", crashed) as kept:
-            return self._run(graph, kept, stop if stop is not None else threading.Event(), run_id)
+        work = lambda kept: self._run(graph, kept, stop, run_id)  # noqa: E731
+        return end_when_free(emit, self.journal_dir, f"run-{run_id}", work, release, crashed)
 
-    def _run(self, graph: Graph, emit: Emit, stop: threading.Event, run_id: str) -> RunResult:
+    def _run(
+        self, graph: Graph, emit: Emit, stop: threading.Event, run_id: str
+    ) -> tuple[RunResult, dict[str, Any]]:
         def say(event: dict[str, Any]) -> None:
             emit(dict(event, run=run_id))
 
@@ -200,28 +207,26 @@ class Scheduler:
         # so a remove in any process leaves them alone until it ends.
         files = sorted({spec.sha256 for step in the_plan.steps for spec in step.manifest.files})
         with reading(self.tmp_root, files):
-            return self._steps(the_plan, run)
+            result, ending = self._steps(the_plan, run)
+        return result, dict(ending, run=run_id)
 
-    def _steps(self, the_plan: Plan, run: _RunState) -> RunResult:
+    def _steps(self, the_plan: Plan, run: _RunState) -> tuple[RunResult, dict[str, Any]]:
+        """Each step in order; the run's result, and its ending, which the run sends."""
         result = RunResult(run=run.id, status="done")
-        say = run.say
         for step in the_plan.steps:
             if run.stop.is_set():
                 result.status = "stopped"
-                say({"event": "run.stopped", "step": step.id})
-                return result
+                return result, {"event": "run.stopped", "step": step.id}
             state = _StepState(step)
             try:
                 outputs, record = self._step(run, state, result.outputs)
             except Stopped:
                 result.status = "stopped"
-                say({"event": "run.stopped", "step": step.id})
-                return result
+                return result, {"event": "run.stopped", "step": step.id}
             except EdgeMismatch as exc:  # no node's fault: reported against the edge, not the step
                 result.status = "failed"
                 result.error = exc.to_json(edge=exc.edge)
-                say(dict(result.error, event="run.failed"))
-                return result
+                return result, dict(result.error, event="run.failed")
             except (NodeError, RuntimeMissing, ContractError, FilesMissing) as exc:
                 error = exc.to_json(step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""))
                 if state.fits:
@@ -230,20 +235,14 @@ class Scheduler:
                     error["peaks"] = state.peaks
                 result.status = "failed"
                 result.error = error
-                say(dict(error, event="node.failed"))
-                say({"event": "run.failed", **exc.to_json(step=step.id)})
-                return result
+                run.say(dict(error, event="node.failed"))
+                return result, {"event": "run.failed", **exc.to_json(step=step.id)}
             result.outputs[step.id] = outputs
             result.records[step.id] = record
-        say(
-            {
-                "event": "run.done",
-                "outputs": {
-                    sid: {p: v.to_json() for p, v in outs.items()} for sid, outs in result.outputs.items()
-                },
-            }
-        )
-        return result
+        outputs_json = {
+            sid: {p: v.to_json() for p, v in outs.items()} for sid, outs in result.outputs.items()
+        }
+        return result, {"event": "run.done", "outputs": outputs_json}
 
     def _gather(self, step: Step, done: dict[str, dict[str, Value]]) -> dict[str, Value]:
         inputs: dict[str, Value] = {}
