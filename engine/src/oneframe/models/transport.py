@@ -1,5 +1,9 @@
 """Fetching one file to its partial, on `http.client`, healing what goes wrong on the way (spec 003,
-requirement 3; research.md's "Second round").
+requirement 3; research.md's "Second round"): a model file, or a runtime's source (spec 011).
+
+Spec 003's tripwire fired: past about 600 lines this was to move onto urllib3, and it is over 750.
+Spec 011 kept it, since it passed the real hosts and urllib3 would save about 15 lines; it grows no
+further, and needing more (http, auth, parallel ranges, a new phase or Policy field) reopens urllib3.
 
 - **Every attempt starts from the source URL** and follows its redirects again, so a signed URL
   that expired, or was used up, is never asked twice. Redirects are https only, refused before
@@ -560,7 +564,7 @@ class Transfer:
         free = self._free()
         if free < need:
             raise DownloadFailed(
-                f"The store's drive has {free} bytes free and {self._where()} needs {need} more; "
+                f"The drive has {free} bytes free and {self._where()} needs {need} more; "
                 f"{self.have} bytes were kept.",
                 "no_space",
                 self.have,
@@ -744,8 +748,7 @@ class Transfer:
                         if not _disk_full(exc):
                             raise
                         raise DownloadFailed(
-                            f"The store's drive is full after {self.have} bytes of {self._where()}; they "
-                            "were kept.",
+                            f"The drive is full after {self.have} bytes of {self._where()}; they were kept.",
                             "no_space",
                             self.have,
                             "Free some space on the drive, then download again; it resumes where it stopped.",

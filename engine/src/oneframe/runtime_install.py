@@ -5,6 +5,7 @@
     <data>/runtimes/<id>/<build>/stand-ins/<package>/    stand-ins for compiled extensions
     <data>/runtimes/<id>/<build>/oneframe-runtime.json   the marker, written last
     <data>/runtimes/<id>/downloads/<sha256>              source archives
+    <data>/runtimes/<id>/downloads/<sha256>.part         one being fetched, kept to resume
     <data>/uv/cache/, <data>/uv/python/                  uv's cache and the Pythons it fetches,
                                                          unless `--uv-home` names another folder
 
@@ -15,10 +16,11 @@ format is left alone, and its runtime is neither installed over nor removed; one
 where it now lies (a root moved or copied) says the environment must be built again.
 
 An install that stops for any reason -- Stop, a failure, the engine killed -- leaves no marker,
-and installing again picks up where it was: uv sync finishes a half-built environment, and an
-archive already downloaded with the right hash is kept.
+and installing again picks up where it was: uv sync finishes a half-built environment, an archive
+already downloaded with the right hash is kept, and one partly fetched resumes from its partial.
 
-Only this module fetches anything, and only when a person asked for the install.
+Only this module fetches anything (a source, through the model store's transport, retried and
+resumed as a model file is), and only when a person asked for the install.
 """
 
 from __future__ import annotations

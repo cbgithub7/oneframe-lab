@@ -32,7 +32,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   `test_there_is_one_stopped` naming the transport. AC2's command prints only `files.py`.
 - [x] 9. If the owner said yes to question 1: `runtime.json` refuses a source that is not https,
   `test_a_source_that_is_not_https_is_refused`, and the definition test's expected problem.
-- [ ] 10. Docstrings: the transport's tripwire line and "the drive"; `runtime_install`'s resume;
+- [x] 10. Docstrings: the transport's tripwire line and "the drive"; `runtime_install`'s resume;
   `models/__init__.py`.
 - [ ] 11. Docs: `docs/architecture.md`'s three rows, `docs/runtimes.md`, the roadmap's items, and
   `AGENTS.md`'s "One data root" as question 3 was answered.
