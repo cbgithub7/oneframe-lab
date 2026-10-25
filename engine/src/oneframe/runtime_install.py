@@ -39,6 +39,7 @@ from oneframe import archives, processes
 from oneframe.environment import uv_environment
 from oneframe.errors import Failure, Stopped
 from oneframe.files import format_of, remove_tree, write_json
+from oneframe.node import Emit
 
 if TYPE_CHECKING:
     from oneframe.runtimes import RuntimeDef
@@ -46,7 +47,6 @@ if TYPE_CHECKING:
 MARKER = "oneframe-runtime.json"
 MARKER_FORMAT = 1
 PTH = "oneframe-runtime.pth"
-Emit = Callable[[dict[str, Any]], None]
 STEPS = ("marker", "python", "sync", "sources", "stand-ins", "paths", "freeze", "record")
 
 

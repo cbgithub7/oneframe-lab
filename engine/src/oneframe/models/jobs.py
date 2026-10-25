@@ -31,11 +31,12 @@ from typing import Any
 
 from oneframe.errors import Failure, Stopped
 from oneframe.files import FileLock, lock_file
-from oneframe.journal import Emit, engine_crash, journalled
+from oneframe.journal import engine_crash, journalled
 from oneframe.manifest import Manifest
 from oneframe.models.schema import FileSpec
 from oneframe.models.store import Store, StoreRefused, hash_file
 from oneframe.models.transport import DownloadFailed, Transfer
+from oneframe.node import Emit
 
 LOGGER = logging.getLogger(__name__)
 

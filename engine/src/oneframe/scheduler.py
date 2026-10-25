@@ -57,13 +57,12 @@ from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
-from oneframe.node import Value
+from oneframe.node import Emit, Value
 from oneframe.node.job import Job
 from oneframe.registry import Registry
 from oneframe.runtimes import RuntimeMissing, Runtimes
 
 LOGGER = logging.getLogger(__name__)
-Emit = Callable[[dict[str, Any]], None]
 TRUST_ORDER = {"measured": 0, "predicted": 1, "synthetic": 2}
 
 

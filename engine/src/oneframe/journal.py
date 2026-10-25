@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from oneframe.errors import failure
+from oneframe.node import Emit
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +37,6 @@ ENDINGS_MAX_BYTES = 2**20  # what a full journal may still take of them
 STEP_LOGS_KEEP = 200
 STEP_LOGS_MAX_BYTES = 128 * 2**20
 
-Emit = Callable[[dict[str, Any]], None]
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 

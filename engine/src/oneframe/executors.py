@@ -28,7 +28,7 @@ from typing import Any
 from oneframe.environment import child_env
 from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
-from oneframe.node import Stopped, failures
+from oneframe.node import Emit, Stopped, failures
 from oneframe.node.job import Done, Job
 from oneframe.node.runner import run_job
 from oneframe.node.usage import PEAKS
@@ -44,9 +44,6 @@ def child_command(python: Path, job: Path, exit_with_parent: bool = False) -> li
     when its stdin closes, so it needs a stdin pipe the parent holds."""
     flag = ["--exit-with-parent"] if exit_with_parent else []
     return [str(python), "-P", "-u", str(CHILD), *flag, str(job)]
-
-
-Emit = Callable[[dict[str, Any]], None]
 
 
 class NodeError(Failure):

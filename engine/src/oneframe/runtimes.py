@@ -38,6 +38,7 @@ from oneframe.files import FileLock, lock_file
 from oneframe.journal import journalled
 from oneframe.layout import Layout
 from oneframe.memory import Target
+from oneframe.node import Emit
 
 DEFINITION = "runtime.json"
 PYPROJECT = "pyproject.toml"
@@ -690,9 +691,6 @@ def find_uv(explicit: str | None = None, env: dict[str, str] | None = None) -> s
     """uv: as given, else the UV variable `uv run` sets for the engine, else ONEFRAME_UV, else PATH."""
     source = os.environ if env is None else env
     return explicit or source.get("UV") or source.get("ONEFRAME_UV") or shutil.which("uv")
-
-
-Emit = Callable[[dict[str, Any]], None]
 
 
 class Runtimes:

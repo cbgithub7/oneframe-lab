@@ -30,11 +30,12 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__
 from oneframe.errors import Failure, Stopped
-from oneframe.journal import Emit, engine_crash, journalled
+from oneframe.journal import engine_crash, journalled
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.models.jobs import Jobs, claim_store, hub_endpoint
 from oneframe.models.pin import find_manifest, pin
 from oneframe.models.store import Store, StoreRefused
+from oneframe.node import Emit
 from oneframe.registry import discover
 from oneframe.scratch import for_tool
 

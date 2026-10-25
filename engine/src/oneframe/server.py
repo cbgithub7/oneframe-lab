@@ -41,6 +41,7 @@ from oneframe.memory import LearnedStore, read_settings
 from oneframe.models.catalog import listing, remove_node, remove_unpinned
 from oneframe.models.jobs import Jobs
 from oneframe.models.runs import in_use
+from oneframe.node import Emit
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, Runtimes, find_uv
 from oneframe.scheduler import for_root
@@ -65,7 +66,7 @@ class Engine:
         self,
         data: Path,
         node_roots: list[Path],
-        say: Callable[[dict[str, Any]], None],
+        say: Emit,
         runtime_roots: list[Path] | None = None,
         uv: str | None = None,
         uv_home: Path | None = None,

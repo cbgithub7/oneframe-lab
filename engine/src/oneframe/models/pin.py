@@ -25,7 +25,6 @@ import struct
 import threading
 import urllib.parse
 import zipfile
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,8 +34,8 @@ from oneframe.files import write_text
 from oneframe.manifest import ManifestError, load
 from oneframe.models.store import Store
 from oneframe.models.transport import Connector, DownloadFailed, Transfer
+from oneframe.node import Emit
 
-Say = Callable[[dict[str, Any]], None]
 SAFETENSORS_HEADER_MAX = 100 * 2**20  # a header longer than this is not a safetensors file's
 
 
@@ -107,7 +106,7 @@ def pin(
     store: Store,
     endpoint: str,
     stop: threading.Event,
-    say: Say,
+    say: Emit,
     transfer: dict[str, Any] | None = None,
 ) -> Report:
     """Pin every file of the manifest at `path`, through `store`, and write the manifest back. The
@@ -185,7 +184,7 @@ def _pin_one(
     described: dict[tuple[str, str], dict[str, dict[str, Any]]],
     store: Store,
     stop: threading.Event,
-    say: Say,
+    say: Emit,
     options: dict[str, Any],
     report: Report,
 ) -> dict[str, Any]:
@@ -228,7 +227,7 @@ def _pin_one(
 
 
 def _drifted(
-    report: Report, say: Say, name: str, recorded: Any, found: str, recorded_size: Any, size: Any
+    report: Report, say: Emit, name: str, recorded: Any, found: str, recorded_size: Any, size: Any
 ) -> dict[str, Any]:
     row = {"name": name, "recorded": recorded, "found": found, "recorded_size": recorded_size, "size": size}
     report.drifted.append(row)
@@ -242,7 +241,7 @@ def _fetch(
     size_hint: int | None,
     store: Store,
     stop: threading.Event,
-    say: Say,
+    say: Emit,
     name: str,
     options: dict[str, Any],
 ) -> tuple[str, int]:

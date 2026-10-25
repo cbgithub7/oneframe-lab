@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` with
 `node scripts/test-guard.js --write` (007).
 
-- [ ] 1. One `Emit`: `journal.py`, `scheduler.py`, `executors.py`, `runtimes.py`,
+- [x] 1. One `Emit`: `journal.py`, `scheduler.py`, `executors.py`, `runtimes.py`,
   `runtime_install.py`, `server.py` and `models/pin.py` import it from `oneframe.node`, and so do
   `models/jobs.py` and `models/tools.py`, which take it from the journal today; `Say` goes. AC6's
   command prints one line.
