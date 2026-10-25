@@ -29,7 +29,7 @@ import traceback
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.environment import reserved_env, reserved_why
@@ -685,6 +685,45 @@ class InstallRefused(Failure, ValueError):
 
     def __init__(self, message: str, reason: str, next: str | None = None):
         super().__init__(message, reason=reason, next=next)
+
+
+class RuntimeSide(Protocol):
+    """What the scheduler and its executors ask of the runtimes: `Runtimes` answers from what this
+    machine installed, `NoRuntimes` with nothing installed, and a test with its double."""
+
+    def python_for(self, runtime_id: str) -> Path: ...
+
+    def env_for(self, runtime_id: str) -> dict[str, str]: ...
+
+    def caches_for(self, runtime_id: str) -> Path | None: ...
+
+    def key_for(self, runtime_id: str) -> dict[str, str] | None: ...
+
+    def device_target(self, runtime_id: str) -> Target: ...
+
+
+class NoRuntimes:
+    """No runtime installed: a runtime node fails `not_installed` where it needs its runtime, while
+    its cache key and its fit's target answer as for a runtime with no build and no card, so the
+    executors a test gives the scheduler still get the job."""
+
+    def _missing(self, runtime_id: str) -> RuntimeMissing:
+        return RuntimeMissing(f"The runtime {runtime_id!r} is not installed.")
+
+    def python_for(self, runtime_id: str) -> Path:
+        raise self._missing(runtime_id)
+
+    def env_for(self, runtime_id: str) -> dict[str, str]:
+        raise self._missing(runtime_id)
+
+    def caches_for(self, runtime_id: str) -> Path | None:
+        raise self._missing(runtime_id)
+
+    def key_for(self, runtime_id: str) -> dict[str, str] | None:
+        return None
+
+    def device_target(self, runtime_id: str) -> Target:
+        return Target()
 
 
 def find_uv(explicit: str | None = None, env: dict[str, str] | None = None) -> str | None:

@@ -8,7 +8,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `runtime_install.py`, `server.py` and `models/pin.py` import it from `oneframe.node`, and so do
   `models/jobs.py` and `models/tools.py`, which take it from the journal today; `Say` goes. AC6's
   command prints one line.
-- [ ] 2. `RuntimeSide` and `NoRuntimes` in `oneframe/runtimes.py`, and a `conftest.py` fixture for a
+- [x] 2. `RuntimeSide` and `NoRuntimes` in `oneframe/runtimes.py`, and a `conftest.py` fixture for a
   runtimes double whose runtime is the engine's own Python, with a target and a key a test can set.
 - [ ] 3. `on_pid` goes from the scheduler, `for_root`, `make_scheduler` and `ProcessExecutor`. The
   `oom` retry test in `test_scheduler.py` and the files-check test in `test_model_runs.py` read the

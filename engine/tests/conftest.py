@@ -28,6 +28,7 @@ from fixtures.hosts import Hosts
 
 from oneframe.cache import Cache
 from oneframe.files import is_free
+from oneframe.memory import Target
 from oneframe.registry import Registry, discover
 from oneframe.scheduler import Scheduler
 
@@ -153,6 +154,41 @@ def basic_nodes(make_node: MakeNode) -> None:
 @pytest.fixture
 def registry_for(node_root: Path) -> Callable[[], Registry]:
     return lambda: discover([node_root])
+
+
+class HostRuntimes:
+    """A runtimes double (runtimes.RuntimeSide): every runtime is the engine's own Python, with the
+    variables, the fit's target and the cache key a test sets, and no folder for library caches."""
+
+    def __init__(
+        self,
+        target: Target | None = None,
+        key: dict[str, str] | None = None,
+        env: dict[str, str] | None = None,
+    ) -> None:
+        self.target = target or Target()
+        self.key = key
+        self.env = dict(env or {})
+
+    def python_for(self, runtime_id: str) -> Path:
+        return Path(sys.executable)
+
+    def env_for(self, runtime_id: str) -> dict[str, str]:
+        return dict(self.env)
+
+    def caches_for(self, runtime_id: str) -> Path | None:
+        return None
+
+    def key_for(self, runtime_id: str) -> dict[str, str] | None:
+        return None if self.key is None else dict(self.key)
+
+    def device_target(self, runtime_id: str) -> Target:
+        return self.target
+
+
+@pytest.fixture
+def host_runtimes() -> HostRuntimes:
+    return HostRuntimes()
 
 
 @pytest.fixture
