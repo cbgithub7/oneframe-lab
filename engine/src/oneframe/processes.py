@@ -78,17 +78,24 @@ def alive(pid: int) -> bool:
             return code.value == _STILL_ACTIVE
         finally:
             _KERNEL32.CloseHandle(handle)
+    if not _found(pid):
+        return False
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[0]
+    except OSError, IndexError:  # no /proc, or a zombie reaped since it was found: ask again
+        return _found(pid)
+    return state != "Z"
+
+
+def _found(pid: int) -> bool:
+    """Whether a signal finds the process (POSIX), a zombie included."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
-    except PermissionError:
-        return True
-    try:
-        state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[0]
-    except OSError, IndexError:
-        return True
-    return state != "Z"
+    except PermissionError:  # found, but not ours to signal
+        pass
+    return True
 
 
 def wait_gone(pid: int, seconds: float = 10) -> bool:
