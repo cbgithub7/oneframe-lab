@@ -10,7 +10,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   command prints one line.
 - [x] 2. `RuntimeSide` and `NoRuntimes` in `oneframe/runtimes.py`, and a `conftest.py` fixture for a
   runtimes double whose runtime is the engine's own Python, with a target and a key a test can set.
-- [ ] 3. `on_pid` goes from the scheduler, `for_root`, `make_scheduler` and `ProcessExecutor`. The
+- [x] 3. `on_pid` goes from the scheduler, `for_root`, `make_scheduler` and `ProcessExecutor`. The
   `oom` retry test in `test_scheduler.py` and the files-check test in `test_model_runs.py` read the
   process id their node reports; `test_a_listener_is_told_the_childs_process_id` goes, as the spec
   lists.

@@ -21,7 +21,6 @@ import sys
 import tempfile
 import threading
 from collections import deque
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -147,7 +146,6 @@ class ProcessExecutor:
         env: dict[str, str] | None = None,
         base_env: dict[str, str] | None = None,
         log_dir: Path | None = None,
-        on_pid: Callable[[int], None] | None = None,
         tmp_root: Path | None = None,
         caches: Path | None = None,
     ):
@@ -159,7 +157,6 @@ class ProcessExecutor:
         self.env = dict(env or {})
         self.base_env = base_env
         self.log_dir = log_dir
-        self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
     def execute(self, job: Job, emit: Emit, stop: threading.Event) -> Done:
         tmp = Path(tempfile.mkdtemp(prefix="job-", dir=self.tmp_root))
@@ -197,8 +194,6 @@ class ProcessExecutor:
                     kind = event.get("event")
                     if kind == "pid":
                         interpreter.append(int(event["pid"]))
-                        if self.on_pid is not None:
-                            self.on_pid(interpreter[-1])
                     elif kind == "done":
                         done = Done.from_event(event)
                     elif kind == "error":

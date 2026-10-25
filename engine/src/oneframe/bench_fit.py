@@ -175,7 +175,6 @@ def make_scheduler(
     manager: Runtimes | None,
     cache_root: Path,
     settings: Callable[[], Settings] = Settings,
-    on_pid: Callable[[int], None] | None = None,
     runtime_python: Callable[[str], Path] | None = None,
     tmp_root: Path | None = None,
 ) -> Scheduler:
@@ -195,7 +194,6 @@ def make_scheduler(
         settings=settings,
         learned=_Unlearned(),
         tmp_root=tmp_root,
-        on_pid=on_pid,
         runtime_python=runtime_python,
     )
 

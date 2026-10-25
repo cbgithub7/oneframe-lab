@@ -520,16 +520,6 @@ def test_a_node_that_queries_its_stdin_does_not_hang(
     assert answers.get("type", 2) == 2
 
 
-def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:
-    pids: list[int] = []
-    seen: list[dict[str, object]] = []
-    body = "ctx.stage('pid', str(os.getpid()))\n"
-    ProcessExecutor(Path(sys.executable), on_pid=pids.append).execute(
-        _executor_job(tmp_path, body), seen.append, threading.Event()
-    )
-    assert len(pids) == 1 and str(pids[0]) == seen[0]["message"]
-
-
 @pytest.mark.parametrize(
     ("code", "platform", "memory"),
     [

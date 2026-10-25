@@ -622,15 +622,13 @@ def test_nothing_fits_is_a_memory_failure_before_anything_loads(
 def test_a_runtime_node_that_runs_out_is_retried_in_a_new_process(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
-    _fit_node(make_node, "test.fit", OOM_FIRST, where="runtime")
-    pids: list[int] = []
+    _fit_node(make_node, "test.fit", "    ctx.stage('pid', str(os.getpid()))\n" + OOM_FIRST, where="runtime")
     result = scheduler_for(
         machine=_with(machines.get("8 GB, compute 6.1, 1.5 GB held")),
         target=lambda _r: Target(card=0, lock="l"),
-        on_pid=pids.append,
     ).run(_one_node("test.fit"), events.append)
     assert result.status == "done", result.error
-    assert len(set(pids)) == 2
+    assert len({e["message"] for e in events.of("stage") if e["stage"] == "pid"}) == 2
     first, second = events.of("node.fit")
     assert first["device"] == second["device"] == "cuda"
     assert [c["change"] for c in first["changes"]] == [0] and [c["change"] for c in second["changes"]] == [
