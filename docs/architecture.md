@@ -28,7 +28,7 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; checks every value at every port; carries trust; one retry after `oom` |
 | Memory | `oneframe/memory.py` | A node's memory model; the estimate; the margins and the person's settings; the fit (pure); what each machine learns |
 | Errors | `oneframe/errors.py` | Every kind and reason of failure, declared once, and whose fault each is ([Failures](#failures)) |
-| Executors | `oneframe/executors.py`, `oneframe/child.py` | In-process or child-process runs; one `NodeContext` either way |
+| Executors | `oneframe/executors.py`, `oneframe/child.py`, `oneframe/node/` | In-process or child-process runs; one node API and one runner either way, and the child a bootstrap that makes only `oneframe.node` importable |
 | Processes | `oneframe/processes.py` | The one module that starts, reads and ends processes: each in its own group, with no window, read as UTF-8; a kill ends the tree and waits for it |
 | Environment | `oneframe/environment.py`, `app/main/paths.js` | What every child inherits (never the engine's own Python or a hub token) and what the engine sets: a run offline, its writes under the root; uv's folders under the root |
 | Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |

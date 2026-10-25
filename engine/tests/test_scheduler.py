@@ -673,6 +673,27 @@ def test_ac1_a_runtime_node_without_a_model_runs_at_its_defaults_on_the_first_de
     assert seen["cuda_visible"] == "-1"  # a processor run sees no card
 
 
+def test_a_processor_run_sees_no_card_and_a_card_run_sees_its_card(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
+) -> None:
+    """A job carries no environment: the process that runs it hides the card for a processor run,
+    and leaves the runtime's own choice alone for a card run."""
+    _fit_node(make_node, "test.where", where="runtime", model=False)
+    seen = []
+    for machine, card, resolution in (
+        (machines.machine([machines.CARD_24GB], 50000, 68719), 0, 700),
+        (ROOMY, None, 701),
+    ):
+        result = scheduler_for(
+            machine=_with(machine),
+            target=lambda _r, c=card: Target(card=c, lock="l"),
+            runtime_env=lambda _r: {"CUDA_VISIBLE_DEVICES": "0"},
+        ).run(_one_node("test.where", resolution=resolution), lambda _e: None)
+        assert result.status == "done", result.error
+        seen.append((_seen(result)["device"], _seen(result)["cuda_visible"]))
+    assert seen == [("cuda", "0"), ("cpu", "-1")]
+
+
 def test_nvidia_smi_is_read_only_for_a_runtime_node_that_can_use_a_card(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
 ) -> None:

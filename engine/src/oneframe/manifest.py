@@ -71,6 +71,7 @@ class Run:
     file: str
     function: str
     runtime: str | None = None
+    load: str | None = None  # `file.py:function`, called once per attempt before `run`
 
 
 @dataclass(frozen=True)
@@ -180,6 +181,18 @@ def _param(name: str, row: Any, problems: list[str]) -> Param | None:
     )
 
 
+def _code(field: str, value: str, folder: Path, problems: list[str]) -> tuple[str, str]:
+    """A `file.py:function` in the node's folder, as `run.entry` and `run.load` name one."""
+    file, _, function = value.partition(":")
+    if not function:
+        problems.append(f"{field} should read file.py:function")
+    if Path(file).is_absolute() or ".." in Path(file).parts:
+        problems.append(f"{field} must name a file inside the node's folder")
+    if not (folder / file).is_file():
+        problems.append(f"{field} names {file}, which is not in {folder.name}/")
+    return file, function
+
+
 def parse(
     data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
 ) -> Manifest:
@@ -245,19 +258,15 @@ def parse(
 
     run_row = data.get("run") or {}
     where = run_row.get("where", "engine")
-    entry = str(run_row.get("entry", "node.py:run"))
-    file, _, function = entry.partition(":")
     if where not in WHERE:
         problems.append(f"run.where must be one of {', '.join(WHERE)}")
-    if not function:
-        problems.append("run.entry should read file.py:function")
-    if Path(file).is_absolute() or ".." in Path(file).parts:
-        problems.append("run.entry must name a file inside the node's folder")
+    file, function = _code("run.entry", str(run_row.get("entry", "node.py:run")), folder, problems)
+    load = None if run_row.get("load") is None else str(run_row["load"])
+    if load is not None:
+        _code("run.load", load, folder, problems)
     runtime = run_row.get("runtime")
     if where == "runtime" and not runtime:
         problems.append("run.runtime is required when run.where is runtime")
-    if not (folder / file).is_file():
-        problems.append(f"run.entry names {file}, which is not in {folder.name}/")
 
     devices = tuple(data.get("devices") or ("cpu",))
     for device in devices:
@@ -285,7 +294,7 @@ def parse(
         inputs=inputs,
         outputs=outputs,
         params=params,
-        run=Run(where=where, file=file, function=function, runtime=runtime),
+        run=Run(where=where, file=file, function=function, runtime=runtime, load=load),
         folder=folder,
         devices=devices,
         memory=model,

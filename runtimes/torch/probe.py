@@ -6,8 +6,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from oneframe.node import Context
 
-def run(ctx: Any) -> dict[str, Any]:
+
+def run(ctx: Context) -> dict[str, Any]:
     import torch  # type: ignore[import-not-found]
 
     found: dict[str, Any] = {

@@ -13,8 +13,10 @@ from typing import Any
 
 import numpy as np
 
+from oneframe.node import Context
 
-def run(ctx: Any) -> dict[str, Any]:
+
+def run(ctx: Context) -> dict[str, Any]:
     depth = np.load(ctx.inputs["depth"].path)["depth"].astype(np.float32)
     camera = json.loads(Path(ctx.inputs["camera"].path).read_text(encoding="utf-8"))
     h, w = depth.shape

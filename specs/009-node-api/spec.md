@@ -1,6 +1,6 @@
 # 009: The node API
 
-Status: approved
+Status: in progress (every task done; in review in [PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37))
 Owner approval: 2026-10-18, every open question answered as recommended
 
 The third of eight clean-up specs (007 to 014), from section 3 of the
@@ -133,8 +133,9 @@ for spec 004"). No rule or command in AGENTS.md changes.
     - `test_process.py`: `test_two_engine_nodes_with_same_named_helpers_each_run_their_own`,
       `test_a_runtime_nodes_helper_never_hides_a_package_of_its_runtime`,
       `test_load_runs_once_and_run_gets_its_state`, `test_an_engine_run_leaves_its_sockets_alone`;
-    - `test_node_api.py`: `test_a_context_shows_exactly_its_protocol`, and
-      `test_a_job_survives_its_json` (a param that is not plain JSON is written as its `str`);
+    - `test_node_api.py`: `test_a_context_shows_exactly_its_protocol`, `test_a_job_survives_its_json`
+      (a param that is not plain JSON is written as its `str`), and, from `/code-review`,
+      `test_an_entry_loads_by_its_path_with_its_helpers` and `test_an_engine_node_gets_copies_of_its_inputs`;
     - `test_ports_and_manifests.py`: `test_run_load_is_refused_as_run_entry_is`.
 - Renamed: `test_a_job_brings_its_own_environment` -> `test_a_processor_run_sees_no_card_and_a_card_run_sees_its_card`
   (a job carries no environment now, so one runtime node runs on a card, then on the processor).
@@ -168,6 +169,8 @@ stand-in torch, and the benches' probes run on a card once, after 010 (Decisions
 - Precision still defaults to `fp32` and `seconds` spans load and run: a person sees no change.
 - `Stopped` stays a `RuntimeError`: a new base would touch every `except Exception` in the engine.
 - No `.pyi` stub and no published node API package: nodes outside the repo are not a v1 target.
+- A failed run's peaks wait on the child's `Process` for its `error` event: a node's exception goes up unchanged.
+- pyright checks `runtimes/torch` as its own root at its runtime's Python: from the repo root, `import torch` there is the folder.
 
 ## Out of scope
 

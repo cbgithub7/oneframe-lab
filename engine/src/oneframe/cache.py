@@ -26,10 +26,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from oneframe.child import Value
 from oneframe.errors import ContractError
 from oneframe.files import is_temporary
 from oneframe.manifest import Manifest
+from oneframe.node import Value
 
 # 2: the node's code and its runtime joined the key (spec 006). Older entries are never served;
 # they stay on disk until a later spec evicts them. Spec 003 moved node.json from the folder's

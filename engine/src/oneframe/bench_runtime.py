@@ -27,6 +27,7 @@ from typing import Any
 from oneframe import __version__, runtime_install, scratch
 from oneframe.executors import NodeError, ProcessExecutor
 from oneframe.layout import Layout, RootRefused, open_root
+from oneframe.node.job import Job
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
 
@@ -36,18 +37,16 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
         return {"ran": False, "why": "The runtime has no probe."}
     python = manager.python_for(runtime_id)
     build = runtime.build(str(manager.plan_for(runtime).build))
-    file, _, function = runtime.probe.partition(":")
     with tempfile.TemporaryDirectory(prefix="oneframe-probe-") as out:
-        job = {
-            "run": "bench",
-            "step": "probe",
-            "node": f"probe:{runtime_id}",
-            "entry": {"file": str(runtime.folder / file), "function": function},
-            "inputs": {},
-            "params": {},
-            "out_dir": out,
-            "device": "cuda" if build is not None and build.vendor == "nvidia" else "cpu",
-        }
+        job = Job(
+            node=f"probe:{runtime_id}",
+            folder=runtime.folder,
+            entry=runtime.probe,
+            out_dir=Path(out),
+            run="bench",
+            step="probe",
+            device="cuda" if build is not None and build.vendor == "nvidia" else "cpu",
+        )
         executor = ProcessExecutor(
             python,
             env=manager.env_for(runtime_id),
@@ -60,9 +59,9 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
             return {"ran": False, "why": f"{exc.kind}: {exc}", "detail": exc.detail[-2000:]}
     return {
         "ran": True,
-        "seconds": done.get("seconds"),
-        "peak_vram_mb": done.get("peak_vram_mb"),
-        "result": done.get("stats") or {},
+        "seconds": done.seconds,
+        "peak_vram_mb": done.peaks.get("peak_vram_mb"),
+        "result": done.stats,
     }
 
 

@@ -24,7 +24,7 @@ the code it names. The folder is named after the node's id.
     "resolution": { "type": "int", "default": 1024, "min": 256, "max": 2048, "doc": "Longest side." },
     "tile_batch": { "type": "int", "default": 4, "min": 1, "affects": "speed" }
   },
-  "run": { "where": "runtime", "runtime": "example", "entry": "node.py:run" },
+  "run": { "where": "runtime", "runtime": "example", "entry": "node.py:run", "load": "node.py:load" },
   "devices": ["cuda", "cpu"],
   "licence": { "code": "MIT", "weights": "CC BY-NC 4.0", "commercial": false },
   "links": { "repo": "https://github.com/..." }
@@ -43,6 +43,9 @@ the code it names. The folder is named after the node's id.
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
   node fails with kind `runtime` and a reason such as `not_installed`, `out_of_date` or `blocked`
   (every reason is in [architecture.md](architecture.md#failures)).
+- **run.entry** names the function each run calls, `file.py:function` in the node's folder.
+  **run.load**, optional and in the same form, names one called once before it, to load the model
+  (below).
 - **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
   repair, texture, convert, evaluate, export.
 
@@ -89,13 +92,21 @@ fetch it and what its bytes must be ([spec 003](../specs/003-model-store/spec.md
 ## The code
 
 ```python
-def run(ctx):
+from oneframe.node import Context, LoadContext
+
+
+def load(ctx: LoadContext):
+    return Model.from_file(ctx.file("weights")).to(ctx.device)  # the state `run` is handed
+
+
+def run(ctx: Context, model):
     image = ctx.inputs["image"]  # Value: .path, .facets, .meta, .trust
     ctx.stage("infer", "Estimating depth")
     if image.meta["width"] < 256:
         ctx.fail("The photo is narrower than 256 pixels.")  # kind `node`, in these words
     for i, tile in enumerate(tiles):
         ctx.check_stop()  # in the engine's process, raises if Stop was pressed
+        depth[tile.window] = model(tile.pixels)
         ctx.progress(i + 1, len(tiles))
     path = ctx.path("depth.npz")  # a file in this run's own folder
     np.savez(path, depth=depth)
@@ -103,16 +114,27 @@ def run(ctx):
     return {"tiles": len(tiles)}  # stats, kept with the run record
 ```
 
-Every output in the manifest must be declared with `ctx.output` before `run` returns. A node
-writes only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`:
-the run fails with kind `node`, and the person reads the message as written, whatever words it uses.
-Called while handling an out-of-memory error, it keeps kind `oom`, so the engine can retry with a
-smaller fit; to refuse for good instead, call it after the `except` block. Any other error is
-reported with its type. Stop ends a runtime
-node's process at once, with every process it started; a node in the engine's process is stopped
-only where it calls `ctx.check_stop()`. Node code never imports the engine: in a runtime, `import models` finds the
-runtime's package of that name. A run is cached by its inputs and output-affecting params, so it
-must be deterministic for them (seed any randomness from a `seed` parameter).
+A node whose manifest names `run.load` has it called once on each attempt, then `run(ctx, state)`
+with what it returned; without it, `run(ctx)` alone. `load`'s context has everything `run`'s has but
+the run's inputs, paths and outputs: what it returns may depend on the fitted settings
+(`ctx.params`, `ctx.device`, `ctx.precision`), never on the photo or another node's output. Its
+seconds count with the run's.
+
+Every output in the manifest must be declared with `ctx.output` before `run` returns. A node writes
+only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`: the run
+fails with kind `node`, and the person reads the message as written, whatever words it uses. Called
+while handling an out-of-memory error, it keeps kind `oom`, so the engine can retry with a smaller
+fit; to refuse for good instead, call it after the `except` block. Any other error is reported with
+its type. Stop ends a runtime node's process at once, with every process it started; a node in the
+engine's process is stopped only where it calls `ctx.check_stop()`. Of the engine, node code imports
+`oneframe.node` and nothing else: `Context` to type `ctx`, `Value`, and `Stopped` and `NodeFailed`
+for an `except` to let through. The child makes that package, alone, importable in every runtime, so
+in a runtime `import models` finds the runtime's package of that name. The node's folder is imported
+as a package of its own, so a node imports its helpers relatively (`from . import utils`), and
+`import utils` still finds the runtime's package of that name; the import path is never changed. A
+process the node starts itself (a DataLoader worker) cannot import the node's modules by name. A run
+is cached by its inputs and output-affecting params, so it must be deterministic for them (seed any
+randomness from a `seed` parameter).
 
 **Loading weights.** Prefer `.safetensors`. A `.pt`, `.pth`, `.ckpt` or `.bin` file is a pickle, and
 the engine runs every runtime child with torch's `weights_only` loading forced on, so loading one
@@ -199,7 +221,7 @@ peaks its own runs measure (`<data>/memory/learned.json`, cleared by `nodes.forg
 ## What a node knows about its memory
 
 ```python
-def run(ctx):
+def run(ctx: Context):
     # Where it runs and at which precision; the fitted values are in ctx.params.
     device, precision = ctx.device, ctx.precision
     budget = ctx.memory_budget_mb  # the fit's budget on this device; None if not fitted

@@ -1,14 +1,16 @@
 """Where a node's code runs: in the engine's own process, or in a child in the node's runtime.
 
-Both take the same job and give the same `done` payload, so the scheduler does not care which.
+Both take the same `Job` and give the same `Done` (oneframe/node/job.py), so the scheduler does not
+care which.
 The engine process runs only light nodes (sources, converters, evaluators) whose code ships with
 the app. Anything that imports a model library runs in a child: a different interpreter with its
 own packages, started per node run and, on Stop, ended outright with every process it started -- a
 model holds the card while it runs, and nothing it is doing is worth finishing once someone has
 asked it to stop.
 
-The child speaks NDJSON on a private copy of its stdout (see child.py); the job goes in as a JSON
-file. Pickle cannot cross between interpreters with different packages, and JSON can.
+The child speaks NDJSON on a private copy of its stdout (see oneframe/node/process.py); the job goes
+in as a JSON file, and the result comes back as its `done` event. Pickle cannot cross between
+interpreters with different packages, and JSON can.
 """
 
 from __future__ import annotations
@@ -23,20 +25,25 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from oneframe import child
 from oneframe.environment import child_env
-from oneframe.errors import KINDS, Failure, Stopped
+from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
+from oneframe.node import Stopped, failures
+from oneframe.node.job import Done, Job
+from oneframe.node.runner import run_job
+from oneframe.node.usage import PEAKS
 from oneframe.processes import Child
 
 LOGGER = logging.getLogger(__name__)
-CHILD = Path(child.__file__).resolve()
+CHILD = Path(__file__).resolve().parent / "child.py"  # started by path, never imported
 
 
-def child_command(python: Path, job: Path) -> list[str]:
+def child_command(python: Path, job: Path, exit_with_parent: bool = False) -> list[str]:
     """How a runtime's Python runs a node: -P keeps child.py's folder, the engine's own modules, off
-    the node's import path; -u keeps the protocol unbuffered."""
-    return [str(python), "-P", "-u", str(CHILD), str(job)]
+    the node's import path; -u keeps the protocol unbuffered. With `exit_with_parent` the child ends
+    when its stdin closes, so it needs a stdin pipe the parent holds."""
+    flag = ["--exit-with-parent"] if exit_with_parent else []
+    return [str(python), "-P", "-u", str(CHILD), *flag, str(job)]
 
 
 Emit = Callable[[dict[str, Any]], None]
@@ -61,7 +68,6 @@ class NodeError(Failure):
         self.peaks = dict(peaks or {})
 
 
-PEAKS = ("peak_reserved_mb", "peak_vram_mb", "peak_ram_mb")
 # How Windows reports a process ended for lack of memory, as Python gives the exit code (unsigned):
 # STATUS_NO_MEMORY, and STATUS_COMMITMENT_LIMIT (the page file is full).
 WINDOWS_NO_MEMORY = (0xC0000017, 0xC000012D)
@@ -77,16 +83,16 @@ def died_message(code: int | None, platform: str = sys.platform) -> str:
 
 
 class EngineExecutor:
-    """Runs a node in the engine's process. Stop is cooperative: the node checks ctx.stopped()."""
+    """Runs a node in the engine's process. Stop is cooperative: the node calls ctx.check_stop()."""
 
-    def execute(self, job: dict[str, Any], emit: Emit, stop: threading.Event) -> dict[str, Any]:
+    def execute(self, job: Job, emit: Emit, stop: threading.Event) -> Done:
         try:
-            return child.run_node(job, emit, stop)
+            return run_job(job, emit, stop)
         except Stopped:
             raise
         except Exception as exc:
-            kind = declared_kind(child.classify(exc))
-            raise NodeError(kind, child.describe(exc), _trace()) from exc
+            kind = declared_kind(failures.classify(exc))
+            raise NodeError(kind, failures.describe(exc), _trace()) from exc
 
 
 def declared_kind(kind: str) -> str:
@@ -158,32 +164,29 @@ class ProcessExecutor:
         self.log_dir = log_dir
         self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
-    def execute(self, job: dict[str, Any], emit: Emit, stop: threading.Event) -> dict[str, Any]:
-        # Every child ends when the process that started it does, even one killed without a chance
-        # to stop it (an engine, a bench tool), so no orphan keeps holding the card. It watches
-        # the stdin pipe this process holds, and closes.
-        job = {**job, "exit_with_parent": True}
+    def execute(self, job: Job, emit: Emit, stop: threading.Event) -> Done:
         tmp = Path(tempfile.mkdtemp(prefix="job-", dir=self.tmp_root))
-        done: dict[str, Any] | None = None
+        done: Done | None = None
         failed: dict[str, Any] | None = None
         log = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
-            log = self.log_dir / f"{job.get('run', 'run')}-{job.get('step', 'node')}.log"
+            log = self.log_dir / f"{job.run or 'run'}-{job.step or 'node'}.log"
         tail = _Tail(log)
         try:
             job_path = tmp / "job.json"
-            job_path.write_text(json.dumps(job, default=str), encoding="utf-8")
+            job_path.write_text(job.to_json(), encoding="utf-8")
+            # Every child ends when the process that started it does, even one killed without a
+            # chance to stop it (an engine, a bench tool), so no orphan keeps holding the card. It
+            # watches the stdin pipe this process holds, and closes.
             proc = Child.start(
-                child_command(self.python, job_path),
-                env=child_env(
-                    self.base_env, {**self.env, **(job.get("env") or {})}, caches=self.caches, tmp=tmp
-                ),
+                child_command(self.python, job_path, exit_with_parent=True),
+                env=child_env(self.base_env, self.env, caches=self.caches, tmp=tmp),
                 cwd=tmp,
                 stdin="pipe",
                 stderr=tail,
             )
-            LOGGER.info("started node child %s for %s", proc.pid, job.get("node"))
+            LOGGER.info("started node child %s for %s", proc.pid, job.node)
             # The interpreter's own id, which on Windows is not the process started: a venv's
             # python.exe is a launcher. A Stop returns only once it is gone (see child.main).
             interpreter: list[int] = []
@@ -200,7 +203,7 @@ class ProcessExecutor:
                         if self.on_pid is not None:
                             self.on_pid(interpreter[-1])
                     elif kind == "done":
-                        done = event
+                        done = Done.from_event(event)
                     elif kind == "error":
                         failed = event
                     else:
@@ -213,7 +216,7 @@ class ProcessExecutor:
             if done is not None:
                 return done
             if failed is not None and failed.get("kind") == "stopped":
-                raise Stopped()  # the node stopped itself, as ctx.stopped() told it to
+                raise Stopped()  # the node let ctx.check_stop()'s Stopped go up
             if failed is not None:
                 raise NodeError(
                     declared_kind(str(failed.get("kind") or "error")),

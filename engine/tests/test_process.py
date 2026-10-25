@@ -6,6 +6,7 @@ from __future__ import annotations
 import _thread
 import json
 import os
+import socket
 import stat
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from typing import Any
 import pytest
 from conftest import Events, MakeNode
 
+import oneframe
 from oneframe.environment import child_env
 from oneframe.executors import (
     EngineExecutor,
@@ -28,6 +30,7 @@ from oneframe.executors import (
     died_message,
 )
 from oneframe.graph import Graph
+from oneframe.node.job import Job
 from oneframe.processes import alive, wait_gone
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
@@ -179,7 +182,7 @@ def test_a_runtime_child_is_told_to_end_with_the_engine(
     _runtime_node(
         make_node,
         "test.told",
-        "def run(ctx):\n    ctx.stage('told', str(ctx.job.get('exit_with_parent')))\n" + WRITE,
+        "import sys\ndef run(ctx):\n    ctx.stage('told', str('--exit-with-parent' in sys.argv))\n" + WRITE,
     )
     result = scheduler_for().run(_one("test.told"), events.append)
     assert result.status == "done", result.error
@@ -189,11 +192,10 @@ def test_a_runtime_child_is_told_to_end_with_the_engine(
 def test_a_child_ends_when_the_engine_is_gone(tmp_path: Path) -> None:
     """A killed engine cannot stop its children; the child sees its stdin close and ends itself."""
     job = _executor_job(tmp_path, "ctx.stage('hang', str(os.getpid()))\nimport time\ntime.sleep(60)\n")
-    job["exit_with_parent"] = True
     job_path = tmp_path / "job.json"
-    job_path.write_text(json.dumps(job), encoding="utf-8")
+    job_path.write_text(job.to_json(), encoding="utf-8")
     proc = subprocess.Popen(
-        child_command(Path(sys.executable), job_path),
+        child_command(Path(sys.executable), job_path, exit_with_parent=True),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         env=child_env(None, {}),
@@ -260,36 +262,140 @@ def test_engine_and_runtime_nodes_mix_in_one_graph(
 # -- spec 002: what the executor carries ---------------------------------------------------------
 
 
-def _executor_job(tmp_path: Path, body: str, **extra: object) -> dict[str, object]:
+def _executor_job(tmp_path: Path, body: str) -> Job:
     code = tmp_path / "node" / "node.py"
     code.parent.mkdir(parents=True, exist_ok=True)
     code.write_text(
         "import os, json\n\n\ndef run(ctx):\n" + textwrap.indent(textwrap.dedent(body), "    "),
         encoding="utf-8",
     )
-    return {
-        "node": "test.exec",
-        "entry": {"file": str(code), "function": "run"},
-        "out_dir": str(tmp_path / "out"),
-        "device": "cpu",
-        **extra,
-    }
+    return Job(node="test.exec", folder=code.parent, entry="node.py:run", out_dir=tmp_path / "out")
 
 
 def test_a_runtime_child_cannot_import_the_engines_own_modules(tmp_path: Path) -> None:
     """The child's file lies among the engine's modules; a node's `import models` must reach the
-    runtime's package of that name, never the engine's."""
+    runtime's package of that name, never the engine's. Of the engine, node code reaches the node
+    API alone, even on the engine's own Python, where `oneframe` is installed."""
     body = """
     import importlib.util, sys
-    names = ("models", "graph", "errors", "layout", "scheduler", "child")
+    from oneframe.node import Value
+    names = ("oneframe.scheduler", "models", "graph", "errors", "layout", "scheduler", "child")
     found = [n for n in names if importlib.util.find_spec(n) is not None]
-    ctx.stage("path", json.dumps({"found": found, "on_path": sys.argv[0].rsplit(os.sep, 1)[0] in sys.path}))
+    on_path = sys.argv[0].rsplit(os.sep, 1)[0] in sys.path
+    ctx.stage("path", json.dumps({"found": found, "on_path": on_path, "api": Value.__module__}))
     """
     seen: list[dict[str, object]] = []
     ProcessExecutor(Path(sys.executable)).execute(
         _executor_job(tmp_path, body), seen.append, threading.Event()
     )
-    assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False}
+    assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False, "api": "oneframe.node"}
+
+
+def test_two_engine_nodes_with_same_named_helpers_each_run_their_own(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Each node's folder is a package of its own: two `utils.py` never meet, and the engine's
+    import path is left as it was."""
+    for name in ("first", "second"):
+        folder = make_node(
+            {
+                "id": f"test.{name}",
+                "version": "1",
+                "title": name,
+                "category": "test",
+                "outputs": {"text": "Text"},
+                "run": {"where": "engine", "entry": "node.py:run"},
+            },
+            "from . import utils\n"
+            "def run(ctx):\n"
+            "    p = ctx.path('t.txt'); p.write_text(utils.WORD, encoding='utf-8'); ctx.output('text', p)\n",
+        )
+        (folder / "utils.py").write_text(f"WORD = {name!r}\n", encoding="utf-8")
+    graph = Graph.from_json(
+        {"version": 1, "nodes": {"a": {"node": "test.first"}, "b": {"node": "test.second"}}, "edges": []}
+    )
+    path = list(sys.path)
+    result = scheduler_for().run(graph, events.append)
+    assert result.status == "done", result.error
+    words = {step: outs["text"].path.read_text(encoding="utf-8") for step, outs in result.outputs.items()}
+    assert words == {"a": "first", "b": "second"}
+    assert sys.path == path
+
+
+def test_a_runtime_nodes_helper_never_hides_a_package_of_its_runtime(tmp_path: Path) -> None:
+    """A helper beside the node is reached relatively; `import utils` is the runtime's own."""
+    site = tmp_path / "site" / "utils"
+    site.mkdir(parents=True)
+    (site / "__init__.py").write_text("WORD = 'the runtime'\n", encoding="utf-8")
+    body = """
+    from . import utils as mine
+    import utils as theirs
+    ctx.stage("utils", json.dumps([mine.WORD, theirs.WORD]))
+    """
+    job = _executor_job(tmp_path, body)
+    (job.folder / "utils.py").write_text("WORD = 'the node'\n", encoding="utf-8")
+    seen: list[dict[str, object]] = []
+    ProcessExecutor(Path(sys.executable), env={"PYTHONPATH": str(site.parent)}).execute(
+        job, seen.append, threading.Event()
+    )
+    assert json.loads(str(seen[0]["message"])) == ["the node", "the runtime"]
+
+
+@pytest.mark.parametrize("where", ["engine", "runtime"])
+def test_load_runs_once_and_run_gets_its_state(
+    where: str, make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    make_node(
+        {
+            "id": "test.loads",
+            "version": "1",
+            "title": "loads",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "run": {
+                "where": where,
+                "entry": "node.py:run",
+                "load": "node.py:load",
+                **({"runtime": "test"} if where == "runtime" else {}),
+            },
+        },
+        "import os\n"
+        "def load(ctx):\n"
+        "    ctx.stage('load', str(os.getpid()))\n"
+        "    return {'weights': 'loaded', 'pid': os.getpid()}\n"
+        "def run(ctx, state):\n"
+        "    loaded = state == {'weights': 'loaded', 'pid': os.getpid()}\n"
+        "    p = ctx.path('t.txt'); p.write_text(repr(loaded), encoding='utf-8')\n"
+        "    ctx.output('text', p)\n",
+    )
+    result = scheduler_for().run(_one("test.loads"), events.append)
+    assert result.status == "done", result.error
+    assert [e["stage"] for e in events.of("stage")] == ["load"]
+    assert result.outputs["n"]["text"].path.read_text(encoding="utf-8") == "True"
+
+
+def test_an_engine_run_leaves_its_sockets_alone(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """A runtime child's guards are never put up in the engine's process: its own downloads stay
+    open, and its `oneframe` stays the real package."""
+    connect, connect_ex = socket.socket.connect, socket.socket.connect_ex
+    make_node(
+        {
+            "id": "test.sockets",
+            "version": "1",
+            "title": "sockets",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "run": {"where": "engine", "entry": "node.py:run"},
+        },
+        "import socket\ndef run(ctx):\n    ctx.stage('connect', repr(socket.socket.connect))\n" + WRITE,
+    )
+    result = scheduler_for().run(_one("test.sockets"), events.append)
+    assert result.status == "done", result.error
+    assert events.of("stage")[0]["message"] == repr(connect)
+    assert socket.socket.connect is connect and socket.socket.connect_ex is connect_ex
+    assert sys.modules["oneframe"] is oneframe and oneframe.__file__ is not None
 
 
 def test_a_node_fails_in_its_own_words(tmp_path: Path) -> None:
@@ -325,17 +431,6 @@ def test_a_failure_carries_the_peaks_of_the_run(tmp_path: Path) -> None:
         )
     assert info.value.kind == "oom"
     assert set(info.value.peaks) == {"peak_reserved_mb", "peak_vram_mb", "peak_ram_mb"}
-
-
-def test_a_job_brings_its_own_environment(tmp_path: Path) -> None:
-    body = "ctx.stage('env', os.environ.get('CUDA_VISIBLE_DEVICES', 'unset'))\n"
-    seen: list[dict[str, object]] = []
-    executor = ProcessExecutor(Path(sys.executable), env={"CUDA_VISIBLE_DEVICES": "0", "KEEP": "1"})
-    executor.execute(
-        _executor_job(tmp_path, body, env={"CUDA_VISIBLE_DEVICES": "-1"}), seen.append, threading.Event()
-    )
-    executor.execute(_executor_job(tmp_path, body), seen.append, threading.Event())
-    assert [e["message"] for e in seen] == ["-1", "0"]  # a processor job sees no card; the next is unchanged
 
 
 def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) -> None:

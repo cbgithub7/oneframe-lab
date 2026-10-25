@@ -6,8 +6,10 @@ import os
 import sys
 from typing import Any
 
+from oneframe.node import Context
 
-def run(ctx: Any) -> dict[str, Any]:
+
+def run(ctx: Context) -> dict[str, Any]:
     import idna  # type: ignore[import-not-found]
     import tinyext  # type: ignore[import-not-found]
 

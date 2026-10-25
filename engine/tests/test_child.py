@@ -19,10 +19,12 @@ from typing import Any
 
 import pytest
 
-from oneframe import child
-from oneframe.child import NetworkForbidden, NodeFailed, Stopped, classify, is_oom
 from oneframe.environment import child_env
 from oneframe.executors import child_command
+from oneframe.node import NodeFailed, Stopped, usage
+from oneframe.node.context import NodeContext
+from oneframe.node.failures import NetworkForbidden, classify, is_oom
+from oneframe.node.job import Job
 
 
 class OutOfMemoryError(RuntimeError):
@@ -162,24 +164,16 @@ def _write_node(folder: Path, body: str) -> Path:
     return code
 
 
-def _job(tmp_path: Path, code: Path, **extra: Any) -> dict[str, Any]:
-    return {
-        "node": "test.child",
-        "entry": {"file": str(code), "function": "run"},
-        "out_dir": str(tmp_path / "out"),
-        "params": {},
-        "inputs": {},
-        "device": "cpu",
-        **extra,
-    }
+def _job(tmp_path: Path, code: Path, **extra: Any) -> Job:
+    return Job(
+        node="test.child", folder=code.parent, entry=f"{code.name}:run", out_dir=tmp_path / "out", **extra
+    )
 
 
-def _run_child(
-    tmp_path: Path, job: dict[str, Any], *, torch: bool = False, **env: str
-) -> list[dict[str, Any]]:
+def _run_child(tmp_path: Path, job: Job, *, torch: bool = False, **env: str) -> list[dict[str, Any]]:
     """child.py run as a runtime runs it, with the engine's Python; its events in order."""
     job_path = tmp_path / "job.json"
-    job_path.write_text(json.dumps(job), encoding="utf-8")
+    job_path.write_text(job.to_json(), encoding="utf-8")
     extra = dict(env)
     if torch:
         site = tmp_path / "site"
@@ -355,7 +349,7 @@ def test_an_error_reports_its_kind_and_its_peaks(tmp_path: Path) -> None:
 
 
 def test_the_engine_reads_its_own_resident_memory() -> None:
-    now, peak = child.resident_mb()
+    now, peak = usage.resident_mb()
     if sys.platform in ("linux", "win32"):
         assert now is not None and peak is not None and 0 < now <= peak + 1
 
@@ -387,9 +381,9 @@ class FakeCuda:
         return self.peak
 
 
-def _ctx(tmp_path: Path, events: list[dict[str, Any]], device: str = "cuda") -> child.NodeContext:
-    job = {"node": "t", "out_dir": str(tmp_path / "out"), "device": device}
-    return child.NodeContext(job, events.append)
+def _ctx(tmp_path: Path, events: list[dict[str, Any]], device: str = "cuda") -> NodeContext:
+    job = Job(node="t", folder=tmp_path, entry="node.py:run", out_dir=tmp_path / "out", device=device)
+    return NodeContext(job, events.append)
 
 
 def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(
@@ -409,7 +403,8 @@ def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(
         return "mesh"
 
     assert ctx.fallbacks("decode", [("whole", whole), ("tiled", tiled)]) == "mesh"
-    assert ctx.ways == {"decode": "tiled"}
+    done = ctx._done(0.0, None)
+    assert done.ways == {"decode": "tiled"}
     assert events == [
         {
             "event": "step_oom",
@@ -422,7 +417,7 @@ def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(
     ]
     assert cuda.calls == ["empty_cache", "reset"]
     # The way that ran out is a lower bound on what this run needed.
-    assert ctx.peaks()["peak_reserved_mb"] == 4000.0
+    assert done.peaks["peak_reserved_mb"] == 4000.0
 
 
 def test_the_failed_way_is_released_before_the_next_starts(tmp_path: Path) -> None:
@@ -482,7 +477,7 @@ def test_when_every_way_runs_out_the_last_error_goes_up_as_oom(tmp_path: Path) -
         ctx.fallbacks("step", [("a", way("a")), ("b", way("b")), ("c", way("c"))])
     assert classify(info.value) == "oom"
     assert [(e["way"], e["next"]) for e in events] == [("a", "b"), ("b", "c")]
-    assert ctx.ways == {}
+    assert ctx._done(0.0, None).ways == {}
     with pytest.raises(ValueError, match="at least one way"):
         ctx.fallbacks("step", [])
 
@@ -490,7 +485,7 @@ def test_when_every_way_runs_out_the_last_error_goes_up_as_oom(tmp_path: Path) -
 def test_a_first_way_that_works_is_the_way_recorded(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path, [])
     assert ctx.fallbacks("load", [("on the card", lambda: 1), ("offloaded", lambda: 2)]) == 1
-    assert ctx.ways == {"load": "on the card"}
+    assert ctx._done(0.0, None).ways == {"load": "on the card"}
 
 
 def test_the_ways_reach_the_done_event(tmp_path: Path) -> None:

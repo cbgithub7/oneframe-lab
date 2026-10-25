@@ -48,9 +48,8 @@ RUNTIME_NODE = {
 # The runtime node imports a module beside it, so a child that wrote bytecode would leave it in
 # the node's folder, outside the root; it also makes a temporary file the usual way.
 CODE = """
-import json, os, sys, tempfile
-sys.path.insert(0, os.path.dirname(__file__))
-import helper
+import json, os, tempfile
+from . import helper
 
 NAMES = {names!r}
 
