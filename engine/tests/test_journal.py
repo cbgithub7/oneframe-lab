@@ -91,6 +91,25 @@ def test_pruning_keeps_its_bound(tmp_path: Path) -> None:
     assert [p.name for p in tmp_path.iterdir()] == ["99.ndjson"]  # the newest stays, whatever its size
 
 
+def test_an_ending_the_journal_cannot_take_still_lets_go_and_is_sent(tmp_path: Path) -> None:
+    """A message the journal cannot write (a lone surrogate, as an fsdecoded path can hold) still lets
+    go of the place and reaches the listener, and the error goes on up."""
+    released: list[bool] = []
+    sent: list[dict[str, Any]] = []
+    ending = {"event": "runtime.failed", "message": "bad path /data/\udcff"}
+    with pytest.raises(UnicodeEncodeError):
+        journal.end_when_free(
+            sent.append,
+            tmp_path,
+            "install-x",
+            lambda _emit: (None, ending),
+            lambda: released.append(True),
+            lambda exc: {"event": "runtime.failed", "message": str(exc)},
+        )
+    assert released == [True] and sent == [ending]
+    assert "can't encode" in _journal_events(tmp_path)[-1]["message"]  # the journal keeps why
+
+
 def test_a_new_step_log_prunes_the_old(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Step logs are bounded as journals are: the executor that opens one prunes the old first, so a
     bench's step logs are bounded too, not only a run's."""

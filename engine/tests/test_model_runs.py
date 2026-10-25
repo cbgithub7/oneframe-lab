@@ -9,6 +9,7 @@ import copy
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -285,11 +286,13 @@ def test_a_change_to_a_checkpoint_that_is_not_downloaded_is_skipped_and_named_wh
     assert events.of("node.fit")[0]["values"]["checkpoint"] == "small"
 
 
-def test_bench_fit_reads_files_too(tmp_path: Path, make_node: MakeNode, node_root: Path) -> None:
+def test_bench_fit_reads_files_too(tmp_path: Path, make_node: MakeNode, node_root: Path, tiny: Path) -> None:
     reader_node(make_node)
     data = tmp_path / "data"
     put(data, CONFIG, SMALL)
-    found = bench_fit.make_scheduler(data, discover([node_root]), HostRuntimes(), tmp_path / "bench-cache")
+    manager = Runtimes(data, [tiny.parent], uv=sys.executable, profile=lambda: machines.get("no GPU, 32 GB"))
+    manager.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
+    found = bench_fit.make_scheduler(data, discover([node_root]), manager, tmp_path / "bench-cache")
     report = bench_fit.bench_node(found, "test.reader", [{}])
     assert report["runs"][0]["status"] == "done", report["runs"][0]
 

@@ -168,42 +168,49 @@ def end_when_free[T](
     beside its result is written to the journal as its last line, then `release` lets go of the
     run's, install's or job's place, then the ending is sent, so whoever hears it may take the place
     at once. When `work` raises (an engine bug), the ending is `crashed(exc)`, ended the same way
-    before the error goes on up. `under` is held while the place is let go of and the ending sent:
-    an install's events carry no id, so the next install waits to start until this one's ending is
-    out."""
+    before the error goes on up. The place is let go of and the ending sent whatever the journal
+    does, and an ending that cannot be journalled or sent leaves why in the journal. `under` is held
+    while the place is let go of and the ending sent: an install's events carry no id, so the next
+    install waits to start until this one's ending is out."""
+    held = under if under is not None else contextlib.nullcontext()
+    freed = False
     journal: Journal | None = None
+
+    def end(ending: dict[str, Any]) -> None:
+        nonlocal freed
+        with held:
+            try:
+                if journal is not None:
+                    journal.write(ending)  # the journal ends with it, before anyone has heard it
+            finally:
+                freed = True
+                try:
+                    release()
+                finally:
+                    emit(ending)
+
     try:
         journal = Journal(folder, what) if folder is not None else None
-        result, ending = work(journal.wrap(emit) if journal is not None else emit)
-    except Exception as exc:
-        _end(journal, crashed(exc), release, emit, under)
-        raise
-    except BaseException:
-        with under or contextlib.nullcontext():
-            release()
-        raise
-    else:
-        _end(journal, ending, release, emit, under)
+        try:
+            result, ending = work(journal.wrap(emit) if journal is not None else emit)
+        except Exception as exc:
+            end(crashed(exc))
+            raise
+        try:
+            end(ending)
+        except Exception as exc:  # the ending could not be sent: the journal keeps why
+            if journal is not None:
+                journal.write(crashed(exc))
+            raise
         return result
     finally:
-        if journal is not None:
-            journal.close()
-
-
-def _end(
-    journal: Journal | None,
-    ending: dict[str, Any],
-    release: Callable[[], None],
-    emit: Emit,
-    under: contextlib.AbstractContextManager[Any] | None,
-) -> None:
-    if journal is not None:
-        journal.write(ending)  # the journal ends with it, before anyone has heard it
-    with under or contextlib.nullcontext():
         try:
-            release()
+            if not freed:  # whatever went wrong before the ending, the place is let go of
+                with held:
+                    release()
         finally:
-            emit(ending)
+            if journal is not None:
+                journal.close()
 
 
 def engine_crash(exc: BaseException, **fields: Any) -> dict[str, Any]:

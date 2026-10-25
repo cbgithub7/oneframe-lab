@@ -24,19 +24,21 @@ import tempfile
 import threading
 from collections import deque
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from oneframe.environment import child_env
 from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
 from oneframe.journal import prune_step_logs
-from oneframe.manifest import Manifest
 from oneframe.node import Emit, Stopped, failures
 from oneframe.node.job import Done, Job
 from oneframe.node.runner import run_job
 from oneframe.node.usage import PEAKS
 from oneframe.processes import Child
-from oneframe.runtimes import RuntimeSide
+
+if TYPE_CHECKING:
+    from oneframe.manifest import Manifest
+    from oneframe.runtimes import RuntimeSide
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(__file__).resolve().parent / "child.py"  # started by path, never imported

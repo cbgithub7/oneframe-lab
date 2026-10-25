@@ -127,7 +127,8 @@ run's key caches are reset on the shared instance. Around it:
     - `test_scheduler.py`: `test_the_scheduler_runs_a_node_through_the_executors_it_is_given`;
     - `test_process.py`: `test_a_probe_on_the_processor_sees_the_cards_its_runtime_does`;
     - `test_runtime_server.py`: `test_an_ending_is_sent_after_its_place_is_free`, five cases;
-    - `test_journal.py`: `test_a_new_step_log_prunes_the_old`.
+    - `test_journal.py`: `test_a_new_step_log_prunes_the_old`, and from `/code-review`
+      `test_an_ending_the_journal_cannot_take_still_lets_go_and_is_sent`.
 - Renamed: none.
 - Changed, names kept:
     - each test passing `runtime_python`, `runtime_env`, `target` or `runtime_key` passes a runtimes
@@ -173,6 +174,7 @@ check) records the CUDA context's size. The report, naming the machine, goes to
 - `make_scheduler` takes the data root first, as `for_root` does: a `RuntimeSide` has no root.
 - `caches_for` and `key_for` may answer None (no cache folder, no runtime part), as the defaults did.
 - The helper says a crash's ending too, so the server's run crash path frees and logs, saying nothing twice.
+- `models:pin` keeps its own ending: a tool's reaches only its terminal, and its process ends next.
 
 ## Out of scope
 
