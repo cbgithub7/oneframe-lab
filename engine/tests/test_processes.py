@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -100,6 +101,44 @@ def test_kill_waits_for_the_processes_it_is_told_of() -> None:
     child.kill(also=[other])
     assert child.returncode is not None
     assert not alive(other)
+
+
+class _Reaped:
+    """A /proc entry whose process was reaped after the signal found it, before it was read."""
+
+    def __init__(self, _path: str) -> None:
+        pass
+
+    def read_text(self, encoding: str) -> str:
+        raise FileNotFoundError
+
+
+class _Dying(_Reaped):
+    """A /proc entry read while its process is being reaped: dead, its id not yet free."""
+
+    def read_text(self, encoding: str) -> str:
+        return "4321 (python) X 1 4321 4321 0 -1"
+
+
+def test_a_zombie_reaped_while_it_is_asked_about_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The signal finds a zombie, which is reaped before its state is read: asked again, the signal
+    finds nothing, so it is gone. Where the state cannot be read, as without /proc, a process the
+    signal still finds is alive; one whose state says it is being reaped is gone. The Linux path is
+    taken on every system."""
+    monkeypatch.setattr(processes, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(processes, "Path", _Reaped)
+    answers: list[ProcessLookupError | None] = [None, ProcessLookupError()]
+
+    def signal(_pid: int, _signal: int) -> None:
+        if (answer := answers.pop(0)) is not None:
+            raise answer
+
+    monkeypatch.setattr(os, "kill", signal)
+    assert not alive(4321)
+    monkeypatch.setattr(os, "kill", lambda _pid, _signal: None)
+    assert alive(4321)
+    monkeypatch.setattr(processes, "Path", _Dying)
+    assert not alive(4321)
 
 
 def test_kill_after_the_end_never_raises() -> None:
