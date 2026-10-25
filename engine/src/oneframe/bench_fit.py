@@ -345,9 +345,10 @@ def _to_stderr(line: str) -> None:
 
 @contextlib.contextmanager
 def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
-    """Another program holding `mb` on the card while the block runs. It lets go when its stdin
-    closes; one that has not ended 30 s later is killed, with anything it started."""
-    holder = Child.start(
+    """Another program holding `mb` on the card while the block runs. Once ready, it lets go when
+    its stdin closes; one that has not ended 30 s later, or never got ready, is killed, with
+    anything it started."""
+    with Child.start(
         [str(manager.python_for("torch")), str(plan.folder / plan.holder), str(round(mb))],
         env=child_env(
             None,
@@ -357,16 +358,15 @@ def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
         ),
         stdin="pipe",
         stderr=_to_stderr,
-    )
-    try:
+    ) as holder:
         line = next(holder.lines(threading.Event()), "").strip()
         if line != "ready":
             raise RuntimeError(f"The holder process did not start (it said {line!r}).")
-        yield
-    finally:
-        holder.close_stdin()
-        holder.wait(30)
-        holder.kill()
+        try:
+            yield
+        finally:
+            holder.close_stdin()
+            holder.wait(30)
 
 
 def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:

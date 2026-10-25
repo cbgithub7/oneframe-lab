@@ -177,6 +177,7 @@ requirements 6 and 7 are checked by the tests under Added. No step needs a GPU o
 - A job folder that will not go is logged and left to the next sweep, never hiding how a run ended.
 - JavaScript keeps its own copy (it cannot import Python), held equal by `contracts/layout.json`.
 - `faulthandler_timeout`, not pytest-timeout: it is built into pytest, so no new dependency.
+- Tests take `alive` and `wait_gone` from `processes` itself, not through `conftest.py`: one way in.
 
 ## Out of scope
 

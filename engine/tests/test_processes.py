@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from typing import Any
 
 import pytest
@@ -109,3 +110,22 @@ def test_kill_after_the_end_never_raises() -> None:
     child.kill()  # twice, its stdin already closed
     child.close_stdin()
     assert child.returncode == 0
+
+
+def test_nothing_is_handed_on_after_a_kill() -> None:
+    """A process the child left running may hold its stderr open: the end waits for it a bounded
+    time, and once the child is killed its callback hears nothing more."""
+    leaves = (
+        "import subprocess, sys\n"
+        "talks = 'import sys, time\\nfor _ in range(100):\\n    print(1, file=sys.stderr, flush=True)\\n"
+        "    time.sleep(0.05)\\n'\n"
+        "quiet = {'stdin': subprocess.DEVNULL, 'stdout': subprocess.DEVNULL}\n"
+        "subprocess.Popen([sys.executable, '-c', talks], **quiet)\n"
+    )
+    heard: list[str] = []
+    child = Child.start([sys.executable, "-c", leaves], env=dict(os.environ), stderr=heard.append)
+    assert list(child.lines(threading.Event())) == []
+    child.kill()
+    count = len(heard)
+    time.sleep(0.3)
+    assert count > 0 and len(heard) == count

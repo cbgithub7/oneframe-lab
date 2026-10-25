@@ -119,11 +119,11 @@ def _watch(pid: int) -> Callable[[float], bool]:
     return lambda seconds: wait_gone(pid, seconds)
 
 
-def _kill_tree(pid: int) -> None:
+def _kill_tree(pid: int, seconds: float) -> None:
     """End `pid` and every process it started; whatever fails, the caller kills `pid` itself."""
     if sys.platform == "win32":
         with contextlib.suppress(OSError, TimeoutExpired):
-            output([str(_TASKKILL), "/T", "/F", "/PID", str(pid)], timeout=KILL_WAIT_S)
+            output([str(_TASKKILL), "/T", "/F", "/PID", str(pid)], timeout=seconds)
     else:
         with contextlib.suppress(OSError):
             os.killpg(pid, signal.SIGKILL)
@@ -141,12 +141,17 @@ def _read(stream: IO[str], put: Callable[[str], None], end: Callable[[], None] =
 
 class Child:
     """A process this engine started, in its own group, read line by line. Used as a context
-    manager, it is killed when the block ends, however it ends."""
+    manager, it is killed when the block ends, however it ends. Once it is killed, nothing more
+    is handed to its stderr callback, whatever still writes to that stream."""
 
     def __init__(self, proc: subprocess.Popen[str], stderr: Callable[[str], None] | None):
         self._proc = proc
         self.pid = proc.pid
         self._lines: queue.Queue[str | None] = queue.Queue()
+        self._stderr = stderr
+        self._handing = threading.Lock()  # held while a line is handed to `stderr`
+        self._killed = False
+        self._drained = False
         assert proc.stdout is not None
         self._readers = [
             threading.Thread(
@@ -155,7 +160,7 @@ class Child:
         ]
         if stderr is not None:
             assert proc.stderr is not None
-            self._readers.append(threading.Thread(target=_read, args=(proc.stderr, stderr), daemon=True))
+            self._readers.append(threading.Thread(target=_read, args=(proc.stderr, self._hand), daemon=True))
         for reader in self._readers:
             reader.start()
 
@@ -207,7 +212,7 @@ class Child:
         while self.wait(POLL_S) is None:
             if stop.is_set():
                 raise Stopped()
-        self._drain(time.monotonic() + DRAIN_S)
+        self._drain()
 
     def close_stdin(self) -> None:
         if self._proc.stdin is not None:
@@ -222,27 +227,42 @@ class Child:
             return None
 
     def kill(self, also: Iterable[int] = ()) -> None:
-        """End the child's tree, then the child, and close its stdin. Then wait, at most
-        KILL_WAIT_S in all, for the child and for each process in `also`: one the child reported,
-        such as the interpreter behind a venv's launcher. Never raises; what does not end in time
-        is logged."""
+        """End the child's tree, then the child, and close its stdin, taking at most KILL_WAIT_S
+        in all to end and wait for the child and each process in `also`: one the child reported,
+        such as the interpreter behind a venv's launcher. Then its last output, and no more. Never
+        raises; what does not end in time is logged."""
+        deadline = time.monotonic() + KILL_WAIT_S
+
+        def left() -> float:
+            return max(deadline - time.monotonic(), 0)
+
         watches = {pid: _watch(pid) for pid in also}
         if self._proc.returncode is None:
-            _kill_tree(self.pid)
+            _kill_tree(self.pid, left())
         with contextlib.suppress(OSError):
             self._proc.kill()
         self.close_stdin()
-        deadline = time.monotonic() + KILL_WAIT_S
-        if self.wait(KILL_WAIT_S) is None:
+        if self.wait(left()) is None:
             LOGGER.warning("process %s did not end within %s s of being killed", self.pid, KILL_WAIT_S)
         for pid, gone in watches.items():
-            if not gone(max(deadline - time.monotonic(), 0)):
+            if not gone(left()):
                 LOGGER.warning("process %s did not end within %s s of a kill", pid, KILL_WAIT_S)
-        self._drain(deadline)
+        self._drain()
+        with self._handing:
+            self._killed = True
 
-    def _drain(self, deadline: float) -> None:
-        """Let the readers pass on what the child wrote last, unless something else holds its
-        output open past `deadline`."""
+    def _hand(self, line: str) -> None:
+        with self._handing:
+            if not self._killed and self._stderr is not None:
+                self._stderr(line)
+
+    def _drain(self) -> None:
+        """Let the readers pass on what the child wrote last, waiting DRAIN_S at most, once:
+        something else may hold its output open."""
+        if self._drained:
+            return
+        self._drained = True
+        deadline = time.monotonic() + DRAIN_S
         for reader in self._readers:
             reader.join(max(deadline - time.monotonic(), 0))
 

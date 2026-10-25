@@ -103,26 +103,27 @@ def _trace() -> str:
 
 class _Tail:
     """A child's stderr, line by line: the last lines kept for a failure's report, every one in the
-    step's log. Lines that arrive after `close` (something the node started still writing) are
-    dropped."""
+    step's log. A log that cannot be opened costs the log, never the run."""
 
     def __init__(self, log: Path | None):
         self.lines: deque[str] = deque(maxlen=80)
-        self._handle = log.open("a", encoding="utf-8") if log else None
-        self._lock = threading.Lock()
+        self._handle = None
+        if log is not None:
+            try:
+                self._handle = log.open("a", encoding="utf-8")
+            except OSError as exc:
+                LOGGER.warning("could not open the step log %s: %s", log, exc)
 
     def __call__(self, line: str) -> None:
-        with self._lock:
-            self.lines.append(line.rstrip())
-            if self._handle is not None:
-                self._handle.write(line + "\n")
-                self._handle.flush()
+        self.lines.append(line.rstrip())
+        if self._handle is not None:
+            self._handle.write(line + "\n")
+            self._handle.flush()
 
     def close(self) -> None:
-        with self._lock:
-            if self._handle is not None:
-                self._handle.close()
-                self._handle = None
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
 
 
 def _remove(folder: Path) -> None:
@@ -206,8 +207,9 @@ class ProcessExecutor:
                         emit(event)
             finally:
                 # Everything the node started ends with it, and its interpreter, behind a launcher a
-                # kill may not take down with it, also sees its stdin close and ends.
-                proc.kill(also=interpreter)
+                # kill may not take down with it, also sees its stdin close and ends. Once the child
+                # has ended, so has the interpreter, whose id may already be another process's.
+                proc.kill(also=interpreter if proc.returncode is None else ())
             if done is not None:
                 return done
             if failed is not None and failed.get("kind") == "stopped":
