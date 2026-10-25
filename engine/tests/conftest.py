@@ -192,10 +192,12 @@ def host_runtimes() -> HostRuntimes:
 
 
 @pytest.fixture
-def scheduler_for(tmp_path: Path, node_root: Path) -> Callable[..., Scheduler]:
+def scheduler_for(tmp_path: Path, node_root: Path, host_runtimes: HostRuntimes) -> Callable[..., Scheduler]:
+    """A scheduler for the test's nodes, its runtimes `host_runtimes` unless the test gives others."""
+
     def make(**kw: Any) -> Scheduler:
-        kw.setdefault("runtime_python", lambda _runtime: Path(sys.executable))
-        return Scheduler(discover([node_root]), Cache(tmp_path / "cache"), log_dir=tmp_path / "logs", **kw)
+        kw.setdefault("runtimes", host_runtimes)
+        return Scheduler(discover([node_root]), Cache(tmp_path / "cache"), **kw)
 
     return make
 

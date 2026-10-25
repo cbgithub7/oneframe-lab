@@ -8,12 +8,17 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, HostRuntimes, MakeNode
 from fixtures import fit_node, machines
 
 from oneframe.cache import Cache
+from oneframe.executors import Executor, OneProcessPerRun
 from oneframe.graph import Graph
+from oneframe.manifest import Manifest
 from oneframe.memory import Learned, LearnedStore, Settings, StoreKey, Target
+from oneframe.node import Emit
+from oneframe.node.job import Done, Job
+from oneframe.runtimes import NoRuntimes
 from oneframe.scheduler import Scheduler
 
 
@@ -498,7 +503,7 @@ def test_ac5_precision_and_checkpoint_are_in_the_key_and_the_device_is_not(
     # The same values on a card and then on the processor: one result.
     _fit_node(make_node, "test.fit_rt", where="runtime")
     card = machines.get("24 GB, compute 8.9")
-    on_card = scheduler_for(machine=_with(card), target=lambda _r: Target(card=0, lock="l")).run(
+    on_card = scheduler_for(machine=_with(card), runtimes=HostRuntimes(target=Target(card=0, lock="l"))).run(
         _one_node("test.fit_rt"), lambda _e: None
     )
     assert on_card.status == "done", on_card.error
@@ -625,7 +630,7 @@ def test_a_runtime_node_that_runs_out_is_retried_in_a_new_process(
     _fit_node(make_node, "test.fit", "    ctx.stage('pid', str(os.getpid()))\n" + OOM_FIRST, where="runtime")
     result = scheduler_for(
         machine=_with(machines.get("8 GB, compute 6.1, 1.5 GB held")),
-        target=lambda _r: Target(card=0, lock="l"),
+        runtimes=HostRuntimes(target=Target(card=0, lock="l")),
     ).run(_one_node("test.fit"), events.append)
     assert result.status == "done", result.error
     assert len({e["message"] for e in events.of("stage") if e["stage"] == "pid"}) == 2
@@ -671,21 +676,63 @@ def test_ac1_a_runtime_node_without_a_model_runs_at_its_defaults_on_the_first_de
     assert seen["cuda_visible"] == "-1"  # a processor run sees no card
 
 
+def test_the_scheduler_runs_a_node_through_the_executors_it_is_given(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Spec 004's worker pool is another `Executors`: the scheduler asks it where each attempt runs
+    and hands that executor the job, with no runtime installed here."""
+    make_node(
+        {
+            "id": "test.elsewhere",
+            "version": "1",
+            "title": "Elsewhere",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "run": {"where": "runtime", "runtime": "test", "entry": "node.py:run"},
+        },
+        "def run(ctx):\n    raise RuntimeError('the executor given runs this job, not this code')\n",
+    )
+    asked: list[tuple[str, str]] = []
+    jobs: list[Job] = []
+
+    class Given:
+        def executor(self, manifest: Manifest, device: str) -> Executor:
+            asked.append((manifest.id, device))
+            return Fake()
+
+    class Fake:
+        def execute(self, job: Job, emit: Emit, stop: threading.Event) -> Done:
+            jobs.append(job)
+            made = job.out_dir / "text.json"
+            made.write_text('"from the executor given"', encoding="utf-8")
+            return Done(outputs={"text": {"path": str(made)}}, seconds=0.5, peaks={})
+
+    result = scheduler_for(runtimes=NoRuntimes(), executors=Given()).run(
+        _one_node("test.elsewhere"), events.append
+    )
+    assert result.status == "done", result.error
+    assert asked == [("test.elsewhere", "cpu")]
+    (job,) = jobs
+    assert (job.node, job.step, job.run) == ("test.elsewhere", "n", result.run)
+    (done,) = events.of("node.done")
+    assert done["seconds"] == 0.5
+    assert Path(done["outputs"]["text"]["path"]).read_text(encoding="utf-8") == '"from the executor given"'
+
+
 def test_a_processor_run_sees_no_card_and_a_card_run_sees_its_card(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
 ) -> None:
-    """A job carries no environment: the process that runs it hides the card for a processor run,
-    and leaves the runtime's own choice alone for a card run."""
+    """A job carries no environment: the provider that starts its process hides the card for a
+    processor run, and leaves the runtime's own choice alone for a card run."""
     _fit_node(make_node, "test.where", where="runtime", model=False)
     seen = []
     for machine, card, resolution in (
         (machines.machine([machines.CARD_24GB], 50000, 68719), 0, 700),
         (ROOMY, None, 701),
     ):
+        runtimes = HostRuntimes(target=Target(card=card, lock="l"), env={"CUDA_VISIBLE_DEVICES": "0"})
         result = scheduler_for(
-            machine=_with(machine),
-            target=lambda _r, c=card: Target(card=c, lock="l"),
-            runtime_env=lambda _r: {"CUDA_VISIBLE_DEVICES": "0"},
+            machine=_with(machine), runtimes=runtimes, executors=OneProcessPerRun(runtimes)
         ).run(_one_node("test.where", resolution=resolution), lambda _e: None)
         assert result.status == "done", result.error
         seen.append((_seen(result)["device"], _seen(result)["cuda_visible"]))
@@ -709,7 +756,7 @@ def test_nvidia_smi_is_read_only_for_a_runtime_node_that_can_use_a_card(
     ):
         cards: list[bool] = []
         scheduler_for(
-            machine=_with(ROOMY, cards=cards), target=lambda _r, c=card: Target(card=c, lock="l")
+            machine=_with(ROOMY, cards=cards), runtimes=HostRuntimes(target=Target(card=card, lock="l"))
         ).run(_one_node(node, resolution=resolution), lambda _e: None)
         assert cards == expected, node
 
@@ -721,9 +768,9 @@ def test_a_runtime_node_teaches_this_machine_and_an_engine_node_does_not(
     _fit_node(make_node, "test.runtime", where="runtime")
     store = LearnedStore(tmp_path / "data")
     for node in ("test.engine", "test.runtime"):
-        scheduler_for(machine=_with(ROOMY), learned=store, target=lambda _r: Target(lock="l")).run(
-            _one_node(node), lambda _e: None
-        )
+        scheduler_for(
+            machine=_with(ROOMY), learned=store, runtimes=HostRuntimes(target=Target(lock="l"))
+        ).run(_one_node(node), lambda _e: None)
     assert store.view(StoreKey("test.engine", "1", _hash("test.engine", scheduler_for), "")) == Learned()
     learned = store.view(StoreKey("test.runtime", "1", _hash("test.runtime", scheduler_for), "l"))
     assert [kind for kind, _settings in learned.seconds] == ["cpu"]
@@ -806,7 +853,7 @@ def test_a_card_with_no_room_left_is_capped_at_its_free_memory_not_at_a_budget_b
     full = machines.machine(
         [machines.card(0, "8.6", 12885, 1200)], 10000, 17180
     )  # 1200 free, under the margin
-    result = scheduler_for(machine=_with(full), target=lambda _r: Target(card=0, lock="l")).run(
+    result = scheduler_for(machine=_with(full), runtimes=HostRuntimes(target=Target(card=0, lock="l"))).run(
         _one_node("test.plain"), events.append
     )
     assert result.status == "done", result.error

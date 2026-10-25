@@ -32,7 +32,8 @@ from oneframe.executors import (
 from oneframe.graph import Graph
 from oneframe.node.job import Job
 from oneframe.processes import alive, wait_gone
-from oneframe.scheduler import RuntimeMissing, Scheduler
+from oneframe.runtimes import NoRuntimes
+from oneframe.scheduler import Scheduler
 
 
 def _runtime_node(make_node: MakeNode, node_id: str, code: str, **extra: object) -> None:
@@ -224,11 +225,7 @@ def test_a_missing_runtime_is_its_own_failure(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
     _runtime_node(make_node, "test.needs_runtime", "def run(ctx):\n" + WRITE)
-
-    def none(runtime: str) -> object:
-        raise RuntimeMissing(f"The runtime {runtime!r} is not installed.")
-
-    result = scheduler_for(runtime_python=none).run(_one("test.needs_runtime"), events.append)
+    result = scheduler_for(runtimes=NoRuntimes()).run(_one("test.needs_runtime"), events.append)
     assert result.error is not None and result.error["kind"] == "runtime"
 
 

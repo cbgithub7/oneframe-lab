@@ -170,6 +170,8 @@ check) records the CUDA context's size. The report, naming the machine, goes to
 - No `close()` on `Executors` until spec 004: one process per run holds nothing between runs.
 - `_attempt` is measured once in the PR, not held by a lasting test; 012 asks the owner about one.
 - `Emit` lives in `oneframe.node`: it is standard library only, so any engine module may import it.
+- `make_scheduler` takes the data root first, as `for_root` does: a `RuntimeSide` has no root.
+- `caches_for` and `key_for` may answer None (no cache folder, no runtime part), as the defaults did.
 
 ## Out of scope
 

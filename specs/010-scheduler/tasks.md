@@ -14,11 +14,11 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `oom` retry test in `test_scheduler.py` and the files-check test in `test_model_runs.py` read the
   process id their node reports; `test_a_listener_is_told_the_childs_process_id` goes, as the spec
   lists.
-- [ ] 4. `Executor`, `Executors` and `OneProcessPerRun` in `oneframe/executors.py`, with the private
+- [x] 4. `Executor`, `Executors` and `OneProcessPerRun` in `oneframe/executors.py`, with the private
   builder of a runtime's `ProcessExecutor` and `CUDA_VISIBLE_DEVICES=-1` for a processor run.
   `test_a_processor_run_sees_no_card_and_a_card_run_sees_its_card` (009's) runs through the
   provider (AC3).
-- [ ] 5. The scheduler on the provider: the keyword-only signature, `runtimes` for the fit's target
+- [x] 5. The scheduler on the provider: the keyword-only signature, `runtimes` for the fit's target
   and the cache key, `for_root` and `make_scheduler` taking a `RuntimeSide` without
   `runtime_python`, the processor's `CUDA_VISIBLE_DEVICES` out of the scheduler, and `server.py`.
   The tests' seams move to the fixture or to `executors=`, names kept. Add

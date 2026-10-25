@@ -54,7 +54,7 @@ from oneframe.memory import LearnedStore, Settings
 from oneframe.node.job import Job
 from oneframe.processes import Child
 from oneframe.registry import Registry, discover
-from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
+from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, RuntimeSide, find_uv
 from oneframe.scheduler import Scheduler, for_root
 from oneframe.scratch import for_tool
 
@@ -171,11 +171,11 @@ class _Unlearned(LearnedStore):
 
 
 def make_scheduler(
+    data: Path | None,
     registry: Registry,
-    manager: Runtimes | None,
+    runtimes: RuntimeSide | None,
     cache_root: Path,
     settings: Callable[[], Settings] = Settings,
-    runtime_python: Callable[[str], Path] | None = None,
     tmp_root: Path | None = None,
 ) -> Scheduler:
     """A scheduler for the bench, built as the engine's is (scheduler.for_root), so a node reads its
@@ -183,18 +183,17 @@ def make_scheduler(
     served), nothing learned (estimates stay uncorrected), and the person's settings left alone."""
 
     def machine(cards: bool) -> dict[str, Any]:
-        return hardware.profile(manager.data if manager else None, cards=cards)
+        return hardware.profile(data, cards=cards)
 
     return for_root(
-        manager.data if manager else None,
+        data,
         registry,
-        manager,
+        runtimes,
         Cache(cache_root),
         machine=machine,
         settings=settings,
         learned=_Unlearned(),
         tmp_root=tmp_root,
-        runtime_python=runtime_python,
     )
 
 
@@ -390,7 +389,7 @@ def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
         return record
     record["card"] = card
     registry = discover([plan.folder.parent])
-    scheduler = make_scheduler(registry, manager, cache_root)
+    scheduler = make_scheduler(manager.data, registry, manager, cache_root)
     manifest = registry.get(plan.node)
     model = manifest.memory
     assert model is not None
@@ -741,7 +740,7 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as exc:
                 print(str(exc), file=sys.stderr)
                 return 2
-            scheduler = make_scheduler(registry, manager, work / "cache", tmp_root=mine.folder)
+            scheduler = make_scheduler(data, registry, manager, work / "cache", tmp_root=mine.folder)
             record.update(bench_node(scheduler, args.node, groups))
     path = report_path(args.out or Layout(data).reports, record)
     path.parent.mkdir(parents=True, exist_ok=True)

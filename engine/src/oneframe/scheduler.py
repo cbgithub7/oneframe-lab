@@ -19,8 +19,9 @@ it reaches is no node's fault: there is no node.failed, and run.failed names the
 
 Before a node's model loads, the engine fits it to the memory this machine has free (memory.py):
 the device, the precision and the settings the person left alone, never a checkpoint that is not
-downloaded. Out of memory is answered once, with a fit strictly smaller than the one that ran out,
-in a new process for a runtime node.
+downloaded. Out of memory is answered once, with a fit strictly smaller than the one that ran out.
+Each attempt runs where the scheduler's `Executors` say (executors.py): by default, a new process
+for each attempt of a runtime node.
 
 A cached result needs nothing more. Otherwise, before node.start and in this order: the fit, the
 runtime check, then the files check (spec 003): every file the node reads at its fitted values must
@@ -49,9 +50,9 @@ from typing import Any
 from oneframe import memory, ports
 from oneframe.cache import Cache, code_digest
 from oneframe.errors import ContractError, EdgeMismatch
-from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
+from oneframe.executors import Executors, NodeError, OneProcessPerRun, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
-from oneframe.journal import engine_crash, journalled, prune_step_logs
+from oneframe.journal import engine_crash, journalled
 from oneframe.layout import Layout
 from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
@@ -60,18 +61,10 @@ from oneframe.models.store import Store
 from oneframe.node import Emit, Value
 from oneframe.node.job import Job
 from oneframe.registry import Registry
-from oneframe.runtimes import RuntimeMissing, Runtimes
+from oneframe.runtimes import NoRuntimes, RuntimeMissing, RuntimeSide
 
 LOGGER = logging.getLogger(__name__)
 TRUST_ORDER = {"measured": 0, "predicted": 1, "synthetic": 2}
-
-
-def no_runtimes(runtime: str) -> Path:
-    raise RuntimeMissing(f"The runtime {runtime!r} is not installed.")
-
-
-def no_env(_runtime: str) -> dict[str, str]:
-    return {}
 
 
 def no_machine(_cards: bool) -> dict[str, Any]:
@@ -86,10 +79,6 @@ def no_machine(_cards: bool) -> dict[str, Any]:
         "disk_free_mb": None,
         "raw": "",
     }
-
-
-def no_target(_runtime: str) -> Target:
-    return Target()
 
 
 @dataclass
@@ -129,65 +118,45 @@ class Scheduler:
         self,
         registry: Registry,
         cache: Cache,
-        runtime_python: Callable[[str], Path] = no_runtimes,
+        *,
+        runtimes: RuntimeSide | None = None,
+        executors: Executors | None = None,
         store: Store | None = None,
-        log_dir: Path | None = None,
-        runtime_env: Callable[[str], dict[str, str]] = no_env,
         machine: Callable[[bool], dict[str, Any]] = no_machine,
-        target: Callable[[str], Target] = no_target,
         settings: Callable[[], Settings] = Settings,
         learned: LearnedStore | None = None,
         tmp_root: Path | None = None,
-        runtime_caches: Callable[[str], Path | None] = lambda _runtime: None,
         journal_dir: Path | None = None,
-        runtime_key: Callable[[str], dict[str, str] | None] = lambda _runtime: None,
     ):
         self.registry = registry
         self.cache = cache
-        self.runtime_python = runtime_python
-        self.runtime_env = runtime_env
+        # A runtime node's target for the fit, and its build and marker hashes for its cache key.
+        self.runtimes = runtimes if runtimes is not None else NoRuntimes()
+        # Where each attempt runs; by default, a new process for each runtime node's attempt.
+        self.executors = (
+            executors if executors is not None else OneProcessPerRun(self.runtimes, tmp_root=tmp_root)
+        )
         self.store = store  # the model store a node's files are read from; None: no node has any
-        self.log_dir = log_dir
         # A fresh machine profile for each fit; True when the node can use a card, so nvidia-smi
         # is started only for those.
         self.machine = machine
-        self.target = target
         self.settings = settings
         self.learned = learned or LearnedStore(None)
-        self.tmp_root = tmp_root  # where a runtime node's job folder is made, and its files listed
-        self.runtime_caches = runtime_caches  # where its libraries keep their caches
+        self.tmp_root = tmp_root  # where the files a run reads are listed
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
-        self.runtime_key = runtime_key  # a runtime node's build and marker hashes, for its cache key
         self._runtime_keys: dict[str, dict[str, str] | None] = {}
         self._code_keys: dict[Path, str] = {}
-        self.engine = EngineExecutor()
 
     def _key(self, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]) -> str:
         runtime = None
         if manifest.run.where == "runtime":
             name = str(manifest.run.runtime)
             if name not in self._runtime_keys:
-                self._runtime_keys[name] = self.runtime_key(name)
+                self._runtime_keys[name] = self.runtimes.key_for(name)
             runtime = self._runtime_keys[name]
         if manifest.folder not in self._code_keys:
             self._code_keys[manifest.folder] = code_digest(manifest.folder)
         return self.cache.key(manifest, values, inputs, runtime, self._code_keys[manifest.folder])
-
-    def _executor(self, manifest: Manifest, device: str) -> EngineExecutor | ProcessExecutor:
-        if manifest.run.where == "engine":
-            return self.engine
-        runtime = str(manifest.run.runtime)
-        python = self.runtime_python(runtime)
-        env = self.runtime_env(runtime)
-        if device == "cpu":
-            env = {**env, "CUDA_VISIBLE_DEVICES": "-1"}  # a processor run sees no card
-        return ProcessExecutor(
-            python,
-            env=env,
-            log_dir=self.log_dir,
-            tmp_root=self.tmp_root,
-            caches=self.runtime_caches(runtime),
-        )
 
     def run(
         self,
@@ -197,7 +166,6 @@ class Scheduler:
         run_id: str | None = None,
     ) -> RunResult:
         run_id = run_id or uuid.uuid4().hex[:12]
-        prune_step_logs(self.log_dir)
         self._runtime_keys = {}  # read once per run: a runtime does not change under a run
         self._code_keys = {}  # nor does a node's code
 
@@ -337,7 +305,7 @@ class Scheduler:
     def _context(self, step: Step, meta: memory.Inputs) -> _Context:
         manifest = step.manifest
         runtime = manifest.run.runtime if manifest.run.where == "runtime" else None
-        target = self.target(str(runtime)) if runtime else Target()
+        target = self.runtimes.device_target(str(runtime)) if runtime else Target()
         model_hash = manifest.memory.hash if manifest.memory else ""
         key = StoreKey(manifest.id, manifest.version, model_hash, target.lock or "")
         cards = runtime is not None and "cuda" in manifest.devices and target.card is not None
@@ -449,7 +417,7 @@ class Scheduler:
         values = dict(found.values) if found is not None else dict(step.params)
         device = (found.device if found is not None else None) or manifest.devices[0]
         key = self._key(manifest, values, inputs)
-        executor = self._executor(manifest, device)  # the runtime check, then the files check
+        executor = self.executors.executor(manifest, device)  # the runtime check, then the files check
         files = check_files(self.store, manifest, values)
         say(
             {
@@ -679,39 +647,28 @@ def _described(found: Fit, peaks: dict[str, Any]) -> str:
 def for_root(
     data: Path | None,
     registry: Registry,
-    runtimes: Runtimes | None,
+    runtimes: RuntimeSide | None,
     cache: Cache,
     *,
     machine: Callable[[bool], dict[str, Any]] = no_machine,
     settings: Callable[[], Settings] = Settings,
     learned: LearnedStore | None = None,
     tmp_root: Path | None = None,
-    runtime_python: Callable[[str], Path] | None = None,
 ) -> Scheduler:
-    """The scheduler for a data root, as the engine and bench:fit both build it: the runtimes'
-    Pythons, environments, targets, caches and keys, the root's step logs, journals and model store,
-    and `tmp_root`, the process's own folder under `cache/tmp/`."""
-    kw: dict[str, Any] = {}
-    if runtimes is not None:
-        kw.update(
-            runtime_python=runtimes.python_for,
-            runtime_env=runtimes.env_for,
-            target=runtimes.device_target,
-            runtime_caches=runtimes.caches_for,
-            runtime_key=runtimes.key_for,
-        )
-    if runtime_python is not None:
-        kw["runtime_python"] = runtime_python
+    """The scheduler for a data root, as the engine and bench:fit both build it: the runtimes, a
+    process per run with the root's step logs, the root's journals and model store, and `tmp_root`,
+    the process's own folder under `cache/tmp/`."""
     layout = Layout(data) if data is not None else None
+    side = runtimes if runtimes is not None else NoRuntimes()
     return Scheduler(
         registry,
         cache,
+        runtimes=side,
+        executors=OneProcessPerRun(side, tmp_root=tmp_root, log_dir=layout.step_logs if layout else None),
         store=Store(data) if data is not None else None,
-        log_dir=layout.step_logs if layout else None,
         journal_dir=layout.journals if layout else None,
         machine=machine,
         settings=settings,
         learned=learned,
         tmp_root=tmp_root,
-        **kw,
     )

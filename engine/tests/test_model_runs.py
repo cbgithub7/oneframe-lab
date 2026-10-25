@@ -9,12 +9,11 @@ import copy
 import hashlib
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, HostRuntimes, MakeNode
 from fixtures import fit_node, machines
 
 from oneframe import bench_fit
@@ -106,12 +105,11 @@ def scheduler(data: Path, node_root: Path, machine: dict[str, Any] | None = None
     return for_root(
         data,
         discover([node_root]),
-        None,
+        HostRuntimes(),
         Cache(data / "cache"),
         machine=(lambda _cards: machine)
         if machine is not None
         else lambda _cards: machines.get("no GPU, 32 GB"),
-        runtime_python=lambda _runtime: Path(sys.executable),
         tmp_root=data / "cache" / "tmp" / "0",
     )
 
@@ -287,17 +285,11 @@ def test_a_change_to_a_checkpoint_that_is_not_downloaded_is_skipped_and_named_wh
     assert events.of("node.fit")[0]["values"]["checkpoint"] == "small"
 
 
-def test_bench_fit_reads_files_too(tmp_path: Path, make_node: MakeNode, node_root: Path, tiny: Path) -> None:
+def test_bench_fit_reads_files_too(tmp_path: Path, make_node: MakeNode, node_root: Path) -> None:
     reader_node(make_node)
     data = tmp_path / "data"
     put(data, CONFIG, SMALL)
-    manager = Runtimes(data, [tiny.parent], uv=sys.executable, profile=lambda: machines.get("no GPU, 32 GB"))
-    found = bench_fit.make_scheduler(
-        discover([node_root]),
-        manager,
-        tmp_path / "bench-cache",
-        runtime_python=lambda _r: Path(sys.executable),
-    )
+    found = bench_fit.make_scheduler(data, discover([node_root]), HostRuntimes(), tmp_path / "bench-cache")
     report = bench_fit.bench_node(found, "test.reader", [{}])
     assert report["runs"][0]["status"] == "done", report["runs"][0]
 

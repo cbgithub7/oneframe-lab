@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import MakeNode
+from conftest import HostRuntimes, MakeNode
 
 from oneframe import bench_fit
 from oneframe.registry import discover
@@ -50,9 +50,7 @@ def test_a_node_is_measured_at_each_group_of_settings(
 ) -> None:
     make_node(SMALL_NODE, CODE)
     registry = discover([node_root])
-    scheduler = bench_fit.make_scheduler(
-        registry, None, tmp_path / "cache", runtime_python=lambda _runtime: Path(sys.executable)
-    )
+    scheduler = bench_fit.make_scheduler(None, registry, HostRuntimes(), tmp_path / "cache")
     groups = [bench_fit.parse_sets(["resolution=400"], registry.get("test.bench")), {"resolution": 800}, {}]
     record = bench_fit.bench_node(scheduler, "test.bench", groups)
     rows = record["runs"]
@@ -82,9 +80,7 @@ def test_the_bench_learns_nothing_so_every_estimate_is_the_nodes_own(
         CODE.replace('ctx.params["resolution"]', 'ctx.params["resolution"] + ctx.params["extra"]'),
     )
     registry = discover([node_root])
-    scheduler = bench_fit.make_scheduler(
-        registry, None, tmp_path / "cache", runtime_python=lambda _runtime: Path(sys.executable)
-    )
+    scheduler = bench_fit.make_scheduler(None, registry, HostRuntimes(), tmp_path / "cache")
     groups = [{"resolution": 800, "extra": 200}, {"resolution": 800}, {"resolution": 800}]
     rows = bench_fit.bench_node(scheduler, "test.bench", groups)["runs"]
     assert [r["status"] for r in rows] == ["done", "done", "done"], [r["error"] for r in rows]

@@ -350,13 +350,7 @@ def test_a_runtime_installs_from_its_lock_and_runs_a_node(
     assert (data / "runtimes" / "tiny" / "cpu" / runtime_install.MARKER).is_file()
 
     graph = _tiny_node(make_node)
-    scheduler = Scheduler(
-        discover([node_root]),
-        Cache(data / "cache"),
-        runtime_python=manager.python_for,
-        runtime_env=manager.env_for,
-        log_dir=data / "logs",
-    )
+    scheduler = Scheduler(discover([node_root]), Cache(data / "cache"), runtimes=manager)
     events = Events()
     result = scheduler.run(graph, events.append)
 
@@ -374,12 +368,7 @@ def test_a_node_whose_runtime_is_not_installed_fails_with_the_reason(
 ) -> None:
     graph = _tiny_node(make_node)
     manager = _manager(tmp_path / "data", tiny, uv_exe, uv_home)
-    scheduler = Scheduler(
-        discover([node_root]),
-        Cache(tmp_path / "cache"),
-        runtime_python=manager.python_for,
-        runtime_env=manager.env_for,
-    )
+    scheduler = Scheduler(discover([node_root]), Cache(tmp_path / "cache"), runtimes=manager)
     events = Events()
     result = scheduler.run(graph, events.append)
     assert result.status == "failed" and result.error is not None
