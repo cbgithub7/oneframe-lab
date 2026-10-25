@@ -84,7 +84,7 @@ def alive(pid: int) -> bool:
         state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[0]
     except OSError, IndexError:  # no /proc, or a zombie reaped since it was found: ask again
         return _found(pid)
-    return state != "Z"
+    return state not in ("Z", "X")  # a zombie, or dead and being reaped
 
 
 def _found(pid: int) -> bool:
