@@ -32,8 +32,8 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
+from oneframe.environment import reserved_env, reserved_why
 from oneframe.errors import Failure, Stopped, failure
-from oneframe.executors import reserved_env, reserved_why
 from oneframe.files import FileLock, lock_file
 from oneframe.journal import journalled
 from oneframe.layout import Layout

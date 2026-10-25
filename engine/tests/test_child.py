@@ -21,7 +21,8 @@ import pytest
 
 from oneframe import child
 from oneframe.child import NetworkForbidden, NodeFailed, Stopped, classify, is_oom
-from oneframe.executors import child_command, child_env
+from oneframe.environment import child_env
+from oneframe.executors import child_command
 
 
 class OutOfMemoryError(RuntimeError):

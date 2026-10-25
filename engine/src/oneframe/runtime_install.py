@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from oneframe import archives
+from oneframe.environment import uv_environment
 from oneframe.errors import Failure, Stopped
 from oneframe.files import format_of, remove_tree, write_json
 
@@ -51,19 +52,6 @@ MARKER_FORMAT = 1
 PTH = "oneframe-runtime.pth"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-# Variables that would point uv, or a Python it starts, at the engine's own environment. With the
-# engine's PYTHONPYCACHEPREFIX, the bytecode an install compiles would land there, not in the runtime.
-DROP_ENV = (
-    "VIRTUAL_ENV",
-    "CONDA_PREFIX",
-    "PYTHONPATH",
-    "PYTHONHOME",
-    "UV_PROJECT_ENVIRONMENT",
-    "UV_PYTHON",
-    "PYTHONPYCACHEPREFIX",
-    "PYTHONDONTWRITEBYTECODE",
-)
-
 Emit = Callable[[dict[str, Any]], None]
 ShouldStop = Callable[[], bool]
 STEPS = ("marker", "python", "sync", "sources", "stand-ins", "paths", "freeze", "record")
@@ -119,24 +107,6 @@ def marker_problem(env: Path, marker: dict[str, Any]) -> str | None:
     if isinstance(recorded, str) and not same_path(recorded, env):
         return "moved"
     return None
-
-
-def uv_environment(
-    uv_home: Path, env: Path | None = None, base: dict[str, str] | None = None
-) -> dict[str, str]:
-    """uv's cache and Pythons under the data root, where removing the data root removes them, and
-    where the cache and the environments share a volume, so uv links files instead of copying.
-    uv writes nothing outside it: no `python3.x` link in the person's bin folder, and no entry in
-    the Windows registry, either of which would outlive the data root and point at nothing."""
-    out = {k: v for k, v in (os.environ if base is None else base).items() if k not in DROP_ENV}
-    out["UV_CACHE_DIR"] = str(uv_home / "cache")
-    out["UV_PYTHON_INSTALL_DIR"] = str(uv_home / "python")
-    out["UV_PYTHON_INSTALL_BIN"] = "0"
-    out["UV_PYTHON_INSTALL_REGISTRY"] = "0"
-    out["PYTHONIOENCODING"] = "utf-8"
-    if env is not None:
-        out["UV_PROJECT_ENVIRONMENT"] = str(env)
-    return out
 
 
 def _kill_tree(proc: subprocess.Popen[str]) -> None:

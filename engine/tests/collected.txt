@@ -552,6 +552,7 @@ test_unsafe_paths[a\\b-uses a backslash; paths in a repository use /]
 test_unsafe_paths[lpt\xb9.txt-has 'lpt\xb9.txt', a name Windows keeps for a device]
 test_unsafe_paths[model.pt-None]
 test_unsafe_paths[sub/dir/model.safetensors-None]
+test_uv_and_runs_drop_the_same_names_in_any_case
 test_uv_never_sees_the_engines_bytecode_prefix
 test_verify_drops_a_changed_file_so_the_next_download_fetches_only_it
 test_versions_compare_as_numbers

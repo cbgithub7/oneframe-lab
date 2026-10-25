@@ -45,7 +45,8 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
 from oneframe.cache import Cache
-from oneframe.executors import NodeError, ProcessExecutor, child_env
+from oneframe.environment import child_env
+from oneframe.executors import NodeError, ProcessExecutor
 from oneframe.graph import Graph
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param

@@ -16,7 +16,7 @@ code is imported:
   writing straight to fd 1. The NDJSON channel is a duplicate of stdout taken first; fd 1 itself
   is pointed at stderr, so nothing anybody prints can land in the middle of an event.
 - **The network is closed to Python code.** The engine tells hub libraries they are offline and
-  passes no hub token (executors.FORCED_ENV), so they read only what is on disk. Connecting through
+  passes no hub token (environment.FORCED_ENV), so they read only what is on disk. Connecting through
   Python's sockets anywhere but this machine raises NetworkForbidden naming the host, so a run fails
   with that name instead of fetching gigabytes nobody asked for. This stops accidents, not malicious
   code: native code, DNS lookups and anything that undoes the patch go around it. Downloads happen

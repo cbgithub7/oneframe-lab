@@ -15,12 +15,12 @@ from pathlib import Path
 import pytest
 from conftest import Events, MakeNode, wait_gone
 
+from oneframe.environment import child_env
 from oneframe.executors import (
     EngineExecutor,
     NodeError,
     ProcessExecutor,
     child_command,
-    child_env,
     died_message,
 )
 from oneframe.graph import Graph

@@ -20,12 +20,12 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
+from oneframe.environment import TEMP_VARIABLES
 from oneframe.files import FileLock, lock_file, remove_tree
 from oneframe.layout import Layout
 
 LOGGER = logging.getLogger(__name__)
 _SLOT = re.compile(r"^[0-9]+$")
-TEMP_VARIABLES = ("TMP", "TEMP", "TMPDIR")
 MAX_PROCESSES = 256  # more than ever run at once on one root; a bound, so a fault cannot loop forever
 
 

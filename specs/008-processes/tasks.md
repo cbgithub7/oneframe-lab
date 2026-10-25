@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` with
 `node scripts/test-guard.js --write` (007).
 
-- [ ] 1. `oneframe/environment.py`: move the variable lists, `child_env`, `reserved_env` and
+- [x] 1. `oneframe/environment.py`: move the variable lists, `child_env`, `reserved_env` and
   `reserved_why` from `executors.py`, and `uv_environment` from `runtime_install.py` (whose
   `DROP_ENV` goes), with one `ENGINE_PYTHON` and `SECRETS` list, `inherited(base)` used by both,
   and names compared upper-cased. `scratch.py` takes `TEMP_VARIABLES` from it, and `runtimes.py`
