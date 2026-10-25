@@ -1,6 +1,6 @@
 # 010: The scheduler and its executors, ready for spec 004
 
-Status: approved
+Status: in progress (tasks 1 to 12 done; in review in [PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39); task 13 after the merge)
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23:
   `NoRuntimes` raises only where a runtime is needed, so AC1's fake executors still get the job.

@@ -40,7 +40,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 11. Docs: `docs/architecture.md`'s Scheduler, Executors and Journal rows and its Events
   paragraph on endings; the open item on endings out of `docs/handoff.md` (only with task 10); and
   from `docs/roadmap.md` what this spec takes on.
-- [ ] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one
+- [x] 12. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC8 one
   by one, with AC8's measure pasted.
 - [ ] 13. After the merge, the local session in Verification on a machine with an NVIDIA card, and
   its report under `specs/010-scheduler/reports/`.
