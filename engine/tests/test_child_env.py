@@ -9,20 +9,22 @@ import json
 import os
 import sys
 import textwrap
+import threading
 from pathlib import Path
 
 import pytest
 from conftest import NO_GPU
 
-from oneframe import BUILTIN_NODES_DIR, runtime_install
-from oneframe.executors import (
+from oneframe import BUILTIN_NODES_DIR
+from oneframe.environment import (
     LIBRARY_CACHES,
     OVERRIDING_CACHES,
     ROOT_ENV,
-    ProcessExecutor,
     child_env,
     reserved_env,
+    uv_environment,
 )
+from oneframe.executors import ProcessExecutor
 from oneframe.layout import CACHEDIR_TAG, Layout, claim_root, keep_bytecode_under
 from oneframe.manifest import parse
 from oneframe.server import Engine
@@ -61,8 +63,28 @@ def test_a_persons_own_hub_and_triton_caches_never_reach_a_child(tmp_path: Path)
 
 
 def test_uv_never_sees_the_engines_bytecode_prefix() -> None:
-    env = runtime_install.uv_environment(Path("/root/uv"), base={"PYTHONPYCACHEPREFIX": "/x", "KEEP": "1"})
+    env = uv_environment(Path("/root/uv"), base={"PYTHONPYCACHEPREFIX": "/x", "KEEP": "1"})
     assert "PYTHONPYCACHEPREFIX" not in env and env["KEEP"] == "1"
+
+
+def test_uv_and_runs_drop_the_same_names_in_any_case(tmp_path: Path) -> None:
+    """uv and a run start from one inherited environment: neither gets the engine's own Python, its
+    folders on PATH, or a hub token, however the person's environment spells the names (spec 008)."""
+    engine_bin = Path(sys.prefix) / ("Scripts" if sys.platform == "win32" else "bin")
+    person = {
+        "CONDA_DEFAULT_ENV": "base",
+        "HF_TOKEN": "hf_secret",
+        "virtual_env": "/engine/.venv",
+        "PythonPath": "/engine/src",
+        "UV_PYTHON": "3.15",
+        "Path": os.pathsep.join([str(engine_bin), str(tmp_path / "bin")]),
+        "KEEP": "1",
+    }
+    for env in (uv_environment(tmp_path / "uv", base=person), child_env(person, {})):
+        assert not {"CONDA_DEFAULT_ENV", "HF_TOKEN", "VIRTUAL_ENV", "PYTHONPATH", "UV_PYTHON"} & {
+            name.upper() for name in env
+        }
+        assert env["Path"] == str(tmp_path / "bin") and env["KEEP"] == "1"
 
 
 def test_a_child_writes_no_bytecode_and_sees_the_roots_folders(tmp_path: Path) -> None:
@@ -95,7 +117,7 @@ def test_a_child_writes_no_bytecode_and_sees_the_roots_folders(tmp_path: Path) -
         "out_dir": str(tmp_path / "out"),
     }
     ProcessExecutor(Path(sys.executable), tmp_root=jobs, caches=caches).execute(
-        {**job, "device": "cpu"}, seen.append, lambda: False
+        {**job, "device": "cpu"}, seen.append, threading.Event()
     )
     env = json.loads(str(seen[0]["message"]))
     for name, folder in LIBRARY_CACHES.items():

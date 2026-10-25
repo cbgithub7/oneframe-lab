@@ -23,7 +23,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { REPO_ROOT, dataRoot, findUv, layout } from "../app/main/paths.js";
+import { REPO_ROOT, dataRoot, findUv, layout, temporaryEnv } from "../app/main/paths.js";
 
 /**
  * The data root the tool will open.
@@ -51,7 +51,7 @@ export function toolRoot(args, env, cwd, platform = process.platform, home = hom
 export function toolCommand(uv, module, args, env = process.env, cwd = process.cwd()) {
   const tmp = layout(toolRoot(args, env, cwd)).tools_tmp;
   /** @type {NodeJS.ProcessEnv} */
-  const childEnv = { ...env, TMP: tmp, TEMP: tmp, TMPDIR: tmp };
+  const childEnv = { ...env, ...temporaryEnv(tmp) };
   return {
     command: uv,
     args: ["run", "--project", path.join(REPO_ROOT, "engine"), "--frozen", "python", "-B", "-m", module, ...args],

@@ -143,6 +143,30 @@ export function findUv(env = process.env, platform = process.platform) {
 }
 
 /**
+ * The variables that name a process's temporary folder. oneframe/environment.py names the same,
+ * and contracts/layout.json holds the two equal.
+ */
+export const TEMP_VARIABLES = Object.freeze(["TMP", "TEMP", "TMPDIR"]);
+/**
+ * uv keeps its package cache and downloaded Pythons under the data root, in these folders of
+ * layout(), so removing the data root removes them too, and hard links between cache and runtimes
+ * stay on one volume. UV_SETTINGS keep it writing anything outside them: no python link in the
+ * person's bin folder, no Windows registry entry. The engine sets the same for the uv it starts.
+ */
+export const UV_FOLDERS = Object.freeze(
+  /** @type {const} */ ({ UV_CACHE_DIR: "uv_cache", UV_PYTHON_INSTALL_DIR: "uv_python" }));
+export const UV_SETTINGS = Object.freeze({ UV_PYTHON_INSTALL_BIN: "0", UV_PYTHON_INSTALL_REGISTRY: "0" });
+
+/**
+ * Each temporary-folder variable set to `folder`.
+ * @param {string} folder
+ * @returns {Record<string, string>}
+ */
+export function temporaryEnv(folder) {
+  return Object.fromEntries(TEMP_VARIABLES.map((name) => [name, folder]));
+}
+
+/**
  * The command that starts the engine in development: uv runs it from the locked project, so the
  * interpreter and every package are exactly what engine/uv.lock says. It makes the app's temporary
  * folder, which uv uses until the engine takes a folder of its own.
@@ -152,25 +176,20 @@ export function findUv(env = process.env, platform = process.platform) {
  *   other kind uses it
  */
 export function engineCommand(uv, data, packaged = false) {
-  const tmp = layout(data).app_tmp;
+  const folders = layout(data);
+  const tmp = folders.app_tmp;
   mkdirSync(tmp, { recursive: true });
+  /** @type {NodeJS.ProcessEnv} */
   const env = {
     ...process.env,
     ONEFRAME_ROOT: REPO_ROOT,
-    // uv keeps its package cache and downloaded Pythons under the data root, so removing the data
-    // root removes them too, and hard links between cache and runtimes stay on one volume. It writes
-    // nothing outside it: no python link in the person's bin folder, no Windows registry entry.
-    UV_CACHE_DIR: layout(data).uv_cache,
-    UV_PYTHON_INSTALL_DIR: layout(data).uv_python,
-    UV_PYTHON_INSTALL_BIN: "0",
-    UV_PYTHON_INSTALL_REGISTRY: "0",
+    ...Object.fromEntries(Object.entries(UV_FOLDERS).map(([name, folder]) => [name, folders[folder]])),
+    ...UV_SETTINGS,
     // The engine's bytecode goes under the root, not beside its source in the install folder or in
     // nodes/. The engine keeps it from uv and from runtime children, which read their own.
-    PYTHONPYCACHEPREFIX: layout(data).pycache,
+    PYTHONPYCACHEPREFIX: folders.pycache,
     // uv's own lock for the engine's environment, and anything else it makes for a moment.
-    TMP: tmp,
-    TEMP: tmp,
-    TMPDIR: tmp,
+    ...temporaryEnv(tmp),
   };
   return {
     command: uv,

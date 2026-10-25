@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -259,13 +260,14 @@ def test_stop_ends_the_run_between_and_inside_nodes(
         "import time\ndef run(ctx):\n    for i in range(200):\n        ctx.check_stop()\n"
         "        ctx.progress(i, 200)\n        time.sleep(0.01)\n",
     )
-    calls = {"n": 0}
+    stop = threading.Event()
 
-    def stop_after_a_few() -> bool:
-        calls["n"] += 1
-        return calls["n"] > 5
+    def listen(event: dict[str, Any]) -> None:
+        events.append(event)
+        if len(events.of("progress")) >= 4:
+            stop.set()
 
-    result = scheduler_for().run(_graph({"s": {"node": "test.slow"}}, []), events.append, stop_after_a_few)
+    result = scheduler_for().run(_graph({"s": {"node": "test.slow"}}, []), listen, stop)
     assert result.status == "stopped"
     assert events.kinds()[-1] == "run.stopped"
     assert 0 < len(events.of("progress")) < 200
@@ -596,13 +598,14 @@ def test_stop_is_never_retried(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
     _fit_node(make_node, "test.fit", "    ctx.check_stop()")
-    calls = {"n": 0}
+    stop = threading.Event()
 
-    def stop() -> bool:
-        calls["n"] += 1
-        return calls["n"] > 1  # not before the step; at the node's own check
+    def listen(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] == "node.start":
+            stop.set()  # not before the step; at the node's own check
 
-    result = scheduler_for(machine=_with(TIGHT)).run(_one_node("test.fit"), events.append, should_stop=stop)
+    result = scheduler_for(machine=_with(TIGHT)).run(_one_node("test.fit"), listen, stop)
     assert result.status == "stopped" and events.kinds().count("node.start") == 1
 
 

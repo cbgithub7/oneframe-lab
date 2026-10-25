@@ -9,12 +9,13 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from conftest import Events, MakeNode, wait_gone
+from conftest import Events, MakeNode
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR
 from oneframe.cache import Cache
 from oneframe.graph import Graph
+from oneframe.processes import wait_gone
 from oneframe.registry import discover
 from oneframe.scheduler import Scheduler
 from oneframe.server import Engine

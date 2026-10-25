@@ -201,7 +201,7 @@ class Engine:
 
         def work() -> None:
             try:
-                self.scheduler.run(graph, self.say, stop.is_set, run_id)
+                self.scheduler.run(graph, self.say, stop, run_id)
             except Exception as exc:  # a bug, not a node failure: say so rather than die silently
                 LOGGER.exception("run %s crashed", run_id)
                 self.say(engine_crash(exc, event="run.failed", run=run_id))  # the run's journal has it too

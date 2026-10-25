@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from oneframe import CONTRACTS_DIR
+from oneframe.environment import TEMP_VARIABLES, UV_FOLDERS, UV_SETTINGS, uv_environment
 from oneframe.layout import Layout, absolute, data_root, default_root
 
 TABLE: dict[str, Any] = json.loads((CONTRACTS_DIR / "layout.json").read_text(encoding="utf-8"))
@@ -70,3 +71,15 @@ def test_the_layout_names_the_paths_the_table_names() -> None:
     assert Layout.names() == sorted(TABLE["paths"])
     for name, relative in TABLE["paths"].items():
         assert getattr(Layout(root), name) == root.joinpath(*relative.split("/")), name
+
+
+def test_the_temporary_and_uv_variables_match_the_contract() -> None:
+    """What the engine sets for uv is what the app sets for the engine it starts (spec 008)."""
+    table = TABLE["environment"]
+    assert list(TEMP_VARIABLES) == table["temporary"]
+    assert table["uv_settings"] == UV_SETTINGS
+    layout = Layout(Path("root"))
+    env = uv_environment(layout.uv_cache.parent, base={})
+    assert list(UV_FOLDERS) == list(table["uv_folders"])
+    for name, path in table["uv_folders"].items():
+        assert env[name] == str(getattr(layout, path)), name

@@ -32,8 +32,8 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
+from oneframe.environment import reserved_env, reserved_why
 from oneframe.errors import Failure, Stopped, failure
-from oneframe.executors import reserved_env, reserved_why
 from oneframe.files import FileLock, lock_file
 from oneframe.journal import journalled
 from oneframe.layout import Layout
@@ -992,7 +992,7 @@ class Runtimes:
             try:
                 emit({**base, "event": "runtime.start"})
                 done = runtime_install.install(
-                    runtime, build, self.data, str(self.uv), emit, stop.is_set, self.uv_home, **extra
+                    runtime, build, self.data, str(self.uv), emit, stop, self.uv_home, **extra
                 )
             except Stopped:
                 emit(

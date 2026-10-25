@@ -9,6 +9,7 @@ import json
 import re
 import subprocess
 import sys
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -185,7 +186,7 @@ def test_a_child_that_names_an_undeclared_kind_still_fails_as_a_node(
     }
     monkeypatch.setattr(child, "classify", lambda _exc: "made_up")  # a kind nobody declared
     with pytest.raises(NodeError) as caught:
-        executors.EngineExecutor().execute({**job, "device": "cpu"}, lambda _e: None, lambda: False)
+        executors.EngineExecutor().execute({**job, "device": "cpu"}, lambda _e: None, threading.Event())
     assert caught.value.kind == "error" and "boom" in str(caught.value)
     assert executors.declared_kind("made_up") == "error" and executors.declared_kind("oom") == "oom"
 

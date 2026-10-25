@@ -18,6 +18,7 @@ import argparse
 import json
 import sys
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,7 +55,7 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
             caches=manager.caches_for(runtime_id),
         )
         try:
-            done = executor.execute(job, lambda _e: None, lambda: False)
+            done = executor.execute(job, lambda _e: None, threading.Event())
         except NodeError as exc:
             return {"ran": False, "why": f"{exc.kind}: {exc}", "detail": exc.detail[-2000:]}
     return {

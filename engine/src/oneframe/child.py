@@ -16,7 +16,7 @@ code is imported:
   writing straight to fd 1. The NDJSON channel is a duplicate of stdout taken first; fd 1 itself
   is pointed at stderr, so nothing anybody prints can land in the middle of an event.
 - **The network is closed to Python code.** The engine tells hub libraries they are offline and
-  passes no hub token (executors.FORCED_ENV), so they read only what is on disk. Connecting through
+  passes no hub token (environment.FORCED_ENV), so they read only what is on disk. Connecting through
   Python's sockets anywhere but this machine raises NetworkForbidden naming the host, so a run fails
   with that name instead of fetching gigabytes nobody asked for. This stops accidents, not malicious
   code: native code, DNS lookups and anything that undoes the patch go around it. Downloads happen
@@ -435,7 +435,7 @@ class NodeContext:
         self,
         job: dict[str, Any],
         say: Emit,
-        should_stop: Callable[[], bool] | None = None,
+        stop: threading.Event | None = None,
         stage: dict[str, str] | None = None,
         cap_mb: float | None = None,
         ram_start: float | None = None,
@@ -454,7 +454,7 @@ class NodeContext:
         self._files: dict[str, str] = dict(job.get("files") or {})
         self.outputs: dict[str, dict[str, Any]] = {}
         self._say = say
-        self._should_stop = should_stop or (lambda: False)
+        self._stop = stop if stop is not None else threading.Event()
         self._stage = stage if stage is not None else {"stage": "start"}
         self._cap_mb = cap_mb
         self._ram_start = ram_start if ram_start is not None else resident_mb()[0]
@@ -565,12 +565,12 @@ class NodeContext:
 
     def stopped(self) -> bool:
         """For a loop that can end early: check it, and raise Stopped (or return) when true."""
-        return self._should_stop()
+        return self._stop.is_set()
 
     def check_stop(self) -> None:
         """Raises Stopped when Stop was pressed. A node in a runtime never sees it: Stop ends its
         process at once. A node in the engine's process is stopped only by this."""
-        if self._should_stop():
+        if self._stop.is_set():
             raise Stopped()
 
     def fail(self, message: str) -> NoReturn:
@@ -610,11 +610,11 @@ def load_entry(file: str | Path, function: str) -> Callable[[NodeContext], Any]:
 def run_node(
     job: dict[str, Any],
     say: Emit,
-    should_stop: Callable[[], bool] | None = None,
+    stop: threading.Event | None = None,
     stage: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run one node and return the `done` payload. Raises on failure; the caller reports it."""
-    return run_context(NodeContext(job, say, should_stop, stage))
+    return run_context(NodeContext(job, say, stop, stage))
 
 
 def run_context(ctx: NodeContext) -> dict[str, Any]:

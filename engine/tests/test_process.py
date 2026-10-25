@@ -3,27 +3,32 @@ network stays closed, failures keep their kind, and Stop kills the child."""
 
 from __future__ import annotations
 
+import _thread
 import json
 import os
+import stat
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
-from conftest import Events, MakeNode, wait_gone
+from conftest import Events, MakeNode
 
+from oneframe.environment import child_env
 from oneframe.executors import (
     EngineExecutor,
     NodeError,
     ProcessExecutor,
     child_command,
-    child_env,
     died_message,
 )
 from oneframe.graph import Graph
+from oneframe.processes import alive, wait_gone
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
 
@@ -107,16 +112,65 @@ def test_stop_kills_a_runtime_child(
 ) -> None:
     _runtime_node(make_node, "test.hang", HANG)
     started = time.monotonic()
+    stop = threading.Event()
 
-    def stop_when_hanging() -> bool:
-        return any(e["event"] == "stage" for e in events)
+    def listen(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] == "stage":
+            stop.set()
 
-    result = scheduler_for().run(_one("test.hang"), events.append, stop_when_hanging)
+    result = scheduler_for().run(_one("test.hang"), listen, stop)
     assert result.status == "stopped"
     assert time.monotonic() - started < 20
     # The interpreter itself, not only the process the engine started (on Windows a venv's
-    # python.exe is a launcher that starts the interpreter as another process).
-    assert wait_gone(int(events.of("stage")[0]["message"]))
+    # python.exe is a launcher that starts the interpreter as another process): gone on return.
+    assert not alive(int(events.of("stage")[0]["message"]))
+
+
+# A node's body that starts a process of its own, says its id and its own, and hangs.
+STARTS = (
+    "import subprocess, sys, time\n"
+    "sleeper = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+    "ctx.stage('started', f'{sleeper.pid} {os.getpid()}')\n"
+    "time.sleep(60)\n"
+)
+
+
+def test_stop_ends_the_processes_a_node_started(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    _runtime_node(make_node, "test.starts", "import os\ndef run(ctx):\n" + textwrap.indent(STARTS, "    "))
+    stop = threading.Event()
+
+    def listen(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] == "stage":
+            stop.set()
+
+    result = scheduler_for().run(_one("test.starts"), listen, stop)
+    assert result.status == "stopped"
+    sleeper, node = (int(pid) for pid in events.of("stage")[0]["message"].split())
+    assert not alive(node) and wait_gone(sleeper)
+
+
+def test_ctrl_c_during_a_run_ends_its_processes(tmp_path: Path) -> None:
+    """In a group of its own, a node's process no longer hears a terminal's Ctrl+C; the tool's
+    KeyboardInterrupt ends it, and what it started, through the same kill as a Stop."""
+    seen: list[dict[str, object]] = []
+
+    def listen(event: dict[str, object]) -> None:
+        seen.append(event)
+        if event["event"] == "stage":
+            _thread.interrupt_main()  # what Ctrl+C does to the tool's main thread
+
+    with pytest.raises(KeyboardInterrupt):
+        ProcessExecutor(Path(sys.executable)).execute(
+            _executor_job(tmp_path, STARTS),
+            listen,
+            threading.Event(),
+        )
+    sleeper, node = (int(pid) for pid in str(seen[0]["message"]).split())
+    assert not alive(node) and wait_gone(sleeper)
 
 
 def test_a_runtime_child_is_told_to_end_with_the_engine(
@@ -232,7 +286,9 @@ def test_a_runtime_child_cannot_import_the_engines_own_modules(tmp_path: Path) -
     ctx.stage("path", json.dumps({"found": found, "on_path": sys.argv[0].rsplit(os.sep, 1)[0] in sys.path}))
     """
     seen: list[dict[str, object]] = []
-    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    ProcessExecutor(Path(sys.executable)).execute(
+        _executor_job(tmp_path, body), seen.append, threading.Event()
+    )
     assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False}
 
 
@@ -243,7 +299,7 @@ def test_a_node_fails_in_its_own_words(tmp_path: Path) -> None:
     words = "The photo is 32 pixels wide; this node needs at least 256."
     for executor in (ProcessExecutor(Path(sys.executable)), EngineExecutor()):
         with pytest.raises(NodeError) as info:
-            executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
+            executor.execute(_executor_job(tmp_path, body), lambda _e: None, threading.Event())
         assert (info.value.kind, str(info.value)) == ("node", words)
 
 
@@ -253,7 +309,7 @@ def test_any_other_error_is_reported_with_its_type(tmp_path: Path) -> None:
     body = "raise ValueError('expected 3 channels, got 4')\n"
     for executor in (ProcessExecutor(Path(sys.executable)), EngineExecutor()):
         with pytest.raises(NodeError) as info:
-            executor.execute(_executor_job(tmp_path, body), lambda _e: None, lambda: False)
+            executor.execute(_executor_job(tmp_path, body), lambda _e: None, threading.Event())
         assert (info.value.kind, str(info.value)) == ("error", "ValueError: expected 3 channels, got 4")
 
 
@@ -265,7 +321,7 @@ def test_a_failure_carries_the_peaks_of_the_run(tmp_path: Path) -> None:
     """
     with pytest.raises(NodeError) as info:
         ProcessExecutor(Path(sys.executable)).execute(
-            _executor_job(tmp_path, body), lambda _e: None, lambda: False
+            _executor_job(tmp_path, body), lambda _e: None, threading.Event()
         )
     assert info.value.kind == "oom"
     assert set(info.value.peaks) == {"peak_reserved_mb", "peak_vram_mb", "peak_ram_mb"}
@@ -276,9 +332,9 @@ def test_a_job_brings_its_own_environment(tmp_path: Path) -> None:
     seen: list[dict[str, object]] = []
     executor = ProcessExecutor(Path(sys.executable), env={"CUDA_VISIBLE_DEVICES": "0", "KEEP": "1"})
     executor.execute(
-        _executor_job(tmp_path, body, env={"CUDA_VISIBLE_DEVICES": "-1"}), seen.append, lambda: False
+        _executor_job(tmp_path, body, env={"CUDA_VISIBLE_DEVICES": "-1"}), seen.append, threading.Event()
     )
-    executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    executor.execute(_executor_job(tmp_path, body), seen.append, threading.Event())
     assert [e["message"] for e in seen] == ["-1", "0"]  # a processor job sees no card; the next is unchanged
 
 
@@ -315,7 +371,7 @@ def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) ->
         env={"TRANSFORMERS_OFFLINE": "0", "HF_TOKEN": "hf_runtime", "hf_hub_offline": "0"},
         base_env=person,
     )
-    executor.execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    executor.execute(_executor_job(tmp_path, body), seen.append, threading.Event())
     assert json.loads(str(seen[0]["message"])) == {
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
@@ -335,9 +391,38 @@ def test_a_node_that_reads_stdin_gets_end_of_file_at_once(tmp_path: Path) -> Non
     body = "try:\n    input()\nexcept EOFError:\n    ctx.stage('stdin', 'eof')\n"
     seen: list[dict[str, object]] = []
     started = time.monotonic()
-    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, lambda: False)
+    ProcessExecutor(Path(sys.executable)).execute(
+        _executor_job(tmp_path, body), seen.append, threading.Event()
+    )
     assert seen[0]["message"] == "eof"
     assert time.monotonic() - started < 20
+
+
+def test_a_node_that_queries_its_stdin_does_not_hang(
+    tmp_path: Path, stop_after: Callable[[float], threading.Event]
+) -> None:
+    """October's hang, as inferred: the C runtime of a DLL numpy loads asks at start what its standard
+    input is, and on Windows that waited behind the child's watcher, reading the same pipe. The node
+    asks the same; a hang come back is stopped at the deadline and fails, rather than hanging."""
+    body = """
+    import stat, sys
+    answers = {"mode": stat.S_IFMT(os.fstat(0).st_mode), "tty": os.isatty(0)}
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetStdHandle.restype = wintypes.HANDLE
+        kernel32.GetFileType.argtypes = (wintypes.HANDLE,)
+        answers["type"] = kernel32.GetFileType(kernel32.GetStdHandle(-10))  # STD_INPUT_HANDLE
+    ctx.stage("stdin", json.dumps(answers))
+    """
+    seen: list[dict[str, object]] = []
+    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, stop_after(60))
+    answers = json.loads(str(seen[0]["message"]))
+    # The null device, not the pipe the watcher reads: a character device, FILE_TYPE_CHAR on Windows,
+    # whose C runtime counts every character device, the null one too, as a terminal.
+    assert answers["mode"] == stat.S_IFCHR and answers["tty"] is (sys.platform == "win32")
+    assert answers.get("type", 2) == 2
 
 
 def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:
@@ -345,7 +430,7 @@ def test_a_listener_is_told_the_childs_process_id(tmp_path: Path) -> None:
     seen: list[dict[str, object]] = []
     body = "ctx.stage('pid', str(os.getpid()))\n"
     ProcessExecutor(Path(sys.executable), on_pid=pids.append).execute(
-        _executor_job(tmp_path, body), seen.append, lambda: False
+        _executor_job(tmp_path, body), seen.append, threading.Event()
     )
     assert len(pids) == 1 and str(pids[0]) == seen[0]["message"]
 
@@ -371,6 +456,6 @@ def test_a_child_killed_as_the_oom_killer_does_is_reported_as_maybe_out_of_memor
     body = "import signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
     with pytest.raises(NodeError) as info:
         ProcessExecutor(Path(sys.executable)).execute(
-            _executor_job(tmp_path, body), lambda _e: None, lambda: False
+            _executor_job(tmp_path, body), lambda _e: None, threading.Event()
         )
     assert info.value.kind == "died" and "may have run out of system memory" in str(info.value)

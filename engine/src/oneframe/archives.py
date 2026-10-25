@@ -19,6 +19,7 @@ import posixpath
 import re
 import shutil
 import tarfile
+import threading
 import urllib.request
 import uuid
 import zipfile
@@ -52,7 +53,7 @@ def download(
     sha256: str,
     dest: Path,
     progress: Progress | None = None,
-    should_stop: Callable[[], bool] | None = None,
+    stop: threading.Event | None = None,
     opener: Callable[..., Any] = urllib.request.urlopen,
 ) -> Path:
     """Fetch `url` to `dest`, keeping it only if its sha256 is `sha256`."""
@@ -71,7 +72,7 @@ def download(
             # read1 returns what has arrived, so progress and Stop are seen while bytes trickle in
             read = getattr(response, "read1", response.read)
             while True:
-                if should_stop is not None and should_stop():
+                if stop is not None and stop.is_set():
                     raise Stopped()
                 chunk = read(CHUNK)
                 if not chunk:

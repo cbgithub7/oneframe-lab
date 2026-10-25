@@ -3,8 +3,9 @@
 Both take the same job and give the same `done` payload, so the scheduler does not care which.
 The engine process runs only light nodes (sources, converters, evaluators) whose code ships with
 the app. Anything that imports a model library runs in a child: a different interpreter with its
-own packages, started per node run and killed outright on Stop -- a model holds the card while it
-runs, and nothing it is doing is worth finishing once someone has asked it to stop.
+own packages, started per node run and, on Stop, ended outright with every process it started -- a
+model holds the card while it runs, and nothing it is doing is worth finishing once someone has
+asked it to stop.
 
 The child speaks NDJSON on a private copy of its stdout (see child.py); the job goes in as a JSON
 file. Pickle cannot cross between interpreters with different packages, and JSON can.
@@ -14,10 +15,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import queue
-import shutil
-import subprocess
 import sys
 import tempfile
 import threading
@@ -27,7 +24,10 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import child
+from oneframe.environment import child_env
 from oneframe.errors import KINDS, Failure, Stopped
+from oneframe.files import remove_tree
+from oneframe.processes import Child
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(child.__file__).resolve()
@@ -39,10 +39,7 @@ def child_command(python: Path, job: Path) -> list[str]:
     return [str(python), "-P", "-u", str(CHILD), str(job)]
 
 
-NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
 Emit = Callable[[dict[str, Any]], None]
-ShouldStop = Callable[[], bool]
 
 
 class NodeError(Failure):
@@ -82,9 +79,9 @@ def died_message(code: int | None, platform: str = sys.platform) -> str:
 class EngineExecutor:
     """Runs a node in the engine's process. Stop is cooperative: the node checks ctx.stopped()."""
 
-    def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
+    def execute(self, job: dict[str, Any], emit: Emit, stop: threading.Event) -> dict[str, Any]:
         try:
-            return child.run_node(job, emit, should_stop)
+            return child.run_node(job, emit, stop)
         except Stopped:
             raise
         except Exception as exc:
@@ -104,141 +101,38 @@ def _trace() -> str:
     return traceback.format_exc()[-4000:]
 
 
-# Set in every runtime child, after everything else, so neither the person's environment nor a
-# runtime's definition can turn them off. Hub libraries told they are offline read only what is on
-# disk and fail at once on anything missing, instead of retrying for seconds against a closed
-# network. torch then loads every checkpoint with weights_only, whatever the caller asks for.
-FORCED_ENV = {
-    "HF_HUB_OFFLINE": "1",
-    "TRANSFORMERS_OFFLINE": "1",
-    "HF_DATASETS_OFFLINE": "1",
-    "HF_HUB_DISABLE_TELEMETRY": "1",
-    # A token file that holds nothing: with HF_TOKEN unset, the hub library would otherwise read the
-    # person's own (~/.cache/huggingface/token) and send it with every request.
-    "HF_TOKEN_PATH": os.devnull,
-    "TORCH_FORCE_WEIGHTS_ONLY_LOAD": "1",
-}
-# Never passed to a runtime child: a run reads only files already on disk, so it needs no hub
-# token or endpoint, and nothing may turn torch's weights_only loading back off.
-SECRET_OR_UNSAFE_ENV = (
-    "HF_TOKEN",
-    "HUGGING_FACE_HUB_TOKEN",
-    "HF_ENDPOINT",
-    "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
-)
-# Where the libraries a node uses keep their caches: each under the data root, in
-# `cache/runtime/<id>/`, never in the person's home folder, where nothing would remove them.
-LIBRARY_CACHES = {
-    "HF_HOME": "huggingface",
-    "TORCH_HOME": "torch",
-    "TORCH_EXTENSIONS_DIR": "torch_extensions",
-    "TORCHINDUCTOR_CACHE_DIR": "torchinductor",
-    "TRITON_HOME": "triton",
-    "CUDA_CACHE_PATH": "cuda",
-    "XDG_CACHE_HOME": "xdg",
-    "MPLCONFIGDIR": "matplotlib",
-}
-TEMP_ENV = ("TMP", "TEMP", "TMPDIR")
-# Variables that point a library past the folders above: each overrides HF_HOME or TRITON_HOME,
-# so the person's own value would let a run read weights Download never fetched, or write outside
-# the root. They are removed; the folders above then decide (spec 003 sets HF_HUB_CACHE itself).
-OVERRIDING_CACHES = (
-    "HF_HUB_CACHE",
-    "HUGGINGFACE_HUB_CACHE",
-    "HF_ASSETS_CACHE",
-    "HUGGINGFACE_ASSETS_CACHE",
-    "HF_DATASETS_CACHE",
-    "HF_MODULES_CACHE",
-    "HF_XET_CACHE",
-    "TRANSFORMERS_CACHE",
-    "PYTORCH_TRANSFORMERS_CACHE",
-    "PYTORCH_PRETRAINED_BERT_CACHE",
-    "TRITON_CACHE_DIR",
-)
-# A child reads the bytecode its runtime's install compiled and writes none: not beside a node's
-# code, and not into the runtime, which an install alone changes.
-ROOT_ENV = (*LIBRARY_CACHES, *TEMP_ENV, *OVERRIDING_CACHES, "PYTHONDONTWRITEBYTECODE")
-_RESERVED = {name.upper() for name in (*FORCED_ENV, *SECRET_OR_UNSAFE_ENV, *ROOT_ENV)}
-# PYTHONPYCACHEPREFIX is the engine's own (the app sets it): a child given it would look for its
-# runtime's bytecode there instead of beside each module, and never find it.
-_ENGINE_PYTHON = {
-    "PYTHONPATH",
-    "PYTHONHOME",
-    "VIRTUAL_ENV",
-    "CONDA_PREFIX",
-    "CONDA_DEFAULT_ENV",
-    "PYTHONPYCACHEPREFIX",
-}
+class _Tail:
+    """A child's stderr, line by line: the last lines kept for a failure's report, every one in the
+    step's log. A log that cannot be opened costs the log, never the run."""
+
+    def __init__(self, log: Path | None):
+        self.lines: deque[str] = deque(maxlen=80)
+        self._handle = None
+        if log is not None:
+            try:
+                self._handle = log.open("a", encoding="utf-8")
+            except OSError as exc:
+                LOGGER.warning("could not open the step log %s: %s", log, exc)
+
+    def __call__(self, line: str) -> None:
+        self.lines.append(line.rstrip())
+        if self._handle is not None:
+            self._handle.write(line + "\n")
+            self._handle.flush()
+
+    def close(self) -> None:
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
 
 
-def reserved_why(names: list[str]) -> str:
-    """Why the engine keeps these names to itself, in words for a runtime's author."""
-    why = []
-    if any(name.upper() not in {n.upper() for n in ROOT_ENV} for name in names):
-        why.append("hub libraries offline, no hub token or endpoint, torch's weights_only loading on")
-    if any(name.upper() in {n.upper() for n in ROOT_ENV} for name in names):
-        why.append("a run's caches, temporary files and bytecode kept under the data root")
-    return "; ".join(why)
-
-
-def reserved_env(name: str) -> bool:
-    """Whether the engine sets or removes this variable for every run. Compared without case:
-    Windows treats HF_TOKEN and hf_token as one variable."""
-    return name.upper() in _RESERVED
-
-
-def child_env(
-    base: dict[str, str] | None,
-    extra: dict[str, str],
-    caches: Path | None = None,
-    tmp: Path | None = None,
-) -> dict[str, str]:
-    """A runtime child's environment: nothing of the engine's own Python leaks in, so the runtime
-    never sees the engine's packages or loads a DLL from the engine's folders; no hub token or
-    endpoint reaches it; and FORCED_ENV is set last. Then what keeps a run's writes under the data
-    root: the library caches in `caches` (the runtime's folder in `cache/runtime/`), the temporary
-    folder in `tmp` (the job's own), and no bytecode written. Names are compared without case."""
-    source = dict(os.environ if base is None else base)
-    drop = {*_ENGINE_PYTHON, "UV_PROJECT_ENVIRONMENT"}
-    env = {k: v for k, v in source.items() if k.upper() not in drop and not reserved_env(k)}
-    engine_prefix = os.path.normcase(str(Path(sys.prefix).resolve()))
-    if env.get("PATH"):
-        env["PATH"] = os.pathsep.join(
-            part
-            for part in env["PATH"].split(os.pathsep)
-            if part and not os.path.normcase(str(Path(part).resolve())).startswith(engine_prefix)
-        )
-    env.update({k: v for k, v in extra.items() if not reserved_env(k)})
-    env.update(FORCED_ENV)
-    if caches is not None:
-        env.update({name: str(caches / folder) for name, folder in LIBRARY_CACHES.items()})
-    if tmp is not None:
-        env.update(dict.fromkeys(TEMP_ENV, str(tmp)))
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["PYTHONUNBUFFERED"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
-    return env
-
-
-def _reader(stream: Any, sink: queue.Queue[str | None]) -> None:
+def _remove(folder: Path) -> None:
+    """A job's folder; one that will not go (a file something still holds) is left to the next
+    sweep, never hiding how the run ended."""
     try:
-        for line in iter(stream.readline, ""):
-            sink.put(line)
-    finally:
-        sink.put(None)
-
-
-def _tail(stream: Any, keep: deque[str], log: Path | None) -> None:
-    handle = log.open("a", encoding="utf-8") if log else None
-    try:
-        for line in iter(stream.readline, ""):
-            keep.append(line.rstrip())
-            if handle:
-                handle.write(line)
-                handle.flush()
-    finally:
-        if handle:
-            handle.close()
+        remove_tree(folder)
+    except OSError as exc:
+        LOGGER.warning("could not remove the job folder %s: %s", folder, exc)
 
 
 class ProcessExecutor:
@@ -249,7 +143,6 @@ class ProcessExecutor:
         python: Path,
         env: dict[str, str] | None = None,
         base_env: dict[str, str] | None = None,
-        poll: float = 0.2,
         log_dir: Path | None = None,
         on_pid: Callable[[int], None] | None = None,
         tmp_root: Path | None = None,
@@ -262,65 +155,50 @@ class ProcessExecutor:
         self.tmp_root = tmp_root
         self.env = dict(env or {})
         self.base_env = base_env
-        self.poll = poll
         self.log_dir = log_dir
         self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
-    def execute(self, job: dict[str, Any], emit: Emit, should_stop: ShouldStop) -> dict[str, Any]:
+    def execute(self, job: dict[str, Any], emit: Emit, stop: threading.Event) -> dict[str, Any]:
         # Every child ends when the process that started it does, even one killed without a chance
         # to stop it (an engine, a bench tool), so no orphan keeps holding the card. It watches
         # the stdin pipe this process holds, and closes.
         job = {**job, "exit_with_parent": True}
         tmp = Path(tempfile.mkdtemp(prefix="job-", dir=self.tmp_root))
-        stderr_tail: deque[str] = deque(maxlen=80)
         done: dict[str, Any] | None = None
         failed: dict[str, Any] | None = None
         log = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             log = self.log_dir / f"{job.get('run', 'run')}-{job.get('step', 'node')}.log"
+        tail = _Tail(log)
         try:
             job_path = tmp / "job.json"
             job_path.write_text(json.dumps(job, default=str), encoding="utf-8")
-            proc = subprocess.Popen(
+            proc = Child.start(
                 child_command(self.python, job_path),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
                 env=child_env(
                     self.base_env, {**self.env, **(job.get("env") or {})}, caches=self.caches, tmp=tmp
                 ),
                 cwd=tmp,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=NO_WINDOW,
+                stdin="pipe",
+                stderr=tail,
             )
             LOGGER.info("started node child %s for %s", proc.pid, job.get("node"))
-            lines: queue.Queue[str | None] = queue.Queue()
-            threading.Thread(target=_reader, args=(proc.stdout, lines), daemon=True).start()
-            threading.Thread(target=_tail, args=(proc.stderr, stderr_tail, log), daemon=True).start()
+            # The interpreter's own id, which on Windows is not the process started: a venv's
+            # python.exe is a launcher. A Stop returns only once it is gone (see child.main).
+            interpreter: list[int] = []
             try:
-                open_stream = True
-                while open_stream or proc.poll() is None:
-                    if should_stop():
-                        raise Stopped()
-                    try:
-                        line = lines.get(timeout=self.poll)
-                    except queue.Empty:
-                        continue
-                    if line is None:
-                        open_stream = False
-                        continue
+                for line in proc.lines(stop):
                     try:
                         event = json.loads(line)
                     except ValueError:
-                        LOGGER.warning("node child wrote a non-event line: %s", line.rstrip()[:200])
+                        LOGGER.warning("node child wrote a non-event line: %s", line[:200])
                         continue
                     kind = event.get("event")
                     if kind == "pid":
-                        if self.on_pid is not None:  # the interpreter's own id (see child.main)
-                            self.on_pid(int(event["pid"]))
+                        interpreter.append(int(event["pid"]))
+                        if self.on_pid is not None:
+                            self.on_pid(interpreter[-1])
                     elif kind == "done":
                         done = event
                     elif kind == "error":
@@ -328,16 +206,10 @@ class ProcessExecutor:
                     else:
                         emit(event)
             finally:
-                if proc.poll() is None:
-                    proc.kill()
-                    try:
-                        proc.wait(timeout=10)
-                    except subprocess.TimeoutExpired:  # never hide why the run ended behind this
-                        LOGGER.warning("node child %s did not end within 10 s of being killed", proc.pid)
-                if proc.stdin is not None:
-                    # The child's own interpreter, behind a launcher that a kill does not take down
-                    # with it, sees its stdin close and ends.
-                    proc.stdin.close()
+                # Everything the node started ends with it, and its interpreter, behind a launcher a
+                # kill may not take down with it, also sees its stdin close and ends. Once the child
+                # has ended, so has the interpreter, whose id may already be another process's.
+                proc.kill(also=interpreter if proc.returncode is None else ())
             if done is not None:
                 return done
             if failed is not None and failed.get("kind") == "stopped":
@@ -349,6 +221,7 @@ class ProcessExecutor:
                     str(failed.get("trace") or ""),
                     {k: failed.get(k) for k in PEAKS},
                 )
-            raise NodeError("died", died_message(proc.returncode), "\n".join(stderr_tail))
+            raise NodeError("died", died_message(proc.returncode), "\n".join(tail.lines))
         finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            tail.close()
+            _remove(tmp)

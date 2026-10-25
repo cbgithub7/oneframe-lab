@@ -33,3 +33,6 @@ testpaths = ["tests"]
 addopts = "-q"
 # Two cases of one ID are refused, not numbered (spec 007).
 strict_parametrization_ids = true
+# A test still running after this many seconds prints every thread's stack, so a hang names itself
+# before CI's job timeout (20 minutes) ends it in silence; the slowest test takes seconds (spec 008).
+faulthandler_timeout = 300

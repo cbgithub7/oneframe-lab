@@ -24,7 +24,7 @@ from typing import Any
 
 from conftest import TINY_RUNTIME
 
-from oneframe.executors import LIBRARY_CACHES
+from oneframe.environment import LIBRARY_CACHES
 from oneframe.layout import data_root
 
 WAIT_S = 300  # uv fetches Python 3.11 into the new root

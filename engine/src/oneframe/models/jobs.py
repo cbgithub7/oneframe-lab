@@ -366,7 +366,7 @@ class Jobs:
             )
         if found.status == "changed":
             self._phase(job, outcome, emit, "checking", bytes=spec.size)
-            if self.store.adopt(sha, job.stop.is_set):
+            if self.store.adopt(sha, job.stop):
                 outcome.outcome = "present"
                 return
         transfer = Transfer(
@@ -403,7 +403,7 @@ class Jobs:
         outcome.size = outcome.size or blob.stat().st_size
         self._phase(job, outcome, emit, "verifying", bytes=outcome.size)
         progress = self._progress(job, outcome, emit)
-        if hash_file(blob, job.stop.is_set, lambda have: progress(have, outcome.size)) == sha:
+        if hash_file(blob, job.stop, lambda have: progress(have, outcome.size)) == sha:
             self.store.recorded(sha)
             outcome.outcome = "verified"
             return

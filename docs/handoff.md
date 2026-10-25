@@ -53,7 +53,7 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
-| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 next |
+| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 in review ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)), then 009 |
 | 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
 | 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
@@ -72,9 +72,7 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop` (review of 2026-10-02, 4.2);
     - pyright on the first node that imports torch, and a CI job with real torch on the processor
       (review of 2026-10-02, 4.11); CI does not start the app either;
-    - `models.*` and `nodes.fit` are not on the page's method list;
-    - on Windows a Stop kills a node's venv launcher and at once removes its folder, while the
-      interpreter behind it may still be ending (unverified there; spec 008).
+    - `models.*` and `nodes.fit` are not on the page's method list.
 - **MoGe-3 may not run on older cards, or on Windows.** Its code imports FlexGEMM, built on
   Triton, which supports NVIDIA cards from compute 8.0 and publishes Linux wheels only; FlexGEMM
   runs only in MoGe-3's optional refinement, and the `moge` package requires it for every version.

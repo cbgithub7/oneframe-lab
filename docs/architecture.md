@@ -13,7 +13,7 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
       │
       ├── engine nodes: run in the engine process (sources, converters, evaluators)
       └── runtime nodes: one child process per run, in the node's own uv environment,
-                         JSON job in, NDJSON events out, network closed, killed on Stop
+                         JSON job in, NDJSON events out, network closed, its processes ended on Stop
 ```
 
 ## The parts
@@ -29,6 +29,8 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Memory | `oneframe/memory.py` | A node's memory model; the estimate; the margins and the person's settings; the fit (pure); what each machine learns |
 | Errors | `oneframe/errors.py` | Every kind and reason of failure, declared once, and whose fault each is ([Failures](#failures)) |
 | Executors | `oneframe/executors.py`, `oneframe/child.py` | In-process or child-process runs; one `NodeContext` either way |
+| Processes | `oneframe/processes.py` | The one module that starts, reads and ends processes: each in its own group, with no window, read as UTF-8; a kill ends the tree and waits for it |
+| Environment | `oneframe/environment.py`, `app/main/paths.js` | What every child inherits (never the engine's own Python or a hub token) and what the engine sets: a run offline, its writes under the root; uv's folders under the root |
 | Runtimes | `oneframe/runtimes.py`, `oneframe/runtime_install.py` | Find runtime definitions; plan the build a machine runs; install, check and remove it; give the scheduler its interpreter ([runtimes.md](runtimes.md)) |
 | Hardware | `oneframe/hardware.py` | The machine profile a plan reads: NVIDIA cards, driver, OS, system memory (total and available), free disk |
 | Model store | `oneframe/models/` | The files nodes read ([spec 003](../specs/003-model-store/spec.md)): declared in manifests (`schema.py`), kept once each by sha256 under `models/` (`store.py`), fetched on `http.client` by a transport that heals itself (`transport.py`), as download and verify jobs (`jobs.py`), checked before a run (`runs.py`), listed and removed (`catalog.py`), pinned (`pin.py`); the two command-line tools (`tools.py`) |
@@ -71,10 +73,10 @@ without an error.
 
 **A child process per heavy node.** Model families pin conflicting versions of torch, CUDA
 extensions and numpy. One environment per family, reached through a process boundary, means they
-never meet. The same boundary is what makes Stop immediate (the child is killed), and what lets the
-engine close the network to Python code and cap the GPU allocator before any model code runs. The
-closed network guards against accidents (a library fetching weights nobody asked for), not against
-malicious code: native code and DNS lookups go around it.
+never meet. The same boundary is what makes Stop immediate (the child and every process it started
+are killed), and what lets the engine close the network to Python code and cap the GPU allocator
+before any model code runs. The closed network guards against accidents (a library fetching
+weights nobody asked for), not against malicious code: native code and DNS lookups go around it.
 
 **Fit before load.** The machines this runs on range from no GPU to cards of 80 GB, and nobody
 should have to run a test to learn what fits. Each node declares a memory model; before it loads,

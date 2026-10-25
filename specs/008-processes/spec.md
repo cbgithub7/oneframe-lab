@@ -1,6 +1,6 @@
 # 008: Processes, children's environments and Stop
 
-Status: approved
+Status: in progress (every task done; in review in [PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: the one
   list of the engine's Python keeps `PYTHONDONTWRITEBYTECODE` from uv, as `DROP_ENV` does today;
@@ -177,6 +177,7 @@ requirements 6 and 7 are checked by the tests under Added. No step needs a GPU o
 - A job folder that will not go is logged and left to the next sweep, never hiding how a run ended.
 - JavaScript keeps its own copy (it cannot import Python), held equal by `contracts/layout.json`.
 - `faulthandler_timeout`, not pytest-timeout: it is built into pytest, so no new dependency.
+- Tests take `alive` and `wait_gone` from `processes` itself, not through `conftest.py`: one way in.
 
 ## Out of scope
 

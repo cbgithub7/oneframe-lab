@@ -159,6 +159,18 @@ def test_a_runtime_cannot_move_a_runs_caches_out_of_the_data_root(
     ]
 
 
+def test_a_runtime_cannot_set_how_a_run_speaks_to_the_engine(
+    make_runtime: MakeRuntime, runtime_root: Path
+) -> None:
+    """Both would be overwritten for every run; a setting that cannot take effect says so (spec 008)."""
+    make_runtime(_definition(env={"PYTHONIOENCODING": "latin-1", "pythonunbuffered": "0"}))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems == [
+        "env sets PYTHONIOENCODING, pythonunbuffered, which the engine sets or removes for every run "
+        "(a run's output unbuffered and in UTF-8, as the engine reads it)"
+    ]
+
+
 def test_a_reserved_name_is_refused_in_any_case(make_runtime: MakeRuntime, runtime_root: Path) -> None:
     """Windows treats hf_token and HF_TOKEN as one variable."""
     make_runtime(_definition(env={"torch_force_no_weights_only_load": "1"}))

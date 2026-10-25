@@ -98,8 +98,9 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
   every file in it must stay inside its folder, and `paths` inside it are made importable.
 - `env`: variables set for every node run in this runtime. It may not set what the engine sets or
   removes for every run: the hub libraries' offline flags, hub tokens and endpoints, torch's
-  `weights_only` switches, and what keeps a run under the data root (the library caches, the
-  temporary folder, bytecode, and the hub and Triton cache variables that would override them).
+  `weights_only` switches, what keeps a run under the data root (the library caches, the
+  temporary folder, bytecode, and the hub and Triton cache variables that would override them),
+  and how a run speaks to the engine (`PYTHONIOENCODING`, `PYTHONUNBUFFERED`).
 - `probe`: a function the runtime report runs inside the runtime.
 
 ## Checks
@@ -154,7 +155,7 @@ Nothing is installed until a person asks. The engine picks the build this machin
   system releases the lock when its holder dies.
 - **What a run writes** stays under the root: the child's library caches go to
   `cache/runtime/<id>/`, its temporary files to its job's folder, and it writes no bytecode
-  (`executors.child_env`). A node's cache key includes the build and the marker's hashes, so a
+  (`environment.child_env`). A node's cache key includes the build and the marker's hashes, so a
   rebuilt runtime never serves results from before.
 - **Several cards:** the build is planned for the NVIDIA card with the most memory, and a node's
   child sees only that card (`CUDA_DEVICE_ORDER=PCI_BUS_ID`, `CUDA_VISIBLE_DEVICES`), so its
