@@ -1,85 +1,16 @@
-"""Pinned archives: only the pinned bytes are kept, and nothing is unpacked outside its folder (AC8)."""
+"""Pinned archives: nothing is unpacked outside its folder (AC8). Fetching one is
+test_runtime_sources.py's."""
 
 from __future__ import annotations
 
-import hashlib
 import io
 import tarfile
-import threading
 import zipfile
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from oneframe import archives
-
-
-class _Response(io.BytesIO):
-    def __init__(self, data: bytes):
-        super().__init__(data)
-        self.headers = {"Content-Length": str(len(data))}
-
-
-def _opener(data: bytes, calls: list[str] | None = None) -> Callable[..., _Response]:
-    def open_url(url: str, **_kw: Any) -> _Response:
-        if calls is not None:
-            calls.append(url)
-        return _Response(data)
-
-    return open_url
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def test_a_source_with_the_wrong_sha256_is_refused(tmp_path: Path) -> None:
-    dest = tmp_path / "downloads" / "up.tar.gz"
-    with pytest.raises(archives.ArchiveError) as caught:
-        archives.download(
-            "https://example.test/up.tar.gz", "0" * 64, dest, opener=_opener(b"not the pinned file")
-        )
-    assert f"its sha256 is {_sha(b'not the pinned file')}, the pin is {'0' * 64}" in str(caught.value)
-    assert list((tmp_path / "downloads").iterdir()) == []  # neither the file nor a .part is kept
-
-
-def test_a_pinned_download_is_kept_and_not_fetched_again(tmp_path: Path) -> None:
-    data = b"x" * (3 * archives.CHUNK + 5)
-    dest = tmp_path / "up.tar.gz"
-    calls: list[str] = []
-    seen: list[tuple[int, int | None]] = []
-    archives.download(
-        "https://example.test/up",
-        _sha(data),
-        dest,
-        lambda d, t: seen.append((d, t)),
-        None,
-        _opener(data, calls),
-    )
-    assert dest.read_bytes() == data
-    assert seen[-1] == (len(data), len(data)) and len(seen) == 4
-    archives.download("https://example.test/up", _sha(data), dest, opener=_opener(data, calls))
-    assert calls == ["https://example.test/up"]
-
-
-def test_a_file_on_disk_that_does_not_match_is_fetched_again(tmp_path: Path) -> None:
-    data = b"pinned"
-    dest = tmp_path / "up.tar.gz"
-    dest.write_bytes(b"stale")
-    archives.download("https://example.test/up", _sha(data), dest, opener=_opener(data))
-    assert dest.read_bytes() == data
-
-
-def test_stop_during_a_download_keeps_nothing(tmp_path: Path) -> None:
-    data = b"y" * (2 * archives.CHUNK)
-    dest = tmp_path / "up.tar.gz"
-    stop = threading.Event()
-    stop.set()
-    with pytest.raises(archives.Stopped):
-        archives.download("https://example.test/up", _sha(data), dest, None, stop, _opener(data))
-    assert list(tmp_path.iterdir()) == []
 
 
 def _tar(path: Path, members: list[tarfile.TarInfo | tuple[str, bytes]]) -> Path:

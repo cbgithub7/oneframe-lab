@@ -1024,13 +1024,11 @@ class Runtimes:
         build: str,
         stop: threading.Event,
         emit: Emit,
-        opener: Callable[..., Any] | None = None,
     ) -> dict[str, Any] | None:
         """Carry out a claimed install, reporting it as runtime.* events. Returns the result, or
         None when it stopped or failed (the events say which). The slot and the runtime's lock go
         before the ending is sent, so a next install may start at once."""
         base = {"runtime": runtime.id, "build": build}
-        extra: dict[str, Any] = {"opener": opener} if opener is not None else {}
 
         def work(kept: Emit) -> tuple[dict[str, Any] | None, dict[str, Any]]:
             kept({**base, "event": "runtime.start"})
@@ -1044,7 +1042,7 @@ class Runtimes:
                     stop,
                     uv_cache=self.uv_cache,
                     uv_python=self.uv_python,
-                    **extra,
+                    transfer=self.transfer,
                 )
             except Stopped:
                 message = "Install stopped. Installing again picks up where it was."

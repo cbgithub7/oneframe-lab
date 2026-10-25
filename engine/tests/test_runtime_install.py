@@ -15,12 +15,13 @@ from conftest import (
     AMPERE,
     NO_GPU,
     TINY_RUNTIME,
+    TRANSFER,
     Events,
     MakeNode,
-    SourceServer,
     add_source,
     upstream_archive,
 )
+from fixtures.hosts import Hosts
 
 from oneframe import runtime_install, runtimes
 from oneframe.cache import Cache
@@ -33,7 +34,9 @@ from oneframe.scheduler import Scheduler
 def _manager(
     data: Path, tiny: Path, uv_exe: str, uv_home: Path, profile: dict[str, Any] = NO_GPU
 ) -> runtimes.Runtimes:
-    return runtimes.Runtimes(data, [tiny.parent], uv=uv_exe, profile=lambda: profile, uv_home=uv_home)
+    return runtimes.Runtimes(
+        data, [tiny.parent], uv=uv_exe, profile=lambda: profile, uv_home=uv_home, transfer=TRANSFER
+    )
 
 
 def _run(python: Path, code: str) -> dict[str, Any]:
@@ -56,7 +59,7 @@ def test_a_runtime_installs_under_the_data_root_from_its_lock(
     tiny: Path,
     uv_exe: str,
     uv_home: Path,
-    source_server: SourceServer,
+    hosts: Hosts,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Where uv would put a python link for the person (~/.local/bin by default): it must stay empty,
@@ -64,8 +67,7 @@ def test_a_runtime_installs_under_the_data_root_from_its_lock(
     bin_dir = tmp_path / "person-bin"
     monkeypatch.setenv("UV_PYTHON_BIN_DIR", str(bin_dir))
     archive = upstream_archive()
-    source_server.files["/up.tar.gz"] = archive
-    add_source(tiny, source_server.url("/up.tar.gz"), archive)
+    add_source(tiny, hosts.add_file("/up.tar.gz", archive), archive)
     data = tmp_path / "data"
     manager = _manager(data, tiny, uv_exe, uv_home)
     events = Events()
@@ -363,13 +365,12 @@ def test_a_runtime_installs_from_its_lock_and_runs_a_node(
     tiny: Path,
     uv_exe: str,
     uv_home: Path,
-    source_server: SourceServer,
+    hosts: Hosts,
     make_node: MakeNode,
     node_root: Path,
 ) -> None:
     archive = upstream_archive("from the pinned source")
-    source_server.files["/up.tar.gz"] = archive
-    add_source(tiny, source_server.url("/up.tar.gz"), archive)
+    add_source(tiny, hosts.add_file("/up.tar.gz", archive), archive)
     data = tmp_path / "data"
     manager = _manager(data, tiny, uv_exe, uv_home)
     assert manager.install("tiny") is not None
@@ -437,7 +438,7 @@ def test_a_failed_sync_keeps_what_was_installed(
 
 
 def test_a_source_file_that_does_not_compile_does_not_fail_the_install(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, source_server: SourceServer
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
 ) -> None:
     import io
     import tarfile
@@ -453,8 +454,7 @@ def test_a_source_file_that_does_not_compile_does_not_fail_the_install(
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
     archive = buffer.getvalue()
-    source_server.files["/up.tar.gz"] = archive
-    add_source(tiny, source_server.url("/up.tar.gz"), archive)
+    add_source(tiny, hosts.add_file("/up.tar.gz", archive), archive)
     manager = _manager(tmp_path / "data", tiny, uv_exe, uv_home)
     events = Events()
     assert manager.install("tiny", emit=events.append) is not None

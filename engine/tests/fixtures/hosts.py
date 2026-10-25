@@ -113,8 +113,8 @@ class IgnoreRange:
 
 @dataclass
 class NoLength:
-    """Answer with a 200 and the whole file, a range ignored, and no Content-Length, so the body
-    ends when the connection closes: what GitHub's archive host is said to send."""
+    """Answer with a 200 and the whole file, a range ignored, in chunks with no Content-Length and
+    with Connection: close: what GitHub's archive host sends over HTTP/1.1 (seen 2026-10-25)."""
 
     on: str = "body"
 
@@ -675,7 +675,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 start = min(max(start + fault.by, 0), size - 1)
             headers["Content-Range"] = f"bytes {start}-{size - 1}/{size}"
         if isinstance(fault, NoLength):
-            headers["Connection"] = "close"
+            headers.update({"Transfer-Encoding": "chunked", "Connection": "close"})
             self.close_connection = True
         else:
             headers["Content-Length"] = str(size - start)
@@ -687,6 +687,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if not self.body:
             return
         rest = data[start:]
+        if isinstance(fault, NoLength):
+            for at in range(0, len(rest), 65536):
+                piece = rest[at : at + 65536]
+                self._write(b"%x\r\n%s\r\n" % (len(piece), piece))
+            self._write(b"0\r\n\r\n")
+            return
         if isinstance(fault, Drop) or (isinstance(fault, IgnoreRange) and fault.at is not None):
             self._write(rest[: fault.at])
             self._drop()

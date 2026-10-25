@@ -4,7 +4,8 @@ Status: approved
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: AC1
   checks that no recorded hash changes, rather than that its test file is untouched, which the new
-  signatures would break.
+  signatures would break. Changed in task 8, approved by the owner 2026-10-25: requirement 7 and AC8
+  allow the fix that lets the transport read GitHub's archives (its socket closed too soon).
 
 The fifth of eight clean-up specs (007 to 014), from section 3 of the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md) and the [roadmap](../../docs/roadmap.md)'s
@@ -51,8 +52,8 @@ Today there are several of each:
    `--uv-home` names (open question 3); `Layout.objects` (`cache/objects`) joins `layout.py`,
    `app/main/paths.js` and `contracts/layout.json`, and `Cache(objects, work)` takes both.
 7. **The transport is kept and grows no further.** Its docstring records that the tripwire fired and
-   why. Its only edits: the resume hashes with the helper, and "the store's drive" becomes "the
-   drive". Needing more (http, auth, parallel ranges, a new phase or Policy field) is a new spec
+   why. Its only edits: the resume hashes with the helper, "the store's drive" becomes "the drive",
+   and its socket stays open until a response's file is closed. Needing more (http, auth, parallel ranges, a new phase or Policy field) is a new spec
    that reopens urllib3.
 8. **Nothing else a person sees changes:** paths on disk, events, kinds and reasons are as today.
 
@@ -78,7 +79,7 @@ Today there are several of each:
   to question 1.
 - [ ] AC8: The transport grows no further: `git diff $(git merge-base origin/main HEAD) --
   engine/src/oneframe/models/transport.py`, pasted in the PR, touches only its docstring, an import,
-  the resume's hashing and the two messages that name the store's drive.
+  the resume's hashing, the two messages that name the store's drive, and its socket's close.
 
 ## Design
 
@@ -96,7 +97,7 @@ Today there are several of each:
 - **Paths.** `Runtimes.__init__` decides uv's two folders once. `environment.uv_environment` (008's
   module) takes the two folders, not their parent, and `bench_fit` gives its caches both folders.
 - **Tests.** The plain-http `SourceServer` goes: sources come from spec 003's hosts, which gain a
-  fault serving a body with no length, as GitHub's archive host is said to, and record a stall still
+  fault serving a body with no length, as GitHub's archive host does, and record a stall still
   held. The engine's process tests start through `engine/tests/fixtures/serve.py`, which calls
   `server.main` with the test CA.
 - **Docs that change:** `docs/architecture.md` (the Files, Archives and Model store rows),
@@ -114,8 +115,8 @@ Today there are several of each:
     - `write_text` may wait up to the deadline, not about 1 s, while another process holds the
       file: only under contention, where the alternative is a failure.
     - On Windows truststore reads only the system's store, so the driver passes the test CA in.
-    - GitHub's archive host is said to send no length and ignore ranges: a resume there starts
-      again, a body cut short ends as a hash mismatch, and free space is not checked.
+    - GitHub's archive host sends no length (chunked, `Connection: close`) and ignores ranges: a
+      resume there starts again, and free space is not checked.
     - The engine stays light, as the heavy-modules test holds: truststore loads only to download.
 
 ## Tests

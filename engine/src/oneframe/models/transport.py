@@ -182,16 +182,24 @@ class _Reader(io.RawIOBase):
     """A response's bytes, read in slices so Stop is seen between them and a stall is a window
     with no byte at all, however the system ends a blocked read."""
 
-    def __init__(self, sock: socket.socket, stop: threading.Event, stall_s: float):
+    def __init__(
+        self, sock: socket.socket, stop: threading.Event, stall_s: float, on_close: Callable[[], None]
+    ):
         self._sock = sock
         self._stop = stop
         self._stall_s = stall_s
+        self._on_close = on_close
 
     def readable(self) -> bool:
         return True
 
     def readinto(self, buffer: Any) -> int:
         return _recv_into(self._sock, buffer, self._stop, self._stall_s)
+
+    def close(self) -> None:
+        if not self.closed:
+            super().close()
+            self._on_close()
 
 
 def _recv_into(sock: socket.socket, buffer: Any, stop: threading.Event, stall_s: float) -> int:
@@ -216,6 +224,8 @@ class _Socket:
         self._sock = sock
         self._stop = stop
         self._stall_s = stall_s
+        self._files = 0
+        self._closing = False
         sock.settimeout(SLICE_S)
 
     def sendall(self, data: Any) -> None:
@@ -227,10 +237,21 @@ class _Socket:
             self._sock.settimeout(SLICE_S)
 
     def makefile(self, _mode: str = "rb", *_args: Any, **_kw: Any) -> io.BufferedReader:
-        return io.BufferedReader(_Reader(self._sock, self._stop, self._stall_s), CHUNK)
+        self._files += 1
+        return io.BufferedReader(_Reader(self._sock, self._stop, self._stall_s, self._file_closed), CHUNK)
 
     def close(self) -> None:
-        self._sock.close()
+        """As with socket.makefile, the socket stays open until its files are closed too:
+        http.client closes the connection as it hands its file to a response read to the end of
+        the stream (one with no length, or with Connection: close, as GitHub's archive host sends)."""
+        self._closing = True
+        if not self._files:
+            self._sock.close()
+
+    def _file_closed(self) -> None:
+        self._files -= 1
+        if self._closing and not self._files:
+            self._sock.close()
 
 
 class Connector:

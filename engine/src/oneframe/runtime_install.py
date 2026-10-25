@@ -30,7 +30,6 @@ import shutil
 import sys
 import threading
 import time
-import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,12 +38,13 @@ from typing import TYPE_CHECKING, Any
 from oneframe import archives, processes
 from oneframe.environment import uv_environment
 from oneframe.errors import Failure, Stopped
-from oneframe.files import format_of, remove_tree, write_json
+from oneframe.files import format_of, free_bytes, remove_tree, replace, sha256_file, write_json
 from oneframe.layout import Layout
+from oneframe.models.transport import DownloadFailed, fetch
 from oneframe.node import Emit
 
 if TYPE_CHECKING:
-    from oneframe.runtimes import RuntimeDef
+    from oneframe.runtimes import RuntimeDef, Source
 
 MARKER = "oneframe-runtime.json"
 MARKER_FORMAT = 1
@@ -138,6 +138,48 @@ def _freeze(uv: str, python: Path, env: dict[str, str]) -> list[str]:
     ]
 
 
+def fetch_source(
+    source: Source,
+    downloads: Path,
+    stop: threading.Event,
+    progress: Callable[[int, int | None], None] | None = None,
+    log: Callable[[str], None] | None = None,
+    transfer: dict[str, Any] | None = None,
+) -> Path:
+    """`<downloads>/<sha256>`, the source's archive: kept when one is there whose sha256 matches,
+    else fetched by the model store's transport into `<downloads>/<sha256>.part`, then moved into
+    place. The transport retries, resumes what a Stop or a kill left in the partial, and sees Stop
+    at once (Stopped). A failure is InstallFailed. `transfer`: the transport's options (a test's
+    TLS context, policy or proxy)."""
+    archive = downloads / source.sha256
+    partial = downloads / f"{source.sha256}.part"
+
+    def phase(name: str, detail: dict[str, Any]) -> None:
+        if name == "retrying" and log is not None:
+            log(f"Fetching the source {source.name} again in {detail['wait_s']:g} s: {detail['why']}")
+
+    try:
+        if archive.is_file():
+            if sha256_file(archive, stop) == source.sha256:
+                return archive
+            archive.unlink()
+        fetch(
+            source.url,
+            partial,
+            None,
+            source.sha256,
+            stop,
+            phase=phase,
+            progress=progress,
+            free_bytes=lambda: free_bytes(downloads),
+            **(transfer or {}),
+        )
+        replace(partial, archive)
+    except (DownloadFailed, OSError) as exc:
+        raise InstallFailed(f"The source {source.name} could not be fetched: {exc}") from exc
+    return archive
+
+
 def install(
     runtime: RuntimeDef,
     build: str,
@@ -145,13 +187,14 @@ def install(
     uv: str,
     emit: Emit,
     stop: threading.Event | None = None,
-    opener: Callable[..., Any] = urllib.request.urlopen,
     *,
     uv_cache: Path,
     uv_python: Path,
+    transfer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build `runtime`'s `build` under the data root, with uv's cache and Pythons in the two
-    folders given. Raises Stopped or InstallFailed; the marker exists only when this returns."""
+    folders given, and its sources fetched with `transfer`'s options. Raises Stopped or
+    InstallFailed; the marker exists only when this returns."""
     started = time.monotonic()
     stop = stop if stop is not None else threading.Event()
     env = env_dir(data, runtime.id, build)
@@ -245,12 +288,7 @@ def install(
                 }
             )
 
-        try:
-            archive = archives.download(
-                source.url, source.sha256, downloads / source.sha256, progress, stop, opener
-            )
-        except (archives.ArchiveError, OSError) as exc:
-            raise InstallFailed(f"The source {source.name} could not be fetched: {exc}") from exc
+        archive = fetch_source(source, downloads, stop, progress, log, transfer)
         if target.exists():
             remove_tree(target)
         stamp.unlink(missing_ok=True)

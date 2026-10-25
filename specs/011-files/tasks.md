@@ -25,7 +25,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
 - [x] 7. The test side, with no change in behaviour: `Runtimes(transfer=)` and the engine passing
   it, `server.main(argv, transfer=)`, `engine/tests/fixtures/serve.py`, and the hosts' fault that
   serves a body with no length, and their record of a stall still held.
-- [ ] 8. Sources through the transport, code and tests in one commit: the source function, with
+- [x] 8. Sources through the transport, code and tests in one commit: the source function, with
   `archives.download`, urllib and `opener` gone; `SourceServer` gone and every source test on the
   hosts (the server tests through the driver); the three download tests moved to
   `test_runtime_sources.py`; AC4 to AC6 and the no-length test; the removed test;
