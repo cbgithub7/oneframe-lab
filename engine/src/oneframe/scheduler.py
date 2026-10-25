@@ -49,7 +49,6 @@ from typing import Any
 
 from oneframe import memory, ports
 from oneframe.cache import Cache, code_digest
-from oneframe.child import Value
 from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import EngineExecutor, NodeError, ProcessExecutor, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
@@ -59,6 +58,7 @@ from oneframe.manifest import Manifest
 from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
+from oneframe.node import Value
 from oneframe.registry import Registry
 from oneframe.runtimes import RuntimeMissing, Runtimes
 

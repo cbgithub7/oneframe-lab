@@ -7,8 +7,8 @@ own packages, started per node run and, on Stop, ended outright with every proce
 model holds the card while it runs, and nothing it is doing is worth finishing once someone has
 asked it to stop.
 
-The child speaks NDJSON on a private copy of its stdout (see child.py); the job goes in as a JSON
-file. Pickle cannot cross between interpreters with different packages, and JSON can.
+The child speaks NDJSON on a private copy of its stdout (see oneframe/node/process.py); the job goes
+in as a JSON file. Pickle cannot cross between interpreters with different packages, and JSON can.
 """
 
 from __future__ import annotations
@@ -23,14 +23,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from oneframe import child
 from oneframe.environment import child_env
-from oneframe.errors import KINDS, Failure, Stopped
+from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
+from oneframe.node import Stopped, failures
+from oneframe.node.runner import run_job
 from oneframe.processes import Child
 
 LOGGER = logging.getLogger(__name__)
-CHILD = Path(child.__file__).resolve()
+CHILD = Path(__file__).resolve().parent / "child.py"  # started by path, never imported
 
 
 def child_command(python: Path, job: Path) -> list[str]:
@@ -81,12 +82,12 @@ class EngineExecutor:
 
     def execute(self, job: dict[str, Any], emit: Emit, stop: threading.Event) -> dict[str, Any]:
         try:
-            return child.run_node(job, emit, stop)
+            return run_job(job, emit, stop)
         except Stopped:
             raise
         except Exception as exc:
-            kind = declared_kind(child.classify(exc))
-            raise NodeError(kind, child.describe(exc), _trace()) from exc
+            kind = declared_kind(failures.classify(exc))
+            raise NodeError(kind, failures.describe(exc), _trace()) from exc
 
 
 def declared_kind(kind: str) -> str:

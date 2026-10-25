@@ -6,6 +6,7 @@ from __future__ import annotations
 import _thread
 import json
 import os
+import socket
 import stat
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from typing import Any
 import pytest
 from conftest import Events, MakeNode
 
+import oneframe
 from oneframe.environment import child_env
 from oneframe.executors import (
     EngineExecutor,
@@ -278,18 +280,45 @@ def _executor_job(tmp_path: Path, body: str, **extra: object) -> dict[str, objec
 
 def test_a_runtime_child_cannot_import_the_engines_own_modules(tmp_path: Path) -> None:
     """The child's file lies among the engine's modules; a node's `import models` must reach the
-    runtime's package of that name, never the engine's."""
+    runtime's package of that name, never the engine's. Of the engine, node code reaches the node
+    API alone, even on the engine's own Python, where `oneframe` is installed."""
     body = """
     import importlib.util, sys
-    names = ("models", "graph", "errors", "layout", "scheduler", "child")
+    from oneframe.node import Value
+    names = ("oneframe.scheduler", "models", "graph", "errors", "layout", "scheduler", "child")
     found = [n for n in names if importlib.util.find_spec(n) is not None]
-    ctx.stage("path", json.dumps({"found": found, "on_path": sys.argv[0].rsplit(os.sep, 1)[0] in sys.path}))
+    on_path = sys.argv[0].rsplit(os.sep, 1)[0] in sys.path
+    ctx.stage("path", json.dumps({"found": found, "on_path": on_path, "api": Value.__module__}))
     """
     seen: list[dict[str, object]] = []
     ProcessExecutor(Path(sys.executable)).execute(
         _executor_job(tmp_path, body), seen.append, threading.Event()
     )
-    assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False}
+    assert json.loads(str(seen[0]["message"])) == {"found": [], "on_path": False, "api": "oneframe.node"}
+
+
+def test_an_engine_run_leaves_its_sockets_alone(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """A runtime child's guards are never put up in the engine's process: its own downloads stay
+    open, and its `oneframe` stays the real package."""
+    connect, connect_ex = socket.socket.connect, socket.socket.connect_ex
+    make_node(
+        {
+            "id": "test.sockets",
+            "version": "1",
+            "title": "sockets",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "run": {"where": "engine", "entry": "node.py:run"},
+        },
+        "import socket\ndef run(ctx):\n    ctx.stage('connect', repr(socket.socket.connect))\n" + WRITE,
+    )
+    result = scheduler_for().run(_one("test.sockets"), events.append)
+    assert result.status == "done", result.error
+    assert events.of("stage")[0]["message"] == repr(connect)
+    assert socket.socket.connect is connect and socket.socket.connect_ex is connect_ex
+    assert sys.modules["oneframe"] is oneframe and oneframe.__file__ is not None
 
 
 def test_a_node_fails_in_its_own_words(tmp_path: Path) -> None:

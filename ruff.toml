@@ -8,6 +8,7 @@ extend-exclude = ["node_modules"]
 # a syntax error before 3.14 (spec 002, plan decision 13).
 [per-file-target-version]
 "engine/src/oneframe/child.py" = "py311"
+"engine/src/oneframe/node/**" = "py311"
 "engine/tests/runtimes/**" = "py311"
 "engine/tests/hardware/**" = "py311"
 

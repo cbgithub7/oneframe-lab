@@ -54,7 +54,7 @@ _BUILD = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _VERSION = re.compile(r"^\d+(?:\.\d+)*$")
 _PYTHON = re.compile(r"^3\.(\d+)(?:\.\d+)?$")
-# The oldest Python a runtime may use: child.py runs in it, and is started with -P (3.11).
+# The oldest Python a runtime may use: child.py and the node API run in it, started with -P (3.11).
 MIN_PYTHON_MINOR = 11
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 

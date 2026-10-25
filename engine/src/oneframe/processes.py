@@ -34,7 +34,7 @@ from subprocess import CompletedProcess, TimeoutExpired
 from types import TracebackType
 from typing import IO, Literal
 
-from oneframe.errors import Stopped
+from oneframe.node import Stopped
 
 __all__ = ["Child", "CompletedProcess", "TimeoutExpired", "alive", "output", "run", "wait_gone"]
 

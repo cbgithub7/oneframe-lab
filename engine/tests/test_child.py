@@ -19,10 +19,11 @@ from typing import Any
 
 import pytest
 
-from oneframe import child
-from oneframe.child import NetworkForbidden, NodeFailed, Stopped, classify, is_oom
 from oneframe.environment import child_env
 from oneframe.executors import child_command
+from oneframe.node import NodeFailed, Stopped, usage
+from oneframe.node.context import NodeContext
+from oneframe.node.failures import NetworkForbidden, classify, is_oom
 
 
 class OutOfMemoryError(RuntimeError):
@@ -355,7 +356,7 @@ def test_an_error_reports_its_kind_and_its_peaks(tmp_path: Path) -> None:
 
 
 def test_the_engine_reads_its_own_resident_memory() -> None:
-    now, peak = child.resident_mb()
+    now, peak = usage.resident_mb()
     if sys.platform in ("linux", "win32"):
         assert now is not None and peak is not None and 0 < now <= peak + 1
 
@@ -387,9 +388,9 @@ class FakeCuda:
         return self.peak
 
 
-def _ctx(tmp_path: Path, events: list[dict[str, Any]], device: str = "cuda") -> child.NodeContext:
+def _ctx(tmp_path: Path, events: list[dict[str, Any]], device: str = "cuda") -> NodeContext:
     job = {"node": "t", "out_dir": str(tmp_path / "out"), "device": device}
-    return child.NodeContext(job, events.append)
+    return NodeContext(job, events.append)
 
 
 def test_a_way_that_runs_out_is_followed_by_the_next_in_the_same_process(

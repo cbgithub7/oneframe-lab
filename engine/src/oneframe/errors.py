@@ -17,7 +17,7 @@ against that node. A value whose facets do not fit the port it reaches fails wit
 against the edge, since the node receiving it did nothing wrong. Anything else that goes wrong
 inside the engine is the engine's own bug: kind `engine`, with its trace, never blamed on a node.
 
-Stop is not a failure. The one `Stopped` is child.py's, re-exported here.
+Stop is not a failure. The one `Stopped` is the node API's (oneframe.node), re-exported here.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from oneframe.child import Stopped
+from oneframe.node import Stopped
 
 __all__ = ["KINDS", "ContractError", "EdgeMismatch", "Failure", "Kind", "Stopped", "UndeclaredFailure"]
 

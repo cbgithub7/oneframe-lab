@@ -168,6 +168,7 @@ stand-in torch, and the benches' probes run on a card once, after 010 (Decisions
 - Precision still defaults to `fp32` and `seconds` spans load and run: a person sees no change.
 - `Stopped` stays a `RuntimeError`: a new base would touch every `except Exception` in the engine.
 - No `.pyi` stub and no published node API package: nodes outside the repo are not a v1 target.
+- A failed run's peaks wait on the child's `Process` for its `error` event: a node's exception goes up unchanged.
 
 ## Out of scope
 
