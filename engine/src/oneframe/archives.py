@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.errors import Stopped  # raised when Stop is pressed during a download
+from oneframe.files import sha256_file
 
 CHUNK = 1 << 20
 TIMEOUT_S = 60
@@ -40,14 +41,6 @@ class ArchiveError(RuntimeError):
     """An archive that is not the pinned file, or that would write outside its folder."""
 
 
-def sha256_of(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(CHUNK), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def download(
     url: str,
     sha256: str,
@@ -58,7 +51,7 @@ def download(
 ) -> Path:
     """Fetch `url` to `dest`, keeping it only if its sha256 is `sha256`."""
     if dest.is_file():
-        if sha256_of(dest) == sha256:
+        if sha256_file(dest) == sha256:
             return dest
         dest.unlink()
     dest.parent.mkdir(parents=True, exist_ok=True)

@@ -59,6 +59,7 @@ from typing import Any, BinaryIO
 
 from oneframe import __version__
 from oneframe.errors import Failure, Stopped
+from oneframe.files import sha256_file
 
 CHUNK = 1 << 20
 SLICE_S = 0.1  # how long one read waits before it looks at Stop again
@@ -521,11 +522,7 @@ class Transfer:
         if held:
             self._phase("checking", {"bytes": held})
             digest = hashlib.sha256()
-            with self.partial.open("rb") as handle:
-                while chunk := handle.read(CHUNK):
-                    if self.stop.is_set():
-                        raise Stopped()
-                    digest.update(chunk)
+            sha256_file(self.partial, self.stop, digest=digest)
             self._digest = digest
             self.have = held
             self._progress(self.have, self.total)

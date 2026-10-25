@@ -12,18 +12,24 @@ temporary.
 system releases it when its holder dies, however it dies (on Windows, a moment after it has ended),
 so a lock is never left behind and a lock file is never deleted (deleting one would let two
 processes each hold a lock on a different file of the same name).
+
+`sha256_file` is the one loop that hashes a file, whatever the hash is for (a cache key, a check
+of a stored file, a download resuming its partial), so no recorded hash depends on which caller
+read the bytes.
 """
 
 from __future__ import annotations
 
 import contextlib
 import errno
+import hashlib
 import json
 import os
 import re
 import shutil
 import stat
 import sys
+import threading
 import time
 import uuid
 import weakref
@@ -31,6 +37,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from oneframe.errors import Stopped
+
+CHUNK = 1 << 20  # what one read takes of a file being hashed
 _LOCK_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 # What flock and msvcrt.locking say when another holder has the lock; anything else is a failure.
 _BUSY = {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK}
@@ -125,6 +134,34 @@ def _replace(source: Path, target: Path) -> None:
             if sys.platform != "win32" or attempt == 19:
                 raise
             time.sleep(0.05)
+
+
+def sha256_file(
+    path: Path,
+    stop: threading.Event | None = None,
+    progress: Callable[[int], None] | None = None,
+    digest: hashlib._Hash | None = None,
+) -> str:
+    """The sha256 of a file, read in chunks: Stopped when `stop` is set, seen between chunks, and
+    `progress` told the bytes read so far after each. `digest`: a running hash to carry on (a
+    download that resumes its partial), updated in place."""
+    digest = digest if digest is not None else hashlib.sha256()
+    done = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(CHUNK):
+            if stop is not None and stop.is_set():
+                raise Stopped()
+            digest.update(chunk)
+            done += len(chunk)
+            if progress is not None:
+                progress(done)
+    return digest.hexdigest()
+
+
+def text_sha256(path: Path) -> str:
+    """The sha256 of a text file with its line endings made LF, so a checkout that turned them into
+    CRLF does not make an installed runtime look out of date."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _clear_readonly(func: Callable[..., Any], path: str, _exc: BaseException) -> None:

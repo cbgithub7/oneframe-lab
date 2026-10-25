@@ -440,7 +440,7 @@ def test_a_file_the_system_refuses_to_read_fails_alone_and_is_no_engine_bug(
     from oneframe.models import jobs
 
     assert run_job(engine, events, "models.download", node="test.files")["event"] == "model.done"
-    real = jobs.hash_file
+    real = jobs.sha256_file
 
     def held(path: Path, *args: Any) -> str:
         if path.name == sha(SHARED):
@@ -449,7 +449,7 @@ def test_a_file_the_system_refuses_to_read_fails_alone_and_is_no_engine_bug(
             )
         return real(path, *args)
 
-    monkeypatch.setattr(jobs, "hash_file", held)
+    monkeypatch.setattr(jobs, "sha256_file", held)
     end = run_job(engine, events, "models.verify", node="test.files")
     assert (end["event"], end["kind"]) == ("model.failed", "store")
     assert {f["name"]: f["outcome"] for f in end["files"]} == {

@@ -27,18 +27,16 @@ import stat
 import sys
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from oneframe.errors import Failure, Stopped
-from oneframe.files import NewerFormat, format_of, write_json
+from oneframe.errors import Failure
+from oneframe.files import NewerFormat, format_of, sha256_file, write_json
 from oneframe.layout import Layout
 
 STORE_FORMAT = 1
 RECORD_FORMAT = 1
-CHUNK = 1 << 20
 # How long placing a file waits on Windows while another program (an antivirus, the indexer) holds
 # the new file: about what uv waits; pip's 1 s is known to be too short (research.md).
 PLACE_WAIT_S = 10.0
@@ -79,23 +77,6 @@ def check_sha256(sha: str) -> str:
     if not _SHA256.match(sha):
         raise ValueError(f"not a sha256: {sha!r}")
     return sha
-
-
-def hash_file(
-    path: Path, stop: threading.Event | None = None, progress: Callable[[int], None] | None = None
-) -> str:
-    """The file's sha256, read in chunks; Stopped when `stop` is set, seen between chunks."""
-    digest = hashlib.sha256()
-    done = 0
-    with path.open("rb") as handle:
-        while chunk := handle.read(CHUNK):
-            if stop is not None and stop.is_set():
-                raise Stopped()
-            digest.update(chunk)
-            done += len(chunk)
-            if progress is not None:
-                progress(done)
-    return digest.hexdigest()
 
 
 def _writable(path: Path) -> None:
@@ -306,7 +287,7 @@ class Store:
             if isinstance(found, Record) or found == "unreadable":
                 _delete(self.record_path(sha))
             return False
-        if hash_file(blob, stop) != sha:
+        if sha256_file(blob, stop) != sha:
             self.drop(sha)
             return False
         self._write_record(sha, blob)

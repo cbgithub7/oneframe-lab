@@ -8,15 +8,13 @@ import hashlib
 import json
 import os
 import stat
-import threading
 from pathlib import Path
 
 import pytest
 
-from oneframe.errors import Stopped
 from oneframe.layout import Layout
 from oneframe.models import store as store_module
-from oneframe.models.store import Store, StoreRefused, hash_file
+from oneframe.models.store import Store, StoreRefused
 
 DATA = b"weights " * 1000
 SHA = hashlib.sha256(DATA).hexdigest()
@@ -161,22 +159,6 @@ def test_placing_waits_on_windows_while_another_program_holds_the_file(
         store_module._rename(source, target, windows=False)  # elsewhere, refused is refused
     with _refused("os_refused"):
         store_module._rename(source, target, windows=True, wait_s=0)  # a hold past the wait
-
-
-def test_hashing_stops_between_chunks(tmp_path: Path) -> None:
-    path = tmp_path / "f"
-    path.write_bytes(b"z" * (store_module.CHUNK * 3))
-    assert hash_file(path) == hashlib.sha256(path.read_bytes()).hexdigest()
-    seen: list[int] = []
-    stop = threading.Event()
-
-    def progress(done: int) -> None:
-        seen.append(done)
-        stop.set()
-
-    with pytest.raises(Stopped):
-        hash_file(path, stop, progress)
-    assert seen == [store_module.CHUNK]
 
 
 def test_paths_are_built_only_from_a_sha256(tmp_path: Path) -> None:

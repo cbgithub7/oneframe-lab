@@ -33,7 +33,7 @@ from typing import Any, Protocol
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.environment import reserved_env, reserved_why
 from oneframe.errors import Failure, Stopped
-from oneframe.files import FileLock, lock_file
+from oneframe.files import FileLock, lock_file, text_sha256
 from oneframe.journal import end_when_free, engine_crash
 from oneframe.layout import Layout
 from oneframe.memory import Target
@@ -161,12 +161,6 @@ class RuntimeDef:
 
     def to_json(self) -> dict[str, Any]:
         return dict(self.raw, folder=str(self.folder))
-
-
-def text_sha256(path: Path) -> str:
-    """The sha256 of a text file with its line endings made LF, so a checkout that turned them into
-    CRLF does not make an installed runtime look out of date."""
-    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _text(data: dict[str, Any], key: str, problems: list[str], required: bool = True) -> str:

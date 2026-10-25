@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.errors import ContractError
-from oneframe.files import is_temporary
+from oneframe.files import is_temporary, sha256_file
 from oneframe.manifest import Manifest
 from oneframe.node import Value
 
@@ -37,14 +37,6 @@ from oneframe.node import Value
 KEY_VERSION = 2
 BYTECODE = (".pyc", ".pyo")
 MANIFEST = "node.json"  # in the key as it was loaded (Manifest.digest), not as it is on disk
-
-
-def file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def code_digest(folder: Path) -> str:
@@ -57,7 +49,7 @@ def code_digest(folder: Path) -> str:
         if relative == MANIFEST:
             continue
         digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(file_digest(path).encode("ascii"))
+        digest.update(sha256_file(path).encode("ascii"))
     return digest.hexdigest()
 
 
@@ -95,7 +87,7 @@ class Cache:
         stat = path.stat()
         memo = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
         if memo not in self._digests:
-            self._digests[memo] = file_digest(path)
+            self._digests[memo] = sha256_file(path)
         return self._digests[memo]
 
     def key(

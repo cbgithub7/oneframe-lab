@@ -1,18 +1,22 @@
-"""The one JSON writer and the operating-system locks (spec 006, task 2)."""
+"""The one JSON writer and the operating-system locks (spec 006, task 2), and the one file hash
+(spec 011)."""
 
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import subprocess
 import sys
 import textwrap
+import threading
 from pathlib import Path
 
 import pytest
 from conftest import wait_free
 
 from oneframe import files
+from oneframe.errors import Stopped
 from oneframe.files import (
     FileLock,
     LockBusy,
@@ -20,6 +24,7 @@ from oneframe.files import (
     format_of,
     is_free,
     lock_file,
+    sha256_file,
     write_json,
     write_text,
 )
@@ -175,3 +180,19 @@ def test_a_lock_that_cannot_be_taken_at_all_is_an_error_not_busy(
         monkeypatch.setattr(fcntl, "flock", unsupported)
     with pytest.raises(OSError, match="No locks available"):
         FileLock(lock_file(tmp_path, "nfs")).acquire()
+
+
+def test_hashing_stops_between_chunks(tmp_path: Path) -> None:
+    path = tmp_path / "f"
+    path.write_bytes(b"z" * (files.CHUNK * 3))
+    assert sha256_file(path) == hashlib.sha256(path.read_bytes()).hexdigest()
+    seen: list[int] = []
+    stop = threading.Event()
+
+    def progress(done: int) -> None:
+        seen.append(done)
+        stop.set()
+
+    with pytest.raises(Stopped):
+        sha256_file(path, stop, progress)
+    assert seen == [files.CHUNK]
