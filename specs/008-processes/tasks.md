@@ -36,7 +36,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   bounded wait for the interpreter the child reports, then the job folder with `files.remove_tree`,
   logged when it will not go. Add `test_stop_ends_the_processes_a_node_started` (AC5) and
   `test_ctrl_c_during_a_run_ends_its_processes`; tighten `test_stop_kills_a_runtime_child` (AC6).
-- [ ] 9. `bench_fit._holding` on a `Child`: UTF-8, no window, its stderr to the tool's own, ended by
+- [x] 9. `bench_fit._holding` on a `Child`: UTF-8, no window, its stderr to the tool's own, ended by
   closing its stdin and then the tree kill. AC1's command prints only `processes.py`.
 - [ ] 10. Guards: `faulthandler_timeout = 300` in `engine/pyproject.toml`; `stop_after(seconds)`
   from a fixture in `engine/tests/conftest.py`, an `Event` a daemon timer sets, cancelled at

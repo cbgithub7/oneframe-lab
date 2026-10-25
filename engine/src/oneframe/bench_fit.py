@@ -33,7 +33,6 @@ import argparse
 import contextlib
 import json
 import re
-import subprocess
 import sys
 import tempfile
 import threading
@@ -52,6 +51,7 @@ from oneframe.graph import Graph
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory import LearnedStore, Settings
+from oneframe.processes import Child
 from oneframe.registry import Registry, discover
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
 from oneframe.scheduler import Scheduler, for_root
@@ -339,34 +339,34 @@ def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
     return dict(done.get("stats") or {})
 
 
+def _to_stderr(line: str) -> None:
+    print(line, file=sys.stderr, flush=True)
+
+
 @contextlib.contextmanager
 def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
-    """Another program holding `mb` on the card while the block runs."""
-    proc = subprocess.Popen(
+    """Another program holding `mb` on the card while the block runs. It lets go when its stdin
+    closes; one that has not ended 30 s later is killed, with anything it started."""
+    holder = Child.start(
         [str(manager.python_for("torch")), str(plan.folder / plan.holder), str(round(mb))],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
         env=child_env(
             None,
             manager.env_for("torch"),
             caches=manager.caches_for("torch"),
             tmp=Path(tempfile.gettempdir()),
         ),
+        stdin="pipe",
+        stderr=_to_stderr,
     )
     try:
-        assert proc.stdout is not None
-        line = proc.stdout.readline().strip()
+        line = next(holder.lines(threading.Event()), "").strip()
         if line != "ready":
             raise RuntimeError(f"The holder process did not start (it said {line!r}).")
         yield
     finally:
-        if proc.stdin is not None:
-            proc.stdin.close()
-        try:
-            proc.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        holder.close_stdin()
+        holder.wait(30)
+        holder.kill()
 
 
 def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
