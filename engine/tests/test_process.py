@@ -3,6 +3,7 @@ network stays closed, failures keep their kind, and Stop kills the child."""
 
 from __future__ import annotations
 
+import _thread
 import json
 import os
 import subprocess
@@ -26,7 +27,7 @@ from oneframe.executors import (
     died_message,
 )
 from oneframe.graph import Graph
-from oneframe.processes import wait_gone
+from oneframe.processes import alive, wait_gone
 from oneframe.scheduler import RuntimeMissing, Scheduler
 
 
@@ -121,8 +122,54 @@ def test_stop_kills_a_runtime_child(
     assert result.status == "stopped"
     assert time.monotonic() - started < 20
     # The interpreter itself, not only the process the engine started (on Windows a venv's
-    # python.exe is a launcher that starts the interpreter as another process).
-    assert wait_gone(int(events.of("stage")[0]["message"]))
+    # python.exe is a launcher that starts the interpreter as another process): gone on return.
+    assert not alive(int(events.of("stage")[0]["message"]))
+
+
+# A node's body that starts a process of its own, says its id and its own, and hangs.
+STARTS = (
+    "import subprocess, sys, time\n"
+    "sleeper = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+    "ctx.stage('started', f'{sleeper.pid} {os.getpid()}')\n"
+    "time.sleep(60)\n"
+)
+
+
+def test_stop_ends_the_processes_a_node_started(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    _runtime_node(make_node, "test.starts", "import os\ndef run(ctx):\n" + textwrap.indent(STARTS, "    "))
+    stop = threading.Event()
+
+    def listen(event: dict[str, Any]) -> None:
+        events.append(event)
+        if event["event"] == "stage":
+            stop.set()
+
+    result = scheduler_for().run(_one("test.starts"), listen, stop)
+    assert result.status == "stopped"
+    sleeper, node = (int(pid) for pid in events.of("stage")[0]["message"].split())
+    assert not alive(node) and wait_gone(sleeper)
+
+
+def test_ctrl_c_during_a_run_ends_its_processes(tmp_path: Path) -> None:
+    """In a group of its own, a node's process no longer hears a terminal's Ctrl+C; the tool's
+    KeyboardInterrupt ends it, and what it started, through the same kill as a Stop."""
+    seen: list[dict[str, object]] = []
+
+    def listen(event: dict[str, object]) -> None:
+        seen.append(event)
+        if event["event"] == "stage":
+            _thread.interrupt_main()  # what Ctrl+C does to the tool's main thread
+
+    with pytest.raises(KeyboardInterrupt):
+        ProcessExecutor(Path(sys.executable)).execute(
+            _executor_job(tmp_path, STARTS),
+            listen,
+            threading.Event(),
+        )
+    sleeper, node = (int(pid) for pid in str(seen[0]["message"]).split())
+    assert not alive(node) and wait_gone(sleeper)
 
 
 def test_a_runtime_child_is_told_to_end_with_the_engine(

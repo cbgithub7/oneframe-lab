@@ -3,8 +3,9 @@
 Both take the same job and give the same `done` payload, so the scheduler does not care which.
 The engine process runs only light nodes (sources, converters, evaluators) whose code ships with
 the app. Anything that imports a model library runs in a child: a different interpreter with its
-own packages, started per node run and killed outright on Stop -- a model holds the card while it
-runs, and nothing it is doing is worth finishing once someone has asked it to stop.
+own packages, started per node run and, on Stop, ended outright with every process it started -- a
+model holds the card while it runs, and nothing it is doing is worth finishing once someone has
+asked it to stop.
 
 The child speaks NDJSON on a private copy of its stdout (see child.py); the job goes in as a JSON
 file. Pickle cannot cross between interpreters with different packages, and JSON can.
@@ -14,9 +15,6 @@ from __future__ import annotations
 
 import json
 import logging
-import queue
-import shutil
-import subprocess
 import sys
 import tempfile
 import threading
@@ -28,6 +26,8 @@ from typing import Any
 from oneframe import child
 from oneframe.environment import child_env
 from oneframe.errors import KINDS, Failure, Stopped
+from oneframe.files import remove_tree
+from oneframe.processes import Child
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(child.__file__).resolve()
@@ -38,8 +38,6 @@ def child_command(python: Path, job: Path) -> list[str]:
     the node's import path; -u keeps the protocol unbuffered."""
     return [str(python), "-P", "-u", str(CHILD), str(job)]
 
-
-NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 Emit = Callable[[dict[str, Any]], None]
 
@@ -103,25 +101,37 @@ def _trace() -> str:
     return traceback.format_exc()[-4000:]
 
 
-def _reader(stream: Any, sink: queue.Queue[str | None]) -> None:
-    try:
-        for line in iter(stream.readline, ""):
-            sink.put(line)
-    finally:
-        sink.put(None)
+class _Tail:
+    """A child's stderr, line by line: the last lines kept for a failure's report, every one in the
+    step's log. Lines that arrive after `close` (something the node started still writing) are
+    dropped."""
+
+    def __init__(self, log: Path | None):
+        self.lines: deque[str] = deque(maxlen=80)
+        self._handle = log.open("a", encoding="utf-8") if log else None
+        self._lock = threading.Lock()
+
+    def __call__(self, line: str) -> None:
+        with self._lock:
+            self.lines.append(line.rstrip())
+            if self._handle is not None:
+                self._handle.write(line + "\n")
+                self._handle.flush()
+
+    def close(self) -> None:
+        with self._lock:
+            if self._handle is not None:
+                self._handle.close()
+                self._handle = None
 
 
-def _tail(stream: Any, keep: deque[str], log: Path | None) -> None:
-    handle = log.open("a", encoding="utf-8") if log else None
+def _remove(folder: Path) -> None:
+    """A job's folder; one that will not go (a file something still holds) is left to the next
+    sweep, never hiding how the run ended."""
     try:
-        for line in iter(stream.readline, ""):
-            keep.append(line.rstrip())
-            if handle:
-                handle.write(line)
-                handle.flush()
-    finally:
-        if handle:
-            handle.close()
+        remove_tree(folder)
+    except OSError as exc:
+        LOGGER.warning("could not remove the job folder %s: %s", folder, exc)
 
 
 class ProcessExecutor:
@@ -132,7 +142,6 @@ class ProcessExecutor:
         python: Path,
         env: dict[str, str] | None = None,
         base_env: dict[str, str] | None = None,
-        poll: float = 0.2,
         log_dir: Path | None = None,
         on_pid: Callable[[int], None] | None = None,
         tmp_root: Path | None = None,
@@ -145,7 +154,6 @@ class ProcessExecutor:
         self.tmp_root = tmp_root
         self.env = dict(env or {})
         self.base_env = base_env
-        self.poll = poll
         self.log_dir = log_dir
         self.on_pid = on_pid  # told each child's own process id, for a bench that watches the process
 
@@ -155,55 +163,41 @@ class ProcessExecutor:
         # the stdin pipe this process holds, and closes.
         job = {**job, "exit_with_parent": True}
         tmp = Path(tempfile.mkdtemp(prefix="job-", dir=self.tmp_root))
-        stderr_tail: deque[str] = deque(maxlen=80)
         done: dict[str, Any] | None = None
         failed: dict[str, Any] | None = None
         log = None
         if self.log_dir:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             log = self.log_dir / f"{job.get('run', 'run')}-{job.get('step', 'node')}.log"
+        tail = _Tail(log)
         try:
             job_path = tmp / "job.json"
             job_path.write_text(json.dumps(job, default=str), encoding="utf-8")
-            proc = subprocess.Popen(
+            proc = Child.start(
                 child_command(self.python, job_path),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
                 env=child_env(
                     self.base_env, {**self.env, **(job.get("env") or {})}, caches=self.caches, tmp=tmp
                 ),
                 cwd=tmp,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=NO_WINDOW,
+                stdin="pipe",
+                stderr=tail,
             )
             LOGGER.info("started node child %s for %s", proc.pid, job.get("node"))
-            lines: queue.Queue[str | None] = queue.Queue()
-            threading.Thread(target=_reader, args=(proc.stdout, lines), daemon=True).start()
-            threading.Thread(target=_tail, args=(proc.stderr, stderr_tail, log), daemon=True).start()
+            # The interpreter's own id, which on Windows is not the process started: a venv's
+            # python.exe is a launcher. A Stop returns only once it is gone (see child.main).
+            interpreter: list[int] = []
             try:
-                open_stream = True
-                while open_stream or proc.poll() is None:
-                    if stop.is_set():
-                        raise Stopped()
-                    try:
-                        line = lines.get(timeout=self.poll)
-                    except queue.Empty:
-                        continue
-                    if line is None:
-                        open_stream = False
-                        continue
+                for line in proc.lines(stop):
                     try:
                         event = json.loads(line)
                     except ValueError:
-                        LOGGER.warning("node child wrote a non-event line: %s", line.rstrip()[:200])
+                        LOGGER.warning("node child wrote a non-event line: %s", line[:200])
                         continue
                     kind = event.get("event")
                     if kind == "pid":
-                        if self.on_pid is not None:  # the interpreter's own id (see child.main)
-                            self.on_pid(int(event["pid"]))
+                        interpreter.append(int(event["pid"]))
+                        if self.on_pid is not None:
+                            self.on_pid(interpreter[-1])
                     elif kind == "done":
                         done = event
                     elif kind == "error":
@@ -211,16 +205,9 @@ class ProcessExecutor:
                     else:
                         emit(event)
             finally:
-                if proc.poll() is None:
-                    proc.kill()
-                    try:
-                        proc.wait(timeout=10)
-                    except subprocess.TimeoutExpired:  # never hide why the run ended behind this
-                        LOGGER.warning("node child %s did not end within 10 s of being killed", proc.pid)
-                if proc.stdin is not None:
-                    # The child's own interpreter, behind a launcher that a kill does not take down
-                    # with it, sees its stdin close and ends.
-                    proc.stdin.close()
+                # Everything the node started ends with it, and its interpreter, behind a launcher a
+                # kill may not take down with it, also sees its stdin close and ends.
+                proc.kill(also=interpreter)
             if done is not None:
                 return done
             if failed is not None and failed.get("kind") == "stopped":
@@ -232,6 +219,7 @@ class ProcessExecutor:
                     str(failed.get("trace") or ""),
                     {k: failed.get(k) for k in PEAKS},
                 )
-            raise NodeError("died", died_message(proc.returncode), "\n".join(stderr_tail))
+            raise NodeError("died", died_message(proc.returncode), "\n".join(tail.lines))
         finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            tail.close()
+            _remove(tmp)

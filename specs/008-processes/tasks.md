@@ -32,7 +32,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `_kill_tree`, `NO_WINDOW` and `NEW_GROUP` go.
 - [x] 7. `hardware` defaults its `run` to `processes.output` (its tests' fakes unchanged), and
   `diagnose._uv_version` uses `output`; both catch `processes.TimeoutExpired`.
-- [ ] 8. `ProcessExecutor` on one `Child`: the tree kill (if the owner said yes to question 1), the
+- [x] 8. `ProcessExecutor` on one `Child`: the tree kill (if the owner said yes to question 1), the
   bounded wait for the interpreter the child reports, then the job folder with `files.remove_tree`,
   logged when it will not go. Add `test_stop_ends_the_processes_a_node_started` (AC5) and
   `test_ctrl_c_during_a_run_ends_its_processes`; tighten `test_stop_kills_a_runtime_child` (AC6).
