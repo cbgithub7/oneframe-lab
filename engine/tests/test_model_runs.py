@@ -107,7 +107,7 @@ def scheduler(data: Path, node_root: Path, machine: dict[str, Any] | None = None
         data,
         discover([node_root]),
         HostRuntimes(),
-        Cache(data / "cache"),
+        Cache(data / "cache" / "objects", data / "cache" / "tmp"),
         machine=(lambda _cards: machine)
         if machine is not None
         else lambda _cards: machines.get("no GPU, 32 GB"),
@@ -149,7 +149,9 @@ def test_with_the_runtime_missing_too_the_failure_is_kind_runtime(
 ) -> None:
     reader_node(make_node)
     data = tmp_path / "data"
-    found = for_root(data, discover([node_root]), None, Cache(data / "cache"))  # no runtime installed
+    found = for_root(
+        data, discover([node_root]), None, Cache(data / "cache" / "objects", data / "cache" / "tmp")
+    )  # no runtime installed
     found.run(graph(), events.append)
     assert failure(events)["kind"] == "runtime"
 
@@ -330,7 +332,9 @@ def test_in_the_tiny_runtime_a_node_reads_its_files_through_ctx_file(
         data, [tiny.parent], uv=uv_exe, profile=lambda: machines.get("no GPU, 32 GB"), uv_home=uv_home
     )
     assert manager.install("tiny") is not None
-    found = for_root(data, discover([node_root]), manager, Cache(data / "cache"))
+    found = for_root(
+        data, discover([node_root]), manager, Cache(data / "cache" / "objects", data / "cache" / "tmp")
+    )
     result = found.run(graph(), events.append)
     assert result.status == "done", result.error
     seen = json.loads(result.outputs["n"]["text"].path.read_text(encoding="utf-8"))

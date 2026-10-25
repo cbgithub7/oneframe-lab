@@ -146,6 +146,11 @@ class Layout:
         return self.root / "cache" / "CACHEDIR.TAG"
 
     @property
+    def objects(self) -> Path:
+        """`<first two hex>/<key>/` per node output, by its cache key (cache.py)."""
+        return self.root / "cache" / "objects"
+
+    @property
     def tmp(self) -> Path:
         """One folder per process: its temporary files, run and job folders, bench scratch."""
         return self.root / "cache" / "tmp"

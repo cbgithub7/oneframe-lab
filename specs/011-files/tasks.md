@@ -17,7 +17,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
   from `Store.place`.
 - [x] 4. One free space: `files.free_bytes`, which `Store.free_bytes` and `hardware.disk_free_mb`
   call, and `test_free_space_is_read_from_the_nearest_folder_that_exists`.
-- [ ] 5. `Layout.objects` in `layout.py`, `app/main/paths.js` and `contracts/layout.json` together;
+- [x] 5. `Layout.objects` in `layout.py`, `app/main/paths.js` and `contracts/layout.json` together;
   `Cache(objects, work)` at every call site (the engine, `bench_fit`, the tests).
 - [ ] 6. A runtime's folder and the delete guard's root from `Layout.runtimes`; uv's folders decided
   once in `Runtimes.__init__`, and `uv_environment` and `install` take the two (`test_formats.py`'s

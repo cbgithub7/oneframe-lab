@@ -64,7 +64,9 @@ def _cache_key(tmp_path: Path) -> str:
     folder = _node_folder(tmp_path)
     picked = _write(tmp_path / "photo.bin", b"\x89PNG not really" * 100_000)
     manifest = parse(dict(NODE), folder)
-    return Cache(tmp_path / "cache").key(manifest, {"path": str(picked), "n": 3}, {})
+    return Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp").key(
+        manifest, {"path": str(picked), "n": 3}, {}
+    )
 
 
 def _runtime(tmp_path: Path) -> dict[str, str]:

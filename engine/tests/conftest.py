@@ -197,7 +197,9 @@ def scheduler_for(tmp_path: Path, node_root: Path, host_runtimes: HostRuntimes) 
 
     def make(**kw: Any) -> Scheduler:
         kw.setdefault("runtimes", host_runtimes)
-        return Scheduler(discover([node_root]), Cache(tmp_path / "cache"), **kw)
+        return Scheduler(
+            discover([node_root]), Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp"), **kw
+        )
 
     return make
 

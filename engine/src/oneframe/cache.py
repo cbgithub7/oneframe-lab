@@ -11,9 +11,10 @@ changing one node re-runs only what comes after it, two recipes that start the s
 start, and a changed node or runtime is never served a result from before the change.
 
 Writes are atomic: a run writes into a private folder and renames it into place, so a crash or a
-Stop never leaves half an output that a later run would trust. The private folders live in the
-process's own folder under `cache/tmp/` (scratch.py), on the cache's volume, so the rename is one
-step, and a process that dies leaves them to the next start's sweep.
+Stop never leaves half an output that a later run would trust. The entries live in the layout's
+`cache/objects/`; the private folders in the process's own folder under `cache/tmp/` (scratch.py),
+on the cache's volume, so the rename is one step, and a process that dies leaves them to the next
+start's sweep.
 """
 
 from __future__ import annotations
@@ -74,12 +75,12 @@ def _code_files(folder: Path) -> list[tuple[str, Path]]:
 
 
 class Cache:
-    def __init__(self, root: Path, work: Path | None = None):
-        self.root = Path(root)
-        self.objects = self.root / "objects"
-        # Where runs write before their folder is moved into place: the engine gives its own
-        # folder under cache/tmp/; a cache made on its own (a test) writes in <root>/tmp.
-        self.tmp = Path(work) if work is not None else self.root / "tmp"
+    def __init__(self, objects: Path, work: Path):
+        """`objects`: where entries are kept (the layout's `cache/objects/`). `work`: where runs
+        write before their folder is moved into place, on the same volume (the engine's is its own
+        folder under `cache/tmp/`)."""
+        self.objects = Path(objects)
+        self.tmp = Path(work)
         self._digests: dict[tuple[str, int, int], str] = {}
 
     def _file_key(self, value: str) -> str:

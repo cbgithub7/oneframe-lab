@@ -123,7 +123,10 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path) -> None:
 
 
 def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
-    sched = Scheduler(discover([BUILTIN_NODES_DIR, tmp_path / "extra"]), Cache(tmp_path / "cache"))
+    sched = Scheduler(
+        discover([BUILTIN_NODES_DIR, tmp_path / "extra"]),
+        Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp"),
+    )
     extra = tmp_path / "extra" / "test.depth_and_camera"
     extra.mkdir(parents=True)
     (extra / "node.json").write_text(

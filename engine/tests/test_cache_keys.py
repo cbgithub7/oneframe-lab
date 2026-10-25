@@ -49,7 +49,7 @@ def test_the_key_version_is_2() -> None:
 
 def test_changing_any_file_in_the_nodes_folder_changes_its_key(tmp_path: Path) -> None:
     manifest = _node(tmp_path)
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     first = cache.key(manifest, {"n": 1}, {})
     (manifest.folder / "helper.py").write_text("X = 2\n", encoding="utf-8")
     second = cache.key(manifest, {"n": 1}, {})
@@ -63,7 +63,7 @@ def test_changing_any_file_in_the_nodes_folder_changes_its_key(tmp_path: Path) -
 
 def test_bytecode_does_not_change_the_key(tmp_path: Path) -> None:
     manifest = _node(tmp_path)
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     before = cache.key(manifest, {"n": 1}, {})
     pycache = manifest.folder / "__pycache__"
     pycache.mkdir()
@@ -76,7 +76,7 @@ def test_a_leftover_temporary_does_not_change_the_key(tmp_path: Path) -> None:
     """A pin killed outright while writing node.json leaves write_text's temporary beside it; the
     node's results must not all miss until someone deletes it."""
     manifest = _node(tmp_path)
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     before = cache.key(manifest, {"n": 1}, {})
     temporary_for(manifest.folder / "node.json").write_text('{"id": "half', encoding="utf-8")
     assert cache.key(manifest, {"n": 1}, {}) == before
@@ -85,14 +85,18 @@ def test_a_leftover_temporary_does_not_change_the_key(tmp_path: Path) -> None:
 def test_the_same_code_and_runtime_give_the_same_key(tmp_path: Path) -> None:
     manifest = _node(tmp_path, runtime="tiny")
     runtime = {"build": "cpu", "lock_sha256": "a", "definition_sha256": "b", "stand_ins_sha256": "c"}
-    one = Cache(tmp_path / "one").key(manifest, {"n": 1}, {}, dict(runtime))
-    two = Cache(tmp_path / "two").key(manifest, {"n": 1}, {}, dict(runtime))
+    one = Cache(tmp_path / "one" / "objects", tmp_path / "one" / "tmp").key(
+        manifest, {"n": 1}, {}, dict(runtime)
+    )
+    two = Cache(tmp_path / "two" / "objects", tmp_path / "two" / "tmp").key(
+        manifest, {"n": 1}, {}, dict(runtime)
+    )
     assert one == two
 
 
 def test_a_runtimes_lock_definition_stand_ins_or_build_change_the_key(tmp_path: Path) -> None:
     manifest = _node(tmp_path, runtime="tiny")
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     base = {"build": "cpu", "lock_sha256": "a", "definition_sha256": "b", "stand_ins_sha256": "c"}
     keys = {cache.key(manifest, {"n": 1}, {}, base)}
     for name, value in (
@@ -126,7 +130,7 @@ def test_the_runtime_part_comes_from_the_planned_build_and_its_marker(tmp_path: 
     assert {k: v for k, v in on_cpu.items() if k != "build"} == cpu.get("tiny").hashes()
 
     manifest = _node(tmp_path, runtime="tiny")
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     assert cache.key(manifest, {}, {}, on_cpu) != cache.key(manifest, {}, {}, on_card)
 
     # Reinstalled from another lock: the marker says so, and the key follows it.
@@ -189,7 +193,7 @@ def test_an_engine_node_runs_its_helpers_as_they_are_now(
 
 def test_an_edit_that_keeps_the_size_and_time_still_changes_the_key(tmp_path: Path) -> None:
     manifest = _node(tmp_path)
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     helper = manifest.folder / "helper.py"
     before = cache.key(manifest, {"n": 1}, {})
     stamp = helper.stat()
@@ -206,7 +210,7 @@ def test_code_in_a_linked_folder_is_in_the_key_and_a_loop_of_links_ends(tmp_path
     (shared / "geometry.py").write_text("SCALE = 1\n", encoding="utf-8")
     (manifest.folder / "shared").symlink_to(shared, target_is_directory=True)
     (shared / "back").symlink_to(manifest.folder, target_is_directory=True)  # a loop
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     before = cache.key(manifest, {"n": 1}, {})
     (shared / "geometry.py").write_text("SCALE = 2\n", encoding="utf-8")
     assert cache.key(manifest, {"n": 1}, {}) != before

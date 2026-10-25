@@ -87,7 +87,7 @@ class Engine:
         self.node_roots = node_roots
         self.say = say
         self.registry: Registry = discover(node_roots)
-        self.cache = Cache(self.layout.cache, work=self.scratch.folder / "runs")
+        self.cache = Cache(self.layout.objects, self.scratch.folder / "runs")
         self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
         self.learned = LearnedStore(data)
         self.models = Jobs(data, say, transfer, in_use=lambda: in_use(self.layout))
