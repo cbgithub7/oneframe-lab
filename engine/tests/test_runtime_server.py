@@ -26,6 +26,8 @@ from oneframe.models.store import Store
 from oneframe.server import Engine
 
 WAIT_S = 180  # the first install in a session fetches Python 3.11
+# The engine as a process, trusting the test hosts' CA for downloads.
+SERVE = Path(__file__).parent / "fixtures" / "serve.py"
 
 
 class Server:
@@ -36,8 +38,7 @@ class Server:
         self.proc = subprocess.Popen(
             [
                 sys.executable,
-                "-m",
-                "oneframe.server",
+                str(SERVE),
                 "--data",
                 str(data),
                 "--runtimes",

@@ -22,7 +22,7 @@ adds, moves or removes a test rewrites `engine/tests/collected.txt` with
 - [x] 6. A runtime's folder and the delete guard's root from `Layout.runtimes`; uv's folders decided
   once in `Runtimes.__init__`, and `uv_environment` and `install` take the two (`test_formats.py`'s
   direct call too). AC3's command prints nothing.
-- [ ] 7. The test side, with no change in behaviour: `Runtimes(transfer=)` and the engine passing
+- [x] 7. The test side, with no change in behaviour: `Runtimes(transfer=)` and the engine passing
   it, `server.main(argv, transfer=)`, `engine/tests/fixtures/serve.py`, and the hosts' fault that
   serves a body with no length, and their record of a stall still held.
 - [ ] 8. Sources through the transport, code and tests in one commit: the source function, with

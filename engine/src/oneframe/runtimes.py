@@ -739,7 +739,10 @@ class Runtimes:
         uv: str | None = None,
         profile: Callable[[], dict[str, Any]] | None = None,
         uv_home: Path | None = None,
+        transfer: dict[str, Any] | None = None,
     ):
+        """`transfer`: options for each source's download, as model jobs take them (a test's TLS
+        context, policy or proxy)."""
         # Absolute, because a runtime's child runs in a folder of its own: a relative path to the
         # probe or the interpreter would point somewhere else from there.
         self.data = Path(data).resolve()
@@ -752,6 +755,7 @@ class Runtimes:
         else:
             home = Path(uv_home).resolve()
             self.uv_cache, self.uv_python = home / "cache", home / "python"
+        self.transfer = dict(transfer or {})
         self._read_profile = profile or (lambda: hardware.profile(data))
         self._profile: dict[str, Any] | None = None
         # The install slot's. Re-entrant: an install lets go of its slot and sends its ending under
