@@ -27,10 +27,10 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `test_every_start_gets_its_own_group_and_no_window`; `test_kill_waits_for_the_processes_it_is_told_of`;
   `test_kill_after_the_end_never_raises`). `conftest.py` imports `alive` (its `process_alive`) and
   `wait_gone` from it.
-- [ ] 6. The install on `processes`: `run_step` hands its work to `run` (the seam
+- [x] 6. The install on `processes`: `run_step` hands its work to `run` (the seam
   `test_a_failed_sync_keeps_what_was_installed` patches stays), `_output` uses `output`, and
   `_kill_tree`, `NO_WINDOW` and `NEW_GROUP` go.
-- [ ] 7. `hardware` defaults its `run` to `processes.output` (its tests' fakes unchanged), and
+- [x] 7. `hardware` defaults its `run` to `processes.output` (its tests' fakes unchanged), and
   `diagnose._uv_version` uses `output`; both catch `processes.TimeoutExpired`.
 - [ ] 8. `ProcessExecutor` on one `Child`: the tree kill (if the owner said yes to question 1), the
   bounded wait for the interpreter the child reports, then the job folder with `files.remove_tree`,

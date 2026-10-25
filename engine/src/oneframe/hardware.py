@@ -19,20 +19,20 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from oneframe.processes import CompletedProcess, TimeoutExpired, output
+
 FIELDS = ("index", "name", "compute_cap", "memory.total", "memory.free", "driver_version")
 # Drivers older than about R510 do not know compute_cap; they are asked again without it.
 FIELDS_WITHOUT_CAPABILITY = tuple(f for f in FIELDS if f != "compute_cap")
 TIMEOUT_S = 10
-NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 MIB = 1.048576  # MB per MiB: nvidia-smi counts MiB, the engine reports MB like peak_vram_mb
 
-Run = Callable[..., subprocess.CompletedProcess[str]]
+Run = Callable[..., CompletedProcess[str]]
 
 
 def os_name(platform: str = sys.platform) -> str:
@@ -98,21 +98,12 @@ def parse_gpus(text: str, fields: tuple[str, ...] = FIELDS) -> tuple[list[dict[s
     return gpus, driver
 
 
-def _query(exe: str, fields: tuple[str, ...], run: Run) -> subprocess.CompletedProcess[str]:
-    return run(
-        [exe, f"--query-gpu={','.join(fields)}", "--format=csv,noheader,nounits"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=TIMEOUT_S,
-        stdin=subprocess.DEVNULL,
-        creationflags=NO_WINDOW,
-    )
+def _query(exe: str, fields: tuple[str, ...], run: Run) -> CompletedProcess[str]:
+    return run([exe, f"--query-gpu={','.join(fields)}", "--format=csv,noheader,nounits"], timeout=TIMEOUT_S)
 
 
 def read_nvidia(
-    run: Run = subprocess.run,
+    run: Run = output,
     platform: str = sys.platform,
     which: Callable[[str], str | None] = shutil.which,
     env: dict[str, str] | None = None,
@@ -135,7 +126,7 @@ def read_nvidia(
             fields = FIELDS_WITHOUT_CAPABILITY
             done = _query(exe, fields, run)
             raw.append((done.stdout or "") + (done.stderr or ""))
-    except subprocess.TimeoutExpired:
+    except TimeoutExpired:
         why = f"nvidia-smi did not answer within {TIMEOUT_S} s, so no NVIDIA card is known."
         return {"gpus": [], "driver": None, "nvidia": {"found": False, "why": why}, "raw": "\n".join(raw)}
     except OSError as exc:
@@ -268,7 +259,7 @@ def system_memory(platform: str = sys.platform, read: Callable[[], Any] | None =
 
 def profile(
     data_root: Path | None = None,
-    run: Run = subprocess.run,
+    run: Run = output,
     platform: str = sys.platform,
     which: Callable[[str], str | None] = shutil.which,
     env: dict[str, str] | None = None,

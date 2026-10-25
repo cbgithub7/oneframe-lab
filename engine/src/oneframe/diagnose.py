@@ -18,14 +18,13 @@ import argparse
 import json
 import platform
 import re
-import subprocess
 import sys
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from oneframe import __version__, hardware
+from oneframe import __version__, hardware, processes
 from oneframe.layout import Layout, default_root
 from oneframe.runtimes import Runtimes, find_uv
 
@@ -111,16 +110,8 @@ def _uv_version(uv: str | None) -> str | None:
     if not uv:
         return None
     try:
-        done = subprocess.run(
-            [uv, "--version"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        done = processes.output([uv, "--version"], timeout=30)
+    except (OSError, processes.TimeoutExpired) as exc:
         return f"(could not be run: {exc})"
     return done.stdout.strip() or done.stderr.strip()
 
