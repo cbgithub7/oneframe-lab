@@ -1,6 +1,6 @@
 # 008: Processes, children's environments and Stop
 
-Status: in progress (every task done; in review in [PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35))
+Status: done (merged 2026-10-25 in [PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: the one
   list of the engine's Python keeps `PYTHONDONTWRITEBYTECODE` from uv, as `DROP_ENV` does today;
