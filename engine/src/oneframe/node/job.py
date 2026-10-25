@@ -9,7 +9,7 @@ run, so neither carries a format number.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -41,49 +41,19 @@ class Job:
 
     def to_json(self) -> str:
         """The job as the child reads it. A param that is not plain JSON is written as its `str`."""
-        return json.dumps(
-            {
-                "node": self.node,
-                "folder": str(self.folder),
-                "entry": self.entry,
-                "load": self.load,
-                "out_dir": str(self.out_dir),
-                "run": self.run,
-                "step": self.step,
-                "inputs": {port: value.to_json() for port, value in self.inputs.items()},
-                "params": self.params,
-                "device": self.device,
-                "files": self.files,
-                "attempt": self.attempt,
-                "precision": self.precision,
-                "memory_budget_mb": self.memory_budget_mb,
-                "vram_cap_mb": self.vram_cap_mb,
-                "outside_torch_mb": self.outside_torch_mb,
-            },
-            default=str,
-        )
+        row = {f.name: getattr(self, f.name) for f in fields(self)}
+        row["inputs"] = {port: value.to_json() for port, value in self.inputs.items()}
+        return json.dumps(row, default=str)
 
     @classmethod
     def from_json(cls, text: str) -> Job:
         row = json.loads(text)
-        return cls(
-            node=row["node"],
+        row.update(
             folder=Path(row["folder"]),
-            entry=row["entry"],
-            load=row["load"],
             out_dir=Path(row["out_dir"]),
-            run=row["run"],
-            step=row["step"],
             inputs={port: Value.from_json(value) for port, value in row["inputs"].items()},
-            params=row["params"],
-            device=row["device"],
-            files=row["files"],
-            attempt=row["attempt"],
-            precision=row["precision"],
-            memory_budget_mb=row["memory_budget_mb"],
-            vram_cap_mb=row["vram_cap_mb"],
-            outside_torch_mb=row["outside_torch_mb"],
         )
+        return cls(**row)
 
 
 @dataclass(frozen=True)
@@ -111,10 +81,12 @@ class Done:
 
     @classmethod
     def from_event(cls, event: dict[str, Any]) -> Done:
+        """A `done` event as the child wrote it. One missing a part reads as having none: an output
+        it lacks is then the node's contract failure, never the engine's crash."""
         return cls(
-            outputs=event["outputs"],
-            seconds=event["seconds"],
+            outputs=dict(event.get("outputs") or {}),
+            seconds=float(event.get("seconds") or 0.0),
             peaks={key: event.get(key) for key in PEAKS},
-            ways=event["ways"],
-            stats=event["stats"],
+            ways=dict(event.get("ways") or {}),
+            stats=dict(event.get("stats") or {}),
         )

@@ -133,8 +133,9 @@ for spec 004"). No rule or command in AGENTS.md changes.
     - `test_process.py`: `test_two_engine_nodes_with_same_named_helpers_each_run_their_own`,
       `test_a_runtime_nodes_helper_never_hides_a_package_of_its_runtime`,
       `test_load_runs_once_and_run_gets_its_state`, `test_an_engine_run_leaves_its_sockets_alone`;
-    - `test_node_api.py`: `test_a_context_shows_exactly_its_protocol`, and
-      `test_a_job_survives_its_json` (a param that is not plain JSON is written as its `str`);
+    - `test_node_api.py`: `test_a_context_shows_exactly_its_protocol`, `test_a_job_survives_its_json`
+      (a param that is not plain JSON is written as its `str`), and, from `/code-review`,
+      `test_an_entry_loads_by_its_path_with_its_helpers` and `test_an_engine_node_gets_copies_of_its_inputs`;
     - `test_ports_and_manifests.py`: `test_run_load_is_refused_as_run_entry_is`.
 - Renamed: `test_a_job_brings_its_own_environment` -> `test_a_processor_run_sees_no_card_and_a_card_run_sees_its_card`
   (a job carries no environment now, so one runtime node runs on a card, then on the processor).

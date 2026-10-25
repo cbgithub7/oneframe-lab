@@ -87,8 +87,8 @@ class Value:
 
 class LoadContext(Protocol):
     """What a node's `load` is handed: where it runs and within what memory, the files it reads,
-    and how it reports. Nothing of one run's inputs, paths or outputs, so what `load` returns can
-    be kept for later runs."""
+    and how it reports. Nothing of one run's inputs, paths or outputs: what `load` returns depends
+    on the fitted settings alone, never on the photo or another node's output."""
 
     params: dict[str, Any]  # the fitted values of the node's params
     device: str  # "cpu" or "cuda"

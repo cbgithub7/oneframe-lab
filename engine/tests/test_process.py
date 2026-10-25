@@ -364,7 +364,8 @@ def test_load_runs_once_and_run_gets_its_state(
         "    ctx.stage('load', str(os.getpid()))\n"
         "    return {'weights': 'loaded', 'pid': os.getpid()}\n"
         "def run(ctx, state):\n"
-        "    p = ctx.path('t.txt'); p.write_text(repr(state == {'weights': 'loaded', 'pid': os.getpid()}))\n"
+        "    loaded = state == {'weights': 'loaded', 'pid': os.getpid()}\n"
+        "    p = ctx.path('t.txt'); p.write_text(repr(loaded), encoding='utf-8')\n"
         "    ctx.output('text', p)\n",
     )
     result = scheduler_for().run(_one("test.loads"), events.append)

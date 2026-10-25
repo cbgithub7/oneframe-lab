@@ -40,7 +40,8 @@ class NodeContext(Context):
         cap_mb: float | None = None,
         ram_start: float | None = None,
     ):
-        self.inputs: dict[str, Value] = dict(job.inputs)
+        # Copies: a node that changes a value's meta or trust changes nothing upstream.
+        self.inputs: dict[str, Value] = {port: Value.from_json(v.to_json()) for port, v in job.inputs.items()}
         self.params: dict[str, Any] = dict(job.params)
         self._out_dir = job.out_dir
         self.device = job.device or "cpu"

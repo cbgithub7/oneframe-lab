@@ -116,7 +116,8 @@ def run(ctx: Context, model):
 
 A node whose manifest names `run.load` has it called once on each attempt, then `run(ctx, state)`
 with what it returned; without it, `run(ctx)` alone. `load`'s context has everything `run`'s has but
-the run's inputs, paths and outputs, so what it returns depends on nothing one run was given. Its
+the run's inputs, paths and outputs: what it returns may depend on the fitted settings
+(`ctx.params`, `ctx.device`, `ctx.precision`), never on the photo or another node's output. Its
 seconds count with the run's.
 
 Every output in the manifest must be declared with `ctx.output` before `run` returns. A node writes
