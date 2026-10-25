@@ -11,7 +11,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   imports it instead of the executors. Update the imports in the engine and the tests, and the
   docstrings that name `executors.FORCED_ENV`; add `test_uv_and_runs_drop_the_same_names_in_any_case`
   (AC4). AC2's command prints only `environment.py`.
-- [ ] 2. If the owner said yes to question 2: `reserved_env` covers `PYTHONIOENCODING` and
+- [x] 2. If the owner said yes to question 2: `reserved_env` covers `PYTHONIOENCODING` and
   `PYTHONUNBUFFERED`, `reserved_why` gives the reason, and
   `test_a_runtime_cannot_set_how_a_run_speaks_to_the_engine` (AC8); the `env` paragraph in
   `docs/runtimes.md` says so.

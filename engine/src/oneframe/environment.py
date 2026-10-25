@@ -87,6 +87,9 @@ OVERRIDING_CACHES = (
 # A child reads the bytecode its runtime's install compiled and writes none: not beside a node's
 # code, and not into the runtime, which an install alone changes.
 ROOT_ENV = (*LIBRARY_CACHES, *TEMP_VARIABLES, *OVERRIDING_CACHES, "PYTHONDONTWRITEBYTECODE")
+# How a run speaks to the engine: its output unbuffered, so each event arrives as it is written,
+# and in UTF-8, as the engine reads it.
+PROTOCOL_ENV = {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
 # uv's cache and the Pythons it fetches, in folders under uv's own (`uv/` in the layout), and what
 # keeps it from writing outside them. app/main/paths.js sets the same for the engine it starts.
 UV_FOLDERS = {"UV_CACHE_DIR": "cache", "UV_PYTHON_INSTALL_DIR": "python"}
@@ -97,18 +100,19 @@ def _upper(names: Iterable[str]) -> set[str]:
     return {name.upper() for name in names}
 
 
-_RESERVED = _upper((*FORCED_ENV, *SECRETS, *ROOT_ENV))
-_ROOT = _upper(ROOT_ENV)
+_WHY = {
+    "hub libraries offline, no hub token or endpoint, torch's weights_only loading on": _upper(
+        (*FORCED_ENV, *SECRETS)
+    ),
+    "a run's caches, temporary files and bytecode kept under the data root": _upper(ROOT_ENV),
+    "a run's output unbuffered and in UTF-8, as the engine reads it": _upper(PROTOCOL_ENV),
+}
+_RESERVED = set().union(*_WHY.values())
 
 
 def reserved_why(names: list[str]) -> str:
     """Why the engine keeps these names to itself, in words for a runtime's author."""
-    why = []
-    if any(name.upper() not in _ROOT for name in names):
-        why.append("hub libraries offline, no hub token or endpoint, torch's weights_only loading on")
-    if any(name.upper() in _ROOT for name in names):
-        why.append("a run's caches, temporary files and bytecode kept under the data root")
-    return "; ".join(why)
+    return "; ".join(why for why, group in _WHY.items() if any(name.upper() in group for name in names))
 
 
 def reserved_env(name: str) -> bool:
@@ -152,7 +156,8 @@ def child_env(
     """A runtime child's environment: the inherited one, less every name the engine reserves, then
     the runtime's and the job's own (`extra`, less the reserved names), then FORCED_ENV. Then what
     keeps a run's writes under the data root: the library caches in `caches` (the runtime's folder
-    in `cache/runtime/`), the temporary folder in `tmp` (the job's own), and no bytecode written."""
+    in `cache/runtime/`), the temporary folder in `tmp` (the job's own), and no bytecode written.
+    Last, PROTOCOL_ENV."""
     env = {k: v for k, v in inherited(base).items() if not reserved_env(k)}
     env.update({k: v for k, v in extra.items() if not reserved_env(k)})
     env.update(FORCED_ENV)
@@ -161,7 +166,7 @@ def child_env(
     if tmp is not None:
         env.update(dict.fromkeys(TEMP_VARIABLES, str(tmp)))
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    _put(env, {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"})
+    env.update(PROTOCOL_ENV)
     return env
 
 

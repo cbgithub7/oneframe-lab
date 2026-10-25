@@ -98,8 +98,9 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
   every file in it must stay inside its folder, and `paths` inside it are made importable.
 - `env`: variables set for every node run in this runtime. It may not set what the engine sets or
   removes for every run: the hub libraries' offline flags, hub tokens and endpoints, torch's
-  `weights_only` switches, and what keeps a run under the data root (the library caches, the
-  temporary folder, bytecode, and the hub and Triton cache variables that would override them).
+  `weights_only` switches, what keeps a run under the data root (the library caches, the
+  temporary folder, bytecode, and the hub and Triton cache variables that would override them),
+  and how a run speaks to the engine (`PYTHONIOENCODING`, `PYTHONUNBUFFERED`).
 - `probe`: a function the runtime report runs inside the runtime.
 
 ## Checks
