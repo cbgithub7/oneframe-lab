@@ -419,8 +419,9 @@ def test_a_node_that_queries_its_stdin_does_not_hang(
     seen: list[dict[str, object]] = []
     ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, stop_after(60))
     answers = json.loads(str(seen[0]["message"]))
-    # The null device, not the pipe the watcher reads: a character device, FILE_TYPE_CHAR on Windows.
-    assert answers["mode"] == stat.S_IFCHR and answers["tty"] is False
+    # The null device, not the pipe the watcher reads: a character device, FILE_TYPE_CHAR on Windows,
+    # whose C runtime counts every character device, the null one too, as a terminal.
+    assert answers["mode"] == stat.S_IFCHR and answers["tty"] is (sys.platform == "win32")
     assert answers.get("type", 2) == 2
 
 
