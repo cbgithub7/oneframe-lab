@@ -7,10 +7,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { REPO_ROOT, absolute, dataRoot, engineCommand, layout } from "../../app/main/paths.js";
+import {
+  REPO_ROOT, TEMP_VARIABLES, UV_FOLDERS, UV_SETTINGS, absolute, dataRoot, engineCommand, layout,
+} from "../../app/main/paths.js";
 
 /** @type {{ roots: { case: string, platform: string, home: string, packaged: boolean,
- *   env: Record<string, string>, root: string }[], paths: Record<string, string> }} */
+ *   env: Record<string, string>, root: string }[], paths: Record<string, string>,
+ *   environment: { temporary: string[], uv_folders: Record<string, string>,
+ *     uv_settings: Record<string, string> } }} */
 const TABLE = JSON.parse(readFileSync(path.join(REPO_ROOT, "contracts", "layout.json"), "utf8"));
 
 test("every row gives the root the table names", () => {
@@ -44,6 +48,24 @@ test("the layout names the paths the table names", () => {
   assert.deepEqual(Object.keys(named).sort(), Object.keys(TABLE.paths).sort());
   for (const [name, relative] of Object.entries(TABLE.paths)) {
     assert.equal(named[/** @type {keyof typeof named} */ (name)], path.join(root, ...relative.split("/")), name);
+  }
+});
+
+test("the temporary and uv variables match the contract", () => {
+  // oneframe/environment.py sets the same for the uv the engine starts (test_layout.py).
+  assert.deepEqual([...TEMP_VARIABLES], TABLE.environment.temporary);
+  assert.deepEqual({ ...UV_FOLDERS }, TABLE.environment.uv_folders);
+  assert.deepEqual({ ...UV_SETTINGS }, TABLE.environment.uv_settings);
+  const data = mkdtempSync(path.join(tmpdir(), "oneframe-env-"));
+  try {
+    const { env } = engineCommand("uv", data);
+    for (const [name, folder] of Object.entries(TABLE.environment.uv_folders)) {
+      assert.equal(env[name], layout(data)[/** @type {keyof ReturnType<typeof layout>} */ (folder)], name);
+    }
+    for (const [name, value] of Object.entries(TABLE.environment.uv_settings)) assert.equal(env[name], value, name);
+    for (const name of TABLE.environment.temporary) assert.equal(env[name], layout(data).app_tmp, name);
+  } finally {
+    rmSync(data, { recursive: true, force: true });
   }
 });
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "The data root and what is under it, as cases both test suites check: the engine's oneframe/layout.py and the app's app/main/paths.js must give the same root for every row, and name the same paths. A row gives the environment, the platform, the home folder and whether the app is packaged; root is the answer. Windows rows are checked with Windows rules on every operating system.",
+  "_comment": "The data root and what is under it, as cases both test suites check: the engine's oneframe/layout.py and the app's app/main/paths.js must give the same root for every row, and name the same paths. A row gives the environment, the platform, the home folder and whether the app is packaged; root is the answer. Windows rows are checked with Windows rules on every operating system. environment names the variables both set for a child: the temporary folder's, and uv's, its folders by their name in paths.",
   "version": 1,
   "roots": [
     { "case": "linux, dev, nothing set", "platform": "linux", "home": "/home/ana", "packaged": false, "env": {}, "root": "/home/ana/.local/share/oneframe-lab-dev" },
@@ -63,5 +63,10 @@
     "crashes": "logs/crashes",
     "locks": "logs/locks",
     "reports": "reports"
+  },
+  "environment": {
+    "temporary": ["TMP", "TEMP", "TMPDIR"],
+    "uv_folders": { "UV_CACHE_DIR": "uv_cache", "UV_PYTHON_INSTALL_DIR": "uv_python" },
+    "uv_settings": { "UV_PYTHON_INSTALL_BIN": "0", "UV_PYTHON_INSTALL_REGISTRY": "0" }
   }
 }

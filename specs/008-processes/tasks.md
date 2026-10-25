@@ -15,7 +15,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `PYTHONUNBUFFERED`, `reserved_why` gives the reason, and
   `test_a_runtime_cannot_set_how_a_run_speaks_to_the_engine` (AC8); the `env` paragraph in
   `docs/runtimes.md` says so.
-- [ ] 3. JavaScript: `app/main/paths.js` exports the temporary variables and uv's settings,
+- [x] 3. JavaScript: `app/main/paths.js` exports the temporary variables and uv's settings,
   `scripts/tool.js` imports the temporary variables, and `contracts/layout.json` gains its
   `environment` entry, checked by `test_the_temporary_and_uv_variables_match_the_contract` and its
   twin in `tests/app/layout.test.js`.
