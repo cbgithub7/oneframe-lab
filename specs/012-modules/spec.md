@@ -129,6 +129,9 @@ through them.
 - `pin.find_manifest` keeps its own walk: it must find a manifest the check would refuse.
 - One version compare for capabilities, drivers and the torch floor: `"8"` and `"8.0"` now agree.
 - `runtimes.plan` (94 lines) and `graph.plan` (100) stay: pure, tested, and not flagged.
+- A blank `summary`, `run.entry`, `run.load` or `run.runtime` is a problem: `text` reads each, as a
+  runtime's `summary` already was.
+- A `runtime.json` is read through `read_object` in task 2, not 3: AC4 holds its message to `reading.py`.
 
 ## Out of scope
 

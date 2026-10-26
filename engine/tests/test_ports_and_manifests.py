@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import write_runtime
 
-from oneframe import BUILTIN_NODES_DIR, ports
+from oneframe import BUILTIN_NODES_DIR, ports, runtimes
 from oneframe.manifest import ManifestError, load, parse
 from oneframe.registry import discover
 
@@ -158,6 +159,58 @@ def test_registry_refuses_a_duplicate_id(tmp_path: Path) -> None:
     reg = discover([tmp_path])
     assert len(reg.nodes) == 1
     assert any("already used" in " ".join(v) for v in reg.problems.values())
+
+
+PROCESSOR = {"name": "cpu", "vendor": "none"}
+
+
+def _without(key: str) -> dict[str, object]:
+    return {k: v for k, v in _manifest().items() if k != key}
+
+
+@pytest.mark.parametrize(
+    ("data", "needle"),
+    [
+        pytest.param(_without("version"), "version should be a non-empty string", id="no version"),
+        pytest.param(_without("title"), "title should be a non-empty string", id="no title"),
+        pytest.param(_manifest(summary=5), "summary should be a non-empty string", id="summary a number"),
+        pytest.param(_manifest(devices={"cuda": True}), "devices should be a list", id="devices an object"),
+        pytest.param(_manifest(devices=5), "devices should be a list", id="devices a number"),
+        pytest.param(
+            _manifest(run={"where": "runtime", "runtime": 5}),
+            "run.runtime should be a non-empty string",
+            id="run.runtime a number",
+        ),
+        pytest.param(_manifest(run=["node.py:run"]), "run should be an object", id="run a list"),
+        pytest.param(_manifest(licence="MIT"), "licence should be an object", id="licence text"),
+        pytest.param(
+            _manifest(links=["https://example.com"]), "links should be an object", id="links a list"
+        ),
+        pytest.param(b'{"id": "bad", "title": "Caf\xe9"}', "cannot read", id="runtime.json not utf-8"),
+    ],
+)
+def test_a_malformed_definition_is_a_problem_never_a_crash(
+    tmp_path: Path, data: dict[str, object] | bytes, needle: str
+) -> None:
+    if isinstance(data, bytes):  # a runtime's definition, beside a good one
+        for name in ("good", "bad"):
+            write_runtime(tmp_path, {"id": name, "title": name, "python": "3.12", "builds": [PROCESSOR]})
+        (tmp_path / "bad" / "runtime.json").write_bytes(data)
+        found = runtimes.discover([tmp_path])
+        good, problems = list(found.runtimes), found.problems
+        assert good == ["good"]
+    else:
+        for name, manifest in {"good": _manifest(id="good.node"), "bad": {**data, "id": "bad.node"}}.items():
+            folder = tmp_path / name
+            folder.mkdir()
+            (folder / "node.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (folder / "node.py").write_text("def run(ctx): pass\n", encoding="utf-8")
+        registry = discover([tmp_path])
+        good, problems = list(registry.nodes), registry.problems
+        assert good == ["good.node"]
+    [(path, listed)] = problems.items()
+    assert Path(path).parent.name == "bad"
+    assert any(needle in p for p in listed), listed
 
 
 def test_every_builtin_node_loads() -> None:

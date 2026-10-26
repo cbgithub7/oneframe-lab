@@ -190,6 +190,47 @@ def _code(field: str, value: str, folder: Path, problems: list[str]) -> tuple[st
     return file, function
 
 
+def _run(data: dict[str, Any], folder: Path, problems: list[str]) -> Run:
+    """`run`: where the node runs, the code it runs and loads, and the runtime it runs in."""
+    row = data.get("run") or {}
+    if not isinstance(row, dict):
+        problems.append("run should be an object")
+        return Run(where="engine", file="", function="")
+    where = row.get("where", "engine")
+    if where not in WHERE:
+        problems.append(f"run.where must be one of {', '.join(WHERE)}")
+    entry = text(row, "entry", problems, where="run") if "entry" in row else "node.py:run"
+    file, function = _code("run.entry", entry, folder, problems) if entry else ("", "")
+    load = text(row, "load", problems, required=False, where="run") or None
+    if load is not None:
+        _code("run.load", load, folder, problems)
+    runtime = text(row, "runtime", problems, required=False, where="run") or None
+    if where == "runtime" and row.get("runtime") is None:
+        problems.append("run.runtime is required when run.where is runtime")
+    return Run(where=where, file=file, function=function, runtime=runtime, load=load)
+
+
+def _devices(data: dict[str, Any], problems: list[str]) -> tuple[str, ...]:
+    """`devices`, in the order the node prefers them; the processor alone when none are given."""
+    rows = data.get("devices") or ["cpu"]
+    if not isinstance(rows, list):
+        problems.append('devices should be a list, such as ["cuda", "cpu"]')
+        return ("cpu",)
+    for device in rows:
+        if device not in ("cpu", "cuda", "mps", "xpu", "rocm"):
+            problems.append(f"devices: unknown device {device!r}")
+    return tuple(rows)
+
+
+def _object(data: dict[str, Any], key: str, problems: list[str]) -> dict[str, Any]:
+    """`licence` or `links`: an object, shown as it is written."""
+    rows = data.get(key) or {}
+    if not isinstance(rows, dict):
+        problems.append(f"{key} should be an object")
+        return {}
+    return dict(rows)
+
+
 def parse(
     data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
 ) -> Manifest:
@@ -199,9 +240,12 @@ def parse(
     known = ports.types()
 
     node_id = check_id(text(data, "id", problems), problems)
+    version = text(data, "version", problems)
+    title = text(data, "title", problems)
     category = text(data, "category", problems)
     if category and category not in CATEGORIES:
         problems.append(f"category {category!r} is not one of {', '.join(CATEGORIES)}")
+    summary = text(data, "summary", problems, required=False)
 
     def port_map(key: str) -> dict[str, ports.PortSpec]:
         rows = data.get(key) or {}
@@ -242,22 +286,10 @@ def parse(
             if parsed:
                 params[name] = parsed
 
-    run_row = data.get("run") or {}
-    where = run_row.get("where", "engine")
-    if where not in WHERE:
-        problems.append(f"run.where must be one of {', '.join(WHERE)}")
-    file, function = _code("run.entry", str(run_row.get("entry", "node.py:run")), folder, problems)
-    load = None if run_row.get("load") is None else str(run_row["load"])
-    if load is not None:
-        _code("run.load", load, folder, problems)
-    runtime = run_row.get("runtime")
-    if where == "runtime" and not runtime:
-        problems.append("run.runtime is required when run.where is runtime")
-
-    devices = tuple(data.get("devices") or ("cpu",))
-    for device in devices:
-        if device not in ("cpu", "cuda", "mps", "xpu", "rocm"):
-            problems.append(f"devices: unknown device {device!r}")
+    run = _run(data, folder, problems)
+    devices = _devices(data, problems)
+    licence = _object(data, "licence", problems)
+    links = _object(data, "links", problems)
 
     model = None
     if data.get("memory") is not None:
@@ -267,25 +299,25 @@ def parse(
             params[PRECISION_PARAM] = precision
 
     weights_by = data["memory"].get("weights_by") if isinstance(data.get("memory"), dict) else None
-    files, files_by = parse_files(data, params, where, weights_by, problems)
+    files, files_by = parse_files(data, params, run.where, weights_by, problems)
 
     if problems:
         raise ManifestError(source, problems)
     return Manifest(
         id=node_id,
-        version=text(data, "version", problems),
-        title=text(data, "title", problems),
+        version=version,
+        title=title,
         category=category,
-        summary=text(data, "summary", problems, required=False),
+        summary=summary,
         inputs=inputs,
         outputs=outputs,
         params=params,
-        run=Run(where=where, file=file, function=function, runtime=runtime, load=load),
+        run=run,
         folder=folder,
         devices=devices,
         memory=model,
-        licence=dict(data.get("licence") or {}),
-        links=dict(data.get("links") or {}),
+        licence=licence,
+        links=links,
         files=files,
         files_by=files_by,
         raw=data,

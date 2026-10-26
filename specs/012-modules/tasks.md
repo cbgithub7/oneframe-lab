@@ -12,7 +12,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `ManifestError` and `DefinitionError` subclass `ProblemsError`; `manifest.py`, `memory.py`,
   `runtimes.py` and `registry.py` use it, and `Precision.runs_on_card` compares with `at_least`.
   AC4's command prints only `reading.py`.
-- [ ] 3. **Malformed definitions are problems,** if the owner said yes to question 1. Add
+- [x] 3. **Malformed definitions are problems,** if the owner said yes to question 1. Add
   `test_a_malformed_definition_is_a_problem_never_a_crash` (AC3), a case for each in Problem;
   `parse` reads `version`, `title` and `summary` before it decides, refuses a `run`, `licence` or
   `links` that is not an object, a `run` field that is not text and `devices` that is not a list;

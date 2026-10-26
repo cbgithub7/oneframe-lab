@@ -28,14 +28,15 @@ class ProblemsError(ValueError):
         super().__init__(f"{source}: " + "; ".join(problems))
 
 
-def text(data: dict[str, Any], key: str, problems: list[str], required: bool = True) -> str:
+def text(data: dict[str, Any], key: str, problems: list[str], required: bool = True, where: str = "") -> str:
     """`data[key]` as text; "" with a problem when it is not text or is blank, or "" when an
-    optional one is missing."""
+    optional one is missing. `where`: the object `data` is in the definition (`run`), so the
+    problem names the field (`run.runtime`)."""
     value = data.get(key)
     if value is None and not required:
         return ""
     if not isinstance(value, str) or not value.strip():
-        problems.append(f"{key} should be a non-empty string")
+        problems.append(f"{f'{where}.' if where else ''}{key} should be a non-empty string")
         return ""
     return value
 
