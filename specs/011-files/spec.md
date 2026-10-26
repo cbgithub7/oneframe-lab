@@ -1,6 +1,6 @@
 # 011: Files, hashes, downloads and paths
 
-Status: in progress (tasks 1 to 11 done; in review in [PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44))
+Status: done (merged 2026-10-26 in [PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: AC1
   checks that no recorded hash changes, rather than that its test file is untouched, which the new
