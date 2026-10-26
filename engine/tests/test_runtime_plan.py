@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from conftest import TINY_RUNTIME, MakeRuntime, write_runtime
 
-from oneframe import RUNTIMES_DIR, runtimes
+from oneframe import RUNTIMES_DIR, reading, runtimes
 
 
 def _definition(**over: Any) -> dict[str, Any]:
@@ -256,9 +256,9 @@ def test_two_runtimes_cannot_share_an_id(tmp_path: Path) -> None:
 
 
 def test_versions_compare_as_numbers() -> None:
-    assert runtimes.version_tuple("12.10") > runtimes.version_tuple("12.9")
-    assert runtimes.version_tuple("560.94") > runtimes.version_tuple("528.33")
-    assert runtimes.version_tuple("2.6.0+cu126") == (2, 6, 0)
+    assert reading.version_tuple("12.10") > reading.version_tuple("12.9")
+    assert reading.version_tuple("560.94") > reading.version_tuple("528.33")
+    assert reading.version_tuple("2.6.0+cu126") == (2, 6, 0)
 
 
 def test_the_hashes_do_not_change_with_line_endings(make_runtime: MakeRuntime) -> None:

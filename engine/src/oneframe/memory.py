@@ -20,10 +20,11 @@ import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeIs
+from typing import TYPE_CHECKING, Any
 
 from oneframe.files import NewerFormat, format_of, write_json
 from oneframe.layout import Layout
+from oneframe.reading import at_least, number
 
 if TYPE_CHECKING:
     from oneframe.manifest import Param
@@ -67,11 +68,7 @@ class Precision:
             return True
         if capability is None:
             return False
-        return _version(capability) >= _version(self.cuda_min_capability)
-
-
-def _version(capability: str) -> tuple[int, ...]:
-    return tuple(int(p) for p in capability.split("."))
+        return at_least(capability, self.cuda_min_capability)
 
 
 @dataclass(frozen=True)
@@ -136,10 +133,6 @@ def _weights_formula(source: str) -> Formula:
     return Formula(mb=0, terms=(Term(1, ("weights",)),), source=source)
 
 
-def _number(value: Any) -> TypeIs[int | float]:
-    return isinstance(value, int | float) and not isinstance(value, bool)
-
-
 def _source(row: Mapping[str, Any], where: str, problems: list[str]) -> str:
     source = row.get("source")
     if not isinstance(source, str) or not source.strip():
@@ -194,7 +187,7 @@ class _Reader:
             if not isinstance(cpu, bool):
                 self.problem(f"{where}.cpu should be true or false")
                 ok = False
-            if not _number(size) or size <= 0:
+            if not number(size) or size <= 0:
                 self.problem(f"{where}.bytes should be a positive number")
                 ok = False
             if ok:
@@ -235,7 +228,7 @@ class _Reader:
                     self.problem(f"{where} has no size for {precision} (write null if it is not known)")
                     continue
                 size = table[precision]
-                if size is not None and (not _number(size) or size < 0):
+                if size is not None and (not number(size) or size < 0):
                     self.problem(f"{where}.{precision} should be MB, or null")
                     continue
                 sizes[precision] = None if size is None else float(size)
@@ -255,7 +248,7 @@ class _Reader:
             if param is None or param.type != "choice":
                 self.problem(f"factors.{name} should name one of the node's choice params")
                 continue
-            if not isinstance(table, dict) or not all(_number(v) for v in table.values()):
+            if not isinstance(table, dict) or not all(number(v) for v in table.values()):
                 self.problem(f"factors.{name} should give a number for each choice")
                 continue
             missing = [c for c in param.choices if c not in table]
@@ -301,7 +294,7 @@ class _Reader:
             return None
         source = _source(row, f"memory.{where}", self.problems)
         base = row.get("mb", 0)
-        if base is not None and not _number(base):
+        if base is not None and not number(base):
             self.problem(f"{where}.mb should be a number, or null if it is not known")
             return None
         parsed: list[Term] = []
@@ -313,7 +306,7 @@ class _Reader:
         else:
             for i, term in enumerate(rows):
                 at = f"{where}.terms[{i}]"
-                if not isinstance(term, dict) or not _number(term.get("coef")):
+                if not isinstance(term, dict) or not number(term.get("coef")):
                     self.problem(f"{at} needs a number coef")
                     continue
                 factors = term.get("of") or []
@@ -419,7 +412,7 @@ class _Reader:
                 continue
             source = _source(row, f"memory.{where}", self.problems)
             seconds, at = row.get("seconds"), row.get("at") or {}
-            if seconds is not None and (not _number(seconds) or seconds < 0):
+            if seconds is not None and (not number(seconds) or seconds < 0):
                 self.problem(f"{where}.seconds should be a number, or null")
                 continue
             if not isinstance(at, dict):
@@ -547,7 +540,7 @@ def read_settings(data_root: Path | None) -> Settings:
     for device, value in (row.get("margin_mb") or {}).items():
         if device not in margins:
             notes.append(f"margin_mb.{device}: only cuda and cpu have a margin")
-        elif value is not None and (not _number(value) or value < 0):
+        elif value is not None and (not number(value) or value < 0):
             notes.append(f"margin_mb.{device} should be MB, or null for the default")
         else:
             margins[device] = None if value is None else float(value)
@@ -650,7 +643,7 @@ def settings_hash(values: Mapping[str, Any], inputs: Mapping[str, Mapping[str, A
     """The values, the precision among them, and every input's size: a peak measured at 512 × 512
     is never used for 4096 × 4096."""
     sizes = {
-        port: {k: v for k, v in sorted(meta.items()) if _number(v)} if meta is not None else None
+        port: {k: v for k, v in sorted(meta.items()) if number(v)} if meta is not None else None
         for port, meta in sorted(inputs.items())
     }
     text = json.dumps({"values": dict(values), "inputs": sizes}, sort_keys=True, default=str)
@@ -702,17 +695,17 @@ def _factor(
             return 0.0, ""  # an optional input that is not connected
         if meta_field == "pixels":
             width, height = meta.get("width"), meta.get("height")
-            if _number(width) and _number(height):
+            if number(width) and number(height):
                 return float(width) * float(height), ""
             return None, f"input {port} does not say its width and height"
         value = meta.get(meta_field)
-        return (float(value), "") if _number(value) else (None, f"input {port} does not say its {meta_field}")
+        return (float(value), "") if number(value) else (None, f"input {port} does not say its {meta_field}")
     value = values.get(name)
     if isinstance(value, bool):
         return float(value), ""
     if name in model.factors:
         return model.factors[name].get(str(value)), ""
-    return (float(value), "") if _number(value) else (None, f"{name} is not a number")
+    return (float(value), "") if number(value) else (None, f"{name} is not a number")
 
 
 def evaluate(

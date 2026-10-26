@@ -149,6 +149,7 @@ def test_where_each_precision_runs() -> None:
     assert fp16.runs_on_card("6.1") and fp16.runs_on_card("10.0") and not fp16.runs_on_card("5.2")
     assert not fp16.runs_on_card(None)  # a card whose capability is unknown
     assert anywhere.runs_on_card(None)
+    assert fp16.runs_on_card("6")  # "6" is "6.0": capabilities compare as runtimes' versions do
 
 
 def test_unknown_figures_are_null_with_a_source(tmp_path: Path) -> None:

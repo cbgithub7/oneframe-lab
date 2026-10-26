@@ -19,7 +19,6 @@ process is started and nothing is fetched, so listing and planning never touch t
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import shutil
@@ -31,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard
 
-from oneframe import RUNTIMES_DIR, hardware, runtime_install
+from oneframe import RUNTIMES_DIR, hardware, reading, runtime_install
 from oneframe.environment import reserved_env, reserved_why
 from oneframe.errors import Failure, Stopped
 from oneframe.files import FileLock, lock_file, text_sha256
@@ -39,6 +38,16 @@ from oneframe.journal import end_when_free, engine_crash
 from oneframe.layout import Layout
 from oneframe.memory import Target
 from oneframe.node import Emit
+from oneframe.reading import (
+    VERSION,
+    ProblemsError,
+    at_least,
+    at_most,
+    check_id,
+    read_object,
+    text,
+    version_tuple,
+)
 
 DEFINITION = "runtime.json"
 PYPROJECT = "pyproject.toml"
@@ -50,29 +59,16 @@ EXTENSION_CLASSES = ("stand-in", "optional", "required")
 # its weights_only unpickler could corrupt memory, and possibly run code, before 2.10 (CVE-2026-24747).
 TORCH_FLOOR = (2, 10)
 
-_ID = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _BUILD = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_VERSION = re.compile(r"^\d+(?:\.\d+)*$")
 _PYTHON = re.compile(r"^3\.(\d+)(?:\.\d+)?$")
 # The oldest Python a runtime may use: child.py and the node API run in it, started with -P (3.11).
 MIN_PYTHON_MINOR = 11
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
-class DefinitionError(ValueError):
-    def __init__(self, source: str, problems: list[str]):
-        self.source = source
-        self.problems = problems
-        super().__init__(f"{source}: " + "; ".join(problems))
-
-
-def version_tuple(text: str) -> tuple[int, ...]:
-    """'560.94' -> (560, 94). A local label ('2.6.0+cu126') is dropped. Raises on anything else."""
-    base = text.split("+", 1)[0].strip()
-    if not _VERSION.match(base):
-        raise ValueError(f"{text!r} is not a version")
-    return tuple(int(part) for part in base.split("."))
+class DefinitionError(ProblemsError):
+    """A `runtime.json` that cannot be read, or holds problems, with the files beside it."""
 
 
 @dataclass(frozen=True)
@@ -164,21 +160,11 @@ class RuntimeDef:
         return dict(self.raw, folder=str(self.folder))
 
 
-def _text(data: dict[str, Any], key: str, problems: list[str], required: bool = True) -> str:
-    value = data.get(key)
-    if value is None and not required:
-        return ""
-    if not isinstance(value, str) or not value.strip():
-        problems.append(f"{key} should be a non-empty string")
-        return ""
-    return value
-
-
 def _version_field(row: dict[str, Any], key: str, where: str, problems: list[str]) -> str | None:
     value = row.get(key)
     if value is None:
         return None
-    if not isinstance(value, str) or not _VERSION.match(value):
+    if not isinstance(value, str) or not VERSION.match(value):
         problems.append(f'{where}.{key} should be a version like "7.5"')
         return None
     return value
@@ -214,12 +200,12 @@ def _builds(rows: Any, problems: list[str]) -> tuple[Build, ...]:
                 bad = [
                     k
                     for k, v in driver.items()
-                    if k not in OSES or not isinstance(v, str) or not _VERSION.match(v)
+                    if k not in OSES or not isinstance(v, str) or not VERSION.match(v)
                 ]
                 if bad or not driver:
                     problems.append(f"{where}.min_driver per OS should map {', '.join(OSES)} to versions")
                     driver = None
-            elif not isinstance(driver, str) or not _VERSION.match(driver):
+            elif not isinstance(driver, str) or not VERSION.match(driver):
                 problems.append(f"{where}.min_driver should be a version, or one per OS")
                 driver = None
         if vendor == "none" and (min_cap or max_cap or driver):
@@ -381,14 +367,12 @@ def _check_lock(folder: Path, problems: list[str]) -> None:
 def parse(data: dict[str, Any], folder: Path, source: str = DEFINITION) -> RuntimeDef:
     """A runtime's definition, with every problem in it reported at once."""
     problems: list[str] = []
-    runtime_id = _text(data, "id", problems)
-    if runtime_id and not _ID.match(runtime_id):
-        problems.append(f"id {runtime_id!r} should be lower case words joined by . _ or -")
-    elif runtime_id and runtime_id != folder.name:
+    runtime_id = check_id(text(data, "id", problems), problems)
+    if runtime_id and runtime_id != folder.name:
         problems.append(f"id {runtime_id!r} should match its folder, {folder.name}")
-    title = _text(data, "title", problems)
-    summary = _text(data, "summary", problems, required=False)
-    python = _text(data, "python", problems)
+    title = text(data, "title", problems)
+    summary = text(data, "summary", problems, required=False)
+    python = text(data, "python", problems)
     matched = _PYTHON.match(python) if python else None
     if python and not matched:
         problems.append(f"python {python!r} should be a CPython version like 3.12")
@@ -465,12 +449,7 @@ def load(path: Path) -> RuntimeDef:
 
 
 def _load(path: Path) -> RuntimeDef:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise DefinitionError(str(path), [f"cannot read: {exc}"]) from exc
-    if not isinstance(data, dict):
-        raise DefinitionError(str(path), ["the file should hold one JSON object"])
+    data, _ = read_object(path, DefinitionError)
     return parse(data, path.parent, source=str(path))
 
 
@@ -482,22 +461,8 @@ class RuntimeSet:
 
 def discover(roots: Iterable[Path] | None = None) -> RuntimeSet:
     """Every runtime under the roots (default: the repo's runtimes/), found by looking."""
-    found = RuntimeSet()
-    for root in roots if roots is not None else [RUNTIMES_DIR]:
-        if not root.is_dir():
-            continue
-        for path in sorted(root.glob(f"*/{DEFINITION}")):
-            try:
-                runtime = load(path)
-            except DefinitionError as exc:
-                found.problems[str(path)] = exc.problems
-                continue
-            if runtime.id in found.runtimes:
-                other = found.runtimes[runtime.id].folder
-                found.problems[str(path)] = [f"id {runtime.id!r} is already used by {other}"]
-                continue
-            found.runtimes[runtime.id] = runtime
-    return found
+    runtimes, problems = reading.discover(roots if roots is not None else [RUNTIMES_DIR], DEFINITION, load)
+    return RuntimeSet(runtimes, problems)
 
 
 # -- the plan: which build this machine gets ---------------------------------------------------
@@ -523,18 +488,6 @@ class Plan:
         }
 
 
-def at_least(value: str, floor: str) -> bool:
-    a, b = version_tuple(value), version_tuple(floor)
-    width = max(len(a), len(b))
-    return a + (0,) * (width - len(a)) >= b + (0,) * (width - len(b))
-
-
-def at_most(value: str, ceiling: str) -> bool:
-    """`ceiling` "12" covers every 12.x; "12.0" covers 12.0 only."""
-    top = version_tuple(ceiling)
-    return version_tuple(value)[: len(top)] <= top
-
-
 def _card(profile: dict[str, Any]) -> dict[str, Any] | None:
     """The card a plan is made for: the NVIDIA card with the most memory, the lowest index on a
     tie. A node runs on this card; choosing among several per node is a known limit (spec 002)."""
@@ -558,7 +511,7 @@ def _refusal(build: Build, card: dict[str, Any] | None, profile: dict[str, Any])
         return f"is not offered on {os_name}"
     floor = build.driver_floor(os_name)
     driver = profile.get("driver")
-    if driver and not _VERSION.match(str(driver)):
+    if driver and not VERSION.match(str(driver)):
         driver = None  # nvidia-smi said something that is not a version: treat it as unknown
     if floor and not driver:
         return f"needs NVIDIA driver {floor} or newer, and the driver version is unknown"

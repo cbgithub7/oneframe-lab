@@ -19,6 +19,7 @@ from oneframe.memory import PRECISION_PARAM, MemoryModel
 from oneframe.memory import parse as parse_memory
 from oneframe.models.schema import FileSpec
 from oneframe.models.schema import parse as parse_files
+from oneframe.reading import ProblemsError, check_id, read_object, text
 
 CATEGORIES = (
     "source",  # brings something in: a photo, clicks, text
@@ -39,15 +40,11 @@ CATEGORIES = (
 
 PARAM_TYPES = ("int", "float", "bool", "string", "choice", "file")
 WHERE = ("engine", "runtime")
-_ID = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _PORT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
-class ManifestError(ValueError):
-    def __init__(self, source: str, problems: list[str]):
-        self.source = source
-        self.problems = problems
-        super().__init__(f"{source}: " + "; ".join(problems))
+class ManifestError(ProblemsError):
+    """A `node.json` that cannot be read, or holds problems."""
 
 
 @dataclass(frozen=True)
@@ -201,19 +198,8 @@ def parse(
     problems: list[str] = []
     known = ports.types()
 
-    def text(key: str, required: bool = True) -> str:
-        value = data.get(key)
-        if value is None and not required:
-            return ""
-        if not isinstance(value, str) or not value.strip():
-            problems.append(f"{key} should be a non-empty string")
-            return ""
-        return value
-
-    node_id = text("id")
-    if node_id and not _ID.match(node_id):
-        problems.append(f"id {node_id!r} should be lower case words joined by . _ or -")
-    category = text("category")
+    node_id = check_id(text(data, "id", problems), problems)
+    category = text(data, "category", problems)
     if category and category not in CATEGORIES:
         problems.append(f"category {category!r} is not one of {', '.join(CATEGORIES)}")
 
@@ -287,10 +273,10 @@ def parse(
         raise ManifestError(source, problems)
     return Manifest(
         id=node_id,
-        version=text("version"),
-        title=text("title"),
+        version=text(data, "version", problems),
+        title=text(data, "title", problems),
         category=category,
-        summary=text("summary", required=False),
+        summary=text(data, "summary", problems, required=False),
         inputs=inputs,
         outputs=outputs,
         params=params,
@@ -310,11 +296,5 @@ def parse(
 
 
 def load(path: Path) -> Manifest:
-    try:
-        text = path.read_bytes()
-        data = json.loads(text.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ManifestError(str(path), [f"cannot read: {exc}"]) from exc
-    if not isinstance(data, dict):
-        raise ManifestError(str(path), ["the file should hold one JSON object"])
-    return parse(data, path.parent, source=str(path), read=text)
+    data, read = read_object(path, ManifestError)
+    return parse(data, path.parent, source=str(path), read=read)
