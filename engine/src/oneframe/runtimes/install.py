@@ -33,6 +33,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -180,6 +181,16 @@ def fetch_source(
     except (DownloadFailed, OSError) as exc:
         raise InstallFailed(f"The source {source.name} could not be fetched: {exc}") from exc
     return archive
+
+
+@dataclass(frozen=True)
+class _Arrived:
+    """What an install brought, as the freeze step reads it and the marker records it."""
+
+    freeze: list[str]
+    uv: str
+    python: str
+    size_bytes: int
 
 
 class _Install:
@@ -339,18 +350,18 @@ class _Install:
         if compiled != 0:
             self.log(f"Some source files did not compile (exit {compiled}); they are left as they are.")
 
-    def freeze(self) -> dict[str, Any]:
+    def freeze(self) -> _Arrived:
         """What arrived: every package, the versions of uv and the runtime's Python, and the size."""
         self.step("freeze", "Recording what arrived.")
         version = [str(self.python), "-c", "import sys; print(sys.version.split()[0])"]
-        return {
-            "freeze": _freeze(self.uv, self.python, self.uv_env),
-            "uv": _output([self.uv, "--version"], self.uv_env).strip(),
-            "python": _output(version, self.uv_env).strip(),
-            "size_bytes": folder_size(self.env),
-        }
+        return _Arrived(
+            freeze=_freeze(self.uv, self.python, self.uv_env),
+            uv=_output([self.uv, "--version"], self.uv_env).strip(),
+            python=_output(version, self.uv_env).strip(),
+            size_bytes=folder_size(self.env),
+        )
 
-    def record(self, arrived: dict[str, Any]) -> None:
+    def record(self, arrived: _Arrived) -> None:
         self.step("record", "Writing the marker: the runtime is installed.")
         runtime = self.runtime
         marker = {
@@ -359,13 +370,13 @@ class _Install:
             "build": self.build,
             "env": str(self.env.resolve()),
             **runtime.hashes(),
-            "python": arrived["python"],
-            "uv": arrived["uv"],
-            "freeze": arrived["freeze"],
+            "python": arrived.python,
+            "uv": arrived.uv,
+            "freeze": arrived.freeze,
             "sources": [{"name": s.name, "url": s.url, "sha256": s.sha256} for s in runtime.sources],
             "stand_ins": [e.package for e in self.stand_ins],
             "left_out": [e.package for e in runtime.extensions if e.kind == "optional"],
-            "size_bytes": arrived["size_bytes"],
+            "size_bytes": arrived.size_bytes,
             "installed_at": datetime.now(UTC).isoformat(timespec="seconds"),
         }
         write_json(self.env / MARKER, marker, indent=2)
@@ -400,6 +411,6 @@ def install(
     return {
         **job.base,
         "python": str(job.python),
-        "size_bytes": arrived["size_bytes"],
+        "size_bytes": arrived.size_bytes,
         "seconds": round(time.monotonic() - started, 1),
     }

@@ -288,24 +288,31 @@ def _sources(rows: Any, problems: list[str]) -> tuple[Source, ...]:
     return tuple(out)
 
 
+def _table(value: Any) -> dict[str, Any]:
+    """A TOML table, or an empty one for anything else: a part of the wrong shape is missing."""
+    return value if isinstance(value, dict) else {}
+
+
 def _check_pyproject(folder: Path, builds: tuple[Build, ...], problems: list[str]) -> None:
     try:
         data = tomllib.loads((folder / PYPROJECT).read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         problems.append(f"{PYPROJECT}: cannot read: {exc}")
         return
-    uv = (data.get("tool") or {}).get("uv") or {}
+    uv = _table(_table(data.get("tool")).get("uv"))
     if uv.get("package") is not False:
         problems.append(f"{PYPROJECT}: [tool.uv] package = false is missing; a runtime is not a package")
-    extras = set(((data.get("project") or {}).get("optional-dependencies") or {}).keys())
+    extras = set(_table(_table(data.get("project")).get("optional-dependencies")))
     names = [b.name for b in builds]
     missing = [n for n in names if n not in extras]
     if missing:
         problems.append(f"{PYPROJECT}: no extra for the build(s) {', '.join(missing)}")
     if len(names) > 1:
+        groups = uv.get("conflicts")
         sets = [
             {str(item.get("extra")) for item in group if isinstance(item, dict)}
-            for group in uv.get("conflicts") or []
+            for group in (groups if isinstance(groups, list) else [])
+            if isinstance(group, list)
         ]
         if not any(set(names) <= s for s in sets):
             problems.append(
@@ -316,10 +323,14 @@ def _check_pyproject(folder: Path, builds: tuple[Build, ...], problems: list[str
 def _check_lock(folder: Path, problems: list[str]) -> None:
     try:
         lock = tomllib.loads((folder / LOCK).read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         problems.append(f"{LOCK}: cannot read: {exc}")
         return
-    for package in lock.get("package") or []:
+    packages = lock.get("package", [])
+    if not isinstance(packages, list) or not all(isinstance(p, dict) for p in packages):
+        problems.append(f"{LOCK}: package should be a list of tables, as uv writes it")
+        return
+    for package in packages:
         if package.get("name") != "torch":
             continue
         version = str(package.get("version", ""))

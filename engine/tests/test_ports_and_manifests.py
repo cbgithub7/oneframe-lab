@@ -169,34 +169,76 @@ def _without(key: str) -> dict[str, object]:
     return {k: v for k, v in _manifest().items() if k != key}
 
 
+MEMORY = {
+    "precisions": {"fp32": {"cuda_min_capability": None, "cpu": True}},
+    "weights": {"fp32": 100, "source": "measured"},
+    "working": {"mb": 10, "source": "measured"},
+}
+
+
 @pytest.mark.parametrize(
     ("data", "needle"),
     [
         pytest.param(_without("version"), "version should be a non-empty string", id="no version"),
         pytest.param(_without("title"), "title should be a non-empty string", id="no title"),
-        pytest.param(_manifest(summary=5), "summary should be a non-empty string", id="summary a number"),
+        pytest.param(_manifest(summary=5), "summary should be text", id="summary a number"),
         pytest.param(_manifest(devices={"cuda": True}), "devices should be a list", id="devices an object"),
+        pytest.param(_manifest(devices={}), "devices should be a list", id="devices an empty object"),
         pytest.param(_manifest(devices=5), "devices should be a list", id="devices a number"),
         pytest.param(
             _manifest(run={"where": "runtime", "runtime": 5}),
-            "run.runtime should be a non-empty string",
+            "run.runtime should be text",
             id="run.runtime a number",
         ),
         pytest.param(_manifest(run=["node.py:run"]), "run should be an object", id="run a list"),
         pytest.param(_manifest(licence="MIT"), "licence should be an object", id="licence text"),
+        pytest.param(_manifest(licence=""), "licence should be an object", id="licence empty text"),
         pytest.param(
             _manifest(links=["https://example.com"]), "links should be an object", id="links a list"
         ),
-        pytest.param(b'{"id": "bad", "title": "Caf\xe9"}', "cannot read", id="runtime.json not utf-8"),
+        pytest.param(
+            _manifest(params={"steps": {"type": "int", "default": 1, "min": "0"}}),
+            "params.steps.min should be a number",
+            id="a param's min text",
+        ),
+        pytest.param(
+            _manifest(params={"size": {"type": "choice", "choices": 5}}),
+            "params.size.choices should be a list",
+            id="a param's choices a number",
+        ),
+        pytest.param(_manifest(inputs={"a": 5}), "inputs.a: A port should be a type", id="a port a number"),
+        pytest.param(
+            _manifest(memory={**MEMORY, "changes": [{"set": {"precision": []}, "costs": "quality"}]}),
+            "sets precision [], which the model does not list",
+            id="a change's precision a list",
+        ),
+        pytest.param(
+            ("runtime.json", b'{"id": "bad", "title": "Caf\xe9"}'), "cannot read", id="runtime.json not utf-8"
+        ),
+        pytest.param(("runtime.json", b"[" * 100_000), "cannot read", id="runtime.json nested too deep"),
+        pytest.param(
+            ("pyproject.toml", b"\xff\xfe"), "pyproject.toml: cannot read", id="pyproject.toml not utf-8"
+        ),
+        pytest.param(
+            ("pyproject.toml", b"tool = 5\n"),
+            "package = false is missing",
+            id="pyproject.toml's tool a number",
+        ),
+        pytest.param(
+            ("uv.lock", b"version = 1\npackage = [5]\n"),
+            "package should be a list of tables",
+            id="uv.lock's packages not tables",
+        ),
     ],
 )
 def test_a_malformed_definition_is_a_problem_never_a_crash(
-    tmp_path: Path, data: dict[str, object] | bytes, needle: str
+    tmp_path: Path, data: dict[str, object] | tuple[str, bytes], needle: str
 ) -> None:
-    if isinstance(data, bytes):  # a runtime's definition, beside a good one
+    if isinstance(data, tuple):  # a file of a runtime's definition, beside a good runtime
         for name in ("good", "bad"):
             write_runtime(tmp_path, {"id": name, "title": name, "python": "3.12", "builds": [PROCESSOR]})
-        (tmp_path / "bad" / "runtime.json").write_bytes(data)
+        filename, written = data
+        (tmp_path / "bad" / filename).write_bytes(written)
         found = discover_runtimes([tmp_path])
         good, problems = list(found.runtimes), found.problems
         assert good == ["good"]
@@ -212,6 +254,15 @@ def test_a_malformed_definition_is_a_problem_never_a_crash(
     [(path, listed)] = problems.items()
     assert Path(path).parent.name == "bad"
     assert any(needle in p for p in listed), listed
+
+
+def test_blank_optional_text_is_read_as_written(tmp_path: Path) -> None:
+    """Only a field of the wrong type is refused: a blank summary or runtime loads, as before."""
+    (tmp_path / "node.py").write_text("def run(ctx): pass\n", encoding="utf-8")
+    m = parse(_manifest(summary="", run={"where": "engine", "runtime": ""}), tmp_path)
+    assert m.summary == "" and m.run.runtime == "" and m.run.file == "node.py"
+    with pytest.raises(ManifestError, match=r"run\.runtime is required"):
+        parse(_manifest(run={"where": "runtime", "runtime": ""}), tmp_path)
 
 
 def test_every_builtin_node_loads() -> None:

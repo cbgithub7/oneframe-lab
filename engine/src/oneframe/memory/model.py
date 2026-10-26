@@ -319,7 +319,7 @@ class _Reader:
         for name, value in change["set"].items():
             if name == PRECISION_PARAM:
                 output_affecting = True
-                if value not in self.precisions:
+                if not isinstance(value, str) or value not in self.precisions:
                     self.problem(f"{where} sets precision {value!r}, which the model does not list")
                     ok = False
                 elif costs == "speed":

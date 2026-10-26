@@ -12,14 +12,14 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from oneframe import ports
 from oneframe.memory.model import PRECISION_PARAM, MemoryModel
 from oneframe.memory.model import parse as parse_memory
 from oneframe.models.schema import FileSpec
 from oneframe.models.schema import parse as parse_files
-from oneframe.reading import ProblemsError, check_id, read_object, text
+from oneframe.reading import ProblemsError, check_id, number, optional_text, read_object, text
 
 CATEGORIES = (
     "source",  # brings something in: a photo, clicks, text
@@ -124,7 +124,7 @@ def check_param(key: str, param: Param, value: Any) -> str | None:
     if kind == "bool" and not isinstance(value, bool):
         return f"{key} should be true or false"
     if kind in ("int", "float"):
-        if isinstance(value, bool) or not isinstance(value, int | float):
+        if not number(value):
             return f"{key} should be a number"
         if kind == "int" and not float(value).is_integer():
             return f"{key} should be a whole number"
@@ -153,15 +153,19 @@ def _param(name: str, row: Any, problems: list[str]) -> Param | None:
     affects = row.get("affects", "output")
     if affects not in ("output", "speed"):
         problems.append(f"{where}.affects must be output or speed")
-    choices = tuple(str(c) for c in row.get("choices") or ())
+    listed = row.get("choices")
+    if listed is not None and not isinstance(listed, list):
+        problems.append(f"{where}.choices should be a list")
+        listed = None
+    choices = tuple(str(c) for c in listed or ())
     if kind == "choice" and not choices:
         problems.append(f"{where} is a choice with no choices")
     default = row.get("default")
     if kind == "choice" and default is not None and default not in choices:
         problems.append(f"{where}.default {default!r} is not one of its choices")
-    lo, hi = row.get("min"), row.get("max")
+    lo, hi = _bound(row, "min", where, problems), _bound(row, "max", where, problems)
     if kind in ("int", "float") and default is not None:
-        if not isinstance(default, int | float) or isinstance(default, bool):
+        if not number(default):
             problems.append(f"{where}.default should be a number")
         elif (lo is not None and default < lo) or (hi is not None and default > hi):
             problems.append(f"{where}.default {default} is outside [{lo}, {hi}]")
@@ -178,6 +182,15 @@ def _param(name: str, row: Any, problems: list[str]) -> Param | None:
     )
 
 
+def _bound(row: dict[str, Any], key: str, where: str, problems: list[str]) -> float | None:
+    """A param's `min` or `max`: a number, or None when not given (or not a number, a problem)."""
+    value = row.get(key)
+    if value is None or number(value):
+        return value
+    problems.append(f"{where}.{key} should be a number")
+    return None
+
+
 def _code(field: str, value: str, folder: Path, problems: list[str]) -> tuple[str, str]:
     """A `file.py:function` in the node's folder, as `run.entry` and `run.load` name one."""
     file, _, function = value.partition(":")
@@ -190,22 +203,32 @@ def _code(field: str, value: str, folder: Path, problems: list[str]) -> tuple[st
     return file, function
 
 
-def _head(data: dict[str, Any], problems: list[str]) -> tuple[str, str, str, str, str]:
-    """`id`, `version`, `title`, `category` and `summary`."""
+class _Head(NamedTuple):
+    id: str
+    version: str
+    title: str
+    category: str
+    summary: str
+
+
+def _head(data: dict[str, Any], problems: list[str]) -> _Head:
+    """`id`, `version`, `title`, `category` and `summary`, which may be blank."""
     node_id = check_id(text(data, "id", problems), problems)
     version = text(data, "version", problems)
     title = text(data, "title", problems)
     category = text(data, "category", problems)
     if category and category not in CATEGORIES:
         problems.append(f"category {category!r} is not one of {', '.join(CATEGORIES)}")
-    summary = text(data, "summary", problems, required=False)
-    return node_id, version, title, category, summary
+    summary = optional_text(data, "summary", problems, default="") or ""
+    return _Head(node_id, version, title, category, summary)
 
 
 def _port_map(
     data: dict[str, Any], key: str, known: dict[str, ports.PortType], problems: list[str]
 ) -> dict[str, ports.PortSpec]:
-    rows = data.get(key) or {}
+    rows = data.get(key)
+    if rows is None:
+        return {}
     if not isinstance(rows, dict):
         problems.append(f"{key} should be an object of port name to spec")
         return {}
@@ -239,7 +262,9 @@ def _ports(
 def _params(data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: list[str]) -> dict[str, Param]:
     """`params`, none named as an input is, and none the engine adds."""
     params: dict[str, Param] = {}
-    rows = data.get("params") or {}
+    rows = data.get("params")
+    if rows is None:
+        return params
     if not isinstance(rows, dict):
         problems.append("params should be an object")
         return params
@@ -255,41 +280,49 @@ def _params(data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: l
     return params
 
 
-def _run(data: dict[str, Any], folder: Path, problems: list[str]) -> Run:
-    """`run`: where the node runs, the code it runs and loads, and the runtime it runs in."""
-    row = data.get("run") or {}
+def _run(data: dict[str, Any], folder: Path, problems: list[str]) -> Run | None:
+    """`run`: where the node runs, the code it runs and loads, and the runtime it runs in; None
+    when it is not an object."""
+    row = data.get("run")
+    if row is None:
+        row = {}
     if not isinstance(row, dict):
         problems.append("run should be an object")
-        return Run(where="engine", file="", function="")
+        return None
     where = row.get("where", "engine")
     if where not in WHERE:
         problems.append(f"run.where must be one of {', '.join(WHERE)}")
-    entry = text(row, "entry", problems, where="run") if "entry" in row else "node.py:run"
-    file, function = _code("run.entry", entry, folder, problems) if entry else ("", "")
-    load = text(row, "load", problems, required=False, where="run") or None
+    entry = optional_text(row, "entry", problems, where="run", default="node.py:run")
+    file, function = ("", "") if entry is None else _code("run.entry", entry, folder, problems)
+    load = optional_text(row, "load", problems, where="run")
     if load is not None:
         _code("run.load", load, folder, problems)
-    runtime = text(row, "runtime", problems, required=False, where="run") or None
-    if where == "runtime" and row.get("runtime") is None:
+    runtime = optional_text(row, "runtime", problems, where="run")
+    if where == "runtime" and not runtime:
         problems.append("run.runtime is required when run.where is runtime")
     return Run(where=where, file=file, function=function, runtime=runtime, load=load)
 
 
-def _devices(data: dict[str, Any], problems: list[str]) -> tuple[str, ...]:
-    """`devices`, in the order the node prefers them; the processor alone when none are given."""
-    rows = data.get("devices") or ["cpu"]
+def _devices(data: dict[str, Any], problems: list[str]) -> tuple[str, ...] | None:
+    """`devices`, in the order the node prefers them; the processor alone when none are given;
+    None when it is not a list."""
+    rows = data.get("devices")
+    if rows is None:
+        rows = []
     if not isinstance(rows, list):
         problems.append('devices should be a list, such as ["cuda", "cpu"]')
-        return ("cpu",)
+        return None
     for device in rows:
         if device not in ("cpu", "cuda", "mps", "xpu", "rocm"):
             problems.append(f"devices: unknown device {device!r}")
-    return tuple(rows)
+    return tuple(rows) or ("cpu",)
 
 
 def _object(data: dict[str, Any], key: str, problems: list[str]) -> dict[str, Any]:
     """`licence` or `links`: an object, shown as it is written."""
-    rows = data.get(key) or {}
+    rows = data.get(key)
+    if rows is None:
+        return {}
     if not isinstance(rows, dict):
         problems.append(f"{key} should be an object")
         return {}
@@ -326,22 +359,28 @@ def parse(
     `read`: the bytes `data` was read from, whose sha256 is the manifest's digest; without them
     (a manifest made in code) the digest is of `data` written out in one canonical form."""
     problems: list[str] = []
-    node_id, version, title, category, summary = _head(data, problems)
+    head = _head(data, problems)
     inputs, outputs = _ports(data, problems)
     params = _params(data, inputs, problems)
     run = _run(data, folder, problems)
     devices = _devices(data, problems)
     licence = _object(data, "licence", problems)
     links = _object(data, "links", problems)
-    model, files, files_by = _memory_and_files(data, params, inputs, devices, run.where, problems)
-    if problems:
+    model: MemoryModel | None = None
+    files: tuple[FileSpec, ...] = ()
+    files_by: str | None = None
+    # The memory model and the files are checked against where and on what the node runs: when
+    # either cannot be read, their problems would only mislead.
+    if run is not None and devices is not None:
+        model, files, files_by = _memory_and_files(data, params, inputs, devices, run.where, problems)
+    if problems or run is None or devices is None:
         raise ManifestError(source, problems)
     return Manifest(
-        id=node_id,
-        version=version,
-        title=title,
-        category=category,
-        summary=summary,
+        id=head.id,
+        version=head.version,
+        title=head.title,
+        category=head.category,
+        summary=head.summary,
         inputs=inputs,
         outputs=outputs,
         params=params,

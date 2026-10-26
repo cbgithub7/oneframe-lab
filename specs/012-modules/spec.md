@@ -129,8 +129,13 @@ through them.
 - `pin.find_manifest` keeps its own walk: it must find a manifest the check would refuse.
 - One version compare for capabilities, drivers and the torch floor: `"8"` and `"8.0"` now agree.
 - `runtimes.plan` (94 lines) and `graph.plan` (100) stay: pure, tested, and not flagged.
-- A blank `summary`, `run.entry`, `run.load` or `run.runtime` is a problem: `text` reads each, as a
-  runtime's `summary` already was.
+- A blank `summary`, `run.entry`, `run.load` or `run.runtime` reads as before: `optional_text`
+  refuses only a value that is not text, which question 1 answered. A `null` one is not given.
+- A falsy field of the wrong type (`"devices": {}`, `"licence": ""`) is a problem, as a truthy one is.
+- With `run` or `devices` unreadable, the memory model and files go unchecked: their problems would
+  only mislead.
+- A part of a runtime's `pyproject.toml` or `uv.lock` of the wrong shape counts as missing; a lock
+  whose packages are not tables is a problem.
 - A `runtime.json` is read through `read_object` in task 2, not 3: AC4 holds its message to `reading.py`.
 
 ## Out of scope
