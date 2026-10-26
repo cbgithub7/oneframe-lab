@@ -34,7 +34,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `test_planning_loads_neither_the_manager_nor_the_install` (AC2) and AC7's `runtimes` case. In the
   same commit: the Runtimes row of `docs/architecture.md` names the package, and `docs/roadmap.md`
   loses its `oneframe/runtimes.py` line.
-- [ ] 7. **`install` in named steps:** one function per `STEPS` entry over one `_Install`, uv's
+- [x] 7. **`install` in named steps:** one function per `STEPS` entry over one `_Install`, uv's
   environments built once, sync through `run`; `install`, `_freeze` and `run_step` stay
   module-level. The install tests pass unchanged, the order of `runtime.step` events included.
 - [ ] 8. **Docs and measures:** delete from `docs/roadmap.md` the rest of what this spec takes on

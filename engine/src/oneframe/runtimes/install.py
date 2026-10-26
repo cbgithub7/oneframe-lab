@@ -182,6 +182,195 @@ def fetch_source(
     return archive
 
 
+class _Install:
+    """One install: the runtime, its build and paths, uv's environments, and the helpers each step
+    uses. A method per entry of STEPS, called in that order; each says it has started, unless
+    Stop was asked for."""
+
+    def __init__(
+        self,
+        runtime: RuntimeDef,
+        build: str,
+        data: Path,
+        uv: str,
+        emit: Emit,
+        stop: threading.Event,
+        uv_cache: Path,
+        uv_python: Path,
+        transfer: dict[str, Any] | None,
+    ) -> None:
+        self.runtime, self.build, self.data, self.uv = runtime, build, data, uv
+        self.emit, self.stop, self.transfer = emit, stop, transfer
+        self.env = env_dir(data, runtime.id, build)
+        self.python = interpreter(self.env)
+        self.base = {"runtime": runtime.id, "build": build}
+        self.stand_ins = [e for e in runtime.extensions if e.kind == "stand-in"]
+        # What uv, and the runtime's own Python, run with; uv sync's also names the environment.
+        self.uv_env = uv_environment(uv_cache, uv_python)
+        self.sync_env = uv_environment(uv_cache, uv_python, self.env)
+
+    def step(self, name: str, message: str) -> None:
+        if self.stop.is_set():
+            raise Stopped()
+        self.emit(
+            {
+                **self.base,
+                "event": "runtime.step",
+                "step": name,
+                "index": STEPS.index(name) + 1,
+                "total": len(STEPS),
+                "message": message,
+            }
+        )
+
+    def log(self, line: str) -> None:
+        self.emit({**self.base, "event": "runtime.log", "line": line})
+
+    def run(self, argv: list[str], what: str, environment: dict[str, str]) -> None:
+        code, tail = run_step(argv, environment, self.log, self.stop)
+        if code != 0:
+            raise InstallFailed(f"{what} failed (exit {code}).", "\n".join(tail))
+
+    def clear_marker(self) -> None:
+        self.step("marker", "Clearing the old marker: until the last step, this runtime is not installed.")
+        old = read_marker(self.env)
+        problem = marker_problem(self.env, old) if old is not None else None
+        if problem == "newer_format":
+            raise InstallFailed(
+                f"{self.env} was installed by a newer version of the app; it is left as it is.",
+                reason="newer_format",
+            )
+        if problem == "moved":
+            remove_tree(self.env)  # its scripts and links point into the root it was built in
+        (self.env / MARKER).unlink(missing_ok=True)
+
+    def fetch_python(self) -> None:
+        python = self.runtime.python
+        self.step("python", f"Python {python}, fetched by uv into the data root if it is not there yet.")
+        self.run(
+            [self.uv, "python", "install", "--no-config", python], f"Installing Python {python}", self.uv_env
+        )
+
+    def sync(self) -> None:
+        runtime, build = self.runtime, self.build
+        self.step("sync", f"The {build} build's packages, exactly as {runtime.lock_path.name} lists them.")
+        if self.env.exists() and not (self.env / "pyvenv.cfg").is_file():
+            remove_tree(self.env)  # not an environment uv can finish: start it again
+        sync = [
+            self.uv,
+            "sync",
+            "--frozen",
+            "--no-config",
+            "--no-dev",
+            "--managed-python",
+            "--compile-bytecode",
+            "--extra",
+            build,
+            "--python",
+            runtime.python,
+            "--project",
+            str(runtime.folder),
+        ]
+        # A failure leaves the folder as it is: uv recreates an environment it cannot use, and a
+        # failure for any other reason (the network, a registry) must not cost what is already there.
+        self.run(sync, "uv sync", self.sync_env)
+
+    def unpack_sources(self) -> None:
+        self.step("sources", f"{len(self.runtime.sources)} pinned source(s), checked by sha256.")
+        downloads = runtime_dir(self.data, self.runtime.id) / "downloads"
+        for source in self.runtime.sources:
+            target = self.env / "src" / source.name
+            stamp = self.env / "src" / f"{source.name}.sha256"
+            if (
+                target.is_dir()
+                and stamp.is_file()
+                and stamp.read_text(encoding="utf-8").strip() == source.sha256
+            ):
+                continue
+
+            def progress(done: int, total: int | None, name: str = source.name) -> None:
+                self.emit(
+                    {
+                        **self.base,
+                        "event": "runtime.progress",
+                        "step": "sources",
+                        "what": name,
+                        "done": done,
+                        "total": total,
+                    }
+                )
+
+            archive = fetch_source(source, downloads, self.stop, progress, self.log, self.transfer)
+            if target.exists():
+                remove_tree(target)
+            stamp.unlink(missing_ok=True)
+            try:
+                archives.extract(archive, target)
+            except (archives.ArchiveError, OSError) as exc:
+                raise InstallFailed(f"The source {source.name} was refused: {exc}") from exc
+            stamp.write_text(source.sha256 + "\n", encoding="utf-8")
+
+    def copy_stand_ins(self) -> None:
+        self.step("stand-ins", f"{len(self.stand_ins)} stand-in(s) for compiled extensions.")
+        for ext in self.stand_ins:
+            target = self.env / "stand-ins" / ext.package
+            if target.exists():
+                remove_tree(target)
+            shutil.copytree(self.runtime.folder / ext.stand_in, target)
+
+    def write_paths(self) -> None:
+        self.step("paths", "Putting the sources and stand-ins on the runtime's path.")
+        env, python = self.env, str(self.python)
+        purelib = [python, "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"]
+        site = Path(_output(purelib, self.uv_env).strip())
+        lines = [str((env / "src" / s.name / p).resolve()) for s in self.runtime.sources for p in s.paths]
+        if self.stand_ins:
+            lines.append(str((env / "stand-ins").resolve()))
+        if not lines:
+            (site / PTH).unlink(missing_ok=True)
+            return
+        (site / PTH).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # Compiled now, as uv compiled the packages, so a run writes nothing into the runtime. Only
+        # a best effort: an upstream archive may hold files that are not this Python's code.
+        folders = [str(p) for p in (env / "src", env / "stand-ins") if p.is_dir()]
+        compiled, _tail = run_step(
+            [python, "-m", "compileall", "-q", *folders], self.uv_env, self.log, self.stop
+        )
+        if compiled != 0:
+            self.log(f"Some source files did not compile (exit {compiled}); they are left as they are.")
+
+    def freeze(self) -> dict[str, Any]:
+        """What arrived: every package, the versions of uv and the runtime's Python, and the size."""
+        self.step("freeze", "Recording what arrived.")
+        version = [str(self.python), "-c", "import sys; print(sys.version.split()[0])"]
+        return {
+            "freeze": _freeze(self.uv, self.python, self.uv_env),
+            "uv": _output([self.uv, "--version"], self.uv_env).strip(),
+            "python": _output(version, self.uv_env).strip(),
+            "size_bytes": folder_size(self.env),
+        }
+
+    def record(self, arrived: dict[str, Any]) -> None:
+        self.step("record", "Writing the marker: the runtime is installed.")
+        runtime = self.runtime
+        marker = {
+            "format": MARKER_FORMAT,
+            "runtime": runtime.id,
+            "build": self.build,
+            "env": str(self.env.resolve()),
+            **runtime.hashes(),
+            "python": arrived["python"],
+            "uv": arrived["uv"],
+            "freeze": arrived["freeze"],
+            "sources": [{"name": s.name, "url": s.url, "sha256": s.sha256} for s in runtime.sources],
+            "stand_ins": [e.package for e in self.stand_ins],
+            "left_out": [e.package for e in runtime.extensions if e.kind == "optional"],
+            "size_bytes": arrived["size_bytes"],
+            "installed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        }
+        write_json(self.env / MARKER, marker, indent=2)
+
+
 def install(
     runtime: RuntimeDef,
     build: str,
@@ -199,164 +388,18 @@ def install(
     InstallFailed; the marker exists only when this returns."""
     started = time.monotonic()
     stop = stop if stop is not None else threading.Event()
-    env = env_dir(data, runtime.id, build)
-    python = interpreter(env)
-    base = {"runtime": runtime.id, "build": build}
-
-    def step(name: str, message: str) -> None:
-        if stop.is_set():
-            raise Stopped()
-        emit(
-            {
-                **base,
-                "event": "runtime.step",
-                "step": name,
-                "index": STEPS.index(name) + 1,
-                "total": len(STEPS),
-                "message": message,
-            }
-        )
-
-    def log(line: str) -> None:
-        emit({**base, "event": "runtime.log", "line": line})
-
-    def uv_env(environment: Path | None = None) -> dict[str, str]:
-        return uv_environment(uv_cache, uv_python, environment)
-
-    def run(argv: list[str], what: str, environment: dict[str, str]) -> None:
-        code, tail = run_step(argv, environment, log, stop)
-        if code != 0:
-            raise InstallFailed(f"{what} failed (exit {code}).", "\n".join(tail))
-
-    step("marker", "Clearing the old marker: until the last step, this runtime is not installed.")
-    old = read_marker(env)
-    problem = marker_problem(env, old) if old is not None else None
-    if problem == "newer_format":
-        raise InstallFailed(
-            f"{env} was installed by a newer version of the app; it is left as it is.", reason="newer_format"
-        )
-    if problem == "moved":
-        remove_tree(env)  # its scripts and links point into the root it was built in
-    (env / MARKER).unlink(missing_ok=True)
-
-    step("python", f"Python {runtime.python}, fetched by uv into the data root if it is not there yet.")
-    run(
-        [uv, "python", "install", "--no-config", runtime.python],
-        f"Installing Python {runtime.python}",
-        uv_env(),
-    )
-
-    step("sync", f"The {build} build's packages, exactly as {runtime.lock_path.name} lists them.")
-    if env.exists() and not (env / "pyvenv.cfg").is_file():
-        remove_tree(env)  # not an environment uv can finish: start it again
-    sync = [
-        uv,
-        "sync",
-        "--frozen",
-        "--no-config",
-        "--no-dev",
-        "--managed-python",
-        "--compile-bytecode",
-        "--extra",
-        build,
-        "--python",
-        runtime.python,
-        "--project",
-        str(runtime.folder),
-    ]
-    # A failure leaves the folder as it is: uv recreates an environment it cannot use, and a
-    # failure for any other reason (the network, a registry) must not cost what is already there.
-    code, tail = run_step(sync, uv_env(env), log, stop)
-    if code != 0:
-        raise InstallFailed(f"uv sync failed (exit {code}).", "\n".join(tail))
-
-    step("sources", f"{len(runtime.sources)} pinned source(s), checked by sha256.")
-    downloads = runtime_dir(data, runtime.id) / "downloads"
-    for source in runtime.sources:
-        target = env / "src" / source.name
-        stamp = env / "src" / f"{source.name}.sha256"
-        if target.is_dir() and stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == source.sha256:
-            continue
-
-        def progress(done: int, total: int | None, name: str = source.name) -> None:
-            emit(
-                {
-                    **base,
-                    "event": "runtime.progress",
-                    "step": "sources",
-                    "what": name,
-                    "done": done,
-                    "total": total,
-                }
-            )
-
-        archive = fetch_source(source, downloads, stop, progress, log, transfer)
-        if target.exists():
-            remove_tree(target)
-        stamp.unlink(missing_ok=True)
-        try:
-            archives.extract(archive, target)
-        except (archives.ArchiveError, OSError) as exc:
-            raise InstallFailed(f"The source {source.name} was refused: {exc}") from exc
-        stamp.write_text(source.sha256 + "\n", encoding="utf-8")
-
-    stand_ins = [e for e in runtime.extensions if e.kind == "stand-in"]
-    step("stand-ins", f"{len(stand_ins)} stand-in(s) for compiled extensions.")
-    for ext in stand_ins:
-        target = env / "stand-ins" / ext.package
-        if target.exists():
-            remove_tree(target)
-        shutil.copytree(runtime.folder / ext.stand_in, target)
-
-    step("paths", "Putting the sources and stand-ins on the runtime's path.")
-    site = Path(
-        _output(
-            [str(python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
-            uv_env(),
-        ).strip()
-    )
-    lines = [str((env / "src" / s.name / p).resolve()) for s in runtime.sources for p in s.paths]
-    if stand_ins:
-        lines.append(str((env / "stand-ins").resolve()))
-    if lines:
-        (site / PTH).write_text("\n".join(lines) + "\n", encoding="utf-8")
-        # Compiled now, as uv compiled the packages, so a run writes nothing into the runtime. Only
-        # a best effort: an upstream archive may hold files that are not this Python's code.
-        folders = [str(p) for p in (env / "src", env / "stand-ins") if p.is_dir()]
-        compiled, _tail = run_step([str(python), "-m", "compileall", "-q", *folders], uv_env(), log, stop)
-        if compiled != 0:
-            log(f"Some source files did not compile (exit {compiled}); they are left as they are.")
-    else:
-        (site / PTH).unlink(missing_ok=True)
-
-    step("freeze", "Recording what arrived.")
-    freeze = _freeze(uv, python, uv_env())
-    uv_version = _output([uv, "--version"], uv_env()).strip()
-    python_version = _output(
-        [str(python), "-c", "import sys; print(sys.version.split()[0])"], uv_env()
-    ).strip()
-    size = folder_size(env)
-
-    step("record", "Writing the marker: the runtime is installed.")
-    marker = {
-        "format": MARKER_FORMAT,
-        "runtime": runtime.id,
-        "build": build,
-        "env": str(env.resolve()),
-        **runtime.hashes(),
-        "python": python_version,
-        "uv": uv_version,
-        "freeze": freeze,
-        "sources": [{"name": s.name, "url": s.url, "sha256": s.sha256} for s in runtime.sources],
-        "stand_ins": [e.package for e in stand_ins],
-        "left_out": [e.package for e in runtime.extensions if e.kind == "optional"],
-        "size_bytes": size,
-        "installed_at": datetime.now(UTC).isoformat(timespec="seconds"),
-    }
-    write_json(env / MARKER, marker, indent=2)
+    job = _Install(runtime, build, data, uv, emit, stop, uv_cache, uv_python, transfer)
+    job.clear_marker()
+    job.fetch_python()
+    job.sync()
+    job.unpack_sources()
+    job.copy_stand_ins()
+    job.write_paths()
+    arrived = job.freeze()
+    job.record(arrived)
     return {
-        **base,
-        "python": str(python),
-        "size_bytes": size,
+        **job.base,
+        "python": str(job.python),
+        "size_bytes": arrived["size_bytes"],
         "seconds": round(time.monotonic() - started, 1),
     }
