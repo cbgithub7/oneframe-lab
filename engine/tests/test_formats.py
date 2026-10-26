@@ -16,7 +16,7 @@ from conftest import NO_GPU
 
 from oneframe import BUILTIN_NODES_DIR, runtime_install
 from oneframe.layout import LAYOUT_FORMAT, ROOT_FILE, Layout, RootRefused, claim_root
-from oneframe.memory import read_settings
+from oneframe.memory.settings import read_settings
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes
 from oneframe.server import Engine
 

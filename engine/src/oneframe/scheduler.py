@@ -17,7 +17,7 @@ Events, in order, for the app (all carry `run`):
 A failure carries a declared kind and reason (errors.py). A value whose facets do not fit the port
 it reaches is no node's fault: there is no node.failed, and run.failed names the edge.
 
-Before a node's model loads, the engine fits it to the memory this machine has free (memory.py):
+Before a node's model loads, the engine fits it to the memory this machine has free (`oneframe.memory`):
 the device, the precision and the settings the person left alone, never a checkpoint that is not
 downloaded. Out of memory is answered once, with a fit strictly smaller than the one that ran out.
 Each attempt runs where the scheduler's `Executors` say (executors.py): by default, a new process
@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from oneframe import memory, ports
+from oneframe import ports
 from oneframe.cache import Cache, code_digest
 from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import Executor, Executors, NodeError, OneProcessPerRun, Stopped
@@ -55,7 +55,11 @@ from oneframe.graph import Graph, Plan, Step, plan
 from oneframe.journal import end_when_free, engine_crash
 from oneframe.layout import Layout
 from oneframe.manifest import Manifest
-from oneframe.memory import Fit, LearnedStore, Settings, StoreKey, Target
+from oneframe.memory.estimate import Inputs, Learned, Target, evaluate, settings_hash, weights_mb
+from oneframe.memory.fit import Fit, can_retry, fit
+from oneframe.memory.learned import LearnedStore, StoreKey
+from oneframe.memory.model import PRECISION_PARAM
+from oneframe.memory.settings import Settings
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
 from oneframe.node import Emit, Value
@@ -85,7 +89,7 @@ def no_machine(_cards: bool) -> dict[str, Any]:
 class _Context:
     """What a step's fits read, gathered once per step."""
 
-    inputs: memory.Inputs
+    inputs: Inputs
     target: Target
     key: StoreKey
     cards: bool
@@ -291,7 +295,7 @@ class Scheduler:
             if first.kind != "oom":
                 raise
             self._said_oom(run, step, 1, first)
-            if not memory.can_retry(found):
+            if not can_retry(found):
                 raise
             again = self._fit(run, state, 2, found)
             served = self._cached_down(run, state, again)
@@ -309,7 +313,7 @@ class Scheduler:
                 )
                 raise NodeError("oom", message, second.detail, second.peaks) from second
 
-    def _context(self, step: Step, meta: memory.Inputs) -> _Context:
+    def _context(self, step: Step, meta: Inputs) -> _Context:
         manifest = step.manifest
         runtime = manifest.run.runtime if manifest.run.where == "runtime" else None
         target = self.runtimes.device_target(str(runtime)) if runtime else Target()
@@ -318,15 +322,15 @@ class Scheduler:
         cards = runtime is not None and "cuda" in manifest.devices and target.card is not None
         return _Context(meta, target, key, cards)
 
-    def preview(self, step: Step, meta: memory.Inputs) -> tuple[Fit, Settings]:
+    def preview(self, step: Step, meta: Inputs) -> tuple[Fit, Settings]:
         """The fit a step would get on this machine now, without running it (`nodes.fit`)."""
         return self._fit_now(step, self._context(step, meta), None)
 
     def _fit_now(self, step: Step, context: _Context, after: Fit | None) -> tuple[Fit, Settings]:
         manifest = step.manifest
         settings = self.settings()
-        learned = self.learned.view(context.key) if manifest.run.where == "runtime" else memory.Learned()
-        found = memory.fit(
+        learned = self.learned.view(context.key) if manifest.run.where == "runtime" else Learned()
+        found = fit(
             manifest.memory,
             step.params,
             step.explicit,
@@ -463,12 +467,11 @@ class Scheduler:
         if found is not None and context is not None:
             if manifest.memory is not None:
                 outside = (
-                    memory.evaluate(manifest.memory.outside_torch, manifest.memory, values, context.inputs)[0]
-                    or 0.0
+                    evaluate(manifest.memory.outside_torch, manifest.memory, values, context.inputs)[0] or 0.0
                 )
             # No budget in the cap where the fit knows it is too small, or where there is none left
             # (the card already more than full): the child then caps at the free memory alone.
-            precision, budget = values.get(memory.PRECISION_PARAM), found.budget
+            precision, budget = values.get(PRECISION_PARAM), found.budget
             uncapped = found.outcome in ("tried_anyway", "off") or budget is None or budget <= 0
             cap = budget if device == "cuda" and not uncapped else None
         return Job(
@@ -519,7 +522,7 @@ class Scheduler:
         outputs = self._check_outputs(step, state.inputs, finished.outputs, key)
         made_with = {
             "device": job.device,
-            "precision": job.params.get(memory.PRECISION_PARAM),
+            "precision": job.params.get(PRECISION_PARAM),
             "changed": {k: v for k, v in job.params.items() if step.params.get(k) != v},
             "ways": finished.ways,
             "reduced": bool(found is not None and found.reduced),
@@ -589,18 +592,16 @@ class Scheduler:
             reserved = peaks.get("peak_reserved_mb")
             need = None if reserved is None else float(reserved) + outside
             weights = (
-                memory.evaluate(model.weights_on_device, model, found.values, context.inputs)[0]
-                if model
-                else None
+                evaluate(model.weights_on_device, model, found.values, context.inputs)[0] if model else None
             )
         else:
             need = peaks.get("peak_ram_mb")
-            weights = memory.weights_mb(model, found.values) if model else None
+            weights = weights_mb(model, found.values) if model else None
         try:
             self.learned.record(
                 context.key,
                 found.kind,
-                settings=memory.settings_hash(found.values, context.inputs),
+                settings=settings_hash(found.values, context.inputs),
                 ok=ok,
                 need_mb=need,
                 working_mb=found.need.working if found.need is not None else None,
@@ -648,7 +649,7 @@ class Scheduler:
         return values
 
 
-def _meta(step: Step, inputs: dict[str, Value]) -> memory.Inputs:
+def _meta(step: Step, inputs: dict[str, Value]) -> Inputs:
     """Each input's meta for the fit; None for an optional input that is not connected."""
     meta: dict[str, dict[str, Any] | None] = {port: None for port in step.manifest.inputs}
     meta.update({port: value.meta for port, value in inputs.items()})

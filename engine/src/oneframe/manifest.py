@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import ports
-from oneframe.memory import PRECISION_PARAM, MemoryModel
-from oneframe.memory import parse as parse_memory
+from oneframe.memory.model import PRECISION_PARAM, MemoryModel
+from oneframe.memory.model import parse as parse_memory
 from oneframe.models.schema import FileSpec
 from oneframe.models.schema import parse as parse_files
 from oneframe.reading import ProblemsError, check_id, read_object, text

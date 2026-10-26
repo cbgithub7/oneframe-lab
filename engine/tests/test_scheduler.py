@@ -15,7 +15,9 @@ from oneframe.cache import Cache
 from oneframe.executors import Executor, OneProcessPerRun
 from oneframe.graph import Graph
 from oneframe.manifest import Manifest
-from oneframe.memory import Learned, LearnedStore, Settings, StoreKey, Target
+from oneframe.memory.estimate import Learned, Target
+from oneframe.memory.learned import LearnedStore, StoreKey
+from oneframe.memory.settings import Settings
 from oneframe.node import Emit
 from oneframe.node.job import Done, Job
 from oneframe.runtimes import NoRuntimes

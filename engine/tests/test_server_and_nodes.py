@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
@@ -9,10 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pytest
 from conftest import Events, MakeNode
 from PIL import Image
 
-from oneframe import BUILTIN_NODES_DIR
+from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR
 from oneframe.cache import Cache
 from oneframe.graph import Graph
 from oneframe.processes import wait_gone
@@ -30,6 +32,25 @@ def test_importing_the_server_loads_no_numeric_or_model_library() -> None:
     )
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
     assert out.stdout.strip() == ""
+
+
+def test_reading_a_manifest_loads_only_the_memory_model() -> None:
+    probe = (
+        "import sys, oneframe.manifest\n"
+        "print(','.join(sorted(m for m in sys.modules if m.startswith('oneframe.'))))"
+    )
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    loaded = set(out.stdout.strip().split(","))
+    assert "oneframe.manifest" in loaded
+    assert {m for m in loaded if m.startswith("oneframe.memory.")} == {"oneframe.memory.model"}
+    assert not loaded & {"oneframe.files", "oneframe.layout", "oneframe.errors"}, sorted(loaded)
+
+
+@pytest.mark.parametrize("package", ["memory", "models"])
+def test_a_package_root_holds_only_its_docstring(package: str) -> None:
+    tree = ast.parse((ENGINE_DIR / package / "__init__.py").read_text(encoding="utf-8"))
+    assert ast.get_docstring(tree), f"oneframe/{package}/ says what it holds"
+    assert len(tree.body) == 1, f"oneframe/{package}/ re-exports nothing: callers import its modules"
 
 
 class Client:

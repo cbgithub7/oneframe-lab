@@ -36,7 +36,7 @@ from oneframe.errors import Failure, Stopped
 from oneframe.files import FileLock, lock_file, text_sha256
 from oneframe.journal import end_when_free, engine_crash
 from oneframe.layout import Layout
-from oneframe.memory import Target
+from oneframe.memory.estimate import Target
 from oneframe.node import Emit
 from oneframe.reading import (
     VERSION,

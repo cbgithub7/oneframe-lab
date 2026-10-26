@@ -19,7 +19,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   runtime definitions are read through `read_object`.
 - [x] 4. **`manifest.parse` in named steps:** one function per part, each adding its problems,
   then one raise. The manifest tests pass unchanged.
-- [ ] 5. **The memory package.** `oneframe/memory/` with `model`, `settings`, `estimate`, `fit` and
+- [x] 5. **The memory package.** `oneframe/memory/` with `model`, `settings`, `estimate`, `fit` and
   `learned` and a docstring-only `__init__.py`; `learned.py` logs as `oneframe.memory`. Callers and
   the tests' imports change; nothing else does. Add
   `test_reading_a_manifest_loads_only_the_memory_model` (AC1), and

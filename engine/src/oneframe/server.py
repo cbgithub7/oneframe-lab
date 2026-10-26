@@ -37,7 +37,8 @@ from oneframe.errors import Failure, failure
 from oneframe.graph import Graph, Step, plan, step_params
 from oneframe.journal import engine_crash
 from oneframe.layout import Layout, RootRefused, claim_root, open_root
-from oneframe.memory import LearnedStore, read_settings
+from oneframe.memory.learned import LearnedStore
+from oneframe.memory.settings import read_settings
 from oneframe.models.catalog import listing, remove_node, remove_unpinned
 from oneframe.models.jobs import Jobs
 from oneframe.models.runs import in_use

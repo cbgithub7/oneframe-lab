@@ -26,7 +26,7 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Graph | `oneframe/graph.py` | Recipes (graphs as JSON); `plan()` checks them, inserts converters, orders them |
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params, input keys, the node's code and its runtime's build; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; asks the `Executors` it is given where each attempt runs; checks every value at every port; carries trust; one retry after `oom` |
-| Memory | `oneframe/memory.py` | A node's memory model; the estimate; the margins and the person's settings; the fit (pure); what each machine learns |
+| Memory | `oneframe/memory/` | A node's memory model, which a manifest reads alone of the five (`model.py`); the person's settings and the margins (`settings.py`); the estimate (`estimate.py`); the fit, pure (`fit.py`); what each machine learns (`learned.py`) |
 | Errors | `oneframe/errors.py` | Every kind and reason of failure, declared once, and whose fault each is ([Failures](#failures)) |
 | Executors | `oneframe/executors.py`, `oneframe/child.py`, `oneframe/node/` | In-process or child-process runs behind one `Executor` Protocol; `OneProcessPerRun`, the engine's `Executors`, starts a child per attempt and hides the cards from a processor run; `run_probe` runs a runtime's own code for the benches; one node API and one runner either way, and the child a bootstrap that makes only `oneframe.node` importable |
 | Processes | `oneframe/processes.py` | The one module that starts, reads and ends processes: each in its own group, with no window, read as UTF-8; a kill ends the tree and waits for it |

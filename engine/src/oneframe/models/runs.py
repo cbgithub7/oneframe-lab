@@ -22,7 +22,7 @@ from oneframe.errors import Failure
 from oneframe.files import is_free, lock_file, write_json
 from oneframe.layout import Layout
 from oneframe.manifest import Manifest
-from oneframe.memory import Checkpoints
+from oneframe.memory.fit import Checkpoints
 from oneframe.models.store import Presence, Store
 
 READING = "reading.json"

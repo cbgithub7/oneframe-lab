@@ -27,7 +27,7 @@ from fixtures.hosts import Hosts, client_context
 
 from oneframe.cache import Cache
 from oneframe.files import is_free
-from oneframe.memory import Target
+from oneframe.memory.estimate import Target
 from oneframe.registry import Registry, discover
 from oneframe.scheduler import Scheduler
 
