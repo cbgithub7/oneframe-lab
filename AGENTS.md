@@ -16,7 +16,11 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
    is a contract: aim for 150 lines, never more than 200 (the docs check fails a longer one that is
    not done or dropped), and at most 8 acceptance criteria, none hiding a list of further checks.
    The limits are on the document, never on the design: work that needs more becomes two specs, each
-   standing alone, and nothing the design needs is cut or bent to fit. Mechanisms belong in code and
+   standing alone, and nothing the design needs is cut or bent to fit. Only when a spec cannot be
+   designed well within 200 lines, or fitting would cut needed functionality, ask the owner for an
+   exception, case by case: what does not fit and what was tried, how many lines past 200 and in
+   which sections, and what fitting would lose. An approved one says `Length allowed: N lines (the
+   owner, <date>)` under its status, and the docs check holds it to N. Mechanisms belong in code and
    tests, and how the work went belongs in the PR. An agent reviews the draft; the owner approves it
    once, before code is written. The spec, not the chat, is the source of truth.
 2. **Agents decide what can be undone.** An agent makes reversible choices itself and logs each
@@ -101,7 +105,7 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 
 - `npm run check`: eslint, tsc (JSDoc types, `// @ts-check` in every JS file), node tests, and
   the docs check (every repo path the docs name exists, and no spec being worked on is over 200
-  lines)
+  lines, or over the length the owner allowed it)
 - `npm run engine:check`: ruff, ruff format, pyright, pytest
 - `npm run versions`: version policy
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it

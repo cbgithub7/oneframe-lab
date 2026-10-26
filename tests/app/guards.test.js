@@ -272,6 +272,16 @@ test("a spec being worked on is held to its length; a finished one is history", 
   assert.equal(specTooLong(spec("dropped", 400)), null);
 });
 
+test("a spec the owner allowed more lines is held to that length instead", () => {
+  const spec = (/** @type {string} */ allowed, /** @type {number} */ lines) =>
+    ["# 015: Title", "", "Status: approved", allowed, ...Array.from({ length: lines - 4 }, (_, i) => `line ${i}`)]
+      .join("\n") + "\n";
+  const allowed = "Length allowed: 240 lines (the owner, 2026-10-26)";
+  assert.equal(specTooLong(spec(allowed, 240)), null);
+  assert.match(String(specTooLong(spec(allowed, 241))), /is 241 lines; the owner allowed it 240/);
+  assert.match(String(specTooLong(spec("Length: 240 lines", 241))), /at most 200/); // only the exact line counts
+});
+
 test("the docs check fails a long spec being worked on, and a link to nothing, in a real tree", () => {
   const root = mkdtempSync(path.join(tmpdir(), "oneframe-docs-"));
   try {
