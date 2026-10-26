@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` with
 `node scripts/test-guard.js --write` (007).
 
-- [ ] 1. **The docs check and the reviews** (question 2), before any module moves. With (a):
+- [x] 1. **The docs check and the reviews** (question 2), before any module moves. With (a):
   `scripts/check-docs.js` as (a) says, the docs check's line in `AGENTS.md`, and AC6's node test.
   With (b): no code; tasks 5 and 6 edit the review's lines as they move each module.
 - [ ] 2. **`oneframe/reading.py`:** `text`, `check_id`, `number`, `version_tuple`, `at_least`,

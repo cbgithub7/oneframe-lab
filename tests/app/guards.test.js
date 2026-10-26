@@ -306,6 +306,30 @@ test("the docs check fails a long spec being worked on, and a link to nothing, i
   }
 });
 
+test("a review may name a path that has since moved, and its links are still checked", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "oneframe-docs-"));
+  try {
+    const write = (/** @type {string} */ rel, /** @type {string} */ text) => {
+      mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      writeFileSync(path.join(root, rel), text);
+    };
+    const moved = "`oneframe/memory.py` is five modules; see [the roadmap](../roadmap.md).\n";
+    write("docs/reviews/2026-10-12.md", moved);
+    write("docs/architecture.md", moved.replace("../roadmap.md", "roadmap.md"));
+    assert.deepEqual(checkDocs(root).problems, [
+      "docs/architecture.md: link to roadmap.md, which does not exist",
+      "docs/architecture.md: names engine/src/oneframe/memory.py, and engine/src/oneframe/memory.py does not exist",
+      "docs/reviews/2026-10-12.md: link to ../roadmap.md, which does not exist",
+    ]);
+    write("docs/roadmap.md", "Parked.\n");
+    write("docs/architecture.md", "Memory is a package, `oneframe/memory/`.\n");
+    write("engine/src/oneframe/memory/__init__.py", "");
+    assert.deepEqual(checkDocs(root).problems, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /** A throwaway git repo whose checks pass or fail on command, for running the stop hook.
  * @param {boolean} checkPasses */
 function fakeProject(checkPasses) {
