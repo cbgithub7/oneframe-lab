@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from oneframe import runtimes
 from oneframe.cache import Cache, code_digest
 from oneframe.manifest import parse
 from oneframe.models.store import Store
+from oneframe.runtimes.definition import load
 
 NODE = {
     "id": "test.kept",
@@ -81,7 +81,7 @@ def _runtime(tmp_path: Path) -> dict[str, str]:
     _write(folder / "stand-ins" / "fast" / "__init__.py", b"KIND = 'stand-in'\r\n")
     _write(folder / "stand-ins" / "fast" / "inner" / "more.py", b"Y = 2\n")
     _write(folder / "stand-ins" / "fast" / "__pycache__" / "x.pyc", b"\x00")
-    return runtimes.load(folder / "runtime.json").hashes()
+    return load(folder / "runtime.json").hashes()
 
 
 def _partial(tmp_path: Path) -> str:

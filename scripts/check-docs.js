@@ -5,7 +5,8 @@
 // A stale rules file is worse than none: an agent follows it confidently. This catches the most
 // common kind of staleness -- a file or folder renamed or removed while the docs still point at
 // it. It checks relative markdown links in every doc, and, in the documents that describe the
-// current state (not specs, which describe what is to be built), paths written in backticks.
+// current state (not specs, which describe what is to be built, nor reviews, which are dated
+// records kept as the owner read them), paths written in backticks.
 //
 // A spec is the contract the owner approves once; every line of it spends the owner's attention.
 // One that is not yet done may be at most SPEC_MAX_LINES long (specs/README.md). A finished spec
@@ -111,6 +112,7 @@ export function checkDocs(root) {
       if (why) problems.push(`${rel}: ${why}`);
     }
     if (rel.startsWith("specs/")) continue; // specs name files that are still to be built
+    if (rel.startsWith("docs/reviews/")) continue; // a review names files as they were that day
     for (const p of backtickPaths(text)) {
       const prefix = literalPrefix(p);
       if (prefix && !existsSync(path.join(root, prefix))) problems.push(`${rel}: names ${p}, and ${prefix} does not exist`);

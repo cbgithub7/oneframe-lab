@@ -10,8 +10,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from oneframe import BUILTIN_NODES_DIR
-from oneframe.manifest import Manifest, ManifestError, load
+from oneframe import BUILTIN_NODES_DIR, reading
+from oneframe.manifest import Manifest, load
 
 
 @dataclass
@@ -39,19 +39,7 @@ class Registry:
 
 
 def discover(roots: Iterable[Path] | None = None) -> Registry:
-    registry = Registry()
-    for root in roots if roots is not None else [BUILTIN_NODES_DIR]:
-        if not root.is_dir():
-            continue
-        for path in sorted(root.glob("*/node.json")):
-            try:
-                manifest = load(path)
-            except ManifestError as exc:
-                registry.problems[str(path)] = exc.problems
-                continue
-            if manifest.id in registry.nodes:
-                other = registry.nodes[manifest.id].folder
-                registry.problems[str(path)] = [f"id {manifest.id!r} is already used by {other}"]
-                continue
-            registry.nodes[manifest.id] = manifest
-    return registry
+    """Every node under the roots (default: the repo's nodes/), found by looking."""
+    roots = roots if roots is not None else [BUILTIN_NODES_DIR]
+    nodes, problems = reading.discover(roots, "node.json", load)
+    return Registry(nodes, problems)

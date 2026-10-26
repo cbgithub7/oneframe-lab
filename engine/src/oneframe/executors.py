@@ -38,7 +38,7 @@ from oneframe.processes import Child
 
 if TYPE_CHECKING:
     from oneframe.manifest import Manifest
-    from oneframe.runtimes import RuntimeSide
+    from oneframe.runtimes.manager import RuntimeSide
 
 LOGGER = logging.getLogger(__name__)
 CHILD = Path(__file__).resolve().parent / "child.py"  # started by path, never imported

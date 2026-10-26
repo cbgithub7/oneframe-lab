@@ -27,7 +27,7 @@ from fixtures.hosts import Hosts, client_context
 
 from oneframe.cache import Cache
 from oneframe.files import is_free
-from oneframe.memory import Target
+from oneframe.memory.estimate import Target
 from oneframe.registry import Registry, discover
 from oneframe.scheduler import Scheduler
 
@@ -156,7 +156,7 @@ def registry_for(node_root: Path) -> Callable[[], Registry]:
 
 
 class HostRuntimes:
-    """A runtimes double (runtimes.RuntimeSide): every runtime is the engine's own Python, with the
+    """A runtimes double (runtimes.manager.RuntimeSide): every runtime is the engine's own Python, with the
     variables, the fit's target and the cache key a test sets, and no folder for library caches."""
 
     def __init__(

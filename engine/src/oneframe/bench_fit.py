@@ -43,17 +43,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from oneframe import BUILTIN_NODES_DIR, __version__, hardware, memory
+from oneframe import BUILTIN_NODES_DIR, __version__, hardware
 from oneframe.cache import Cache
 from oneframe.environment import child_env
 from oneframe.executors import NodeError, run_probe
 from oneframe.graph import Graph
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
-from oneframe.memory import LearnedStore, Settings
+from oneframe.memory.estimate import Device, Learned, Target, evaluate
+from oneframe.memory.estimate import estimate as estimate_need
+from oneframe.memory.learned import LearnedStore, StoreKey
+from oneframe.memory.model import MemoryModel
+from oneframe.memory.settings import Settings
+from oneframe.memory.settings import margin as margin_for
 from oneframe.processes import Child
 from oneframe.registry import Registry, discover
-from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, RuntimeSide, find_uv
+from oneframe.runtimes.manager import InstallRefused, RuntimeMissing, Runtimes, RuntimeSide, find_uv
 from oneframe.scheduler import Scheduler, for_root
 from oneframe.scratch import for_tool
 
@@ -131,7 +136,7 @@ def measure(scheduler: Scheduler, node: str, params: dict[str, Any], label: str 
                 model = scheduler.registry.get(node).memory
                 if model is not None:
                     values = fits[-1].get("values") or params
-                    outside = memory.evaluate(model.outside_torch, model, values, {})[0] or 0.0
+                    outside = evaluate(model.outside_torch, model, values, {})[0] or 0.0
                 measured = round(float(reserved) + outside, 1)
         else:
             measured = done.get("peak_ram_mb")
@@ -165,7 +170,7 @@ class _Unlearned(LearnedStore):
     def __init__(self) -> None:
         super().__init__(None)
 
-    def record(self, key: memory.StoreKey, kind: str, **measured: Any) -> None:
+    def record(self, key: StoreKey, kind: str, **measured: Any) -> None:
         return None
 
 
@@ -247,7 +252,7 @@ def cap_refusal(message: str | None) -> dict[str, float] | None:
 # -- AC8 -------------------------------------------------------------------------------------------
 
 
-def _card_device(profile: dict[str, Any], target: memory.Target) -> dict[str, Any] | None:
+def _card_device(profile: dict[str, Any], target: Target) -> dict[str, Any] | None:
     return next((g for g in profile.get("gpus") or [] if g.get("index") == target.card), None)
 
 
@@ -386,7 +391,7 @@ def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
 
     _say("2/4 three settings")
     fresh = _card_device(hardware.profile(manager.data), target) or card
-    margin = memory.margin(Settings(), "cuda", fresh.get("vram_total_mb"))
+    margin = margin_for(Settings(), "cuda", fresh.get("vram_total_mb"))
     budget = (fresh.get("vram_free_mb") or 0) - margin
     record["settings"] = []
     for i, params in enumerate(three_settings(manifest, plan, budget, fresh)):
@@ -402,11 +407,11 @@ def bench_ac8(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
     return record
 
 
-def _need(model: memory.MemoryModel, values: dict[str, Any], card: dict[str, Any]) -> float | None:
-    device = memory.Device(
+def _need(model: MemoryModel, values: dict[str, Any], card: dict[str, Any]) -> float | None:
+    device = Device(
         "cuda", "cuda", card.get("capability"), card.get("vram_free_mb"), card.get("vram_total_mb"), 0
     )
-    return memory.estimate(model, values, {}, device, memory.Learned()).device
+    return estimate_need(model, values, {}, device, Learned()).device
 
 
 def _defaults(manifest: Manifest) -> dict[str, Any]:
@@ -439,7 +444,7 @@ def _bench_holder(
     manager: Runtimes,
     scheduler: Scheduler,
     plan: Ac8,
-    target: memory.Target,
+    target: Target,
     context_mb: float | None,
 ) -> dict[str, Any]:
     """Hold memory so the budget leaves room only for the node after its first change, then run it
@@ -448,7 +453,7 @@ def _bench_holder(
     if card is None or card.get("vram_free_mb") is None:
         return {"why": "The card's free memory could not be read."}
     manifest = scheduler.registry.get(plan.node)
-    margin = memory.margin(Settings(), "cuda", card.get("vram_total_mb"))
+    margin = margin_for(Settings(), "cuda", card.get("vram_total_mb"))
     sized = holder_size(manifest, card, margin, context_mb)
     if sized is None:
         return {"why": "The node's first change lowers no need, so no budget calls for it."}
@@ -473,9 +478,7 @@ def _bench_holder(
     return row
 
 
-def _bench_overrun(
-    manager: Runtimes, scheduler: Scheduler, plan: Ac8, target: memory.Target
-) -> dict[str, Any]:
+def _bench_overrun(manager: Runtimes, scheduler: Scheduler, plan: Ac8, target: Target) -> dict[str, Any]:
     out: dict[str, Any] = {}
     manifest = scheduler.registry.get(plan.node)
     model = manifest.memory

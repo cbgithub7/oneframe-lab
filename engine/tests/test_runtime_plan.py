@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -10,7 +12,9 @@ from typing import Any
 import pytest
 from conftest import TINY_RUNTIME, MakeRuntime, write_runtime
 
-from oneframe import RUNTIMES_DIR, runtimes
+from oneframe import RUNTIMES_DIR, reading
+from oneframe.runtimes.definition import Build, RuntimeDef, discover, load
+from oneframe.runtimes.plan import Plan, plan
 
 
 def _definition(**over: Any) -> dict[str, Any]:
@@ -41,12 +45,12 @@ def _definition(**over: Any) -> dict[str, Any]:
 
 
 def test_the_test_runtime_reads_without_problems() -> None:
-    found = runtimes.discover([TINY_RUNTIME.parent])
+    found = discover([TINY_RUNTIME.parent])
     assert found.problems == {}
     tiny = found.runtimes["tiny"]
     assert tiny.python == "3.11"
     assert [b.name for b in tiny.builds] == ["cu130", "cpu"]
-    assert tiny.build("cu130") == runtimes.Build("cu130", "nvidia", "7.5", "12", "580", (), 1)
+    assert tiny.build("cu130") == Build("cu130", "nvidia", "7.5", "12", "580", (), 1)
     assert [(e.package, e.kind) for e in tiny.extensions] == [
         ("tinyext", "stand-in"),
         ("fastpath", "optional"),
@@ -54,14 +58,25 @@ def test_the_test_runtime_reads_without_problems() -> None:
     assert tiny.env == {"ONEFRAME_TINY": "on"} and tiny.probe == "probe.py:run"
 
 
+def test_planning_loads_neither_the_manager_nor_the_install() -> None:
+    probe = (
+        "import sys, oneframe.runtimes.plan\n"
+        "print(','.join(sorted(m for m in sys.modules if m.startswith('oneframe.'))))"
+    )
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    loaded = set(out.stdout.strip().split(","))
+    assert "oneframe.runtimes.plan" in loaded
+    assert not loaded & {"oneframe.runtimes.manager", "oneframe.runtimes.install"}, sorted(loaded)
+
+
 def test_every_runtime_in_the_repo_reads_without_problems() -> None:
-    assert runtimes.discover([RUNTIMES_DIR]).problems == {}
+    assert discover([RUNTIMES_DIR]).problems == {}
 
 
 def test_a_broken_runtime_does_not_hide_the_others(make_runtime: MakeRuntime, runtime_root: Path) -> None:
     make_runtime(_definition())
     make_runtime(_definition(id="broken", python="three"))
-    found = runtimes.discover([runtime_root])
+    found = discover([runtime_root])
     assert list(found.runtimes) == ["demo"]
     [(path, problems)] = found.problems.items()
     assert path.endswith(str(Path("broken") / "runtime.json"))
@@ -74,7 +89,7 @@ def test_a_runtime_on_a_python_older_than_node_runs_need_is_refused(
     """The child that runs every node starts with -P, which Python 3.11 brought."""
     make_runtime(_definition(id="old", python="3.10"))
     make_runtime(_definition(id="floor", python="3.11.9"))
-    found = runtimes.discover([runtime_root])
+    found = discover([runtime_root])
     assert list(found.runtimes) == ["floor"]
     assert list(found.problems.values()) == [["python '3.10' is older than 3.11, which node runs need"]]
 
@@ -111,7 +126,7 @@ def test_every_problem_in_a_definition_is_listed_at_once(
         package=True,
     )
     (folder / "uv.lock").unlink()
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     expected = [
         "builds.cu126.min_driver per OS should map windows, linux, macos to versions",
         "builds.cu126 is listed twice",
@@ -141,7 +156,7 @@ def test_a_runtime_cannot_set_what_the_engine_sets_or_removes_for_a_run(
     make_runtime: MakeRuntime, runtime_root: Path
 ) -> None:
     make_runtime(_definition(env={"HF_HUB_OFFLINE": "0", "HF_TOKEN": "x", "OMP_NUM_THREADS": "4"}))
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     assert problems == [
         "env sets HF_HUB_OFFLINE, HF_TOKEN, which the engine sets or removes for every run "
         "(hub libraries offline, no hub token or endpoint, torch's weights_only loading on)"
@@ -152,7 +167,7 @@ def test_a_runtime_cannot_move_a_runs_caches_out_of_the_data_root(
     make_runtime: MakeRuntime, runtime_root: Path
 ) -> None:
     make_runtime(_definition(env={"HF_HOME": "/home/ana/hf", "HF_HUB_CACHE": "/home/ana/hub"}))
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     assert problems == [
         "env sets HF_HOME, HF_HUB_CACHE, which the engine sets or removes for every run "
         "(a run's caches, temporary files and bytecode kept under the data root)"
@@ -164,7 +179,7 @@ def test_a_runtime_cannot_set_how_a_run_speaks_to_the_engine(
 ) -> None:
     """Both would be overwritten for every run; a setting that cannot take effect says so (spec 008)."""
     make_runtime(_definition(env={"PYTHONIOENCODING": "latin-1", "pythonunbuffered": "0"}))
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     assert problems == [
         "env sets PYTHONIOENCODING, pythonunbuffered, which the engine sets or removes for every run "
         "(a run's output unbuffered and in UTF-8, as the engine reads it)"
@@ -174,7 +189,7 @@ def test_a_runtime_cannot_set_how_a_run_speaks_to_the_engine(
 def test_a_reserved_name_is_refused_in_any_case(make_runtime: MakeRuntime, runtime_root: Path) -> None:
     """Windows treats hf_token and HF_TOKEN as one variable."""
     make_runtime(_definition(env={"torch_force_no_weights_only_load": "1"}))
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     assert problems[0].startswith("env sets torch_force_no_weights_only_load, which the engine sets")
 
 
@@ -183,7 +198,7 @@ def test_a_runtime_id_must_match_its_folder(make_runtime: MakeRuntime, runtime_r
     data = json.loads((folder / "runtime.json").read_text(encoding="utf-8"))
     data["id"] = "other"
     (folder / "runtime.json").write_text(json.dumps(data), encoding="utf-8")
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     assert problems == ["id 'other' should match its folder, demo"]
 
 
@@ -201,7 +216,7 @@ def test_a_source_that_is_not_https_is_refused(
     """A source is fetched as model files are, and never over plain http (spec 011, AC7); an
     address the transport could not fetch is refused when it is read, not when it is installed."""
     make_runtime(_definition(sources=[{"name": "up", "url": url, "sha256": "0" * 64}]))
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     assert problems == ["sources.up.url should be an https address"]
 
 
@@ -209,7 +224,7 @@ def test_builds_must_be_one_conflict_set(runtime_root: Path) -> None:
     folder = write_runtime(runtime_root, _definition())
     pyproject = (folder / "pyproject.toml").read_text(encoding="utf-8")
     (folder / "pyproject.toml").write_text(pyproject.split("conflicts")[0], encoding="utf-8")
-    [problems] = runtimes.discover([runtime_root]).problems.values()
+    [problems] = discover([runtime_root]).problems.values()
     assert problems == [
         "pyproject.toml: the builds cu130, cu126, cpu should be one set in [tool.uv] conflicts"
     ]
@@ -225,7 +240,7 @@ def test_a_lock_holding_torch_older_than_2_6_is_refused(
 ) -> None:
     make_runtime(_definition(), lock=_lock_with_torch("2.14.0", "2.5.1"))
     make_runtime(_definition(id="fine"), lock=_lock_with_torch("2.10.0+cu126", "2.14.0"))
-    found = runtimes.discover([runtime_root])
+    found = discover([runtime_root])
     assert list(found.runtimes) == ["fine"]
     [problems] = found.problems.values()
     assert problems == [
@@ -240,7 +255,7 @@ def test_a_lock_holding_torch_older_than_2_10_is_refused(
 ) -> None:
     """CVE-2026-24747: before 2.10, torch's weights_only unpickler could corrupt memory."""
     make_runtime(_definition(), lock=_lock_with_torch("2.9.1+cu126"))
-    found = runtimes.discover([runtime_root])
+    found = discover([runtime_root])
     assert found.runtimes == {}
     [problems] = found.problems.values()
     assert problems[0].startswith("uv.lock holds torch 2.9.1+cu126; every runtime needs torch 2.10")
@@ -249,21 +264,21 @@ def test_a_lock_holding_torch_older_than_2_10_is_refused(
 def test_two_runtimes_cannot_share_an_id(tmp_path: Path) -> None:
     write_runtime(tmp_path / "a", _definition())
     write_runtime(tmp_path / "b", _definition())
-    found = runtimes.discover([tmp_path / "a", tmp_path / "b"])
+    found = discover([tmp_path / "a", tmp_path / "b"])
     assert list(found.runtimes) == ["demo"]
     [problems] = found.problems.values()
     assert problems[0].startswith("id 'demo' is already used by")
 
 
 def test_versions_compare_as_numbers() -> None:
-    assert runtimes.version_tuple("12.10") > runtimes.version_tuple("12.9")
-    assert runtimes.version_tuple("560.94") > runtimes.version_tuple("528.33")
-    assert runtimes.version_tuple("2.6.0+cu126") == (2, 6, 0)
+    assert reading.version_tuple("12.10") > reading.version_tuple("12.9")
+    assert reading.version_tuple("560.94") > reading.version_tuple("528.33")
+    assert reading.version_tuple("2.6.0+cu126") == (2, 6, 0)
 
 
 def test_the_hashes_do_not_change_with_line_endings(make_runtime: MakeRuntime) -> None:
     folder = make_runtime(_definition())
-    runtime = runtimes.load(folder / "runtime.json")
+    runtime = load(folder / "runtime.json")
     before = runtime.hashes()
     lock = folder / "uv.lock"
     lf = lock.read_bytes()
@@ -326,12 +341,12 @@ def _machine(
     }
 
 
-def _runtime(root: Path, **over: Any) -> runtimes.RuntimeDef:
+def _runtime(root: Path, **over: Any) -> RuntimeDef:
     folder = write_runtime(root, _definition(**{"builds": AC1_BUILDS, **over}))
-    return runtimes.load(folder / "runtime.json")
+    return load(folder / "runtime.json")
 
 
-def _why(p: runtimes.Plan, build: str) -> str:
+def _why(p: Plan, build: str) -> str:
     return next(row["why"] for row in p.considered if row["build"] == build)
 
 
@@ -342,14 +357,14 @@ def _why(p: runtimes.Plan, build: str) -> str:
 def test_the_plan_picks_the_build_each_machine_can_run(
     tmp_path: Path, capability: str | None, driver: str | None, build: str
 ) -> None:
-    p = runtimes.plan(_runtime(tmp_path), _machine(capability, driver))
+    p = plan(_runtime(tmp_path), _machine(capability, driver))
     assert (p.build, p.blocked) == (build, None)
     assert [row["build"] for row in p.considered if row["chosen"]] == [build]
 
 
 def test_a_runtime_without_a_cpu_build_is_blocked_by_an_old_driver_and_says_so(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path, builds=AC1_BUILDS[:2])
-    p = runtimes.plan(runtime, _machine("6.1", "470.82.01"))
+    p = plan(runtime, _machine("6.1", "470.82.01"))
     assert p.build is None
     assert p.blocked == (
         "No build of Demo runs on this machine: "
@@ -360,9 +375,9 @@ def test_a_runtime_without_a_cpu_build_is_blocked_by_an_old_driver_and_says_so(t
 
 def test_a_refused_build_says_whether_the_card_or_the_driver_refused_it(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
-    old_card = runtimes.plan(runtime, _machine("6.1", "580.88"))
+    old_card = plan(runtime, _machine("6.1", "580.88"))
     assert _why(old_card, "cu130") == "cu130 needs compute capability 7.5 or higher; this card is 6.1"
-    old_driver = runtimes.plan(runtime, _machine("8.6", "560.94"))
+    old_driver = plan(runtime, _machine("8.6", "560.94"))
     assert _why(old_driver, "cu130") == "cu130 needs NVIDIA driver 580 or newer; this machine has 560.94"
     assert _why(old_driver, "cpu") == "a GPU build runs here"
 
@@ -375,18 +390,18 @@ def test_no_gpu_name_reaches_a_plan(tmp_path: Path) -> None:
         _machine("6.1", "470.00"),
         _machine(),
     ):
-        assert NAME not in json.dumps(runtimes.plan(runtime, machine).to_json())
+        assert NAME not in json.dumps(plan(runtime, machine).to_json())
 
 
 def test_capabilities_compare_as_numbers_and_a_bare_major_covers_all_of_it(tmp_path: Path) -> None:
     builds = [{"name": "gpu", "vendor": "nvidia", "min_capability": "12.9", "max_capability": "13"}]
     runtime = _runtime(tmp_path, builds=builds)
-    assert runtimes.plan(runtime, _machine("12.10", "600")).build == "gpu"
-    assert runtimes.plan(runtime, _machine("13.9", "600")).build == "gpu"
-    refused = runtimes.plan(runtime, _machine("12.8", "600"))
+    assert plan(runtime, _machine("12.10", "600")).build == "gpu"
+    assert plan(runtime, _machine("13.9", "600")).build == "gpu"
+    refused = plan(runtime, _machine("12.8", "600"))
     assert refused.blocked is not None and "needs compute capability 12.9 or higher" in refused.blocked
     exact = _runtime(tmp_path / "x", builds=[{"name": "gpu", "vendor": "nvidia", "max_capability": "12.0"}])
-    assert runtimes.plan(exact, _machine("12.1", "600")).blocked == (
+    assert plan(exact, _machine("12.1", "600")).blocked == (
         "No build of Demo runs on this machine: gpu covers compute capability up to 12.0; this card is 12.1."
     )
 
@@ -397,17 +412,17 @@ def test_driver_floors_can_differ_by_os(tmp_path: Path) -> None:
         {"name": "cpu", "vendor": "none"},
     ]
     runtime = _runtime(tmp_path, builds=builds)
-    assert runtimes.plan(runtime, _machine("6.1", "525.60.13", os="linux")).build == "cu126"
-    windows = runtimes.plan(runtime, _machine("6.1", "528.10", os="windows"))
+    assert plan(runtime, _machine("6.1", "525.60.13", os="linux")).build == "cu126"
+    windows = plan(runtime, _machine("6.1", "528.10", os="windows"))
     assert windows.build == "cpu"
     assert _why(windows, "cu126") == "cu126 needs NVIDIA driver 528.33 or newer; this machine has 528.10"
-    assert _why(runtimes.plan(runtime, _machine("6.1", "600", os="macos")), "cu126") == (
+    assert _why(plan(runtime, _machine("6.1", "600", os="macos")), "cu126") == (
         "cu126 is not offered on macos"
     )
 
 
 def test_a_card_too_old_to_report_its_capability_gets_the_processor_build(tmp_path: Path) -> None:
-    p = runtimes.plan(
+    p = plan(
         _runtime(tmp_path),
         _machine(
             None,
@@ -424,7 +439,7 @@ def test_with_several_cards_the_plan_is_for_the_one_with_the_most_memory(tmp_pat
         {"index": 0, "vendor": "nvidia", "name": NAME, "capability": "6.1", "vram_total_mb": 8590},
         {"index": 1, "vendor": "nvidia", "name": NAME, "capability": "8.6", "vram_total_mb": 12885},
     ]
-    p = runtimes.plan(_runtime(tmp_path), _machine(driver="580.88", gpus=gpus))
+    p = plan(_runtime(tmp_path), _machine(driver="580.88", gpus=gpus))
     assert p.build == "cu130"
     assert "Planned for card 1 of 2, the one with the most memory." in p.notes
 
@@ -439,7 +454,7 @@ def test_a_required_extension_blocks_the_plan_and_says_what_it_needs(tmp_path: P
             "why": "PyTorch attention is used instead",
         },
     ]
-    p = runtimes.plan(_runtime(tmp_path, extensions=extensions), _machine("8.6", "580.88"))
+    p = plan(_runtime(tmp_path, extensions=extensions), _machine("8.6", "580.88"))
     assert p.build is None
     assert p.blocked == (
         "Demo needs raster (texture baking), which has to be compiled: that takes a C++ compiler. "
@@ -451,7 +466,7 @@ def test_a_required_extension_blocks_the_plan_and_says_what_it_needs(tmp_path: P
 
 def test_an_optional_extension_is_noted_and_does_not_block(tmp_path: Path) -> None:
     extensions = [{"package": "flash", "class": "optional", "for": "fast attention", "why": "slower without"}]
-    p = runtimes.plan(_runtime(tmp_path, extensions=extensions), _machine("8.6", "580.88"))
+    p = plan(_runtime(tmp_path, extensions=extensions), _machine("8.6", "580.88"))
     assert (p.build, p.blocked) == ("cu130", None)
     assert p.notes == ["flash (fast attention) is left out: slower without"]
 
@@ -459,35 +474,35 @@ def test_an_optional_extension_is_noted_and_does_not_block(tmp_path: Path) -> No
 def test_too_little_free_disk_blocks_a_build_that_is_not_installed(tmp_path: Path) -> None:
     builds = [{**AC1_BUILDS[1], "disk_mb": 6000}, {"name": "cpu", "vendor": "none", "disk_mb": 1500}]
     runtime = _runtime(tmp_path, builds=builds)
-    short = runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000))
+    short = plan(runtime, _machine("6.1", "560.94", disk=3000))
     assert short.blocked == "cu126 needs about 6000 MB, and the data root has 3000 MB free."
-    assert runtimes.plan(runtime, _machine("6.1", "560.94", disk=3000), installed={"cu126"}).build == "cu126"
-    assert runtimes.plan(runtime, _machine("6.1", "560.94", disk=7000)).build == "cu126"
+    assert plan(runtime, _machine("6.1", "560.94", disk=3000), installed={"cu126"}).build == "cu126"
+    assert plan(runtime, _machine("6.1", "560.94", disk=7000)).build == "cu126"
 
 
 def test_the_processor_build_keeps_to_its_systems_too(tmp_path: Path) -> None:
     builds = [AC1_BUILDS[1], {"name": "cpu", "vendor": "none", "os": ["linux"]}]
     runtime = _runtime(tmp_path, builds=builds)
-    assert runtimes.plan(runtime, _machine(os="linux")).build == "cpu"
-    windows = runtimes.plan(runtime, _machine(os="windows"))
+    assert plan(runtime, _machine(os="linux")).build == "cpu"
+    windows = plan(runtime, _machine(os="windows"))
     assert windows.build is None
     assert windows.blocked is not None and "cpu runs on linux only" in windows.blocked
 
 
 def test_a_driver_version_that_is_not_a_version_counts_as_unknown(tmp_path: Path) -> None:
-    p = runtimes.plan(_runtime(tmp_path), _machine("8.6", "[N/A]"))
+    p = plan(_runtime(tmp_path), _machine("8.6", "[N/A]"))
     assert p.build == "cpu"
     assert _why(p, "cu130") == "cu130 needs NVIDIA driver 580 or newer, and the driver version is unknown"
 
 
 def test_a_definition_is_read_again_only_when_its_files_change(make_runtime: MakeRuntime) -> None:
     folder = make_runtime(_definition())
-    first = runtimes.load(folder / "runtime.json")
-    assert runtimes.load(folder / "runtime.json") is first
+    first = load(folder / "runtime.json")
+    assert load(folder / "runtime.json") is first
     (folder / "uv.lock").write_text(
         'version = 1\nrequires-python = ">=3.12"\n', encoding="utf-8", newline="\n"
     )
-    assert runtimes.load(folder / "runtime.json") is not first
+    assert load(folder / "runtime.json") is not first
 
 
 @pytest.mark.parametrize(
@@ -507,8 +522,8 @@ def test_the_torch_runtime_follows_the_owners_rule(
 ) -> None:
     """Spec 001: cu126 below compute 7.5 or on a driver older than 580, otherwise cu130. The floor
     is torch 2.10, and every build is locked at the same torch."""
-    torch = runtimes.discover([RUNTIMES_DIR]).runtimes["torch"]
-    assert runtimes.plan(torch, _machine(capability, driver)).build == build
+    torch = discover([RUNTIMES_DIR]).runtimes["torch"]
+    assert plan(torch, _machine(capability, driver)).build == build
     lock = tomllib.loads(torch.lock_path.read_text(encoding="utf-8"))
     versions = {p["version"] for p in lock["package"] if p["name"] == "torch"}
     assert versions == {"2.14.0+cpu", "2.14.0+cu126", "2.14.0+cu130"}

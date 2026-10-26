@@ -15,26 +15,21 @@ from typing import Any
 import pytest
 from fixtures import fit_node, machines
 
-from oneframe import memory as mem
 from oneframe.cache import Cache
 from oneframe.graph import Graph, plan
 from oneframe.manifest import Manifest, ManifestError, parse
-from oneframe.memory import (
-    Device,
-    Fit,
-    Formula,
-    Learned,
+from oneframe.memory.estimate import Device, Learned, Target, estimate, settings_hash
+from oneframe.memory.fit import Fit, can_retry, fit
+from oneframe.memory.learned import (
+    RECENT_RATIOS,
+    RECENT_SETTINGS,
+    STORE_ENTRIES,
+    STORE_VERSION,
     LearnedStore,
-    Settings,
     StoreKey,
-    Target,
-    Term,
-    estimate,
-    fit,
-    margin,
-    read_settings,
-    settings_hash,
 )
+from oneframe.memory.model import Formula, Term
+from oneframe.memory.settings import Settings, margin, read_settings
 from oneframe.registry import Registry
 
 SOURCE = fit_node.SOURCE
@@ -142,13 +137,14 @@ def test_precision_is_set_by_the_graph_and_is_part_of_the_cache_key(tmp_path: Pa
 
 
 def test_where_each_precision_runs() -> None:
-    from oneframe.memory import Precision
+    from oneframe.memory.model import Precision
 
     fp16 = Precision("fp16", "6.0", False, 2)
     anywhere = Precision("fp32", None, True, 4)
     assert fp16.runs_on_card("6.1") and fp16.runs_on_card("10.0") and not fp16.runs_on_card("5.2")
     assert not fp16.runs_on_card(None)  # a card whose capability is unknown
     assert anywhere.runs_on_card(None)
+    assert fp16.runs_on_card("6")  # "6" is "6.0": capabilities compare as runtimes' versions do
 
 
 def test_unknown_figures_are_null_with_a_source(tmp_path: Path) -> None:
@@ -507,7 +503,7 @@ def test_settings_that_are_not_understood_stay_at_their_defaults_and_say_so(tmp_
 
 
 def _target(profile: dict[str, Any]) -> Target:
-    """The card the runtime's plan picks: the one with the most memory (runtimes._card)."""
+    """The card the runtime's plan picks: the one with the most memory (runtimes.plan.planned_card)."""
     gpus = profile["gpus"]
     return Target(card=max(gpus, key=lambda g: g["vram_total_mb"])["index"] if gpus else None)
 
@@ -617,7 +613,7 @@ def test_ac2_a_setting_the_graph_sets_is_tried_anyway(tmp_path: Path) -> None:
     assert got.outcome == "tried_anyway" and got.device == "cuda" and got.applied == (0, 1, 2)
     assert got.warning is not None and got.warning["kind"] == "tried_anyway"
     assert {"change": 3, "why": "the graph sets resolution"} in got.skipped
-    assert not mem.can_retry(got)
+    assert not can_retry(got)
 
 
 def test_ac2_a_chunk_size_the_graph_sets_moves_the_node_to_the_processor(tmp_path: Path) -> None:
@@ -663,7 +659,7 @@ def test_ac2_fit_off_runs_at_the_values_on_the_first_device(tmp_path: Path) -> N
     got = _fit(tmp_path, "8 GB, compute 6.1, 1.5 GB held", settings=Settings(fit="off"))
     assert (got.outcome, got.device, got.applied) == ("off", "cuda", ())
     assert got.budget == pytest.approx(5389)
-    assert not mem.can_retry(got)
+    assert not can_retry(got)
 
 
 def test_ac2_a_learned_correction_changes_the_fit(tmp_path: Path) -> None:
@@ -677,7 +673,7 @@ def test_ac2_a_node_without_a_model_runs_at_its_values_on_its_first_device(tmp_p
     got = _fit(tmp_path, "8 GB, compute 6.1, 1.5 GB held", model=False)
     assert (got.outcome, got.device, got.applied) == ("unfitted", "cuda", ())
     assert got.budget == pytest.approx(5389) and got.to_json()["estimate"] == "unknown"
-    assert not mem.can_retry(got)
+    assert not can_retry(got)
     off_card = _fit(tmp_path, "no GPU, 32 GB", model=False)
     assert off_card.device == "cpu" and off_card.warning is not None and off_card.warning["kind"] == "slow"
 
@@ -716,7 +712,7 @@ def test_an_unknown_figure_ends_the_walk_where_it_is_reached(tmp_path: Path) -> 
     )
     assert (got.outcome, got.device, got.applied) == ("unknown", "cuda", (0, 1, 2))
     assert got.warning is not None and "not known" in got.warning["why"]
-    assert mem.can_retry(got)
+    assert can_retry(got)
 
 
 def test_free_memory_that_cannot_be_read_ends_the_walk(tmp_path: Path) -> None:
@@ -756,7 +752,7 @@ def test_the_slow_warning_says_what_its_time_is_based_on(tmp_path: Path) -> None
 
 def test_a_retry_drops_the_upgrades(tmp_path: Path) -> None:
     first = _fit(tmp_path, "24 GB, compute 8.9")
-    assert first.upgrades == (0,) and mem.can_retry(first)
+    assert first.upgrades == (0,) and can_retry(first)
     again = _fit(tmp_path, "24 GB, compute 8.9", after=first)
     assert (again.outcome, again.device, again.applied, again.upgrades) == ("fits", "cuda", (), ())
 
@@ -933,21 +929,21 @@ def test_ac4_a_new_version_a_new_lock_or_forget_drops_what_was_learned(tmp_path:
 
 def test_ac4_the_store_keeps_its_bound(tmp_path: Path) -> None:
     store = LearnedStore(tmp_path)
-    for i in range(mem.STORE_ENTRIES + 20):
+    for i in range(STORE_ENTRIES + 20):
         _run(store, 1.1, key=StoreKey(f"node.{i}", "1", "m", "l"))
     data = json.loads((tmp_path / "memory" / "learned.json").read_text(encoding="utf-8"))
-    assert len(data["entries"]) == mem.STORE_ENTRIES
+    assert len(data["entries"]) == STORE_ENTRIES
     assert store.view(StoreKey("node.0", "1", "m", "l")) == Learned()  # the least recently used went
-    assert store.view(StoreKey(f"node.{mem.STORE_ENTRIES + 19}", "1", "m", "l")).corrections
+    assert store.view(StoreKey(f"node.{STORE_ENTRIES + 19}", "1", "m", "l")).corrections
 
 
 def test_ac4_recent_runs_and_settings_only(tmp_path: Path) -> None:
     store = LearnedStore(tmp_path)
     _run(store, 2.0)
-    for _ in range(mem.RECENT_RATIOS):
+    for _ in range(RECENT_RATIOS):
         _run(store, 1.1)
     assert store.view(KEY).corrections == {"cuda:6.1": pytest.approx(1.1)}  # the 2.0 is no longer recent
-    for i in range(mem.RECENT_SETTINGS + 4):
+    for i in range(RECENT_SETTINGS + 4):
         store.record(
             KEY,
             "cpu",
@@ -960,7 +956,7 @@ def test_ac4_recent_runs_and_settings_only(tmp_path: Path) -> None:
         )
     learned = store.view(KEY)
     cpu = [s for (kind, s) in learned.peaks if kind == "cpu"]
-    assert len(cpu) == mem.RECENT_SETTINGS and "s0" not in cpu and f"s{mem.RECENT_SETTINGS + 3}" in cpu
+    assert len(cpu) == RECENT_SETTINGS and "s0" not in cpu and f"s{RECENT_SETTINGS + 3}" in cpu
     assert learned.seconds[("cpu", "s19")] == 19
 
 
@@ -997,7 +993,7 @@ def test_a_store_file_that_cannot_be_read_starts_empty(tmp_path: Path) -> None:
     assert LearnedStore(tmp_path).view(KEY) == Learned()
     store = LearnedStore(tmp_path)
     _run(store, 1.2)
-    assert json.loads(path.read_text(encoding="utf-8"))["version"] == mem.STORE_VERSION
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == STORE_VERSION
     # A newer format is not read either, and since spec 006 it is left as it is, not replaced.
     path.write_text(json.dumps({"version": 99, "entries": {"x": {}}}), encoding="utf-8")
     before = path.read_bytes()

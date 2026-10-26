@@ -10,15 +10,8 @@ From the [review of 2026-10-12](reviews/2026-10-12.md), sections 3 and 4, which 
 clean up before the first model node. Each item is in the approved spec named beside it. Nothing a
 person sees changes, except where a spec's answered questions say.
 
-- **Modules that are several:**
-    - `oneframe/memory.py` is five: the model and its parser, settings, devices and the estimate,
-      the fit, and the learned store (012);
-    - `oneframe/runtimes.py` is three: definitions, the plan, the manager (012);
-    - `oneframe/manifest.py` imports all of memory, the learned store and settings included, to
-      parse a manifest (012).
 - **"Nothing hard-coded"** (013): `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
   002's AC8 scenario inside the package (review of 2026-10-02, 4.10).
-- **Long functions:** the runtime install (179 lines) and the manifest's `parse` (118) (012).
 - **Tests:**
     - shared helpers for the model tests (014);
     - the footprint test tells our writes from another program's without checking less (it failed

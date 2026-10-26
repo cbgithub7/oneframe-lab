@@ -23,7 +23,7 @@ from oneframe.graph import Graph
 from oneframe.models import transport
 from oneframe.node import failures
 from oneframe.node.job import Job
-from oneframe.runtimes import InstallRefused, RuntimeMissing
+from oneframe.runtimes.manager import InstallRefused, RuntimeMissing
 from oneframe.scheduler import Scheduler
 from oneframe.server import Engine
 

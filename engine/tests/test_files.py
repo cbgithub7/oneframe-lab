@@ -29,7 +29,7 @@ from oneframe.files import (
     write_json,
     write_text,
 )
-from oneframe.memory import STORE_VERSION, LearnedStore, StoreKey
+from oneframe.memory.learned import STORE_VERSION, LearnedStore, StoreKey
 
 
 def test_a_write_lands_whole_and_leaves_no_temporary(tmp_path: Path) -> None:

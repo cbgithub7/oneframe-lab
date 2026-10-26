@@ -14,12 +14,12 @@ from typing import Any
 import pytest
 from conftest import AMPERE, NO_GPU, Events, HostRuntimes, MakeNode
 
-from oneframe import runtime_install
 from oneframe.cache import KEY_VERSION, Cache
 from oneframe.files import temporary_for
 from oneframe.graph import Graph
 from oneframe.manifest import Manifest, parse
-from oneframe.runtimes import Runtimes
+from oneframe.runtimes import install as runtime_install
+from oneframe.runtimes.manager import Runtimes
 from oneframe.scheduler import Scheduler
 
 NODE = {

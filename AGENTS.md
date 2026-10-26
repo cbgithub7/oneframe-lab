@@ -104,8 +104,9 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 ## Commands
 
 - `npm run check`: eslint, tsc (JSDoc types, `// @ts-check` in every JS file), node tests, and
-  the docs check (every repo path the docs name exists, and no spec being worked on is over 200
-  lines, or over the length the owner allowed it)
+  the docs check (every link in the docs leads somewhere, every repo path they name exists outside
+  specs and the dated reviews in `docs/reviews/`, and no spec being worked on is over 200 lines,
+  or over the length the owner allowed it)
 - `npm run engine:check`: ruff, ruff format, pyright, pytest
 - `npm run versions`: version policy
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it

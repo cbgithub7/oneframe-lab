@@ -84,8 +84,10 @@ def parse(spec: str | dict[str, Any], known: dict[str, PortType] | None = None) 
         unknown = set(extra) - {"optional", "doc", "trust"}
         if unknown:
             raise PortError(f"Unknown port keys {sorted(unknown)} in {spec!r}")
-    else:
+    elif isinstance(spec, str):
         text = spec
+    else:
+        raise PortError(f"A port should be a type, such as Image, or an object with one: {spec!r}")
     match = _SPEC.match(text)
     if not match:
         raise PortError(f"Cannot read port spec {text!r}; expected Type[facet=value, ...].")
