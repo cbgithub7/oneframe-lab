@@ -61,15 +61,21 @@ export function backtickPaths(text) {
 export const SPEC_MAX_LINES = 200;
 
 /**
- * Why a spec is too long, or null: only a spec not yet done or dropped is held to the cap.
+ * Why a spec is too long, or null: only a spec not yet done or dropped is held to the cap, or to
+ * the length the owner allowed it (`Length allowed: N lines`, AGENTS.md rule 1).
  * @param {string} text the spec.md
  * @returns {string | null}
  */
 export function specTooLong(text) {
   const status = /^Status:\s*(.*)$/m.exec(text)?.[1] ?? "";
   if (/^(done|dropped)\b/i.test(status)) return null;
+  const allowed = /^Length allowed:\s*(\d+) lines\b/m.exec(text);
+  const cap = allowed ? Number(allowed[1]) : SPEC_MAX_LINES;
   const lines = text.replace(/\n$/, "").split("\n").length;
-  return lines > SPEC_MAX_LINES ? `is ${lines} lines; a spec being worked on is at most ${SPEC_MAX_LINES}` : null;
+  if (lines <= cap) return null;
+  return allowed
+    ? `is ${lines} lines; the owner allowed it ${cap}`
+    : `is ${lines} lines; a spec being worked on is at most ${SPEC_MAX_LINES}`;
 }
 
 /**

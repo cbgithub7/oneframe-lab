@@ -16,6 +16,8 @@ else.
 One gate: the owner approves the spec once, design included. A spec is a contract, not a log:
 
 - **Length.** Aim for 150 lines. One not yet done is never longer than 200: `npm run check` fails it.
+  The owner may allow more, case by case, when the design cannot fit (`AGENTS.md`, rule 1): the
+  spec then says `Length allowed: N lines (the owner, <date>)` under its status.
 - **Acceptance criteria.** At most 8, each one check. A criterion that hides a list of further
   checks is several criteria.
 - **The limits are on the document, never on the design.** Work that needs more than one spec
