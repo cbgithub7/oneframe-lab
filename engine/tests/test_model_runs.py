@@ -24,7 +24,7 @@ from oneframe.layout import Layout
 from oneframe.models.runs import READING, in_use
 from oneframe.models.store import Store
 from oneframe.registry import discover
-from oneframe.runtimes import Runtimes
+from oneframe.runtimes.manager import Runtimes
 from oneframe.scheduler import Scheduler, for_root
 
 SMALL = b"small weights " * 4000

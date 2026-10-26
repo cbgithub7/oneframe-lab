@@ -503,7 +503,7 @@ def test_settings_that_are_not_understood_stay_at_their_defaults_and_say_so(tmp_
 
 
 def _target(profile: dict[str, Any]) -> Target:
-    """The card the runtime's plan picks: the one with the most memory (runtimes._card)."""
+    """The card the runtime's plan picks: the one with the most memory (runtimes.plan.planned_card)."""
     gpus = profile["gpus"]
     return Target(card=max(gpus, key=lambda g: g["vram_total_mb"])["index"] if gpus else None)
 

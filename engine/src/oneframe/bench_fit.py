@@ -58,7 +58,7 @@ from oneframe.memory.settings import Settings
 from oneframe.memory.settings import margin as margin_for
 from oneframe.processes import Child
 from oneframe.registry import Registry, discover
-from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, RuntimeSide, find_uv
+from oneframe.runtimes.manager import InstallRefused, RuntimeMissing, Runtimes, RuntimeSide, find_uv
 from oneframe.scheduler import Scheduler, for_root
 from oneframe.scratch import for_tool
 

@@ -6,9 +6,10 @@ from pathlib import Path
 import pytest
 from conftest import write_runtime
 
-from oneframe import BUILTIN_NODES_DIR, ports, runtimes
+from oneframe import BUILTIN_NODES_DIR, ports
 from oneframe.manifest import ManifestError, load, parse
 from oneframe.registry import discover
+from oneframe.runtimes.definition import discover as discover_runtimes
 
 
 def test_every_port_type_parses_bare_and_its_facets_are_known() -> None:
@@ -196,7 +197,7 @@ def test_a_malformed_definition_is_a_problem_never_a_crash(
         for name in ("good", "bad"):
             write_runtime(tmp_path, {"id": name, "title": name, "python": "3.12", "builds": [PROCESSOR]})
         (tmp_path / "bad" / "runtime.json").write_bytes(data)
-        found = runtimes.discover([tmp_path])
+        found = discover_runtimes([tmp_path])
         good, problems = list(found.runtimes), found.problems
         assert good == ["good"]
     else:

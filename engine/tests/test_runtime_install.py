@@ -23,18 +23,20 @@ from conftest import (
 )
 from fixtures.hosts import Hosts
 
-from oneframe import runtime_install, runtimes
 from oneframe.cache import Cache
 from oneframe.graph import Graph
 from oneframe.layout import Layout
 from oneframe.registry import discover
+from oneframe.runtimes import install as runtime_install
+from oneframe.runtimes.definition import load
+from oneframe.runtimes.manager import InstallRefused, RuntimeMissing, Runtimes
 from oneframe.scheduler import Scheduler
 
 
 def _manager(
     data: Path, tiny: Path, uv_exe: str, uv_home: Path, profile: dict[str, Any] = NO_GPU
-) -> runtimes.Runtimes:
-    return runtimes.Runtimes(
+) -> Runtimes:
+    return Runtimes(
         data, [tiny.parent], uv=uv_exe, profile=lambda: profile, uv_home=uv_home, transfer=TRANSFER
     )
 
@@ -147,7 +149,7 @@ def test_a_changed_lock_makes_a_runtime_out_of_date(
 
     [row] = manager.list()["runtimes"]
     assert row["status"] == "out_of_date"
-    with pytest.raises(runtimes.RuntimeMissing) as caught:
+    with pytest.raises(RuntimeMissing) as caught:
         manager.python_for("tiny")
     assert caught.value.reason == "out_of_date"
     assert "Install it again to rebuild it" in str(caught.value)
@@ -179,7 +181,7 @@ def test_a_runtime_copied_to_another_root_reads_as_moved_and_installs_again(
     shutil.copytree(first / "runtimes", second / "runtimes", symlinks=True)
     manager = _manager(second, tiny, uv_exe, uv_home)
     assert manager.list()["runtimes"][0]["status"] == "moved"
-    with pytest.raises(runtimes.RuntimeMissing) as caught:
+    with pytest.raises(RuntimeMissing) as caught:
         manager.python_for("tiny")
     assert caught.value.reason == "moved"
 
@@ -215,7 +217,7 @@ def test_remove_deletes_only_that_runtime(tmp_path: Path, tiny: Path, uv_exe: st
     assert sorted(p.name for p in python_home.iterdir()) == pythons_before  # the venv's link was not followed
     assert manager.list()["runtimes"][0]["status"] == "not_installed"
     assert manager.remove("tiny") == {"runtime": "tiny", "removed": None}
-    with pytest.raises(runtimes.RuntimeMissing, match="No runtime called 'elsewhere'"):
+    with pytest.raises(RuntimeMissing, match="No runtime called 'elsewhere'"):
         manager.remove("elsewhere")
 
 
@@ -228,7 +230,7 @@ def test_remove_refuses_a_runtime_folder_that_is_a_link(
     (precious / "cpu").mkdir(parents=True)
     (data / "runtimes").mkdir(parents=True)
     (data / "runtimes" / "tiny").symlink_to(precious, target_is_directory=True)
-    with pytest.raises(runtimes.InstallRefused, match="not a runtime folder"):
+    with pytest.raises(InstallRefused, match="not a runtime folder"):
         _manager(data, tiny, uv_exe, uv_home).remove("tiny")
     assert (precious / "cpu").is_dir()
 
@@ -251,7 +253,7 @@ def test_uv_folders_are_the_layouts_unless_named(
         (named, named / "cache", named / "python"),
     ):
         seen.clear()
-        manager = runtimes.Runtimes(data, [tiny.parent], uv=uv_exe, profile=lambda: NO_GPU, uv_home=uv_home)
+        manager = Runtimes(data, [tiny.parent], uv=uv_exe, profile=lambda: NO_GPU, uv_home=uv_home)
         assert manager.install("tiny") is None
         [env] = seen
         assert runtime_install.same_path(env["UV_CACHE_DIR"], cache)
@@ -287,12 +289,12 @@ def test_stop_ends_an_install_without_a_marker_and_frees_the_slot(
     claimed = manager.begin_install("tiny")
     assert claimed is not None and manager.installing() == "tiny"
     assert manager.list()["runtimes"][0]["status"] == "installing"
-    with pytest.raises(runtimes.RuntimeMissing) as caught:
+    with pytest.raises(RuntimeMissing) as caught:
         manager.python_for("tiny")
     assert caught.value.reason == "installing"
-    with pytest.raises(runtimes.InstallRefused, match="one at a time"):
+    with pytest.raises(InstallRefused, match="one at a time"):
         manager.begin_install("tiny")
-    with pytest.raises(runtimes.InstallRefused, match="being installed"):
+    with pytest.raises(InstallRefused, match="being installed"):
         manager.remove("tiny")
 
     assert manager.stop("tiny") and not manager.stop("other")
@@ -305,20 +307,20 @@ def test_stop_ends_an_install_without_a_marker_and_frees_the_slot(
 
 def test_only_the_planned_build_is_installed(tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path) -> None:
     manager = _manager(tmp_path / "data", tiny, uv_exe, uv_home)
-    with pytest.raises(runtimes.InstallRefused) as caught:
+    with pytest.raises(InstallRefused) as caught:
         manager.begin_install("tiny", "cu130")
     assert str(caught.value) == (
         "This machine runs the cpu build of 'tiny'; only the planned build is installed. "
         "cu130 needs an NVIDIA card, and none was found"
     )
-    with pytest.raises(runtimes.InstallRefused, match="no build called 'rocm'"):
+    with pytest.raises(InstallRefused, match="no build called 'rocm'"):
         manager.begin_install("tiny", "rocm")
     assert manager.installing() is None
 
 
 def test_without_uv_an_install_is_refused_and_listing_still_works(tmp_path: Path, tiny: Path) -> None:
-    manager = runtimes.Runtimes(tmp_path / "data", [tiny.parent], uv=None, profile=lambda: NO_GPU)
-    with pytest.raises(runtimes.InstallRefused, match="uv was not found"):
+    manager = Runtimes(tmp_path / "data", [tiny.parent], uv=None, profile=lambda: NO_GPU)
+    with pytest.raises(InstallRefused, match="uv was not found"):
         manager.begin_install("tiny")
     assert manager.list()["runtimes"][0]["status"] == "not_installed"
 
@@ -477,15 +479,15 @@ def test_with_several_cards_a_node_runs_on_the_card_the_plan_was_made_for(tmp_pa
             {"index": 1, "vendor": "nvidia", "name": "b", "capability": "8.9", "vram_total_mb": 24000},
         ],
     }
-    several = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: two)
+    several = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: two)
     assert several.env_for("tiny") == {
         "ONEFRAME_TINY": "on",
         "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
         "CUDA_VISIBLE_DEVICES": "1",
     }
-    one = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE)
+    one = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE)
     assert one.env_for("tiny") == {"ONEFRAME_TINY": "on"}
-    none = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU)
+    none = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU)
     assert none.env_for("tiny") == {"ONEFRAME_TINY": "on"}
 
 
@@ -497,16 +499,14 @@ def test_the_device_target_is_the_planned_card_and_the_lock(tmp_path: Path, tiny
             {"index": 1, "vendor": "nvidia", "name": "b", "capability": "8.9", "vram_total_mb": 24000},
         ],
     }
-    several = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: two).device_target("tiny")
-    one = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE).device_target("tiny")
-    none = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU).device_target("tiny")
+    several = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: two).device_target("tiny")
+    one = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE).device_target("tiny")
+    none = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU).device_target("tiny")
     assert (several.card, one.card, none.card) == (1, 0, None)  # the processor build has no card
-    lock = runtimes.load(tiny / "runtime.json").hashes()["lock_sha256"][:16]
+    lock = load(tiny / "runtime.json").hashes()["lock_sha256"][:16]
     assert one.lock == f"cu130:{lock}" and none.lock == f"cpu:{lock}"
     (tiny / "uv.lock").write_text(
         (tiny / "uv.lock").read_text(encoding="utf-8") + "\n# changed\n", encoding="utf-8"
     )
-    changed = runtimes.Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE).device_target(
-        "tiny"
-    )
+    changed = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE).device_target("tiny")
     assert changed.lock != one.lock  # a new lock starts what this machine learns over

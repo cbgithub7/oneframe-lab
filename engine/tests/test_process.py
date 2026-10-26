@@ -33,7 +33,7 @@ from oneframe.executors import (
 from oneframe.graph import Graph
 from oneframe.node.job import Job
 from oneframe.processes import alive, wait_gone
-from oneframe.runtimes import NoRuntimes
+from oneframe.runtimes.manager import NoRuntimes
 from oneframe.scheduler import Scheduler
 
 

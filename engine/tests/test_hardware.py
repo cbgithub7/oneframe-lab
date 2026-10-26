@@ -16,7 +16,9 @@ from typing import Any
 import pytest
 from fixtures import machines
 
-from oneframe import RUNTIMES_DIR, hardware, runtimes
+from oneframe import RUNTIMES_DIR, hardware
+from oneframe.runtimes.definition import load
+from oneframe.runtimes.plan import plan
 
 FIXTURES = Path(__file__).parent / "fixtures" / "nvidia-smi"
 MEMINFO = Path(__file__).parent / "fixtures" / "meminfo" / "linux-recorded.txt"
@@ -83,8 +85,8 @@ def test_output_recorded_on_the_owners_gtx_1070_is_read() -> None:
     assert [(g["vendor"], g["capability"]) for g in prof["gpus"]] == [("nvidia", "6.1")]
     assert prof["gpus"][0]["vram_total_mb"] > 8000
     assert prof["driver"] == "582.66"
-    torch = runtimes.load(RUNTIMES_DIR / "torch" / "runtime.json")
-    assert runtimes.plan(torch, prof).build == "cu126"
+    torch = load(RUNTIMES_DIR / "torch" / "runtime.json")
+    assert plan(torch, prof).build == "cu126"
 
 
 def test_no_nvidia_smi_means_no_gpu_not_an_error() -> None:

@@ -1,4 +1,4 @@
-"""Unpacking a runtime's pinned source archive, only inside its own folder (runtime_install.py
+"""Unpacking a runtime's pinned source archive, only inside its own folder (`runtimes/install.py`
 fetches it).
 
 Unpacking trusts nothing in the archive: a member with an absolute path, a drive letter or a `..`

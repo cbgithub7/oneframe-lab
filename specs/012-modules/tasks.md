@@ -27,7 +27,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   same commit, since the docs check reads these paths: the Memory row of `docs/architecture.md`
   names the package, and `docs/roadmap.md` loses its `oneframe/memory.py` line and the manifest's
   import of all of memory.
-- [ ] 6. **The runtimes package.** `oneframe/runtimes/` with `definition`, `plan` (`planned_card`),
+- [x] 6. **The runtimes package.** `oneframe/runtimes/` with `definition`, `plan` (`planned_card`),
   `manager` (with `RuntimeSide` and `NoRuntimes`) and `install` (from `runtime_install.py`), and a
   docstring-only `__init__.py`. Callers and the tests' imports change, the install module imported
   as `runtime_install` where tests patch it. Add

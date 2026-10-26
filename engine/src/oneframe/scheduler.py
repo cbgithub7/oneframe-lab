@@ -65,7 +65,7 @@ from oneframe.models.store import Store
 from oneframe.node import Emit, Value
 from oneframe.node.job import Done, Job
 from oneframe.registry import Registry
-from oneframe.runtimes import NoRuntimes, RuntimeMissing, RuntimeSide
+from oneframe.runtimes.manager import NoRuntimes, RuntimeMissing, RuntimeSide
 
 LOGGER = logging.getLogger(__name__)
 TRUST_ORDER = {"measured": 0, "predicted": 1, "synthetic": 2}

@@ -46,7 +46,7 @@ from oneframe.models.transport import DownloadFailed, fetch
 from oneframe.node import Emit
 
 if TYPE_CHECKING:
-    from oneframe.runtimes import RuntimeDef, Source
+    from oneframe.runtimes.definition import RuntimeDef, Source
 
 MARKER = "oneframe-runtime.json"
 MARKER_FORMAT = 1

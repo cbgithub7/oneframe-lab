@@ -46,7 +46,7 @@ def test_reading_a_manifest_loads_only_the_memory_model() -> None:
     assert not loaded & {"oneframe.files", "oneframe.layout", "oneframe.errors"}, sorted(loaded)
 
 
-@pytest.mark.parametrize("package", ["memory", "models"])
+@pytest.mark.parametrize("package", ["memory", "runtimes", "models"])
 def test_a_package_root_holds_only_its_docstring(package: str) -> None:
     tree = ast.parse((ENGINE_DIR / package / "__init__.py").read_text(encoding="utf-8"))
     assert ast.get_docstring(tree), f"oneframe/{package}/ says what it holds"

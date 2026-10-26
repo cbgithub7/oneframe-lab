@@ -26,7 +26,7 @@ from typing import Any
 
 from oneframe import __version__, hardware, processes
 from oneframe.layout import Layout, default_root
-from oneframe.runtimes import Runtimes, find_uv
+from oneframe.runtimes.manager import Runtimes, find_uv
 
 REPORT_FORMAT = 1
 JOURNALS = 5  # the latest, each to its last JOURNAL_LINES lines

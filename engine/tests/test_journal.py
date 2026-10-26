@@ -15,14 +15,15 @@ from typing import Any
 import pytest
 from conftest import NO_GPU, Events
 
-from oneframe import diagnose, journal, runtime_install
+from oneframe import diagnose, journal
 from oneframe.cache import Cache
 from oneframe.executors import ProcessExecutor
 from oneframe.graph import Graph
 from oneframe.journal import Journal, prune
 from oneframe.layout import Layout
 from oneframe.node.job import Job
-from oneframe.runtimes import Runtimes
+from oneframe.runtimes import install as runtime_install
+from oneframe.runtimes.manager import Runtimes
 from oneframe.scheduler import Scheduler
 
 

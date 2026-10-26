@@ -22,10 +22,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from oneframe import __version__, runtime_install, scratch
+from oneframe import __version__, scratch
 from oneframe.executors import NodeError, run_probe
 from oneframe.layout import Layout, RootRefused, open_root
-from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes, find_uv
+from oneframe.runtimes import install as runtime_install
+from oneframe.runtimes.manager import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
 
 def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:

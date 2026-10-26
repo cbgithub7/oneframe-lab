@@ -21,9 +21,10 @@ from conftest import NO_GPU, TRANSFER, Events, MakeNode, add_source, upstream_ar
 from fixtures import fit_node, machines
 from fixtures.hosts import Hosts, Stall
 
-from oneframe import BUILTIN_NODES_DIR, runtime_install
+from oneframe import BUILTIN_NODES_DIR
 from oneframe.errors import Stopped
 from oneframe.models.store import Store
+from oneframe.runtimes import install as runtime_install
 from oneframe.server import Engine
 
 WAIT_S = 180  # the first install in a session fetches Python 3.11

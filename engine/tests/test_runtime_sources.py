@@ -16,8 +16,8 @@ from fixtures.hosts import Drop, Hosts, NoLength, Stall
 
 from oneframe.errors import Stopped
 from oneframe.models.transport import Policy
-from oneframe.runtime_install import InstallFailed, fetch_source
-from oneframe.runtimes import Source
+from oneframe.runtimes.definition import Source
+from oneframe.runtimes.install import InstallFailed, fetch_source
 
 DATA = bytes(range(256)) * 4096  # 1 MiB
 SHA = hashlib.sha256(DATA).hexdigest()
