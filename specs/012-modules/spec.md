@@ -1,6 +1,6 @@
 # 012: Modules that are several, and long functions
 
-Status: approved
+Status: in progress (tasks 1 to 9 done; in review in [PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47))
 Owner approval: 2026-10-18, every open question answered as recommended
 
 The sixth of eight clean-up specs (007 to 014), from section 3 of the

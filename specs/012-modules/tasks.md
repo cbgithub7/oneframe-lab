@@ -40,5 +40,5 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 8. **Docs and measures:** delete from `docs/roadmap.md` the rest of what this spec takes on
   (`install` and `parse` under "Long functions"); the Manifests and Registry rows of
   `docs/architecture.md`. Measure AC5 and run AC4's command for the PR.
-- [ ] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one
+- [x] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one
   by one, with AC5's measure pasted.
