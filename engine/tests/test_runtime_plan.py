@@ -125,7 +125,7 @@ def test_every_problem_in_a_definition_is_listed_at_once(
         "extensions.c is required, so it needs a needs: what building it takes",
         "extensions.d.class should be one of stand-in, optional, required",
         "sources[0].name should be one folder name",
-        "sources.up.url should be an http(s) address",
+        "sources.up.url should be an https address",
         "sources.up2.sha256 should be 64 lower-case hex digits",
         "env should map names to strings",
         "probe should read file.py:function, with the file in many/",
@@ -185,6 +185,24 @@ def test_a_runtime_id_must_match_its_folder(make_runtime: MakeRuntime, runtime_r
     (folder / "runtime.json").write_text(json.dumps(data), encoding="utf-8")
     [problems] = runtimes.discover([runtime_root]).problems.values()
     assert problems == ["id 'other' should match its folder, demo"]
+
+
+NOT_HTTPS = {
+    "http": "http://example.com/up.tar.gz",
+    "no host": "https:///up.tar.gz",
+    "a port that is not one": "https://example.com:99999/up.tar.gz",
+}
+
+
+@pytest.mark.parametrize("url", list(NOT_HTTPS.values()), ids=list(NOT_HTTPS))
+def test_a_source_that_is_not_https_is_refused(
+    make_runtime: MakeRuntime, runtime_root: Path, url: str
+) -> None:
+    """A source is fetched as model files are, and never over plain http (spec 011, AC7); an
+    address the transport could not fetch is refused when it is read, not when it is installed."""
+    make_runtime(_definition(sources=[{"name": "up", "url": url, "sha256": "0" * 64}]))
+    [problems] = runtimes.discover([runtime_root]).problems.values()
+    assert problems == ["sources.up.url should be an https address"]
 
 
 def test_builds_must_be_one_conflict_set(runtime_root: Path) -> None:

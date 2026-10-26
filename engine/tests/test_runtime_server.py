@@ -17,8 +17,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import NO_GPU, Events, MakeNode, SourceServer, add_source, upstream_archive
+from conftest import NO_GPU, TRANSFER, Events, MakeNode, add_source, upstream_archive
 from fixtures import fit_node, machines
+from fixtures.hosts import Hosts, Stall
 
 from oneframe import BUILTIN_NODES_DIR, runtime_install
 from oneframe.errors import Stopped
@@ -26,6 +27,8 @@ from oneframe.models.store import Store
 from oneframe.server import Engine
 
 WAIT_S = 180  # the first install in a session fetches Python 3.11
+# The engine as a process, trusting the test hosts' CA for downloads.
+SERVE = Path(__file__).parent / "fixtures" / "serve.py"
 
 
 class Server:
@@ -36,8 +39,7 @@ class Server:
         self.proc = subprocess.Popen(
             [
                 sys.executable,
-                "-m",
-                "oneframe.server",
+                str(SERVE),
                 "--data",
                 str(data),
                 "--runtimes",
@@ -111,14 +113,15 @@ class Server:
         self.log.close()
 
 
-def _stalled_source(tiny: Path, server: SourceServer) -> threading.Event:
-    """Give the tiny runtime a source whose download stops halfway until the returned event is set."""
+def _stalled_source(tiny: Path, hosts: Hosts) -> int:
+    """Give the tiny runtime a source whose first download stops halfway and is held there; how
+    many bytes it sends first."""
     archive = upstream_archive()
-    server.files["/up.tar.gz"] = archive
-    release = threading.Event()
-    server.stalled["/up.tar.gz"] = release
-    add_source(tiny, server.url("/up.tar.gz"), archive)
-    return release
+    url = hosts.add_file("/up.tar.gz", archive)
+    half = len(archive) // 2
+    hosts.fault(url, Stall(at=half))
+    add_source(tiny, url, archive)
+    return half
 
 
 def test_the_runtime_methods_work_over_the_server(
@@ -169,9 +172,9 @@ def test_the_runtime_methods_work_over_the_server(
 
 
 def test_a_killed_install_is_not_installed_and_a_second_install_completes(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, source_server: SourceServer
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
 ) -> None:
-    release = _stalled_source(tiny, source_server)
+    half = _stalled_source(tiny, hosts)
     data = tmp_path / "data"
     server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
     build = server.call("runtimes.install", {"runtime": "tiny"})["result"]["build"]
@@ -183,8 +186,6 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
     assert (env / "pyvenv.cfg").is_file()
     assert not (env / runtime_install.MARKER).exists()
 
-    del source_server.stalled["/up.tar.gz"]
-    release.set()
     again = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
     try:
         assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not_installed"
@@ -193,14 +194,15 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
         assert done["event"] == "runtime.done", done
         assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "installed"
         assert (env / runtime_install.MARKER).is_file()
+        assert hosts.requests("files")[-1].headers["range"] == f"bytes={half}-"  # resumed, not again
     finally:
         again.close()
 
 
 def test_stop_ends_an_install_and_installs_run_one_at_a_time(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, source_server: SourceServer
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
 ) -> None:
-    release = _stalled_source(tiny, source_server)
+    _stalled_source(tiny, hosts)
     data = tmp_path / "data"
     server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
     try:
@@ -214,7 +216,6 @@ def test_stop_ends_an_install_and_installs_run_one_at_a_time(
         assert server.call("runtimes.list")["result"]["runtimes"][0]["status"] == "installing"
 
         assert server.call("runtimes.stop", {"runtime": "tiny"})["result"] == {"stopping": True}
-        release.set()  # the download notices Stop when its next bytes arrive
         ended = server.event("runtime.done", "runtime.failed", "runtime.stopped", runtime="tiny")
         assert ended["event"] == "runtime.stopped", ended
         assert not (data / "runtimes" / "tiny" / build / runtime_install.MARKER).exists()
@@ -425,13 +426,20 @@ def test_an_ending_is_sent_after_its_place_is_free(
 
 
 def test_an_engine_that_shuts_down_stops_its_install(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, source_server: SourceServer
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
 ) -> None:
     """The app closes the engine's stdin when it quits; an install still going must not outlive it."""
-    release = _stalled_source(tiny, source_server)
+    _stalled_source(tiny, hosts)
     events = Events()
     engine = Engine(
-        tmp_path / "data", [BUILTIN_NODES_DIR], events.append, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU
+        tmp_path / "data",
+        [BUILTIN_NODES_DIR],
+        events.append,
+        [tiny.parent],
+        uv_exe,
+        uv_home,
+        lambda: NO_GPU,
+        transfer=TRANSFER,
     )
     reply = engine.handle({"id": 1, "method": "runtimes.install", "params": {"runtime": "tiny"}})
     assert reply is not None and "result" in reply
@@ -442,7 +450,6 @@ def test_an_engine_that_shuts_down_stops_its_install(
 
     closing = threading.Thread(target=engine.shutdown)
     closing.start()
-    release.set()  # the download sees Stop when its next bytes arrive
     closing.join(60)
     assert not closing.is_alive()
     assert events.of("runtime.stopped") and engine.runtimes.installing() is None

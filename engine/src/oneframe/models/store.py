@@ -22,26 +22,19 @@ import contextlib
 import hashlib
 import json
 import re
-import shutil
 import stat
-import sys
 import threading
-import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from oneframe.errors import Failure, Stopped
-from oneframe.files import NewerFormat, format_of, write_json
+from oneframe import files
+from oneframe.errors import Failure
+from oneframe.files import NewerFormat, format_of, replace, sha256_file, write_json
 from oneframe.layout import Layout
 
 STORE_FORMAT = 1
 RECORD_FORMAT = 1
-CHUNK = 1 << 20
-# How long placing a file waits on Windows while another program (an antivirus, the indexer) holds
-# the new file: about what uv waits; pip's 1 s is known to be too short (research.md).
-PLACE_WAIT_S = 10.0
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -81,23 +74,6 @@ def check_sha256(sha: str) -> str:
     return sha
 
 
-def hash_file(
-    path: Path, stop: threading.Event | None = None, progress: Callable[[int], None] | None = None
-) -> str:
-    """The file's sha256, read in chunks; Stopped when `stop` is set, seen between chunks."""
-    digest = hashlib.sha256()
-    done = 0
-    with path.open("rb") as handle:
-        while chunk := handle.read(CHUNK):
-            if stop is not None and stop.is_set():
-                raise Stopped()
-            digest.update(chunk)
-            done += len(chunk)
-            if progress is not None:
-                progress(done)
-    return digest.hexdigest()
-
-
 def _writable(path: Path) -> None:
     with contextlib.suppress(FileNotFoundError):
         path.chmod(stat.S_IREAD | stat.S_IWRITE)
@@ -116,31 +92,6 @@ def _delete(path: Path) -> None:
             "os_refused",
             "Close any program using the file, then try again.",
         ) from exc
-
-
-def _rename(source: Path, target: Path, windows: bool | None = None, wait_s: float = PLACE_WAIT_S) -> None:
-    """os.replace, waiting on Windows while another program holds the new file, with a growing
-    pause between tries; anything else, or a hold that outlasts the wait, is `os_refused`."""
-    windows = sys.platform == "win32" if windows is None else windows
-    deadline = time.monotonic() + wait_s
-    pause = 0.05
-    while True:
-        try:
-            source.replace(target)
-            return
-        except PermissionError as exc:
-            if not windows or time.monotonic() >= deadline:
-                raise StoreRefused(
-                    f"The system refused to move {source.name} into the store ({exc}).",
-                    "os_refused",
-                    "An antivirus may be scanning it; try again in a moment.",
-                ) from exc
-            time.sleep(pause)
-            pause = min(pause * 2, 1.0)
-        except OSError as exc:
-            raise StoreRefused(
-                f"The system refused to move {source.name} into the store ({exc}).", "os_refused"
-            ) from exc
 
 
 class Store:
@@ -286,7 +237,15 @@ class Store:
         target = self.blob(sha)
         target.parent.mkdir(parents=True, exist_ok=True)
         _writable(target)  # a leftover without a good record: replaced
-        _rename(source, target)
+        try:
+            replace(source, target)  # waiting on Windows while another program holds it
+        except OSError as exc:
+            held = isinstance(exc, PermissionError)
+            raise StoreRefused(
+                f"The system refused to move {source.name} into the store ({exc}).",
+                "os_refused",
+                "An antivirus may be scanning it; try again in a moment." if held else None,
+            ) from exc
         try:
             target.chmod(stat.S_IREAD)
             return self._write_record(sha, target)
@@ -306,7 +265,7 @@ class Store:
             if isinstance(found, Record) or found == "unreadable":
                 _delete(self.record_path(sha))
             return False
-        if hash_file(blob, stop) != sha:
+        if sha256_file(blob, stop) != sha:
             self.drop(sha)
             return False
         self._write_record(sha, blob)
@@ -353,8 +312,5 @@ class Store:
             return []
 
     def free_bytes(self) -> int:
-        """Free space on the store's drive (its nearest existing folder's)."""
-        folder = self.layout.models
-        while not folder.exists() and folder != folder.parent:
-            folder = folder.parent
-        return shutil.disk_usage(folder).free
+        """Free space on the store's drive."""
+        return files.free_bytes(self.layout.models)

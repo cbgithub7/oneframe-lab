@@ -99,6 +99,7 @@ export function layout(root) {
     learned: path.join(root, "memory", "learned.json"),
     cache: path.join(root, "cache"),
     cachedir_tag: path.join(root, "cache", "CACHEDIR.TAG"),
+    objects: path.join(root, "cache", "objects"),
     tmp: path.join(root, "cache", "tmp"),
     runtime_caches: path.join(root, "cache", "runtime"),
     pycache: path.join(root, "cache", "pycache"),

@@ -81,7 +81,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   folder, the repo, temp, Roaming, the registry or `PATH`. `oneframe/layout.py` names every path
   under it, `app/main/paths.js` mirrors it, and `contracts/layout.json` holds the two equal. The
   only exceptions:
-    - a file the person names (a bench report with `--out`);
+    - a file or folder the person names (a bench report with `--out`, uv's cache and Pythons with
+      `--uv-home`, which the app never passes);
     - a dev checkout's engine environment, and its tools' own download caches (npm's, and the
       Electron binary's);
     - the graphics driver's own shader cache;

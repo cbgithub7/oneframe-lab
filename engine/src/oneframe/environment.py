@@ -90,9 +90,9 @@ ROOT_ENV = (*LIBRARY_CACHES, *TEMP_VARIABLES, *OVERRIDING_CACHES, "PYTHONDONTWRI
 # How a run speaks to the engine: its output unbuffered, so each event arrives as it is written,
 # and in UTF-8, as the engine reads it.
 PROTOCOL_ENV = {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
-# uv's cache and the Pythons it fetches, in folders under uv's own (`uv/` in the layout), and what
-# keeps it from writing outside them. app/main/paths.js sets the same for the engine it starts.
-UV_FOLDERS = {"UV_CACHE_DIR": "cache", "UV_PYTHON_INSTALL_DIR": "python"}
+# uv's cache and the Pythons it fetches, by the layout's names for them, and what keeps it from
+# writing outside them. app/main/paths.js sets the same for the engine it starts.
+UV_FOLDERS = {"UV_CACHE_DIR": "uv_cache", "UV_PYTHON_INSTALL_DIR": "uv_python"}
 UV_SETTINGS = {"UV_PYTHON_INSTALL_BIN": "0", "UV_PYTHON_INSTALL_REGISTRY": "0"}
 
 
@@ -171,15 +171,16 @@ def child_env(
 
 
 def uv_environment(
-    uv_home: Path, env: Path | None = None, base: Mapping[str, str] | None = None
+    uv_cache: Path, uv_python: Path, env: Path | None = None, base: Mapping[str, str] | None = None
 ) -> dict[str, str]:
-    """uv's cache and Pythons under the data root, where removing the data root removes them, and
-    where the cache and the environments share a volume, so uv links files instead of copying.
-    uv writes nothing outside it: no `python3.x` link in the person's bin folder, and no entry in
-    the Windows registry, either of which would outlive the data root and point at nothing. `env`
-    is the runtime environment uv builds, when it builds one."""
+    """uv's cache and Pythons in the two folders given: the layout's, under the data root, where
+    removing the data root removes them, and where the cache and the environments share a volume,
+    so uv links files instead of copying. uv writes nothing outside them: no `python3.x` link in the
+    person's bin folder, and no entry in the Windows registry, either of which would outlive the
+    data root and point at nothing. `env` is the runtime environment uv builds, when it builds one."""
     out = inherited(base)
-    values = {name: str(uv_home / folder) for name, folder in UV_FOLDERS.items()}
+    folders = {"uv_cache": uv_cache, "uv_python": uv_python}
+    values = {name: str(folders[folder]) for name, folder in UV_FOLDERS.items()}
     values.update(UV_SETTINGS, PYTHONIOENCODING="utf-8")
     if env is not None:
         values["UV_PROJECT_ENVIRONMENT"] = str(env)

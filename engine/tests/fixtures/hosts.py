@@ -84,11 +84,13 @@ class Drop:
 @dataclass
 class Stall:
     """Hold the connection, before the headers or after `at` bytes of the body, until `release`
-    is set or the hosts close; then carry on as if nothing happened."""
+    is set or the hosts close; then carry on as if nothing happened. `holding` is set while the
+    hosts hold it, so a test can tell a client that gave up from a stall that ended."""
 
     at: int = 0
     before_headers: bool = False
     release: threading.Event = field(default_factory=threading.Event)
+    holding: threading.Event = field(default_factory=threading.Event)
     on: str = "body"
 
 
@@ -106,6 +108,14 @@ class IgnoreRange:
     bytes, as a proxy that ignores ranges on a flaky line would."""
 
     at: int | None = None
+    on: str = "body"
+
+
+@dataclass
+class NoLength:
+    """Answer with a 200 and the whole file, a range ignored, in chunks with no Content-Length and
+    with Connection: close: what GitHub's archive host sends over HTTP/1.1 (seen 2026-10-25)."""
+
     on: str = "body"
 
 
@@ -135,7 +145,7 @@ class RedirectTo:
     on: str = "source"
 
 
-Fault = Drop | Stall | WrongOffset | IgnoreRange | Replace | Status | RedirectTo
+Fault = Drop | Stall | WrongOffset | IgnoreRange | NoLength | Replace | Status | RedirectTo
 
 
 def error_code(status: int, code: str) -> Status:
@@ -654,7 +664,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         size = len(data)
         start = _range_start(self.headers.get("Range"))
         headers = {"Accept-Ranges": "bytes", "Content-Type": "application/octet-stream"}
-        if start is None or isinstance(fault, IgnoreRange):
+        if start is None or isinstance(fault, IgnoreRange | NoLength):
             status, start = 200, 0
         elif start >= size:
             self._send(416, {"Content-Range": f"bytes */{size}"}, b"")
@@ -664,7 +674,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             if isinstance(fault, WrongOffset):
                 start = min(max(start + fault.by, 0), size - 1)
             headers["Content-Range"] = f"bytes {start}-{size - 1}/{size}"
-        headers["Content-Length"] = str(size - start)
+        if isinstance(fault, NoLength):
+            headers.update({"Transfer-Encoding": "chunked", "Connection": "close"})
+            self.close_connection = True
+        else:
+            headers["Content-Length"] = str(size - start)
         self.record.file = sha256(data)
         self.send_response(status)
         for name, value in headers.items():
@@ -673,6 +687,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if not self.body:
             return
         rest = data[start:]
+        if isinstance(fault, NoLength):
+            for at in range(0, len(rest), 65536):
+                piece = rest[at : at + 65536]
+                self._write(b"%x\r\n%s\r\n" % (len(piece), piece))
+            self._write(b"0\r\n\r\n")
+            return
         if isinstance(fault, Drop) or (isinstance(fault, IgnoreRange) and fault.at is not None):
             self._write(rest[: fault.at])
             self._drop()
@@ -694,7 +714,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         raise _Dropped()
 
     def _stall(self, fault: Stall) -> None:
-        fault.release.wait(STALL_S)
+        fault.holding.set()
+        try:
+            fault.release.wait(STALL_S)
+        finally:
+            fault.holding.clear()
 
     def _send(self, status: int, headers: dict[str, str], body: bytes) -> None:
         reason = "jwt:expired" if status == 618 else None

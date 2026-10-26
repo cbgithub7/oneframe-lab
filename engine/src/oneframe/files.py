@@ -12,18 +12,25 @@ temporary.
 system releases it when its holder dies, however it dies (on Windows, a moment after it has ended),
 so a lock is never left behind and a lock file is never deleted (deleting one would let two
 processes each hold a lock on a different file of the same name).
+
+`sha256_file` is the one loop that hashes a file, whatever the hash is for (a cache key, a check
+of a stored file, a download resuming its partial), so no recorded hash depends on which caller
+read the bytes. `replace` is the one move into place, of a file or a folder, and `free_bytes` the
+one reading of a drive's free space.
 """
 
 from __future__ import annotations
 
 import contextlib
 import errno
+import hashlib
 import json
 import os
 import re
 import shutil
 import stat
 import sys
+import threading
 import time
 import uuid
 import weakref
@@ -31,6 +38,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from oneframe.errors import Stopped
+
+CHUNK = 1 << 20  # what one read takes of a file being hashed
+# How long a move into place waits on Windows while another program (an antivirus, the indexer)
+# holds the target: about what uv waits; pip's 1 s is known to be too short (spec 003's research.md).
+MOVE_WAIT_S = 10.0
 _LOCK_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 # What flock and msvcrt.locking say when another holder has the lock; anything else is a failure.
 _BUSY = {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK}
@@ -108,23 +121,65 @@ def write_text(path: Path, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        _replace(temporary, path)
+        replace(temporary, path)
     finally:
         with contextlib.suppress(OSError):
             temporary.unlink(missing_ok=True)
 
 
-def _replace(source: Path, target: Path) -> None:
-    """os.replace, waiting briefly on Windows, which refuses while another process has the target
-    open to read."""
-    for attempt in range(20):
+def replace(source: Path, target: Path, windows: bool | None = None) -> None:
+    """os.replace, waiting on Windows while another program holds the target, with a growing pause
+    between tries. A target that is a folder is never tried again: Windows refuses to replace one
+    as it refuses a held file, and never stops refusing. Anything else, or a hold that outlasts the
+    wait (MOVE_WAIT_S, read when called), raises the system's error."""
+    windows = sys.platform == "win32" if windows is None else windows
+    deadline = time.monotonic() + MOVE_WAIT_S
+    pause = 0.05
+    while True:
         try:
             source.replace(target)
             return
         except PermissionError:
-            if sys.platform != "win32" or attempt == 19:
+            if not windows or time.monotonic() >= deadline or target.is_dir():
                 raise
-            time.sleep(0.05)
+            time.sleep(pause)
+            pause = min(pause * 2, 1.0)
+
+
+def sha256_file(
+    path: Path,
+    stop: threading.Event | None = None,
+    progress: Callable[[int], None] | None = None,
+    digest: hashlib._Hash | None = None,
+) -> str:
+    """The sha256 of a file, read in chunks: Stopped when `stop` is set, seen between chunks, and
+    `progress` told the bytes read so far after each. `digest`: a running hash to carry on (a
+    download that resumes its partial), updated in place."""
+    digest = digest if digest is not None else hashlib.sha256()
+    done = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(CHUNK):
+            if stop is not None and stop.is_set():
+                raise Stopped()
+            digest.update(chunk)
+            done += len(chunk)
+            if progress is not None:
+                progress(done)
+    return digest.hexdigest()
+
+
+def text_sha256(path: Path) -> str:
+    """The sha256 of a text file with its line endings made LF, so a checkout that turned them into
+    CRLF does not make an installed runtime look out of date."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def free_bytes(path: Path) -> int:
+    """Free space on the drive that holds `path`, or will: that of its nearest folder that exists."""
+    probe = Path(path).resolve()
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    return shutil.disk_usage(probe).free
 
 
 def _clear_readonly(func: Callable[..., Any], path: str, _exc: BaseException) -> None:

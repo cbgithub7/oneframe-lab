@@ -25,15 +25,16 @@ import re
 import shutil
 import threading
 import tomllib
+import urllib.parse
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeGuard
 
 from oneframe import RUNTIMES_DIR, hardware, runtime_install
 from oneframe.environment import reserved_env, reserved_why
 from oneframe.errors import Failure, Stopped
-from oneframe.files import FileLock, lock_file
+from oneframe.files import FileLock, lock_file, text_sha256
 from oneframe.journal import end_when_free, engine_crash
 from oneframe.layout import Layout
 from oneframe.memory import Target
@@ -163,12 +164,6 @@ class RuntimeDef:
         return dict(self.raw, folder=str(self.folder))
 
 
-def text_sha256(path: Path) -> str:
-    """The sha256 of a text file with its line endings made LF, so a checkout that turned them into
-    CRLF does not make an installed runtime look out of date."""
-    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
-
-
 def _text(data: dict[str, Any], key: str, problems: list[str], required: bool = True) -> str:
     value = data.get(key)
     if value is None and not required:
@@ -285,6 +280,19 @@ def _extensions(rows: Any, folder: Path, problems: list[str]) -> tuple[Extension
     return tuple(out)
 
 
+def _https(url: object) -> TypeGuard[str]:
+    """Whether `url` is an address the transport fetches: https, a host, and a port if any that is
+    a number up to 65535."""
+    if not isinstance(url, str):
+        return False
+    parts = urllib.parse.urlsplit(url)
+    try:
+        parts.port  # noqa: B018 -- raises ValueError for a port that is not one
+    except ValueError:
+        return False
+    return parts.scheme == "https" and bool(parts.hostname)
+
+
 def _sources(rows: Any, problems: list[str]) -> tuple[Source, ...]:
     if rows is None:
         return ()
@@ -305,8 +313,8 @@ def _sources(rows: Any, problems: list[str]) -> tuple[Source, ...]:
             problems.append(f"{where} is listed twice")
             continue
         url = row.get("url")
-        if not isinstance(url, str) or not url.startswith(("https://", "http://")):
-            problems.append(f"{where}.url should be an http(s) address")
+        if not _https(url):
+            problems.append(f"{where}.url should be an https address")
             continue
         sha = row.get("sha256")
         if not isinstance(sha, str) or not _SHA256.match(sha):
@@ -745,13 +753,23 @@ class Runtimes:
         uv: str | None = None,
         profile: Callable[[], dict[str, Any]] | None = None,
         uv_home: Path | None = None,
+        transfer: dict[str, Any] | None = None,
     ):
+        """`transfer`: options for each source's download, as model jobs take them (a test's TLS
+        context, policy or proxy)."""
         # Absolute, because a runtime's child runs in a folder of its own: a relative path to the
         # probe or the interpreter would point somewhere else from there.
         self.data = Path(data).resolve()
         self.roots = [Path(r).resolve() for r in roots] if roots is not None else [RUNTIMES_DIR]
         self.uv = uv
-        self.uv_home = uv_home
+        # uv's cache and Pythons: the layout's, or folders of the same names under --uv-home's
+        layout = Layout(self.data)
+        if uv_home is None:
+            self.uv_cache, self.uv_python = layout.uv_cache, layout.uv_python
+        else:
+            home = Path(uv_home).resolve()
+            self.uv_cache, self.uv_python = home / layout.uv_cache.name, home / layout.uv_python.name
+        self.transfer = dict(transfer or {})
         self._read_profile = profile or (lambda: hardware.profile(data))
         self._profile: dict[str, Any] | None = None
         # The install slot's. Re-entrant: an install lets go of its slot and sends its ending under
@@ -1020,19 +1038,25 @@ class Runtimes:
         build: str,
         stop: threading.Event,
         emit: Emit,
-        opener: Callable[..., Any] | None = None,
     ) -> dict[str, Any] | None:
         """Carry out a claimed install, reporting it as runtime.* events. Returns the result, or
         None when it stopped or failed (the events say which). The slot and the runtime's lock go
         before the ending is sent, so a next install may start at once."""
         base = {"runtime": runtime.id, "build": build}
-        extra: dict[str, Any] = {"opener": opener} if opener is not None else {}
 
         def work(kept: Emit) -> tuple[dict[str, Any] | None, dict[str, Any]]:
             kept({**base, "event": "runtime.start"})
             try:
                 done = runtime_install.install(
-                    runtime, build, self.data, str(self.uv), kept, stop, self.uv_home, **extra
+                    runtime,
+                    build,
+                    self.data,
+                    str(self.uv),
+                    kept,
+                    stop,
+                    uv_cache=self.uv_cache,
+                    uv_python=self.uv_python,
+                    transfer=self.transfer,
                 )
             except Stopped:
                 message = "Install stopped. Installing again picks up where it was."
@@ -1082,7 +1106,7 @@ class Runtimes:
             return self._remove(runtime_id)
 
     def _remove(self, runtime_id: str) -> dict[str, Any]:
-        root = (self.data / "runtimes").resolve()
+        root = Layout(self.data).runtimes.resolve()
         target = runtime_install.runtime_dir(self.data, runtime_id)
         if not target.exists():
             return {"runtime": runtime_id, "removed": None}

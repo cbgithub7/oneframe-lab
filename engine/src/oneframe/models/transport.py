@@ -1,5 +1,9 @@
 """Fetching one file to its partial, on `http.client`, healing what goes wrong on the way (spec 003,
-requirement 3; research.md's "Second round").
+requirement 3; research.md's "Second round"): a model file, or a runtime's source (spec 011).
+
+Spec 003's tripwire fired: past about 600 lines this was to move onto urllib3, and it is over 750.
+Spec 011 kept it, since it passed the real hosts and urllib3 would save about 15 lines; it grows no
+further, and needing more (http, auth, parallel ranges, a new phase or Policy field) reopens urllib3.
 
 - **Every attempt starts from the source URL** and follows its redirects again, so a signed URL
   that expired, or was used up, is never asked twice. Redirects are https only, refused before
@@ -59,6 +63,7 @@ from typing import Any, BinaryIO
 
 from oneframe import __version__
 from oneframe.errors import Failure, Stopped
+from oneframe.files import sha256_file
 
 CHUNK = 1 << 20
 SLICE_S = 0.1  # how long one read waits before it looks at Stop again
@@ -181,16 +186,24 @@ class _Reader(io.RawIOBase):
     """A response's bytes, read in slices so Stop is seen between them and a stall is a window
     with no byte at all, however the system ends a blocked read."""
 
-    def __init__(self, sock: socket.socket, stop: threading.Event, stall_s: float):
+    def __init__(
+        self, sock: socket.socket, stop: threading.Event, stall_s: float, on_close: Callable[[], None]
+    ):
         self._sock = sock
         self._stop = stop
         self._stall_s = stall_s
+        self._on_close = on_close
 
     def readable(self) -> bool:
         return True
 
     def readinto(self, buffer: Any) -> int:
         return _recv_into(self._sock, buffer, self._stop, self._stall_s)
+
+    def close(self) -> None:
+        if not self.closed:
+            super().close()
+            self._on_close()
 
 
 def _recv_into(sock: socket.socket, buffer: Any, stop: threading.Event, stall_s: float) -> int:
@@ -215,6 +228,8 @@ class _Socket:
         self._sock = sock
         self._stop = stop
         self._stall_s = stall_s
+        self._files = 0
+        self._closing = False
         sock.settimeout(SLICE_S)
 
     def sendall(self, data: Any) -> None:
@@ -226,10 +241,21 @@ class _Socket:
             self._sock.settimeout(SLICE_S)
 
     def makefile(self, _mode: str = "rb", *_args: Any, **_kw: Any) -> io.BufferedReader:
-        return io.BufferedReader(_Reader(self._sock, self._stop, self._stall_s), CHUNK)
+        self._files += 1
+        return io.BufferedReader(_Reader(self._sock, self._stop, self._stall_s, self._file_closed), CHUNK)
 
     def close(self) -> None:
-        self._sock.close()
+        """As with socket.makefile, the socket stays open until its files are closed too:
+        http.client closes the connection as it hands its file to a response read to the end of
+        the stream (one with no length, or with Connection: close, as GitHub's archive host sends)."""
+        self._closing = True
+        if not self._files:
+            self._sock.close()
+
+    def _file_closed(self) -> None:
+        self._files -= 1
+        if self._closing and not self._files:
+            self._sock.close()
 
 
 class Connector:
@@ -361,6 +387,7 @@ class Connector:
             if parts.scheme != "https" or not parts.hostname:
                 raise DownloadFailed(f"{url} is not https; nothing here leaves https.", "tls")
             conn: http.client.HTTPSConnection | None = None
+            response: http.client.HTTPResponse | None = None
             try:
                 conn = self.connect(parts.hostname, parts.port or 443)
                 path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
@@ -389,6 +416,8 @@ class Connector:
                     raise DownloadFailed(f"The certificate of {parts.hostname} was refused.", "tls") from exc
                 raise _Retry(f"{type(exc).__name__}: {exc}") from exc
             finally:
+                if response is not None:
+                    response.close()  # one read to the end of the stream holds the socket (_Socket)
                 if conn is not None:
                     conn.close()
         raise _Retry(f"more than {self.policy.redirects} redirects")
@@ -521,11 +550,7 @@ class Transfer:
         if held:
             self._phase("checking", {"bytes": held})
             digest = hashlib.sha256()
-            with self.partial.open("rb") as handle:
-                while chunk := handle.read(CHUNK):
-                    if self.stop.is_set():
-                        raise Stopped()
-                    digest.update(chunk)
+            sha256_file(self.partial, self.stop, digest=digest)
             self._digest = digest
             self.have = held
             self._progress(self.have, self.total)
@@ -542,7 +567,7 @@ class Transfer:
         free = self._free()
         if free < need:
             raise DownloadFailed(
-                f"The store's drive has {free} bytes free and {self._where()} needs {need} more; "
+                f"The drive has {free} bytes free and {self._where()} needs {need} more; "
                 f"{self.have} bytes were kept.",
                 "no_space",
                 self.have,
@@ -581,6 +606,7 @@ class Transfer:
             if self.have:
                 headers["Range"] = f"bytes={self.have}-"
             conn: http.client.HTTPSConnection | None = None
+            response: http.client.HTTPResponse | None = None
             try:
                 conn = self._connector.connect(origin[1], origin[2])
                 path = parts.path or "/"
@@ -610,6 +636,8 @@ class Transfer:
                 why = "" if isinstance(exc, http.client.InvalidURL) else f": {exc}"
                 raise _Retry(f"{type(exc).__name__}{why}") from exc
             finally:
+                if response is not None:
+                    response.close()  # one read to the end of the stream holds the socket (_Socket)
                 if conn is not None:
                     conn.close()
         raise _Retry(f"more than {self.policy.redirects} redirects")
@@ -726,8 +754,7 @@ class Transfer:
                         if not _disk_full(exc):
                             raise
                         raise DownloadFailed(
-                            f"The store's drive is full after {self.have} bytes of {self._where()}; they "
-                            "were kept.",
+                            f"The drive is full after {self.have} bytes of {self._where()}; they were kept.",
                             "no_space",
                             self.have,
                             "Free some space on the drive, then download again; it resumes where it stopped.",

@@ -198,14 +198,14 @@ def test_a_pin_ended_while_writing_leaves_the_manifest_whole(
     hub.repo("Ruicheng/MoGe-2").commit({"model.bin": MODEL})
     path = write_node(make_node, [{"name": "model", "hf": "ruicheng/moge-2", "path": "model.bin"}])
     before = path.read_text(encoding="utf-8")
-    replace = files._replace
+    replace = files.replace
 
     def ended(source: Path, target: Path) -> None:
         if target.name == "node.json":  # the new manifest is written, and the process ends before it lands
             raise _Killed
         replace(source, target)
 
-    monkeypatch.setattr(files, "_replace", ended)
+    monkeypatch.setattr(files, "replace", ended)
     with pytest.raises(_Killed):
         pin(path, Store(tmp_path / "data"), hub.hub, threading.Event(), lambda _e: None, TRANSFER)
     assert path.read_text(encoding="utf-8") == before

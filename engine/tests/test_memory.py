@@ -135,7 +135,7 @@ def test_precision_is_set_by_the_graph_and_is_part_of_the_cache_key(tmp_path: Pa
 
     defaults, half = step_params(), step_params(precision="fp16")
     assert defaults["precision"] == "fp32" and half["precision"] == "fp16"
-    cache = Cache(tmp_path / "cache")
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
     assert cache.key(m, defaults, {}) != cache.key(m, half, {})
     # chunk_size only changes speed, so it is not part of the key.
     assert cache.key(m, defaults, {}) == cache.key(m, {**defaults, "chunk_size": 512}, {})

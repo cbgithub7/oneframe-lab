@@ -30,11 +30,11 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.errors import Failure, Stopped
-from oneframe.files import FileLock, lock_file
+from oneframe.files import FileLock, lock_file, sha256_file
 from oneframe.journal import end_when_free, engine_crash
 from oneframe.manifest import Manifest
 from oneframe.models.schema import FileSpec
-from oneframe.models.store import Store, StoreRefused, hash_file
+from oneframe.models.store import Store, StoreRefused
 from oneframe.models.transport import DownloadFailed, Transfer
 from oneframe.node import Emit
 
@@ -396,7 +396,7 @@ class Jobs:
         outcome.size = outcome.size or blob.stat().st_size
         self._phase(job, outcome, emit, "verifying", bytes=outcome.size)
         progress = self._progress(job, outcome, emit)
-        if hash_file(blob, job.stop, lambda have: progress(have, outcome.size)) == sha:
+        if sha256_file(blob, job.stop, lambda have: progress(have, outcome.size)) == sha:
             self.store.recorded(sha)
             outcome.outcome = "verified"
             return

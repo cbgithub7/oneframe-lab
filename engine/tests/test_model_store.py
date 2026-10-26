@@ -8,15 +8,14 @@ import hashlib
 import json
 import os
 import stat
-import threading
 from pathlib import Path
 
 import pytest
 
-from oneframe.errors import Stopped
+from oneframe import files
 from oneframe.layout import Layout
 from oneframe.models import store as store_module
-from oneframe.models.store import Store, StoreRefused, hash_file
+from oneframe.models.store import Store, StoreRefused
 
 DATA = b"weights " * 1000
 SHA = hashlib.sha256(DATA).hexdigest()
@@ -142,6 +141,11 @@ def test_placing_waits_on_windows_while_another_program_holds_the_file(
 ) -> None:
     source, target = tmp_path / "a", tmp_path / "b"
     source.write_bytes(b"x")
+    store = Store(tmp_path / "data")
+    store.claim()
+    partial = store.partial(SHA)
+    partial.parent.mkdir(parents=True)
+    partial.write_bytes(DATA)
     real = Path.replace
     tries: list[Path] = []
 
@@ -152,31 +156,21 @@ def test_placing_waits_on_windows_while_another_program_holds_the_file(
         return real(self, other)
 
     monkeypatch.setattr(Path, "replace", held)
-    monkeypatch.setattr(store_module.time, "sleep", lambda _s: None)
-    store_module._rename(source, target, windows=True)
+    monkeypatch.setattr(files.time, "sleep", lambda _s: None)
+    files.replace(source, target, windows=True)
     assert target.read_bytes() == b"x" and len(tries) == 4
     tries.clear()
     source.write_bytes(b"y")
-    with _refused("os_refused"):
-        store_module._rename(source, target, windows=False)  # elsewhere, refused is refused
-    with _refused("os_refused"):
-        store_module._rename(source, target, windows=True, wait_s=0)  # a hold past the wait
+    with pytest.raises(PermissionError):
+        files.replace(source, target, windows=False)  # elsewhere, refused is refused
+    assert len(tries) == 1
 
-
-def test_hashing_stops_between_chunks(tmp_path: Path) -> None:
-    path = tmp_path / "f"
-    path.write_bytes(b"z" * (store_module.CHUNK * 3))
-    assert hash_file(path) == hashlib.sha256(path.read_bytes()).hexdigest()
-    seen: list[int] = []
-    stop = threading.Event()
-
-    def progress(done: int) -> None:
-        seen.append(done)
-        stop.set()
-
-    with pytest.raises(Stopped):
-        hash_file(path, stop, progress)
-    assert seen == [store_module.CHUNK]
+    # a hold past the wait, on any system: the store says os_refused, and keeps the partial
+    monkeypatch.setattr(files, "MOVE_WAIT_S", 0.0)
+    with _refused("os_refused") as caught:
+        store.place(partial, SHA)
+    assert caught.value.next == "An antivirus may be scanning it; try again in a moment."
+    assert partial.read_bytes() == DATA and not store.blob(SHA).exists()
 
 
 def test_paths_are_built_only_from_a_sha256(tmp_path: Path) -> None:

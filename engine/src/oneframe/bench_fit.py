@@ -188,7 +188,7 @@ def make_scheduler(
         data,
         registry,
         runtimes,
-        Cache(cache_root),
+        Cache(cache_root / "objects", cache_root / "runs"),
         machine=machine,
         settings=settings,
         learned=_Unlearned(),
@@ -208,12 +208,13 @@ def bench_node(scheduler: Scheduler, node: str, groups: list[dict[str, Any]]) ->
 @contextlib.contextmanager
 def _fresh_cache(scheduler: Scheduler, index: int) -> Iterator[None]:
     """Each run starts from an empty cache, so the same settings twice still run."""
-    base = scheduler.cache.root
-    scheduler.cache = Cache(base.parent / f"{base.name}-{index}-{time.monotonic_ns()}")
+    kept = scheduler.cache
+    fresh = kept.objects.with_name(f"{kept.objects.name}-{index}-{time.monotonic_ns()}")
+    scheduler.cache = Cache(fresh, kept.tmp)
     try:
         yield
     finally:
-        scheduler.cache = Cache(base)
+        scheduler.cache = kept
 
 
 # -- torch's out-of-memory message ---------------------------------------------------------------

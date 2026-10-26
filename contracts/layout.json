@@ -42,6 +42,7 @@
     "learned": "memory/learned.json",
     "cache": "cache",
     "cachedir_tag": "cache/CACHEDIR.TAG",
+    "objects": "cache/objects",
     "tmp": "cache/tmp",
     "runtime_caches": "cache/runtime",
     "pycache": "cache/pycache",

@@ -1,18 +1,23 @@
-"""The one JSON writer and the operating-system locks (spec 006, task 2)."""
+"""The one JSON writer and the operating-system locks (spec 006, task 2), and the one file hash
+(spec 011)."""
 
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import textwrap
+import threading
 from pathlib import Path
 
 import pytest
 from conftest import wait_free
 
 from oneframe import files
+from oneframe.errors import Stopped
 from oneframe.files import (
     FileLock,
     LockBusy,
@@ -20,6 +25,7 @@ from oneframe.files import (
     format_of,
     is_free,
     lock_file,
+    sha256_file,
     write_json,
     write_text,
 )
@@ -42,7 +48,7 @@ def test_a_write_cut_short_leaves_the_old_file_whole(tmp_path: Path, monkeypatch
     def interrupted(_source: Path, _target: Path) -> None:  # written, and stopped before it lands
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(files, "_replace", interrupted)
+    monkeypatch.setattr(files, "replace", interrupted)
     with pytest.raises(KeyboardInterrupt):
         write_text(target, '{"id": "new"}\n')
     assert target.read_text(encoding="utf-8") == '{"id": "old"}\n'
@@ -175,3 +181,65 @@ def test_a_lock_that_cannot_be_taken_at_all_is_an_error_not_busy(
         monkeypatch.setattr(fcntl, "flock", unsupported)
     with pytest.raises(OSError, match="No locks available"):
         FileLock(lock_file(tmp_path, "nfs")).acquire()
+
+
+def test_hashing_stops_between_chunks(tmp_path: Path) -> None:
+    path = tmp_path / "f"
+    path.write_bytes(b"z" * (files.CHUNK * 3))
+    assert sha256_file(path) == hashlib.sha256(path.read_bytes()).hexdigest()
+    seen: list[int] = []
+    stop = threading.Event()
+
+    def progress(done: int) -> None:
+        seen.append(done)
+        stop.set()
+
+    with pytest.raises(Stopped):
+        sha256_file(path, stop, progress)
+    assert seen == [files.CHUNK]
+
+
+def test_a_move_onto_an_existing_folder_is_never_tried_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows refuses to replace a folder as it refuses a file another program holds, and never
+    stops refusing: a cache entry another run finished first must not wait out the deadline."""
+    source, target = tmp_path / "work", tmp_path / "final"
+    for folder in (source, target):
+        folder.mkdir()
+        (folder / "outputs.json").write_text("{}", encoding="utf-8")
+    real = Path.replace
+    tries: list[Path] = []
+
+    def refused(self: Path, other: Path) -> Path:
+        tries.append(other)
+        if sys.platform != "win32":  # what Windows says; elsewhere a folder with files is ENOTEMPTY
+            raise PermissionError(13, "Access is denied", str(other))
+        return real(self, other)
+
+    def no_wait(_seconds: float) -> None:
+        raise AssertionError("a move onto a folder waited")
+
+    monkeypatch.setattr(Path, "replace", refused)
+    monkeypatch.setattr(files.time, "sleep", no_wait)
+    with pytest.raises(PermissionError):
+        files.replace(source, target, windows=True)
+    assert tries == [target]
+    assert (source / "outputs.json").is_file() and (target / "outputs.json").is_file()
+
+
+def test_free_space_is_read_from_the_nearest_folder_that_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = shutil.disk_usage
+    asked: list[Path] = []
+
+    def usage(path: Path) -> object:
+        asked.append(Path(path))
+        return real(path)
+
+    monkeypatch.setattr(files.shutil, "disk_usage", usage)
+    assert files.free_bytes(tmp_path / "not" / "yet" / "made") > 0
+    (tmp_path / "made").mkdir()
+    assert files.free_bytes(tmp_path / "made" / "file.part") > 0
+    assert asked == [tmp_path.resolve(), (tmp_path / "made").resolve()]

@@ -15,7 +15,7 @@ import pytest
 from conftest import NO_GPU
 
 from oneframe import BUILTIN_NODES_DIR, runtime_install
-from oneframe.layout import LAYOUT_FORMAT, ROOT_FILE, RootRefused, claim_root
+from oneframe.layout import LAYOUT_FORMAT, ROOT_FILE, Layout, RootRefused, claim_root
 from oneframe.memory import read_settings
 from oneframe.runtimes import InstallRefused, RuntimeMissing, Runtimes
 from oneframe.server import Engine
@@ -143,7 +143,15 @@ def test_a_newer_marker_is_left_byte_for_byte_and_reads_newer_format(tmp_path: P
     with pytest.raises(InstallRefused, match="newer version"):
         manager.remove("tiny")
     with pytest.raises(runtime_install.InstallFailed, match="newer version"):
-        runtime_install.install(manager.get("tiny"), "cpu", data, sys.executable, lambda _e: None)
+        runtime_install.install(
+            manager.get("tiny"),
+            "cpu",
+            data,
+            sys.executable,
+            lambda _e: None,
+            uv_cache=Layout(data).uv_cache,
+            uv_python=Layout(data).uv_python,
+        )
     assert (env / runtime_install.MARKER).read_bytes() == before
 
 

@@ -94,8 +94,11 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
     - `optional`: left out; `why` says what the nodes do without it.
     - `required`: needs a compiler. The runtime is blocked on every machine, and the reason names
       the package and `needs`. Prebuilt wheels will be added per runtime when a node needs one.
-- `sources`: upstream code that is not on an index, as a pinned archive. Its sha256 is checked,
-  every file in it must stay inside its folder, and `paths` inside it are made importable.
+- `sources`: upstream code that is not on an index, as a pinned archive at an https address. It is
+  fetched as a model file is, by the model store's transport: retried, and after a Stop or a kill
+  resumed from a `.part` under `downloads/` where the host honours a range (GitHub's archive host
+  does not, so there it starts again). Its sha256 is checked, every file in it must stay inside its
+  folder, and `paths` inside it are made importable.
 - `env`: variables set for every node run in this runtime. It may not set what the engine sets or
   removes for every run: the hub libraries' offline flags, hub tokens and endpoints, torch's
   `weights_only` switches, what keeps a run under the data root (the library caches, the
@@ -113,7 +116,7 @@ runtimes that are fine:
 - every torch in `uv.lock` is 2.10 or newer. Older torch can run code from a crafted weights file,
   even with `weights_only` (CVE-2025-32434 before 2.6, CVE-2026-24747 before 2.10), so a lock that
   holds one is refused;
-- each extension, source and variable is well formed.
+- each extension, source and variable is well formed, and every source's address is https.
 
 ## Locking
 
@@ -135,7 +138,8 @@ Nothing is installed until a person asks. The engine picks the build this machin
 <data>/runtimes/<id>/<build>/stand-ins/               the stand-ins
 <data>/runtimes/<id>/<build>/oneframe-runtime.json    the marker, written last
 <data>/runtimes/<id>/downloads/                       source archives, by sha256
-<data>/uv/cache/, <data>/uv/python/                   uv's cache and the Pythons it fetched
+<data>/runtimes/<id>/downloads/<sha256>.part          one being fetched, which the next install resumes
+<data>/uv/cache/, <data>/uv/python/                   uv's cache and the Pythons it fetched (--uv-home names another folder)
 <data>/cache/runtime/<id>/                            the caches its libraries keep (HF_HOME, ...)
 <data>/logs/locks/runtime-<id>.lock                   held while it is installed or removed
 ```

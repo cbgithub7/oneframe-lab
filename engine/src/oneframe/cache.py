@@ -11,9 +11,10 @@ changing one node re-runs only what comes after it, two recipes that start the s
 start, and a changed node or runtime is never served a result from before the change.
 
 Writes are atomic: a run writes into a private folder and renames it into place, so a crash or a
-Stop never leaves half an output that a later run would trust. The private folders live in the
-process's own folder under `cache/tmp/` (scratch.py), on the cache's volume, so the rename is one
-step, and a process that dies leaves them to the next start's sweep.
+Stop never leaves half an output that a later run would trust. The entries live in the layout's
+`cache/objects/`; the private folders in the process's own folder under `cache/tmp/` (scratch.py),
+on the cache's volume, so the rename is one step, and a process that dies leaves them to the next
+start's sweep.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.errors import ContractError
-from oneframe.files import is_temporary
+from oneframe.files import is_temporary, replace, sha256_file
 from oneframe.manifest import Manifest
 from oneframe.node import Value
 
@@ -37,14 +38,6 @@ from oneframe.node import Value
 KEY_VERSION = 2
 BYTECODE = (".pyc", ".pyo")
 MANIFEST = "node.json"  # in the key as it was loaded (Manifest.digest), not as it is on disk
-
-
-def file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def code_digest(folder: Path) -> str:
@@ -57,7 +50,7 @@ def code_digest(folder: Path) -> str:
         if relative == MANIFEST:
             continue
         digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(file_digest(path).encode("ascii"))
+        digest.update(sha256_file(path).encode("ascii"))
     return digest.hexdigest()
 
 
@@ -82,12 +75,12 @@ def _code_files(folder: Path) -> list[tuple[str, Path]]:
 
 
 class Cache:
-    def __init__(self, root: Path, work: Path | None = None):
-        self.root = Path(root)
-        self.objects = self.root / "objects"
-        # Where runs write before their folder is moved into place: the engine gives its own
-        # folder under cache/tmp/; a cache made on its own (a test) writes in <root>/tmp.
-        self.tmp = Path(work) if work is not None else self.root / "tmp"
+    def __init__(self, objects: Path, work: Path):
+        """`objects`: where entries are kept (the layout's `cache/objects/`). `work`: where runs
+        write before their folder is moved into place, on the same volume (the engine's is its own
+        folder under `cache/tmp/`)."""
+        self.objects = Path(objects)
+        self.tmp = Path(work)
         self._digests: dict[tuple[str, int, int], str] = {}
 
     def _file_key(self, value: str) -> str:
@@ -95,7 +88,7 @@ class Cache:
         stat = path.stat()
         memo = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
         if memo not in self._digests:
-            self._digests[memo] = file_digest(path)
+            self._digests[memo] = sha256_file(path)
         return self._digests[memo]
 
     def key(
@@ -174,7 +167,7 @@ class Cache:
             shutil.rmtree(work, ignore_errors=True)
         else:
             try:
-                work.replace(final)
+                replace(work, final)  # a folder that is there already is never waited for
             except OSError:
                 if not final.exists():
                     raise

@@ -9,7 +9,6 @@ offline they fail with the download error rather than skip."""
 from __future__ import annotations
 
 import hashlib
-import http.server
 import io
 import json
 import os
@@ -24,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fixtures.hosts import Hosts
+from fixtures.hosts import Hosts, client_context
 
 from oneframe.cache import Cache
 from oneframe.files import is_free
@@ -197,7 +196,9 @@ def scheduler_for(tmp_path: Path, node_root: Path, host_runtimes: HostRuntimes) 
 
     def make(**kw: Any) -> Scheduler:
         kw.setdefault("runtimes", host_runtimes)
-        return Scheduler(discover([node_root]), Cache(tmp_path / "cache"), **kw)
+        return Scheduler(
+            discover([node_root]), Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp"), **kw
+        )
 
     return make
 
@@ -301,6 +302,11 @@ def tiny(tmp_path: Path) -> Path:
     return folder
 
 
+# What a download takes in a test: TLS that trusts the test hosts' CA, and no proxy (the system's
+# may name one). A runtime's sources take the same as model files.
+TRANSFER: dict[str, Any] = {"context": client_context, "proxy": lambda _host: None}
+
+
 def upstream_archive(value: str = "upstream") -> bytes:
     """A GitHub-style source archive: one top folder holding the package upstream_pkg."""
     buffer = io.BytesIO()
@@ -319,61 +325,6 @@ def add_source(folder: Path, url: str, data: bytes, name: str = "upstream") -> N
         {"name": name, "url": url, "sha256": hashlib.sha256(data).hexdigest(), "paths": ["."]}
     ]
     path.write_text(json.dumps(definition, indent=2), encoding="utf-8")
-
-
-class SourceServer:
-    """Serves files on 127.0.0.1. A stalled path sends half its bytes and waits to be released,
-    which is how a test catches an install in the middle of a download."""
-
-    def __init__(self) -> None:
-        self.files: dict[str, bytes] = {}
-        self.stalled: dict[str, threading.Event] = {}
-        self.half_sent = threading.Event()
-        server = self
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self) -> None:
-                data = server.files.get(self.path)
-                if data is None:
-                    self.send_error(404)
-                    return
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                release = server.stalled.get(self.path)
-                if release is None:
-                    self.wfile.write(data)
-                    return
-                self.wfile.write(data[: len(data) // 2])
-                self.wfile.flush()
-                server.half_sent.set()
-                if release.wait(60):
-                    self.wfile.write(data[len(data) // 2 :])
-
-            def log_message(self, format: str, *args: Any) -> None:
-                pass
-
-        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.httpd.daemon_threads = True
-        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-
-    def url(self, path: str) -> str:
-        return f"http://127.0.0.1:{self.httpd.server_address[1]}{path}"
-
-    def close(self) -> None:
-        for event in self.stalled.values():
-            event.set()
-        self.httpd.shutdown()
-        self.httpd.server_close()
-
-
-@pytest.fixture
-def source_server() -> Iterator[SourceServer]:
-    server = SourceServer()
-    try:
-        yield server
-    finally:
-        server.close()
 
 
 @pytest.fixture

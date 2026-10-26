@@ -87,8 +87,10 @@ class Engine:
         self.node_roots = node_roots
         self.say = say
         self.registry: Registry = discover(node_roots)
-        self.cache = Cache(self.layout.cache, work=self.scratch.folder / "runs")
-        self.runtimes = Runtimes(data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home)
+        self.cache = Cache(self.layout.objects, self.scratch.folder / "runs")
+        self.runtimes = Runtimes(
+            data, runtime_roots, uv=find_uv(uv), profile=profile, uv_home=uv_home, transfer=transfer
+        )
         self.learned = LearnedStore(data)
         self.models = Jobs(data, say, transfer, in_use=lambda: in_use(self.layout))
         # A fit reads the machine fresh, since free memory changes; a test passes its own profile.
@@ -355,7 +357,9 @@ class Engine:
             return {"id": req_id, "error": failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)}
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) -> int:
+    """The engine as the app starts it. `transfer`: options for each download, as Engine takes
+    them, which only a test passes (fixtures/serve.py, to trust its CA)."""
     parser = argparse.ArgumentParser(prog="oneframe.server")
     parser.add_argument("--data", type=Path, default=None, help="data root (default: the dev root)")
     parser.add_argument(
@@ -413,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             packaged=args.packaged,
             scratch=scratch,
             warnings=warnings,
+            transfer=transfer,
         )
     except RootRefused as exc:
         say({"event": "engine.failed", **exc.to_json()})
