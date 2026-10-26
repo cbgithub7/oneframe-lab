@@ -190,6 +190,71 @@ def _code(field: str, value: str, folder: Path, problems: list[str]) -> tuple[st
     return file, function
 
 
+def _head(data: dict[str, Any], problems: list[str]) -> tuple[str, str, str, str, str]:
+    """`id`, `version`, `title`, `category` and `summary`."""
+    node_id = check_id(text(data, "id", problems), problems)
+    version = text(data, "version", problems)
+    title = text(data, "title", problems)
+    category = text(data, "category", problems)
+    if category and category not in CATEGORIES:
+        problems.append(f"category {category!r} is not one of {', '.join(CATEGORIES)}")
+    summary = text(data, "summary", problems, required=False)
+    return node_id, version, title, category, summary
+
+
+def _port_map(
+    data: dict[str, Any], key: str, known: dict[str, ports.PortType], problems: list[str]
+) -> dict[str, ports.PortSpec]:
+    rows = data.get(key) or {}
+    if not isinstance(rows, dict):
+        problems.append(f"{key} should be an object of port name to spec")
+        return {}
+    out: dict[str, ports.PortSpec] = {}
+    for name, spec in rows.items():
+        if not _PORT_NAME.match(name):
+            problems.append(f"{key}.{name}: port names are lower_snake_case")
+            continue
+        try:
+            out[name] = ports.parse(spec, known)
+        except ports.PortError as exc:
+            problems.append(f"{key}.{name}: {exc}")
+    return out
+
+
+def _ports(
+    data: dict[str, Any], problems: list[str]
+) -> tuple[dict[str, ports.PortSpec], dict[str, ports.PortSpec]]:
+    """`inputs` and `outputs`: at least one output, and none of them optional."""
+    known = ports.types()
+    inputs = _port_map(data, "inputs", known, problems)
+    outputs = _port_map(data, "outputs", known, problems)
+    if not outputs:
+        problems.append("a node needs at least one output")
+    for name, spec in outputs.items():
+        if spec.optional:
+            problems.append(f"outputs.{name}: outputs cannot be optional")
+    return inputs, outputs
+
+
+def _params(data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: list[str]) -> dict[str, Param]:
+    """`params`, none named as an input is, and none the engine adds."""
+    params: dict[str, Param] = {}
+    rows = data.get("params") or {}
+    if not isinstance(rows, dict):
+        problems.append("params should be an object")
+        return params
+    for name, row in rows.items():
+        if name in inputs:
+            problems.append(f"params.{name} has the same name as an input")
+        if name == PRECISION_PARAM:
+            problems.append("params.precision is added by the engine from a memory model; remove it")
+            continue
+        parsed = _param(name, row, problems)
+        if parsed:
+            params[name] = parsed
+    return params
+
+
 def _run(data: dict[str, Any], folder: Path, problems: list[str]) -> Run:
     """`run`: where the node runs, the code it runs and loads, and the runtime it runs in."""
     row = data.get("run") or {}
@@ -231,76 +296,44 @@ def _object(data: dict[str, Any], key: str, problems: list[str]) -> dict[str, An
     return dict(rows)
 
 
-def parse(
-    data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
-) -> Manifest:
-    """`read`: the bytes `data` was read from, whose sha256 is the manifest's digest; without them
-    (a manifest made in code) the digest is of `data` written out in one canonical form."""
-    problems: list[str] = []
-    known = ports.types()
-
-    node_id = check_id(text(data, "id", problems), problems)
-    version = text(data, "version", problems)
-    title = text(data, "title", problems)
-    category = text(data, "category", problems)
-    if category and category not in CATEGORIES:
-        problems.append(f"category {category!r} is not one of {', '.join(CATEGORIES)}")
-    summary = text(data, "summary", problems, required=False)
-
-    def port_map(key: str) -> dict[str, ports.PortSpec]:
-        rows = data.get(key) or {}
-        if not isinstance(rows, dict):
-            problems.append(f"{key} should be an object of port name to spec")
-            return {}
-        out: dict[str, ports.PortSpec] = {}
-        for name, spec in rows.items():
-            if not _PORT_NAME.match(name):
-                problems.append(f"{key}.{name}: port names are lower_snake_case")
-                continue
-            try:
-                out[name] = ports.parse(spec, known)
-            except ports.PortError as exc:
-                problems.append(f"{key}.{name}: {exc}")
-        return out
-
-    inputs = port_map("inputs")
-    outputs = port_map("outputs")
-    if not outputs:
-        problems.append("a node needs at least one output")
-    for name, spec in outputs.items():
-        if spec.optional:
-            problems.append(f"outputs.{name}: outputs cannot be optional")
-
-    params: dict[str, Param] = {}
-    raw_params = data.get("params") or {}
-    if not isinstance(raw_params, dict):
-        problems.append("params should be an object")
-    else:
-        for name, row in raw_params.items():
-            if name in inputs:
-                problems.append(f"params.{name} has the same name as an input")
-            if name == PRECISION_PARAM:
-                problems.append("params.precision is added by the engine from a memory model; remove it")
-                continue
-            parsed = _param(name, row, problems)
-            if parsed:
-                params[name] = parsed
-
-    run = _run(data, folder, problems)
-    devices = _devices(data, problems)
-    licence = _object(data, "licence", problems)
-    links = _object(data, "links", problems)
-
+def _memory_and_files(
+    data: dict[str, Any],
+    params: dict[str, Param],
+    inputs: dict[str, ports.PortSpec],
+    devices: tuple[str, ...],
+    where: str,
+    problems: list[str],
+) -> tuple[MemoryModel | None, tuple[FileSpec, ...], str | None]:
+    """`memory`, which adds its `precision` param to `params`, and `files` with the param that
+    picks a checkpoint's."""
     model = None
     if data.get("memory") is not None:
         model = parse_memory(data["memory"], params, inputs, devices, problems, check_param)
         precision = model and _param(PRECISION_PARAM, model.precision_param(), problems)
         if precision:
             params[PRECISION_PARAM] = precision
-
     weights_by = data["memory"].get("weights_by") if isinstance(data.get("memory"), dict) else None
-    files, files_by = parse_files(data, params, run.where, weights_by, problems)
+    files, files_by = parse_files(data, params, where, weights_by, problems)
+    return model, files, files_by
 
+
+def parse(
+    data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
+) -> Manifest:
+    """A node's manifest, with every problem in it reported at once: each part adds its own, then
+    one error names them all.
+
+    `read`: the bytes `data` was read from, whose sha256 is the manifest's digest; without them
+    (a manifest made in code) the digest is of `data` written out in one canonical form."""
+    problems: list[str] = []
+    node_id, version, title, category, summary = _head(data, problems)
+    inputs, outputs = _ports(data, problems)
+    params = _params(data, inputs, problems)
+    run = _run(data, folder, problems)
+    devices = _devices(data, problems)
+    licence = _object(data, "licence", problems)
+    links = _object(data, "links", problems)
+    model, files, files_by = _memory_and_files(data, params, inputs, devices, run.where, problems)
     if problems:
         raise ManifestError(source, problems)
     return Manifest(

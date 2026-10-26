@@ -17,7 +17,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `parse` reads `version`, `title` and `summary` before it decides, refuses a `run`, `licence` or
   `links` that is not an object, a `run` field that is not text and `devices` that is not a list;
   runtime definitions are read through `read_object`.
-- [ ] 4. **`manifest.parse` in named steps:** one function per part, each adding its problems,
+- [x] 4. **`manifest.parse` in named steps:** one function per part, each adding its problems,
   then one raise. The manifest tests pass unchanged.
 - [ ] 5. **The memory package.** `oneframe/memory/` with `model`, `settings`, `estimate`, `fit` and
   `learned` and a docstring-only `__init__.py`; `learned.py` logs as `oneframe.memory`. Callers and
