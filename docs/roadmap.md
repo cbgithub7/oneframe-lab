@@ -12,7 +12,6 @@ person sees changes, except where a spec's answered questions say.
 
 - **"Nothing hard-coded"** (013): `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
   002's AC8 scenario inside the package (review of 2026-10-02, 4.10).
-- **Long functions:** the runtime install (179 lines) and the manifest's `parse` (118) (012).
 - **Tests:**
     - shared helpers for the model tests (014);
     - the footprint test tells our writes from another program's without checking less (it failed

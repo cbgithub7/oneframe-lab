@@ -37,7 +37,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 7. **`install` in named steps:** one function per `STEPS` entry over one `_Install`, uv's
   environments built once, sync through `run`; `install`, `_freeze` and `run_step` stay
   module-level. The install tests pass unchanged, the order of `runtime.step` events included.
-- [ ] 8. **Docs and measures:** delete from `docs/roadmap.md` the rest of what this spec takes on
+- [x] 8. **Docs and measures:** delete from `docs/roadmap.md` the rest of what this spec takes on
   (`install` and `parse` under "Long functions"); the Manifests and Registry rows of
   `docs/architecture.md`. Measure AC5 and run AC4's command for the PR.
 - [ ] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one
