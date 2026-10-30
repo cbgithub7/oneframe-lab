@@ -13,7 +13,6 @@ import io
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tarfile
@@ -32,6 +31,7 @@ from fixtures.store import sha
 from oneframe.cache import Cache
 from oneframe.files import is_free
 from oneframe.memory.estimate import Target
+from oneframe.processes import GROUP, Child
 from oneframe.registry import Registry, discover
 from oneframe.scheduler import Scheduler
 from oneframe.server import Engine
@@ -142,7 +142,8 @@ HOLDER = textwrap.dedent(
 
 
 class Holder:
-    """The process holding a lock for `held_elsewhere`."""
+    """The process holding a lock for `held_elsewhere`: the engine's own processes.Child, so a kill
+    ends it as Stop ends a node's tree, the interpreter behind a Windows venv launcher included."""
 
     def __init__(self, path: Path, write: tuple[Path, str] | None = None) -> None:
         more = [str(write[0]), write[1]] if write else []
@@ -152,11 +153,13 @@ class Holder:
             stdout=subprocess.PIPE,
             text=True,
             encoding="utf-8",
+            **GROUP,
         )
+        self._child = Child(self.process, None)
+        self._said = self._child.lines(threading.Event())
         self.pid = 0  # the interpreter's own, once it has said it holds the lock
         try:
-            assert self.process.stdout is not None
-            said = self.process.stdout.readline().split()
+            said = next(self._said, "").split()
             assert said[:1] == ["held"], f"the holder said {said}"
             self.pid = int(said[1])
         except BaseException:
@@ -166,32 +169,18 @@ class Holder:
     def let_go(self) -> None:
         """Release the lock and end, as a holder that finishes does. Windows frees a killed
         holder's lock only later; one that lets go frees it at once."""
-        stdin, stdout = self.process.stdin, self.process.stdout
-        assert stdin is not None and stdout is not None
+        stdin = self.process.stdin
+        assert stdin is not None
         if self.process.poll() is None and not stdin.closed:
             stdin.write("\n")
             stdin.close()
-            assert stdout.readline().strip() == "released"
-        self._end()
+            assert next(self._said, "") == "released"
+        self.process.wait(timeout=30)
 
     def kill(self) -> None:
         """End it holding the lock, as a crash would; the system lets go of the lock (see
-        wait_free)."""
-        # The holder itself as well as the process started: on Windows a venv's python.exe is a
-        # launcher, and the interpreter behind it, which holds the lock, may outlive it a moment.
-        # Only while the launcher lives, whose handle keeps the holder's pid from being reused.
-        if self.process.poll() is None and self.pid:
-            with contextlib.suppress(OSError):
-                os.kill(self.pid, signal.SIGTERM)
-        self.process.kill()
-        self._end()
-
-    def _end(self) -> None:
-        self.process.wait(timeout=30)
-        for pipe in (self.process.stdin, self.process.stdout):
-            if pipe is not None:
-                with contextlib.suppress(OSError):
-                    pipe.close()
+        wait_free). Never raises."""
+        self._child.kill(also=[self.pid] if self.pid else [])
 
 
 @contextlib.contextmanager
@@ -465,17 +454,14 @@ def engine_process(tmp_path: Path) -> Iterator[StartEngine]:
     """Engines as processes (fixtures/engine_process.py), each started with the command given and
     its standard error in `log` (by default tmp_path / "engine.log"); each is killed at teardown,
     pass or fail, if it is still running."""
-    started: list[EngineProcess] = []
+    with contextlib.ExitStack() as ending:
 
-    def start(argv: list[str], log: Path | None = None, **kw: Any) -> EngineProcess:
-        started.append(EngineProcess(argv, log or tmp_path / "engine.log", **kw))
-        return started[-1]
+        def start(argv: list[str], log: Path | None = None, **kw: Any) -> EngineProcess:
+            started = EngineProcess(argv, log or tmp_path / "engine.log", **kw)
+            ending.callback(started.kill)
+            return started
 
-    try:
         yield start
-    finally:
-        for found in reversed(started):
-            found.kill()
 
 
 def call(engine: Engine, method: str, **params: Any) -> dict[str, Any]:

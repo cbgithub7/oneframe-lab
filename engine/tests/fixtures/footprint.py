@@ -48,12 +48,12 @@ def system() -> str:
 
 def expand(spelled: str, env: Mapping[str, str], checkout: Path) -> Path | None:
     """An entry's path in an environment: `{NAME}/a/b` from the variable NAME, `{checkout}/a/b` from
-    the repo. None when the variable is not set there, so the path does not apply."""
+    the repo. None when the variable is not set there, so the path does not apply; a variable not
+    in VARIABLES fails, so a misspelt one never silently stops a check."""
     match = re.fullmatch(r"\{(\w+)\}((?:/[^/{}]+)*)", spelled)
     assert match, f"{spelled!r} is not spelled {{NAME}}/a/b"
     name, rest = match.groups()
-    if name != "checkout" and name not in VARIABLES:
-        return None
+    assert name == "checkout" or name in VARIABLES, f"{spelled!r} starts from an unknown variable"
     base = str(checkout) if name == "checkout" else env.get(name)
     return Path(base, *rest.split("/")[1:]) if base else None
 
@@ -74,7 +74,7 @@ def snapshot(folder: Path) -> Snapshot:
     """Everything under `folder`, by its path relative to it. Read with scandir, whose entries carry
     their size and time on Windows: a uv cache holds hundreds of thousands of files."""
     found: Snapshot = {}
-    start = len(str(folder)) + 1
+    start = len(str(folder).rstrip("\\/")) + 1  # the folder and one separator, even for C:\
     pending = [str(folder)]
     while pending:
         try:
@@ -168,16 +168,20 @@ def profile(folders: Iterable[Path]) -> Profile:
 
 
 def profile_changes(before: Profile, after: Profile) -> list[str]:
-    """Anything new or changed under a watched folder, and a watched folder that appeared."""
+    """Anything new, changed or gone under a watched folder, and a watched folder that appeared or
+    went."""
     found = []
     for folder, then in before.items():
         now = after.get(folder)
-        if now is None:
+        if then is None or now is None:
+            if then != now:
+                found.append(folder)
             continue
-        if then is None:
-            found.append(folder)
-            continue
-        found += [str(Path(folder, name)) for name, seen in sorted(now.items()) if then.get(name) != seen]
+        found += [
+            str(Path(folder, name))
+            for name in sorted(then.keys() | now.keys())
+            if then.get(name) != now.get(name)
+        ]
     return found
 
 

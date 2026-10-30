@@ -355,6 +355,7 @@ def test_a_tool_waits_for_a_store_another_process_still_holds_then_runs(
             code = tools.download(data, [node_root], "test.moge", None, TRANSFER)
         else:
             code = tools.pin_tool(data, [node_root], "test.moge", TRANSFER)
+        assert let_go, f"the tool never said it waits: {said}"
         assert time.monotonic() - let_go[0] < 5  # bound: from the let-go; the tool would wait 60 s
         letting_go.join(10)
     assert code == 0, said
