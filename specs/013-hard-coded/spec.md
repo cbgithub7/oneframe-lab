@@ -1,6 +1,6 @@
 # 013: Nothing hard-coded, and v1's names
 
-Status: done (merged 2026-10-30 in [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49); task 7, the check on a card, waits on a local session)
+Status: done (merged 2026-10-30 in [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49); task 7, the check on a card, passed on a GTX 1070 on 2026-10-30: [report](reports/2026-10-30-local.md))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: the rule
   test's exceptions are keyed by where a name stands, never by file alone.

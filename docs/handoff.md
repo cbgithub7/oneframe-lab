@@ -43,7 +43,7 @@ Green in CI on Windows and Ubuntu, each spec with its reports:
 | [010](../specs/010-scheduler/spec.md) | The scheduler is given its executors (one process per run by default, so spec 004's worker pool can take its place); one `Emit`; one probe helper for the benches; `_attempt` in named steps; every ending sent after its place is free | CI on Windows and Ubuntu; [PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39); the probes on the GTX 1070 ([report](../specs/010-scheduler/reports/2026-10-25-local.md)) |
 | [011](../specs/011-files/spec.md) | One file hash, one move into place and one free space, in `files.py`; runtime sources fetched by the model store's transport (https only, retried, resumed), which now reads GitHub's archives; every path from the layout, `cache/objects` included | CI on Windows and Ubuntu; [PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44) |
 | [012](../specs/012-modules/spec.md) | Memory and runtimes as packages whose roots hold only a docstring, so reading a manifest loads only the memory model, and planning neither the manager nor the install; one way to read a definition (`reading.py`), where a malformed one is a problem, never a crash; `parse` and the install in named steps | CI on Windows and Ubuntu; [PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47) |
-| [013](../specs/013-hard-coded/spec.md) | Nothing in the engine names a runtime, a node or the tests, which a test holds; spec 002's check on a card lives with its node as `npm run bench:fit-check`, and `bench:fit` needs a node; names outside v1 (devices `mps`, `xpu`, `rocm`; vendors `amd`, `intel`; OS `macos`) refused | CI on Windows and Ubuntu; [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49); the check on a card waits on a local session |
+| [013](../specs/013-hard-coded/spec.md) | Nothing in the engine names a runtime, a node or the tests, which a test holds; spec 002's check on a card lives with its node as `npm run bench:fit-check`, and `bench:fit` needs a node; names outside v1 (devices `mps`, `xpu`, `rocm`; vendors `amd`, `intel`; OS `macos`) refused | CI on Windows and Ubuntu; [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49); the check on a card on the GTX 1070 ([report](../specs/013-hard-coded/reports/2026-10-30-local.md)) |
 | [014](../specs/014-tests/spec.md) | Each test helper once, in `conftest.py` and `engine/tests/fixtures/`; every engine a test starts, in-process or as a process, ended by a fixture, its whole tree; every wait with a deadline that names what it waited for; wall-clock bounds only where they are evidence, marked; the data root's exceptions as `outside` in `contracts/layout.json`, which the footprint test reads, and the real profile checked deep in our programs' default folders | CI on Windows and Ubuntu; [PR #51](https://github.com/cbgithub7/oneframe-lab/pull/51) |
 
 Beside them: the engine's core (typed ports, manifests, graph planning with converters, the cache,
@@ -77,17 +77,9 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **Spec 013's check on a card** (its task 7), on any machine with an NVIDIA card.
-    - Branch: `main`, at or after [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49).
-    - Command: `npm run bench:fit-check -- --out specs/013-hard-coded/reports/`, which installs the
-      test node's runtime if needed and writes `<date>-<card>-fit.md` there.
-    - Passing: it exits 0 and its report has no "Not measured": the context measured, the three
-      settings run on the card, step 3 "Shown: yes", and neither overrun "not exercised". That
-      shows spec 002's check runs from `engine/tests/fit_check.py` through 012's packages.
-    - Report: `<date>-local.md` in the same folder, naming the machine and linking the fit report;
-      the PR that commits both ticks task 7 and takes this item off the list.
-
-The last items before it passed on 2026-10-25 on the GTX 1070: spec 010's probes on a card
+Nothing is waiting. The last item passed on 2026-10-30 on the GTX 1070: spec 013's check on a
+card ([report](../specs/013-hard-coded/reports/2026-10-30-local.md)), run by Grok Bot outside
+Claude desktop's package. Before it, on 2026-10-25: spec 010's probes on a card
 ([report](../specs/010-scheduler/reports/2026-10-25-local.md)) and the torch runtime's new lock
 ([report](../specs/001-runtime-manager/reports/2026-10-25-torch-lock-local.md)).
 

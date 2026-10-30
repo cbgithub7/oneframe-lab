@@ -26,5 +26,5 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   hard-coded", and the device, vendor and OS names under "Dead weight").
 - [x] 6. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC4 one
   by one.
-- [ ] 7. After the merge, the local session in Verification on a machine with an NVIDIA card, and
+- [x] 7. After the merge, the local session in Verification on a machine with an NVIDIA card, and
   its report under `specs/013-hard-coded/reports/`.
