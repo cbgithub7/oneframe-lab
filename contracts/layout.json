@@ -1,5 +1,5 @@
 {
-  "_comment": "The data root and what is under it, as cases both test suites check: the engine's oneframe/layout.py and the app's app/main/paths.js must give the same root for every row, and name the same paths. A row gives the environment, the platform, the home folder and whether the app is packaged; root is the answer. Windows rows are checked with Windows rules on every operating system. environment names the variables both set for a child: the temporary folder's, and uv's, its folders by their name in paths.",
+  "_comment": "The data root and what is under it, as cases both test suites check: the engine's oneframe/layout.py and the app's app/main/paths.js must give the same root for every row, and name the same paths. A row gives the environment, the platform, the home folder and whether the app is packaged; root is the answer. Windows rows are checked with Windows rules on every operating system. environment names the variables both set for a child: the temporary folder's, and uv's, its folders by their name in paths. outside lists every exception to the rule that nothing is written outside the data root (AGENTS.md, One data root): its writer (app, engine, runtime, tool, dev checkout or graphics driver), the systems it happens on, what it is and why it is allowed, and the fixed paths it writes, each spelled from a variable of the environment ({LOCALAPPDATA}/...) or the repo ({checkout}/...); a path whose variable is not set does not apply. The footprint test allows only the entries of what the engine's process tree runs (the engine, a runtime, the graphics driver); a new entry is the owner's decision.",
   "version": 1,
   "roots": [
     { "case": "linux, dev, nothing set", "platform": "linux", "home": "/home/ana", "packaged": false, "env": {}, "root": "/home/ana/.local/share/oneframe-lab-dev" },
@@ -69,5 +69,56 @@
     "temporary": ["TMP", "TEMP", "TMPDIR"],
     "uv_folders": { "UV_CACHE_DIR": "uv_cache", "UV_PYTHON_INSTALL_DIR": "uv_python" },
     "uv_settings": { "UV_PYTHON_INSTALL_BIN": "0", "UV_PYTHON_INSTALL_REGISTRY": "0" }
-  }
+  },
+  "outside": [
+    {
+      "writer": "tool",
+      "systems": ["windows", "linux"],
+      "what": "A file or folder the person names on a tool's command line: a bench report with --out, uv's cache and Pythons with --uv-home.",
+      "why": "The person chose where it goes; the app never passes these.",
+      "paths": []
+    },
+    {
+      "writer": "dev checkout",
+      "systems": ["windows", "linux"],
+      "what": "The engine's environment in a dev checkout.",
+      "why": "uv keeps a project's environment beside it; a packaged app has none.",
+      "paths": ["{checkout}/engine/.venv"]
+    },
+    {
+      "writer": "dev checkout",
+      "systems": ["windows", "linux"],
+      "what": "npm's own download cache.",
+      "why": "The dev tool installing itself, not the app writing; a packaged app runs no npm.",
+      "paths": ["{LOCALAPPDATA}/npm-cache", "{HOME}/.npm"]
+    },
+    {
+      "writer": "dev checkout",
+      "systems": ["windows", "linux"],
+      "what": "The Electron binary's download cache, filled on a checkout's first npm start.",
+      "why": "The electron package installing itself (spec 006, decision 5); a packaged app carries its binary.",
+      "paths": ["{LOCALAPPDATA}/electron/Cache", "{XDG_CACHE_HOME}/electron", "{HOME}/.cache/electron"]
+    },
+    {
+      "writer": "graphics driver",
+      "systems": ["windows"],
+      "what": "The graphics driver's shader caches: NVIDIA's and Direct3D's.",
+      "why": "The driver owns, caps and shares them with every program, and alone decides where they go (spec 006, decision 4).",
+      "paths": ["{LOCALAPPDATA}/NVIDIA/DXCache", "{LOCALAPPDATA}/NVIDIA/GLCache", "{LOCALAPPDATA}/D3DSCache"]
+    },
+    {
+      "writer": "graphics driver",
+      "systems": ["linux"],
+      "what": "The graphics driver's shader caches: Mesa's and NVIDIA's.",
+      "why": "The driver owns, caps and shares them with every program; the GPU process forks before the app's code could move them (spec 006, decision 4).",
+      "paths": ["{XDG_CACHE_HOME}/mesa_shader_cache", "{HOME}/.cache/mesa_shader_cache", "{XDG_CACHE_HOME}/nvidia", "{HOME}/.cache/nvidia"]
+    },
+    {
+      "writer": "app",
+      "systems": ["linux"],
+      "what": "While the app runs, Chromium's single-instance socket and a moment's temporary file, in the system temporary folder, under names Chromium picks.",
+      "why": "A socket path over 107 bytes aborts the app at start, and a root on a network file system may hold no socket (spec 006, decision 3).",
+      "paths": []
+    }
+  ]
 }

@@ -26,7 +26,7 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   `test_a_record_made_under_another_key_version_is_never_served`, checking what the record does.
   Rewrite the two `_claimed` and `_wait` tests through `pin_tool` and `download`, and read what the
   tools say from standard error in every pin test. AC8's command prints nothing.
-- [ ] 8. **Exceptions as data.** `outside` in `contracts/layout.json`, one entry per exception
+- [x] 8. **Exceptions as data.** `outside` in `contracts/layout.json`, one entry per exception
   AGENTS.md lists, and its `_comment`. `engine/tests/fixtures/footprint.py` with the snapshots and
   the sandbox diff as functions; `test_footprint.py` uses them and allows the entries for the
   engine's tree; the registry check as a function too. Add AC1's test,
