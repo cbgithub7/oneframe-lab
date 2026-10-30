@@ -22,7 +22,7 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   (AC6).
 - [x] 6. **Bounds**, test by test as the spec's Tests section says; each bound kept carries a
   `# bound:` comment saying why it is evidence (AC7).
-- [ ] 7. **Behaviour, not details.** Rename `test_the_key_version_is_2` to
+- [x] 7. **Behaviour, not details.** Rename `test_the_key_version_is_2` to
   `test_a_record_made_under_another_key_version_is_never_served`, checking what the record does.
   Rewrite the two `_claimed` and `_wait` tests through `pin_tool` and `download`, and read what the
   tools say from standard error in every pin test. AC8's command prints nothing.
