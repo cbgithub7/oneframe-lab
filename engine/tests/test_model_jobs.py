@@ -283,7 +283,8 @@ def test_stop_sends_model_stopped_within_two_seconds_and_keeps_the_partial(
     else:
         engine.shutdown(10)
         end = wait_end(events, job, 1)  # shutdown waited for it
-    assert end["event"] == "model.stopped" and time.monotonic() - pressed < 2
+    # Spec 003 asks for model.stopped within 2 s of Stop; the stall alone would hold it for a minute.
+    assert end["event"] == "model.stopped" and time.monotonic() - pressed < 2  # bound: spec 003's Stop
     assert [f["outcome"] for f in end["files"]] == ["downloaded", "stopped"]
     assert partial.stat().st_size == 100_000
     journals = sorted(Layout(engine.data).journals.glob("*model-download*.ndjson"))

@@ -116,17 +116,18 @@ def test_stop_kills_a_runtime_child(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
     _runtime_node(make_node, "test.hang", HANG)
-    started = time.monotonic()
     stop = threading.Event()
+    pressed: list[float] = []
 
     def listen(event: dict[str, Any]) -> None:
         events.append(event)
         if event["event"] == "stage":
+            pressed.append(time.monotonic())
             stop.set()
 
     result = scheduler_for().run(_one("test.hang"), listen, stop)
     assert result.status == "stopped"
-    assert time.monotonic() - started < 20
+    assert time.monotonic() - pressed[0] < 5  # bound: from the stop; the node would sleep 60 s
     # The interpreter itself, not only the process the engine started (on Windows a venv's
     # python.exe is a launcher that starts the interpreter as another process): gone on return.
     assert not alive(int(events.of("stage")[0]["message"]))
@@ -491,16 +492,15 @@ def test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token(tmp_path: Path) ->
     }
 
 
-def test_a_node_that_reads_stdin_gets_end_of_file_at_once(tmp_path: Path) -> None:
-    """The child's stdin is the pipe it watches to end with its parent; node code must not wait on it."""
+def test_a_node_that_reads_stdin_gets_end_of_file_at_once(
+    tmp_path: Path, stop_after: Callable[[float], threading.Event]
+) -> None:
+    """The child's stdin is the pipe it watches to end with its parent; node code must not wait on it.
+    A node left waiting is stopped at the deadline and fails, rather than hanging."""
     body = "try:\n    input()\nexcept EOFError:\n    ctx.stage('stdin', 'eof')\n"
     seen: list[dict[str, object]] = []
-    started = time.monotonic()
-    ProcessExecutor(Path(sys.executable)).execute(
-        _executor_job(tmp_path, body), seen.append, threading.Event()
-    )
+    ProcessExecutor(Path(sys.executable)).execute(_executor_job(tmp_path, body), seen.append, stop_after(20))
     assert seen[0]["message"] == "eof"
-    assert time.monotonic() - started < 20
 
 
 def test_a_node_that_queries_its_stdin_does_not_hang(

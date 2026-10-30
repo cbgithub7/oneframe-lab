@@ -208,7 +208,7 @@ def test_a_stall_holds_the_connection_until_released(hosts: Hosts) -> None:
         get(url, timeout=0.5)
     with pytest.raises((TimeoutError, socket.timeout, ssl.SSLError)):
         get(url, timeout=0.5)
-    assert time.monotonic() - started < 5
+    assert time.monotonic() - started < 5  # bound: the 0.5 s timeouts ended both, not the 60 s stall
     assert [r.sent for r in hosts.requests("files")] == [1000, 0]
     first.release.set()
     second.release.set()

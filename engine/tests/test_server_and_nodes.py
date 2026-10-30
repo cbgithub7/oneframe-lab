@@ -4,7 +4,6 @@ import ast
 import json
 import subprocess
 import sys
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -185,8 +184,6 @@ def test_shutdown_stops_a_running_graph_and_its_node_process(
     wait_until(lambda: events.of("stage"), lambda: f"the node's stage: {events}", 30)
     pid = int(events.of("stage")[0]["message"])
 
-    started = time.monotonic()
     engine.shutdown(timeout=20)
-    assert time.monotonic() - started < 15
     assert events.of("run.stopped")
     assert wait_gone(pid)

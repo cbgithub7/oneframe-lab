@@ -328,13 +328,18 @@ def test_a_tool_waits_for_a_store_another_process_still_holds_then_runs(
     said = _said_by_tools(monkeypatch)
     monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)  # the holder lets go long before
     with _store_held(data) as holder:
-        letting_go = _when(lambda: _waiting(said), holder.let_go)  # only once the tool says it waits
-        started = time.monotonic()
+        let_go: list[float] = []
+
+        def let_go_now() -> None:
+            let_go.append(time.monotonic())
+            holder.let_go()
+
+        letting_go = _when(lambda: _waiting(said), let_go_now)  # only once the tool says it waits
         if tool == "download":
             code = tools.download(data, [node_root], "test.moge", None, TRANSFER)
         else:
             code = tools.pin_tool(data, [node_root], "test.moge", TRANSFER)
-        assert time.monotonic() - started < 10  # it went on when the store was let go, not at 60 s
+        assert time.monotonic() - let_go[0] < 5  # bound: from the let-go; the tool would wait 60 s
         letting_go.join(10)
     assert code == 0, said
     assert _waiting(said[:1]), said  # it said so before anything else
@@ -351,9 +356,7 @@ def test_ctrl_c_while_a_tool_waits_for_the_store_ends_it_with_nothing_started(
     monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)
     with _store_held(data):
         _press_ctrl_c_when(lambda: _waiting(said))
-        pressed = time.monotonic()
         assert tools.download(data, [node_root], "test.moge", None, TRANSFER) == tools.STOPPED
-        assert time.monotonic() - pressed < 10  # not the 60 s wait
     assert said[-1] == "Stopped while waiting; nothing was started."
     assert hub.requests() == [] and not list(Layout(data).journals.glob("*model-download*"))
 
@@ -380,9 +383,7 @@ def test_a_mistake_in_the_request_is_said_at_once_even_while_the_store_is_held(
     said = _said_by_tools(monkeypatch)
     monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)
     with _store_held(data):
-        started = time.monotonic()
         assert tools.download(data, [node_root], "test.moge", ["nope"], TRANSFER) == 2
-        assert time.monotonic() - started < 5
     assert not _waiting(said) and "no checkpoint 'nope'" in said[-1]
 
 

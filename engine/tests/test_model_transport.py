@@ -341,7 +341,8 @@ def test_stop_ends_a_stalled_download_within_two_seconds_and_keeps_the_partial(
     pressed = time.monotonic()
     stop.set()
     thread.join(5)
-    assert not thread.is_alive() and time.monotonic() - pressed < 2
+    # Spec 003 asks for a stopped download to end within 2 s; the stall alone would hold it a minute.
+    assert not thread.is_alive() and time.monotonic() - pressed < 2  # bound: spec 003's Stop
     assert isinstance(done[0], Stopped)
     partial = tmp_path / SHA
     assert (partial.stat().st_size if partial.exists() else 0) == (0 if before_headers else 200_000)
