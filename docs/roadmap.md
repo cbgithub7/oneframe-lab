@@ -4,23 +4,6 @@ What has been decided or found, but that no step has finished yet. The order of 
 [handoff.md](handoff.md); a spec that takes an item on is named beside it, and the item leaves here
 when that spec lands.
 
-## The clean-up (specs 007 to 014)
-
-From the [review of 2026-10-12](reviews/2026-10-12.md), sections 3 and 4, which the owner asked to
-clean up before the first model node. Each item is in the approved spec named beside it. Nothing a
-person sees changes, except where a spec's answered questions say.
-
-- **Tests:**
-    - shared helpers for the model tests (014);
-    - the footprint test tells our writes from another program's without checking less (it failed
-      once on a runner's own Firefox), and reads the data root's exceptions as data. Narrowing it
-      is the owner's call (014);
-    - `test_a_killed_install_is_not_installed_and_a_second_install_completes` does not check its
-      second install's reply (014);
-    - nine assertions bound wall-clock time (014);
-    - two tests check implementation details: the cache key's version, and the tool's private
-      `_claimed` and `_wait` (014).
-
 ## The editor (step 7)
 
 - **Wiring aids**, the owner's idea, proposed on 2026-10-12 and not yet decided. Layer 1, "what
