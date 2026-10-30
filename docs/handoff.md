@@ -27,7 +27,7 @@ proposal": https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   earlier app, may be read for what it learned; nothing is ported or copied from it, and nothing
   here has to match it.
 
-## State (2026-10-26)
+## State (2026-10-30)
 
 Green in CI on Windows and Ubuntu, each spec with its reports:
 
@@ -43,6 +43,7 @@ Green in CI on Windows and Ubuntu, each spec with its reports:
 | [010](../specs/010-scheduler/spec.md) | The scheduler is given its executors (one process per run by default, so spec 004's worker pool can take its place); one `Emit`; one probe helper for the benches; `_attempt` in named steps; every ending sent after its place is free | CI on Windows and Ubuntu; [PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39); the probes on the GTX 1070 ([report](../specs/010-scheduler/reports/2026-10-25-local.md)) |
 | [011](../specs/011-files/spec.md) | One file hash, one move into place and one free space, in `files.py`; runtime sources fetched by the model store's transport (https only, retried, resumed), which now reads GitHub's archives; every path from the layout, `cache/objects` included | CI on Windows and Ubuntu; [PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44) |
 | [012](../specs/012-modules/spec.md) | Memory and runtimes as packages whose roots hold only a docstring, so reading a manifest loads only the memory model, and planning neither the manager nor the install; one way to read a definition (`reading.py`), where a malformed one is a problem, never a crash; `parse` and the install in named steps | CI on Windows and Ubuntu; [PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47) |
+| [013](../specs/013-hard-coded/spec.md) | Nothing in the engine names a runtime, a node or the tests, which a test holds; spec 002's check on a card lives with its node as `npm run bench:fit-check`, and `bench:fit` needs a node; names outside v1 (devices `mps`, `xpu`, `rocm`; vendors `amd`, `intel`; OS `macos`) refused | CI on Windows and Ubuntu; [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49); the check on a card waits on a local session |
 
 Beside them: the engine's core (typed ports, manifests, graph planning with converters, the cache,
 the scheduler, the NDJSON server); an Electron 45 shell whose sandboxed page lists nodes through
@@ -58,7 +59,7 @@ small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-la
 
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
-| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 done ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)); 011 done ([PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44)); 012 done ([PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47)); 013 in review ([PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49)) |
+| 2b | Clean-up: the review's sections 3 and 4 ([roadmap](roadmap.md), "The clean-up"), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 done ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)); 011 done ([PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44)); 012 done ([PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47)); 013 done ([PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49)); 014 next |
 | 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | not started; it starts from the pins in `specs/003-model-store/live/` |
 | 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
@@ -74,9 +75,18 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-Nothing is waiting. The last two items passed on 2026-10-25 on the GTX 1070: spec 010's probes
-on a card ([report](../specs/010-scheduler/reports/2026-10-25-local.md)) and the torch runtime's
-new lock, filelock 4.2.4 and setuptools 84.2.1
+1. **Spec 013's check on a card** (its task 7), on any machine with an NVIDIA card.
+    - Branch: `main`, at or after [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49).
+    - Command: `npm run bench:fit-check -- --out specs/013-hard-coded/reports/`, which installs the
+      test node's runtime if needed and writes `<date>-<card>-fit.md` there.
+    - Passing: it exits 0 and its report has no "Not measured": the context measured, the three
+      settings run on the card, step 3 "Shown: yes", and neither overrun "not exercised". That
+      shows spec 002's check runs from `engine/tests/fit_check.py` through 012's packages.
+    - Report: `<date>-local.md` in the same folder, naming the machine and linking the fit report;
+      the PR that commits both ticks task 7 and takes this item off the list.
+
+The last items before it passed on 2026-10-25 on the GTX 1070: spec 010's probes on a card
+([report](../specs/010-scheduler/reports/2026-10-25-local.md)) and the torch runtime's new lock
 ([report](../specs/001-runtime-manager/reports/2026-10-25-torch-lock-local.md)).
 
 ## Open, and in the way of the next steps
