@@ -22,7 +22,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `test_devices_the_engine_does_not_read_yet_are_named`, as Tests lists; update the expected
   problems of `test_every_problem_in_a_definition_is_listed_at_once`; `docs/runtimes.md`'s vendors
   and OSes, and the devices in `docs/nodes.md`.
-- [ ] 5. **The roadmap:** delete from `docs/roadmap.md` what this spec takes on ("Nothing
+- [x] 5. **The roadmap:** delete from `docs/roadmap.md` what this spec takes on ("Nothing
   hard-coded", and the device, vendor and OS names under "Dead weight").
 - [ ] 6. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC4 one
   by one.
