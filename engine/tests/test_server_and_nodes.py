@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import Events, MakeNode, wait_until
+from conftest import Events, MakeEngine, MakeNode, wait_until
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR
@@ -20,7 +20,6 @@ from oneframe.graph import Graph
 from oneframe.processes import wait_gone
 from oneframe.registry import discover
 from oneframe.scheduler import Scheduler
-from oneframe.server import Engine
 
 
 def test_importing_the_server_loads_no_numeric_or_model_library() -> None:
@@ -194,7 +193,11 @@ def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
 
 
 def test_shutdown_stops_a_running_graph_and_its_node_process(
-    tmp_path: Path, make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+    tmp_path: Path,
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    make_engine: MakeEngine,
 ) -> None:
     """The app quitting closes the engine's stdin, and the engine shuts down: a node still loading
     a model must not outlive it holding the card."""
@@ -209,19 +212,16 @@ def test_shutdown_stops_a_running_graph_and_its_node_process(
         },
         "import os, time\ndef run(ctx):\n    ctx.stage('hang', str(os.getpid()))\n    time.sleep(60)\n",
     )
-    engine = Engine(tmp_path / "data", [tmp_path / "nodes"], events.append, runtime_roots=[])
+    engine = make_engine(tmp_path / "data", [tmp_path / "nodes"], events.append, runtime_roots=[])
     engine.scheduler = scheduler_for()  # runtime nodes run in this test's own Python
     graph = {"version": 1, "nodes": {"h": {"node": "test.hang"}}, "edges": []}
-    try:
-        reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
-        assert reply is not None and "result" in reply, reply
-        wait_until(lambda: events.of("stage"), lambda: f"the node's stage: {events}", 30)
-        pid = int(events.of("stage")[0]["message"])
+    reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
+    assert reply is not None and "result" in reply, reply
+    wait_until(lambda: events.of("stage"), lambda: f"the node's stage: {events}", 30)
+    pid = int(events.of("stage")[0]["message"])
 
-        started = time.monotonic()
-        engine.shutdown(timeout=20)
-        assert time.monotonic() - started < 15
-        assert events.of("run.stopped")
-        assert wait_gone(pid)
-    finally:
-        engine.shutdown(timeout=20)  # nothing left running if an assertion above failed
+    started = time.monotonic()
+    engine.shutdown(timeout=20)
+    assert time.monotonic() - started < 15
+    assert events.of("run.stopped")
+    assert wait_gone(pid)

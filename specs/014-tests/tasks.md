@@ -11,7 +11,7 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
 - [x] 2. **Small shared helpers in `conftest.py`.** The `hub` fixture, `call`, `wait_until` (which
   `wait_free` uses) and `held_elsewhere`. The five lock holders and the hand-written deadline loops
   outside the engine clients use them.
-- [ ] 3. **In-process engines.** The `make_engine` fixture, each engine shut down at teardown, and
+- [x] 3. **In-process engines.** The `make_engine` fixture, each engine shut down at teardown, and
   `engine` built on it. Every test that made an `Engine` asks `make_engine`, `tiny_engine` and
   `test_formats.py`'s helper included; the catalog writes its nodes before its engine starts.
 - [ ] 4. **One engine-process client.** `fixtures/engine_process.py` with `EngineProcess`, and the

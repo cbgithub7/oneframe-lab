@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import NO_GPU, Events, MakeNode
+from conftest import NO_GPU, Events, MakeEngine, MakeNode
 
 from oneframe import BUILTIN_NODES_DIR, REPO_ROOT, errors, executors, node, processes
 from oneframe.errors import KINDS, Failure, UndeclaredFailure, check, failure
@@ -25,7 +25,6 @@ from oneframe.node import failures
 from oneframe.node.job import Job
 from oneframe.runtimes.manager import InstallRefused, RuntimeMissing
 from oneframe.scheduler import Scheduler
-from oneframe.server import Engine
 
 
 def _table() -> dict[tuple[str, str | None], tuple[bool, str]]:
@@ -101,35 +100,32 @@ def test_there_is_one_stopped() -> None:
     assert errors.Stopped is node.Stopped is executors.Stopped is transport.Stopped is processes.Stopped
 
 
-def test_error_replies_carry_the_failure(tmp_path: Path) -> None:
-    engine = Engine(tmp_path, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU)
-    try:
-        unknown = engine.handle({"id": 1, "method": "nodes.explode"}) or {}
-        assert unknown["error"] == {
-            "kind": "request",
-            "reason": "unknown_method",
-            "message": "Unknown method 'nodes.explode'.",
-            "retry": False,
-        }
-        missing = engine.handle({"id": 2, "method": "runtimes.install", "params": {"runtime": "nope"}}) or {}
-        assert (missing["error"]["kind"], missing["error"]["reason"]) == ("runtime", "unknown")
-        graph = {"version": 1, "nodes": {"a": {"node": "no.such"}}, "edges": []}
-        bad = engine.handle({"id": 3, "method": "graph.validate", "params": {"graph": graph}}) or {}
-        assert bad["error"]["kind"] == "graph" and bad["error"]["problems"]
-        missing = engine.handle({"id": 4, "method": "graph.validate", "params": {}}) or {}  # no graph
-        assert (missing["error"]["kind"], missing["error"]["reason"]) == ("request", "bad_params")
-        unknown = engine.handle({"id": 5, "method": "nodes.fit", "params": {"node": "no.such"}}) or {}
-        assert unknown["error"]["reason"] == "bad_params" and "no.such" in unknown["error"]["message"]
+def test_error_replies_carry_the_failure(tmp_path: Path, make_engine: MakeEngine) -> None:
+    engine = make_engine(tmp_path, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU)
+    unknown = engine.handle({"id": 1, "method": "nodes.explode"}) or {}
+    assert unknown["error"] == {
+        "kind": "request",
+        "reason": "unknown_method",
+        "message": "Unknown method 'nodes.explode'.",
+        "retry": False,
+    }
+    missing = engine.handle({"id": 2, "method": "runtimes.install", "params": {"runtime": "nope"}}) or {}
+    assert (missing["error"]["kind"], missing["error"]["reason"]) == ("runtime", "unknown")
+    graph = {"version": 1, "nodes": {"a": {"node": "no.such"}}, "edges": []}
+    bad = engine.handle({"id": 3, "method": "graph.validate", "params": {"graph": graph}}) or {}
+    assert bad["error"]["kind"] == "graph" and bad["error"]["problems"]
+    missing = engine.handle({"id": 4, "method": "graph.validate", "params": {}}) or {}  # no graph
+    assert (missing["error"]["kind"], missing["error"]["reason"]) == ("request", "bad_params")
+    unknown = engine.handle({"id": 5, "method": "nodes.fit", "params": {"node": "no.such"}}) or {}
+    assert unknown["error"]["reason"] == "bad_params" and "no.such" in unknown["error"]["message"]
 
-        def broken(_params: dict[str, object]) -> dict[str, object]:
-            raise KeyError("an engine bug")
+    def broken(_params: dict[str, object]) -> dict[str, object]:
+        raise KeyError("an engine bug")
 
-        engine.methods["ports.list"] = broken
-        crash = engine.handle({"id": 6, "method": "ports.list"}) or {}
-        assert crash["error"]["kind"] == "engine" and "KeyError" in crash["error"]["message"]
-        assert "Traceback" in crash["error"]["detail"]
-    finally:
-        engine.shutdown()
+    engine.methods["ports.list"] = broken
+    crash = engine.handle({"id": 6, "method": "ports.list"}) or {}
+    assert crash["error"]["kind"] == "engine" and "KeyError" in crash["error"]["message"]
+    assert "Traceback" in crash["error"]["detail"]
 
 
 OPEN_MASK = {

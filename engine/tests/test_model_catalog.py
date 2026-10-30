@@ -4,12 +4,11 @@ requirement 7's list). Each refusal says its reason; nothing outside the store i
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode, call, held_elsewhere, wait_free
+from conftest import MakeNode, call, held_elsewhere, wait_free
 from fixtures.store import put, sha, url_file
 
 from oneframe.files import lock_file
@@ -26,7 +25,7 @@ OWN = b"the other node's own weights " * 50
 STRAY = b"a file from a node since deleted " * 30
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)  # written before the engine starts
 def nodes(make_node: MakeNode) -> None:
     base: dict[str, Any] = {
         "version": "1",
@@ -62,15 +61,6 @@ def nodes(make_node: MakeNode) -> None:
             "files": [url_file("config", SHARED, format="other"), url_file("own", OWN, format="pickle")],
         }
     )
-
-
-@pytest.fixture
-def engine(tmp_path: Path, node_root: Path, events: Events, nodes: None) -> Iterator[Engine]:
-    found = Engine(tmp_path / "data", [node_root], events.append)
-    try:
-        yield found
-    finally:
-        found.shutdown(10)
 
 
 def outside_the_store(data: Path) -> dict[str, bytes]:

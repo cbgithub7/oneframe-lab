@@ -10,13 +10,12 @@ import sys
 import textwrap
 import threading
 import time
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 from conftest import Events, MakeNode, call, held_elsewhere, wait_until
-from fixtures.hosts import TRANSFER, Hosts, Replace, Stall
+from fixtures.hosts import Hosts, Replace, Stall
 from fixtures.store import hub_file, sha, url_file
 
 from oneframe.files import is_free, lock_file
@@ -71,20 +70,6 @@ def pinned_node(hub: Hosts, make_node: MakeNode, engine: Engine) -> dict[str, st
     )
     call(engine, "nodes.reload")
     return urls
-
-
-@pytest.fixture
-def engine(tmp_path: Path, node_root: Path, events: Events, hub: Hosts) -> Iterator[Engine]:
-    found = Engine(
-        tmp_path / "data",
-        [node_root],
-        events.append,
-        transfer=TRANSFER,
-    )
-    try:
-        yield found
-    finally:
-        found.shutdown(10)
 
 
 def wait_end(events: Events, job: str, seconds: float = 30) -> dict[str, Any]:

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fixtures.hosts import Hosts
+from fixtures.hosts import TRANSFER, Hosts
 from fixtures.store import sha
 
 from oneframe.cache import Cache
@@ -429,6 +429,31 @@ def hub(hosts: Hosts, monkeypatch: pytest.MonkeyPatch) -> Hosts:
     """The test hosts, with the hub client pointed at their imitation of Hugging Face."""
     monkeypatch.setenv("HF_ENDPOINT", hosts.hub)
     return hosts
+
+
+MakeEngine = Callable[..., Engine]
+
+
+@pytest.fixture
+def make_engine() -> Iterator[MakeEngine]:
+    """In-process engines, made with Engine's own arguments. Each is shut down at teardown, pass or
+    fail, so no run, install, download or scratch folder outlives its test; a test may shut one
+    down itself first. Ask for it after the fixtures its engines use (hosts, say): fixtures end in
+    the reverse of their order, so the engines end first."""
+    with contextlib.ExitStack() as ending:
+
+        def make(*args: Any, **kw: Any) -> Engine:
+            made = Engine(*args, **kw)
+            ending.callback(made.shutdown)
+            return made
+
+        yield make
+
+
+@pytest.fixture
+def engine(hub: Hosts, tmp_path: Path, node_root: Path, events: Events, make_engine: MakeEngine) -> Engine:
+    """The model tests' engine: the nodes in `node_root`, downloading from the test hosts."""
+    return make_engine(tmp_path / "data", [node_root], events.append, transfer=TRANSFER)
 
 
 def call(engine: Engine, method: str, **params: Any) -> dict[str, Any]:

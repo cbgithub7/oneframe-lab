@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import NO_GPU, Events, MakeNode, add_source, upstream_archive, wait_until
+from conftest import NO_GPU, Events, MakeEngine, MakeNode, add_source, upstream_archive, wait_until
 from fixtures import fit_node, machines
 from fixtures.hosts import TRANSFER, Hosts, Stall
 
@@ -227,9 +227,16 @@ def test_stop_ends_an_install_and_installs_run_one_at_a_time(
 
 
 def test_listing_and_planning_touch_no_network(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    tiny: Path,
+    uv_exe: str,
+    uv_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    make_engine: MakeEngine,
 ) -> None:
-    engine = Engine(tmp_path / "data", [BUILTIN_NODES_DIR], Events().append, [tiny.parent], uv_exe, uv_home)
+    engine = make_engine(
+        tmp_path / "data", [BUILTIN_NODES_DIR], Events().append, [tiny.parent], uv_exe, uv_home
+    )
     assert engine.runtimes.install("tiny") is not None  # the network is open for the install
     engine.runtimes._profile = None  # read the machine again, under watch
 
@@ -264,7 +271,13 @@ def test_listing_and_planning_touch_no_network(
 
 
 def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, make_node: MakeNode, node_root: Path
+    tmp_path: Path,
+    tiny: Path,
+    uv_exe: str,
+    uv_home: Path,
+    make_node: MakeNode,
+    node_root: Path,
+    make_engine: MakeEngine,
 ) -> None:
     make_node(
         {
@@ -278,7 +291,7 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
         "import time\ndef run(ctx):\n    ctx.stage('wait')\n    time.sleep(120)\n",
     )
     events = Events()
-    engine = Engine(
+    engine = make_engine(
         tmp_path / "data", [node_root], events.append, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU
     )
     assert engine.runtimes.install("tiny") is not None
@@ -324,6 +337,7 @@ def test_an_ending_is_sent_after_its_place_is_free(
     make_node: MakeNode,
     node_root: Path,
     monkeypatch: pytest.MonkeyPatch,
+    make_engine: MakeEngine,
 ) -> None:
     """A listener that acts on hearing an ending is answered, never refused busy or in_use: on an
     install's, the same install again; on a run's, removing a file it read and the runtime it used,
@@ -381,52 +395,51 @@ def test_an_ending_is_sent_after_its_place_is_free(
             asked["run"] = ask("graph.run", graph=_one("test.next"))
         answered.set()
 
-    engine = Engine(tmp_path / "data", [node_root], listen, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU)
-    try:
-        if ending.startswith("runtime."):
+    engine = make_engine(
+        tmp_path / "data", [node_root], listen, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU
+    )
+    if ending.startswith("runtime."):
 
-            def install(*_args: Any, **_kw: Any) -> dict[str, Any]:  # how the install ends, at once
-                if ending == "runtime.stopped":
-                    raise Stopped()
-                raise runtime_install.InstallFailed("as the test asks", "")
+        def install(*_args: Any, **_kw: Any) -> dict[str, Any]:  # how the install ends, at once
+            if ending == "runtime.stopped":
+                raise Stopped()
+            raise runtime_install.InstallFailed("as the test asks", "")
 
-            monkeypatch.setattr(runtime_install, "install", install)
-            assert "result" in ask("runtimes.install", runtime="tiny")
-            assert answered.wait(30)
-            assert "result" in asked["install"], asked
-            wait_until(lambda: len(events.of(ending)) == 2, "the end of the install asked for", WAIT_S)
-            return
-        store = Store(engine.data)
-        store.claim()
-        store.partial(sha).parent.mkdir(parents=True, exist_ok=True)
-        store.partial(sha).write_bytes(weights)
-        store.place(store.partial(sha), sha)
-        engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
-        end = ending.removeprefix("run.")
-        assert "result" in ask("graph.run", graph=_one("test.reads_in_tiny", end=end))
-        if end == "stopped":
-            wait_until(lambda: events.of("stage"), "the node's stage", WAIT_S)
-            ask("run.stop")
-        assert answered.wait(WAIT_S)
-        assert [row["sha256"] for row in asked["file"]["result"]["removed"]] == [sha], asked
-        assert asked["runtime"]["result"] == {"runtime": "tiny", "removed": None}, asked
-        following = asked["run"]["result"]["run"]
-        wait_until(
-            lambda: any(e.get("run") == following and e["event"] == "run.done" for e in events),
-            "a next run",
-            WAIT_S,
-        )
-    finally:
-        engine.shutdown()
+        monkeypatch.setattr(runtime_install, "install", install)
+        assert "result" in ask("runtimes.install", runtime="tiny")
+        assert answered.wait(30)
+        assert "result" in asked["install"], asked
+        wait_until(lambda: len(events.of(ending)) == 2, "the end of the install asked for", WAIT_S)
+        return
+    store = Store(engine.data)
+    store.claim()
+    store.partial(sha).parent.mkdir(parents=True, exist_ok=True)
+    store.partial(sha).write_bytes(weights)
+    store.place(store.partial(sha), sha)
+    engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
+    end = ending.removeprefix("run.")
+    assert "result" in ask("graph.run", graph=_one("test.reads_in_tiny", end=end))
+    if end == "stopped":
+        wait_until(lambda: events.of("stage"), "the node's stage", WAIT_S)
+        ask("run.stop")
+    assert answered.wait(WAIT_S)
+    assert [row["sha256"] for row in asked["file"]["result"]["removed"]] == [sha], asked
+    assert asked["runtime"]["result"] == {"runtime": "tiny", "removed": None}, asked
+    following = asked["run"]["result"]["run"]
+    wait_until(
+        lambda: any(e.get("run") == following and e["event"] == "run.done" for e in events),
+        "a next run",
+        WAIT_S,
+    )
 
 
 def test_an_engine_that_shuts_down_stops_its_install(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts, make_engine: MakeEngine
 ) -> None:
     """The app closes the engine's stdin when it quits; an install still going must not outlive it."""
     _stalled_source(tiny, hosts)
     events = Events()
-    engine = Engine(
+    engine = make_engine(
         tmp_path / "data",
         [BUILTIN_NODES_DIR],
         events.append,
@@ -513,10 +526,10 @@ def _run_graph(engine: Engine, events: Events, node: str, **params: Any) -> list
 
 @pytest.fixture
 def tiny_engine(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, node_root: Path
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, node_root: Path, make_engine: MakeEngine
 ) -> tuple[Engine, Events]:
     events = Events()
-    engine = Engine(
+    engine = make_engine(
         tmp_path / "data", [node_root], events.append, [tiny.parent], uv_exe, uv_home, lambda: CARD_7_5
     )
     installed = engine.runtimes.install("tiny")
@@ -694,7 +707,7 @@ def test_ac7_nodes_fit_and_forget_load_no_model_library(
 
 
 def test_nodes_fit_refuses_what_a_graph_would_refuse(
-    tmp_path: Path, make_node: MakeNode, node_root: Path
+    tmp_path: Path, make_node: MakeNode, node_root: Path, make_engine: MakeEngine
 ) -> None:
     make_node(
         {
@@ -708,7 +721,7 @@ def test_nodes_fit_refuses_what_a_graph_would_refuse(
             "memory": fit_node.model(),
         }
     )
-    engine = Engine(tmp_path / "data", [node_root], Events().append)
+    engine = make_engine(tmp_path / "data", [node_root], Events().append)
     missing = engine.handle({"id": 1, "method": "nodes.fit", "params": {"node": "test.needs_value"}})
     assert missing is not None and "parameter prompt needs a value" in missing["error"]["message"]
     given = engine.handle(
