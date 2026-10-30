@@ -4,8 +4,9 @@ The real engine runs as the app runs it, with every folder a program might write
 (HOME, USERPROFILE, APPDATA, LOCALAPPDATA, XDG_*, TMP, TEMP, TMPDIR) pointed into a sandbox, and no
 --data, so it finds its own root there. It installs the tiny runtime (uv fetches its Python into the
 new root), runs an engine node and a runtime node, and stops. Afterwards nothing new exists in the
-sandbox outside the root; on Windows the real profile's top-level folders and the registry keys
-uv would touch are unchanged. The runtime node reports its environment, which must put every
+sandbox outside the root; in the real profile nothing is new or changed under the default folders
+of what the engine's tree runs (footprint.WATCHED), and on Windows the registry keys uv would touch
+are unchanged. The runtime node reports its environment, which must put every
 variable spec 006's Design lists under the root.
 
 A write outside the root passes only where an entry of `outside` in contracts/layout.json allows
@@ -113,8 +114,8 @@ def test_ac2_nothing_is_written_outside_the_root(
     shutil.copytree(TINY_RUNTIME, runtimes / "tiny")
 
     before = footprint.snapshot(sandbox)
-    real = [os.environ.get(n) for n in ("USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME")]
-    real_before, registry_before = footprint.top_level(real), footprint.registry()
+    real = footprint.watched(footprint.WATCHED, os.environ, footprint.system())
+    real_before, registry_before = footprint.profile(real), footprint.registry()
 
     argv = [sys.executable, "-m", "oneframe.server", "--nodes", str(nodes), "--runtimes", str(runtimes)]
     engine = engine_process([*argv, "--uv", uv_exe], env=env, cwd=sandbox, wait_s=WAIT_S)
@@ -157,7 +158,7 @@ def test_ac2_nothing_is_written_outside_the_root(
     assert not (root / "cache" / "tmp").exists() or list((root / "cache" / "tmp").iterdir()) == []
 
     # The real profile, and the registry, are as they were.
-    assert footprint.new_top_level(real_before, footprint.top_level(real)) == []
+    assert footprint.profile_changes(real_before, footprint.profile(real)) == []
     assert footprint.registry_changes(registry_before, footprint.registry()) == []
 
 
@@ -212,3 +213,44 @@ def test_a_registry_change_is_reported() -> None:
     changed = {**before, "Environment:Path": "C:\\bin;C:\\uv", "Software\\Python\\Astral": []}
     assert footprint.registry_changes(before, changed) == ["Environment:Path", "Software\\Python\\Astral"]
     assert footprint.registry_changes(changed, before) == ["Environment:Path", "Software\\Python\\Astral"]
+
+
+def _profile(home: Path) -> tuple[list[Path], footprint.Profile]:
+    """A profile with one watched folder that exists, holding a cache folder, and one that does not."""
+    (home / "AppData" / "uv" / "cache").mkdir(parents=True)
+    (home / "AppData" / "uv" / "cache" / "old.whl").write_bytes(b"old")
+    folders = [home / "AppData" / "uv", home / ".local" / "bin"]
+    return folders, footprint.profile(folders)
+
+
+def test_a_write_inside_a_watched_folder_that_exists_is_seen(tmp_path: Path) -> None:
+    """AC2: a file two levels inside a watched folder that existed before; a check of the profile's
+    top-level names alone, as before, did not see it."""
+    folders, before = _profile(tmp_path)
+    made = tmp_path / "AppData" / "uv" / "cache" / "new.whl"
+    made.write_bytes(b"new")
+    assert str(made) in footprint.profile_changes(before, footprint.profile(folders))
+
+
+def test_a_new_folder_outside_the_watched_list_is_not_reported(tmp_path: Path) -> None:
+    """AC3: a new top-level folder in the profile, as a runner's Firefox once made, is another
+    program's; the check of top-level names reported it."""
+    folders, before = _profile(tmp_path)
+    (tmp_path / "AppData" / "Mozilla" / "Firefox").mkdir(parents=True)
+    (tmp_path / "AppData" / "Mozilla" / "Firefox" / "profiles.ini").write_text(
+        "[General]\n", encoding="utf-8"
+    )
+    assert footprint.profile_changes(before, footprint.profile(folders)) == []
+
+
+def test_a_file_rewritten_in_a_watched_folder_is_seen(tmp_path: Path) -> None:
+    folders, before = _profile(tmp_path)
+    rewritten = tmp_path / "AppData" / "uv" / "cache" / "old.whl"
+    rewritten.write_bytes(b"rewritten, longer")
+    assert str(rewritten) in footprint.profile_changes(before, footprint.profile(folders))
+
+
+def test_a_watched_folder_that_appears_is_seen(tmp_path: Path) -> None:
+    folders, before = _profile(tmp_path)
+    (tmp_path / ".local" / "bin").mkdir(parents=True)
+    assert footprint.profile_changes(before, footprint.profile(folders)) == [str(tmp_path / ".local" / "bin")]

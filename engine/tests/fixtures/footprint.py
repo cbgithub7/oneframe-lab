@@ -1,6 +1,6 @@
 """What the footprint test checks (spec 014), each as a function a test can show failing: folder
-snapshots, the sandbox diff and the paths it allows, the real profile's top-level names, and the
-registry keys uv would touch.
+snapshots, the sandbox diff and the paths it allows, the real profile's watched folders, deep, and
+the registry keys uv would touch.
 
 The data root's exceptions are `outside` in contracts/layout.json. The sandbox diff allows a write
 outside the root only at a path an entry names for what the engine's process tree runs; each path
@@ -10,6 +10,7 @@ environment it is checked in (the sandbox's, or the real one)."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from collections.abc import Iterable, Mapping
@@ -25,7 +26,16 @@ WRITERS = ("app", "engine", "runtime", "tool", "dev checkout", "graphics driver"
 ENGINE_TREE = ("engine", "runtime", "graphics driver")  # what the engine's process tree runs
 SYSTEMS = ("windows", "linux")
 # The variables an entry's path may start from, besides {checkout}.
-VARIABLES = ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CACHE_HOME", "XDG_DATA_HOME", "TMPDIR")
+VARIABLES = (
+    "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "TMPDIR",
+)
 
 # A path relative to the folder snapshotted: its size (-1 for a folder) and modification time.
 Snapshot = dict[str, tuple[int, int]]
@@ -61,14 +71,26 @@ def allowed(
 
 
 def snapshot(folder: Path) -> Snapshot:
-    """Everything under `folder`, by its path relative to it."""
+    """Everything under `folder`, by its path relative to it. Read with scandir, whose entries carry
+    their size and time on Windows: a uv cache holds hundreds of thousands of files."""
     found: Snapshot = {}
-    for path in folder.rglob("*"):
+    start = len(str(folder)) + 1
+    pending = [str(folder)]
+    while pending:
         try:
-            info = path.stat()
+            with os.scandir(pending.pop()) as entries:
+                listed = list(entries)
         except OSError:
             continue  # gone while it was looked at
-        found[str(path.relative_to(folder))] = (-1 if path.is_dir() else info.st_size, info.st_mtime_ns)
+        for entry in listed:
+            try:
+                is_dir = entry.is_dir(follow_symlinks=False)
+                info = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            found[entry.path[start:]] = (-1 if is_dir else info.st_size, info.st_mtime_ns)
+            if is_dir:
+                pending.append(entry.path)
     return found
 
 
@@ -92,22 +114,71 @@ def written_outside(
     return found
 
 
-def top_level(folders: Iterable[str | None]) -> dict[str, set[str]]:
-    """The names directly in each of these folders that exists."""
-    found: dict[str, set[str]] = {}
-    for folder in folders:
-        if folder and Path(folder).is_dir():
-            found[folder] = {p.name for p in Path(folder).iterdir()}
+# The real profile's folders the test watches: the default folders of what the engine's process
+# tree runs, each with its program. The engine points each elsewhere, so a write here is one it
+# missed. A new name elsewhere in the profile is another program's (a runner's Firefox, once).
+WATCHED: list[dict[str, Any]] = [
+    {"program": "uv", "what": "cache", "systems": ["windows"], "paths": ["{LOCALAPPDATA}/uv"]},
+    {
+        "program": "uv",
+        "what": "cache",
+        "systems": ["linux"],
+        "paths": ["{XDG_CACHE_HOME}/uv", "{HOME}/.cache/uv"],
+    },
+    {
+        "program": "uv",
+        "what": "Pythons, tools and settings",
+        "systems": ["windows"],
+        "paths": ["{APPDATA}/uv"],
+    },
+    {
+        "program": "uv",
+        "what": "Pythons and tools",
+        "systems": ["linux"],
+        "paths": ["{XDG_DATA_HOME}/uv", "{HOME}/.local/share/uv"],
+    },
+    {
+        "program": "uv",
+        "what": "settings",
+        "systems": ["linux"],
+        "paths": ["{XDG_CONFIG_HOME}/uv", "{HOME}/.config/uv"],
+    },
+    {"program": "uv", "what": "executables", "systems": ["windows"], "paths": ["{USERPROFILE}/.local/bin"]},
+    {"program": "uv", "what": "executables", "systems": ["linux"], "paths": ["{HOME}/.local/bin"]},
+    {"program": "CPython", "what": "per-user folder", "systems": ["windows"], "paths": ["{APPDATA}/Python"]},
+    {"program": "CPython", "what": "per-user folder", "systems": ["linux"], "paths": ["{HOME}/.local/lib"]},
+]
+
+# Each watched folder's snapshot, or None while it does not exist.
+Profile = dict[str, Snapshot | None]
+
+
+def watched(entries: Iterable[dict[str, Any]], env: Mapping[str, str], on: str) -> list[Path]:
+    """The folders the entries watch on this system, in this environment."""
+    found = []
+    for entry in entries:
+        if on in entry["systems"]:
+            found += [p for spelled in entry["paths"] if (p := expand(spelled, env, Path())) is not None]
+    return sorted(set(found))
+
+
+def profile(folders: Iterable[Path]) -> Profile:
+    """Each folder, deep, or None if it is not there."""
+    return {str(folder): snapshot(folder) if folder.is_dir() else None for folder in folders}
+
+
+def profile_changes(before: Profile, after: Profile) -> list[str]:
+    """Anything new or changed under a watched folder, and a watched folder that appeared."""
+    found = []
+    for folder, then in before.items():
+        now = after.get(folder)
+        if now is None:
+            continue
+        if then is None:
+            found.append(folder)
+            continue
+        found += [str(Path(folder, name)) for name, seen in sorted(now.items()) if then.get(name) != seen]
     return found
-
-
-def new_top_level(before: dict[str, set[str]], after: dict[str, set[str]]) -> list[str]:
-    """Names that appeared directly in a folder of `before`."""
-    return sorted(
-        str(Path(folder, name))
-        for folder, names in before.items()
-        for name in after.get(folder, set()) - names
-    )
 
 
 def registry() -> dict[str, Any]:

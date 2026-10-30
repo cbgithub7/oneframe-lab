@@ -32,7 +32,7 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   engine's tree; the registry check as a function too. Add AC1's test,
   `test_every_exception_says_who_writes_it_where_and_why` and `test_a_registry_change_is_reported`.
   AGENTS.md's "One data root" in the owner's wording (question 2), and `docs/architecture.md`'s.
-- [ ] 9. **The real profile**, as the owner answered question 1. With (c): the watched list and the
+- [x] 9. **The real profile**, as the owner answered question 1. With (c): the watched list and the
   deep profile check in `fixtures/footprint.py`, replacing the top-level one; AC2's and AC3's tests,
   `test_a_file_rewritten_in_a_watched_folder_is_seen` and `test_a_watched_folder_that_appears_is_seen`.
   With (a): nothing. With (b): nothing here; the spike and its spec follow.
