@@ -121,15 +121,19 @@ def test_no_engine_module_names_a_runtime_a_node_or_the_tests() -> None:
 
 def test_a_listed_module_that_gains_a_runtime_id_is_still_caught() -> None:
     """Exceptions are keyed by where a name stands, never by file alone."""
-    module = "environment.py"
-    source = _engine_modules()[module]
-    added = 'NOT_LISTED = {"runtime": "torch"}\nHARDWARE = Path("engine") / "tests/hardware"\nimport torch\n'
-    found, used = _findings({module: source + added}, {"torch"})
-    lines = len(source.splitlines())
+    module = "environment.py"  # a module LIBRARY_NAMES lists
+    source = (
+        '"""A docstring may say torch."""\n'
+        'LIBRARY_CACHES = {"TORCH_HOME": "torch"}\n'
+        'NOT_LISTED = {"runtime": "torch"}\n'
+        'HARDWARE = Path("engine") / "tests/hardware"\n'
+        "import torch\n"
+    )
+    found, used = _findings({module: source}, {"torch"})
     assert found == [
-        f"{module}:{lines + 1}: a value of NOT_LISTED holds 'torch'",
-        f"{module}:{lines + 2}: a value holds 'tests'",
-        f"{module}:{lines + 3}: an import holds 'torch'",
+        f"{module}:3: a value of NOT_LISTED holds 'torch'",
+        f"{module}:4: a value holds 'tests'",
+        f"{module}:5: an import holds 'torch'",
     ]
     assert used == {(module, "a value of LIBRARY_CACHES", "torch")}
 

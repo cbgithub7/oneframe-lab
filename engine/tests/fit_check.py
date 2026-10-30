@@ -29,7 +29,6 @@ import contextlib
 import json
 import re
 import sys
-import tempfile
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -125,11 +124,14 @@ def find_ac8(root: Path = HARDWARE_NODES) -> Ac8:
         raise FileNotFoundError(f"Expected one {AC8_FILE} under {root}; found {len(found)}.")
     folder = found[0].parent
     row = json.loads(found[0].read_text(encoding="utf-8"))
-    node = json.loads((folder / "node.json").read_text(encoding="utf-8"))
+    node = json.loads((folder / "node.json").read_text(encoding="utf-8"))["id"]
+    manifest = discover([folder.parent]).get(node)  # the manifest as the engine reads it
+    if manifest.run.runtime is None:
+        raise ValueError(f"{manifest.id} runs in the engine; the check needs a node that runs in a runtime.")
     return Ac8(
         folder,
-        node["id"],
-        node["run"]["runtime"],
+        manifest.id,
+        manifest.run.runtime,
         row["scale"],
         dict(row["fixed"]),
         tuple(row["shares"]),
@@ -178,13 +180,10 @@ def _probe_context(manager: Runtimes, plan: Ac8, card: int) -> dict[str, Any]:
     return dict(done.stats)
 
 
-def _to_stderr(line: str) -> None:
-    print(line, file=sys.stderr, flush=True)
-
-
 @contextlib.contextmanager
-def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
-    """Another program holding `mb` on the card while the block runs. Once ready, it lets go when
+def _holding(manager: Runtimes, plan: Ac8, mb: float, tmp: Path) -> Iterator[None]:
+    """Another program holding `mb` on the card while the block runs, with its temporary files in
+    `tmp`. Once ready, it lets go when
     its stdin closes; one that has not ended 30 s later, or never got ready, is killed, with
     anything it started."""
     with Child.start(
@@ -193,10 +192,10 @@ def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
             None,
             manager.env_for(plan.runtime),
             caches=manager.caches_for(plan.runtime),
-            tmp=Path(tempfile.gettempdir()),
+            tmp=tmp,
         ),
         stdin="pipe",
-        stderr=_to_stderr,
+        stderr=_say,
     ) as holder:
         line = next(holder.lines(threading.Event()), "").strip()
         if line != "ready":
@@ -208,8 +207,9 @@ def _holding(manager: Runtimes, plan: Ac8, mb: float) -> Iterator[None]:
             holder.wait(30)
 
 
-def check(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
-    """Everything the check's report shows, as data."""
+def check(manager: Runtimes, cache_root: Path, tmp: Path) -> dict[str, Any]:
+    """Everything the check's report shows, as data. Its runs and the holder keep their temporary
+    files in `tmp`."""
     plan = find_ac8()
     record: dict[str, Any] = {"mode": "ac8", "node": plan.node}
     try:
@@ -231,7 +231,7 @@ def check(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
         return record
     record["card"] = card
     registry = discover([plan.folder.parent])
-    scheduler = make_scheduler(manager.data, registry, manager, cache_root)
+    scheduler = make_scheduler(manager.data, registry, manager, cache_root, tmp_root=tmp)
     manifest = registry.get(plan.node)
     model = manifest.memory
     assert model is not None
@@ -250,7 +250,7 @@ def check(manager: Runtimes, cache_root: Path) -> dict[str, Any]:
 
     _say("3/4 another program holding memory")
     context_mb = record["context"].get("context_mb")
-    record["holder"] = _bench_holder(manager, scheduler, plan, target, context_mb)
+    record["holder"] = _bench_holder(manager, scheduler, plan, target, context_mb, tmp)
 
     _say("4/4 an overrun past the cap")
     record["overrun"] = _bench_overrun(manager, scheduler, plan, target)
@@ -296,6 +296,7 @@ def _bench_holder(
     plan: Ac8,
     target: Target,
     context_mb: float | None,
+    tmp: Path,
 ) -> dict[str, Any]:
     """Hold memory so the budget leaves room only for the node after its first change, then run it
     at its defaults and record the fit it was given, and whether that showed the change."""
@@ -312,7 +313,7 @@ def _bench_holder(
         return {
             "why": f"The card has too little free memory to hold any back ({card['vram_free_mb']} MB free)."
         }
-    with _holding(manager, plan, hold), fresh_cache(scheduler, 100):
+    with _holding(manager, plan, hold, tmp), fresh_cache(scheduler, 100):
         free = (_card_device(hardware.profile(manager.data), target) or {}).get("vram_free_mb")
         row = measure(scheduler, plan.node, {}, "defaults, with memory held")
     first = (row.get("fits") or [{}])[0]
@@ -511,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
     record: dict[str, Any] = {"date": datetime.now(UTC).isoformat(timespec="seconds"), "engine": __version__}
     # The tool's temporary files, its runs' cache and their jobs, all in its folder under the root.
     with for_tool(Layout(data)) as mine:
-        record.update(check(manager, mine.make("fit-check-") / "cache"))
+        record.update(check(manager, mine.make("fit-check-") / "cache", mine.folder))
     path = report_path(args.out or Layout(data).reports, record)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(record), encoding="utf-8")
