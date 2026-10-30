@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` with
 `node scripts/test-guard.js --write` (007).
 
-- [ ] 1. **`scripts/tool.js` runs a `.py` repo path** by its absolute path, as well as a module, and
+- [x] 1. **`scripts/tool.js` runs a `.py` repo path** by its absolute path, as well as a module, and
   its usage comment says so; add "a tool given as a .py path runs that file, by its absolute path"
   (AC3).
 - [ ] 2. **Spec 002's check leaves the package** (question 2): `engine/tests/fit_check.py` takes

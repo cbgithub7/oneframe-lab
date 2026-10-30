@@ -31,6 +31,14 @@ test("uv runs the tool from the locked engine with its temporary folder under th
     "oneframe.diagnose", "--data", root]);
 });
 
+test("a tool given as a .py path runs that file, by its absolute path", () => {
+  const made = toolCommand("uv", "engine/tests/fit_check.py", ["--data", "/d"], { PATH: "p" }, "/elsewhere");
+  assert.deepEqual(made.args, ["run", "--project", path.join(REPO_ROOT, "engine"), "--frozen", "python", "-B",
+    path.join(REPO_ROOT, "engine", "tests", "fit_check.py"), "--data", "/d"]);
+  const absolute = path.join(REPO_ROOT, "engine", "tests", "fit_check.py");
+  assert.equal(toolCommand("uv", absolute, [], { PATH: "p" }, "/").args[6], absolute);
+});
+
 test("every npm tool that opens a data root starts through scripts/tool.js", () => {
   const scripts = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")).scripts;
   for (const name of ["bench:runtime", "bench:fit", "diagnose", "models:download", "models:pin"]) {
