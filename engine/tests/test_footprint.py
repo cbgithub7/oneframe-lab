@@ -12,17 +12,12 @@ from __future__ import annotations
 
 import json
 import os
-import queue
 import shutil
-import subprocess
 import sys
-import threading
-import time
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from conftest import TINY_RUNTIME
+from conftest import TINY_RUNTIME, StartEngine
 
 from oneframe.environment import LIBRARY_CACHES
 from oneframe.layout import data_root
@@ -129,56 +124,9 @@ def _registry() -> dict[str, Any]:
     return found
 
 
-class _Engine:
-    def __init__(self, argv: list[str], env: dict[str, str], cwd: Path, log: Path):
-        self.log = log.open("w", encoding="utf-8")
-        self.proc = subprocess.Popen(
-            argv,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=self.log,
-            env=env,
-            cwd=cwd,
-            text=True,
-            encoding="utf-8",
-        )
-        self.lines: queue.Queue[dict[str, Any]] = queue.Queue()
-        self.seen: list[dict[str, Any]] = []
-        threading.Thread(target=self._read, daemon=True).start()
-
-    def _read(self) -> None:
-        assert self.proc.stdout is not None
-        for line in self.proc.stdout:
-            if line.strip():
-                self.lines.put(json.loads(line))
-
-    def wait(self, match: Callable[[dict[str, Any]], bool], what: str) -> dict[str, Any]:
-        end = time.monotonic() + WAIT_S
-        while time.monotonic() < end:
-            try:
-                message = self.lines.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            self.seen.append(message)
-            if match(message):
-                return message
-        raise TimeoutError(f"{what} did not arrive; the engine's log is {self.log.name}")
-
-    def call(self, ident: int, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        assert self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps({"id": ident, "method": method, "params": params}) + "\n")
-        self.proc.stdin.flush()
-        return self.wait(lambda m: m.get("id") == ident, method)
-
-    def close(self) -> int:
-        assert self.proc.stdin is not None
-        self.proc.stdin.close()
-        code = self.proc.wait(timeout=60)
-        self.log.close()
-        return code
-
-
-def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) -> None:
+def test_ac2_nothing_is_written_outside_the_root(
+    tmp_path: Path, uv_exe: str, engine_process: StartEngine
+) -> None:
     sandbox = tmp_path / "sandbox"
     home = sandbox / "home"
     env_folders = {
@@ -218,11 +166,11 @@ def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) ->
     real_before, registry_before = _top_level(real), _registry()
 
     argv = [sys.executable, "-m", "oneframe.server", "--nodes", str(nodes), "--runtimes", str(runtimes)]
-    engine = _Engine([*argv, "--uv", uv_exe], env, sandbox, tmp_path / "engine.log")
+    engine = engine_process([*argv, "--uv", uv_exe], env=env, cwd=sandbox, wait_s=WAIT_S)
     try:
         ready = engine.wait(lambda m: m.get("event") == "engine.ready", "engine.ready")
         assert Path(ready["data"]) == root
-        reply = engine.call(1, "runtimes.install", {"runtime": "tiny"})
+        reply = engine.call("runtimes.install", {"runtime": "tiny"})
         assert "error" not in reply, reply
         done = engine.wait(lambda m: m.get("event") in ("runtime.done", "runtime.failed"), "the install")
         assert done["event"] == "runtime.done", done
@@ -231,7 +179,7 @@ def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) ->
             "nodes": {"e": {"node": ENGINE_NODE["id"]}, "r": {"node": RUNTIME_NODE["id"]}},
             "edges": [],
         }
-        reply = engine.call(2, "graph.run", {"graph": graph})
+        reply = engine.call("graph.run", {"graph": graph})
         assert "error" not in reply, reply
         end = engine.wait(lambda m: m.get("event") in ("run.done", "run.failed", "run.stopped"), "the run")
         assert end["event"] == "run.done", end

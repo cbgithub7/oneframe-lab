@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fixtures.engine_process import EngineProcess
 from fixtures.hosts import TRANSFER, Hosts
 from fixtures.store import sha
 
@@ -454,6 +455,27 @@ def make_engine() -> Iterator[MakeEngine]:
 def engine(hub: Hosts, tmp_path: Path, node_root: Path, events: Events, make_engine: MakeEngine) -> Engine:
     """The model tests' engine: the nodes in `node_root`, downloading from the test hosts."""
     return make_engine(tmp_path / "data", [node_root], events.append, transfer=TRANSFER)
+
+
+StartEngine = Callable[..., EngineProcess]
+
+
+@pytest.fixture
+def engine_process(tmp_path: Path) -> Iterator[StartEngine]:
+    """Engines as processes (fixtures/engine_process.py), each started with the command given and
+    its standard error in `log` (by default tmp_path / "engine.log"); each is killed at teardown,
+    pass or fail, if it is still running."""
+    started: list[EngineProcess] = []
+
+    def start(argv: list[str], log: Path | None = None, **kw: Any) -> EngineProcess:
+        started.append(EngineProcess(argv, log or tmp_path / "engine.log", **kw))
+        return started[-1]
+
+    try:
+        yield start
+    finally:
+        for found in reversed(started):
+            found.kill()
 
 
 def call(engine: Engine, method: str, **params: Any) -> dict[str, Any]:

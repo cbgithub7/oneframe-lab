@@ -14,7 +14,7 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
 - [x] 3. **In-process engines.** The `make_engine` fixture, each engine shut down at teardown, and
   `engine` built on it. Every test that made an `Engine` asks `make_engine`, `tiny_engine` and
   `test_formats.py`'s helper included; the catalog writes its nodes before its engine starts.
-- [ ] 4. **One engine-process client.** `fixtures/engine_process.py` with `EngineProcess`, and the
+- [x] 4. **One engine-process client.** `fixtures/engine_process.py` with `EngineProcess`, and the
   `engine_process` fixture, each process killed at teardown if still running. It replaces `Server`,
   `Client` and `_Engine`. Add `test_an_engine_process_that_says_nothing_fails_the_wait_by_name`.
   AC4's and AC5's commands print nothing.

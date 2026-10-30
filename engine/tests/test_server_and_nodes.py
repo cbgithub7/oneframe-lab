@@ -7,11 +7,10 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pytest
-from conftest import Events, MakeEngine, MakeNode, wait_until
+from conftest import Events, MakeEngine, MakeNode, StartEngine, wait_until
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR
@@ -52,53 +51,6 @@ def test_a_package_root_holds_only_its_docstring(package: str) -> None:
     assert len(tree.body) == 1, f"oneframe/{package}/ re-exports nothing: callers import its modules"
 
 
-class Client:
-    def __init__(self, data: Path):
-        self.proc = subprocess.Popen(
-            [sys.executable, "-m", "oneframe.server", "--data", str(data)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-        )
-        self.next_id = 0
-        self.events: list[dict[str, Any]] = []
-        ready = self._read()
-        assert ready["event"] == "engine.ready"
-
-    def _read(self) -> dict[str, Any]:
-        assert self.proc.stdout is not None
-        return json.loads(self.proc.stdout.readline())
-
-    def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        assert self.proc.stdin is not None
-        self.next_id += 1
-        self.proc.stdin.write(
-            json.dumps({"id": self.next_id, "method": method, "params": params or {}}) + "\n"
-        )
-        self.proc.stdin.flush()
-        while True:
-            msg = self._read()
-            if msg.get("id") == self.next_id:
-                return msg
-            self.events.append(msg)
-
-    def wait_for(self, kinds: set[str], timeout: float = 30) -> dict[str, Any]:
-        end = time.monotonic() + timeout
-        while time.monotonic() < end:
-            for e in self.events:
-                if e.get("event") in kinds:
-                    return e
-            self.events.append(self._read())
-        raise TimeoutError(kinds)
-
-    def close(self) -> None:
-        assert self.proc.stdin is not None
-        self.proc.stdin.close()
-        self.proc.wait(timeout=10)
-
-
 def _photo(path: Path, focal_35: int | None = 26) -> Path:
     image = Image.new("RGB", (8, 6), (200, 100, 50))
     exif = Image.Exif()
@@ -108,8 +60,9 @@ def _photo(path: Path, focal_35: int | None = 26) -> Path:
     return path
 
 
-def test_the_server_answers_and_runs_a_graph(tmp_path: Path) -> None:
-    client = Client(tmp_path / "data")
+def test_the_server_answers_and_runs_a_graph(tmp_path: Path, engine_process: StartEngine) -> None:
+    client = engine_process([sys.executable, "-m", "oneframe.server", "--data", str(tmp_path / "data")])
+    client.event("engine.ready")
     try:
         hello = client.call("engine.hello")["result"]
         assert hello["python"].startswith("3.15") and "graph.run" in hello["methods"]
@@ -130,7 +83,7 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path) -> None:
             "edges": [],
         }
         run = client.call("graph.run", {"graph": graph})["result"]["run"]
-        done = client.wait_for({"run.done", "run.failed"})
+        done = client.event("run.done", "run.failed")
         assert done["event"] == "run.done" and done["run"] == run
         image = done["outputs"]["p"]["image"]
         assert image["facets"] == {"alpha": "none"} and image["trust"] == "measured"
@@ -140,6 +93,18 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path) -> None:
         assert str(tmp_path) not in json.dumps(image["meta"])
     finally:
         client.close()
+
+
+def test_an_engine_process_that_says_nothing_fails_the_wait_by_name(engine_process: StartEngine) -> None:
+    """A wait ends at its deadline while the engine is silent, naming what it waited for; once the
+    engine has ended, at once."""
+    silent = engine_process([sys.executable, "-c", "import sys; sys.stdin.read()"])
+    with pytest.raises(AssertionError, match=r"waited 0\.5 s for engine\.ready; the engine's log is "):
+        silent.event("engine.ready", seconds=0.5)
+    assert silent.process.poll() is None  # still running: the fixture kills it at teardown
+    assert silent.close() == 0
+    with pytest.raises(AssertionError, match=r"the engine ended before engine\.ready"):
+        silent.event("engine.ready", seconds=60)
 
 
 def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:

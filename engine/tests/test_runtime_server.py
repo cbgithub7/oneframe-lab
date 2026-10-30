@@ -6,19 +6,26 @@ from __future__ import annotations
 
 import hashlib
 import json
-import queue
 import socket
 import subprocess
 import sys
 import threading
-import time
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import NO_GPU, Events, MakeEngine, MakeNode, add_source, upstream_archive, wait_until
+from conftest import (
+    NO_GPU,
+    Events,
+    MakeEngine,
+    MakeNode,
+    StartEngine,
+    add_source,
+    upstream_archive,
+    wait_until,
+)
 from fixtures import fit_node, machines
+from fixtures.engine_process import EngineProcess
 from fixtures.hosts import TRANSFER, Hosts, Stall
 
 from oneframe import BUILTIN_NODES_DIR
@@ -33,86 +40,13 @@ WAIT_S = 180  # the first install in a session fetches Python 3.11
 SERVE = Path(__file__).parent / "fixtures" / "serve.py"
 
 
-class Server:
-    """The engine as the app runs it: a process, requests on stdin, answers and events on stdout."""
-
-    def __init__(self, data: Path, runtime_root: Path, uv: str, uv_home: Path, log: Path):
-        self.log = log.open("a", encoding="utf-8")
-        self.proc = subprocess.Popen(
-            [
-                sys.executable,
-                str(SERVE),
-                "--data",
-                str(data),
-                "--runtimes",
-                str(runtime_root),
-                "--nodes",
-                str(BUILTIN_NODES_DIR),
-                "--uv",
-                uv,
-                "--uv-home",
-                str(uv_home),
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=self.log,
-            text=True,
-            encoding="utf-8",
-        )
-        self.messages: queue.Queue[dict[str, Any]] = queue.Queue()
-        self.seen: list[dict[str, Any]] = []
-        self.next_id = 0
-        threading.Thread(target=self._read, daemon=True).start()
-        self.wait(lambda m: m.get("event") == "engine.ready", "engine.ready")
-
-    def _read(self) -> None:
-        assert self.proc.stdout is not None
-        for line in self.proc.stdout:
-            if line.strip():
-                self.messages.put(json.loads(line))
-
-    def wait(
-        self, match: Callable[[dict[str, Any]], bool], what: str, timeout: float = WAIT_S
-    ) -> dict[str, Any]:
-        for message in self.seen:
-            if match(message):
-                self.seen.remove(message)
-                return message
-        end = time.monotonic() + timeout
-        while time.monotonic() < end:
-            try:
-                message = self.messages.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            if match(message):
-                return message
-            self.seen.append(message)
-        raise TimeoutError(f"{what} did not arrive; the engine's log is {self.log.name}")
-
-    def event(self, *kinds: str, **fields: Any) -> dict[str, Any]:
-        return self.wait(
-            lambda m: m.get("event") in kinds and all(m.get(k) == v for k, v in fields.items()),
-            "/".join(kinds),
-        )
-
-    def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        assert self.proc.stdin is not None
-        self.next_id += 1
-        ident = self.next_id
-        self.proc.stdin.write(json.dumps({"id": ident, "method": method, "params": params or {}}) + "\n")
-        self.proc.stdin.flush()
-        return self.wait(lambda m: m.get("id") == ident, method)
-
-    def kill(self) -> None:
-        self.proc.kill()
-        self.proc.wait(timeout=30)
-        self.log.close()
-
-    def close(self) -> None:
-        assert self.proc.stdin is not None
-        self.proc.stdin.close()
-        self.proc.wait(timeout=30)
-        self.log.close()
+def _serve(start: StartEngine, data: Path, runtime_root: Path, uv: str, uv_home: Path) -> EngineProcess:
+    """The engine as the app runs it, on the built-in nodes and this runtime root, once it is ready."""
+    argv = [sys.executable, str(SERVE), "--data", str(data), "--runtimes", str(runtime_root)]
+    argv += ["--nodes", str(BUILTIN_NODES_DIR), "--uv", uv, "--uv-home", str(uv_home)]
+    server = start(argv, wait_s=WAIT_S)
+    server.event("engine.ready")
+    return server
 
 
 def _stalled_source(tiny: Path, hosts: Hosts) -> int:
@@ -127,10 +61,10 @@ def _stalled_source(tiny: Path, hosts: Hosts) -> int:
 
 
 def test_the_runtime_methods_work_over_the_server(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, engine_process: StartEngine
 ) -> None:
     data = tmp_path / "data"
-    server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    server = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     try:
         hello = server.call("engine.hello")["result"]
         assert {
@@ -174,11 +108,11 @@ def test_the_runtime_methods_work_over_the_server(
 
 
 def test_a_killed_install_is_not_installed_and_a_second_install_completes(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts, engine_process: StartEngine
 ) -> None:
     half = _stalled_source(tiny, hosts)
     data = tmp_path / "data"
-    server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    server = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     build = server.call("runtimes.install", {"runtime": "tiny"})["result"]["build"]
     # uv sync has finished and the source is half downloaded: the marker cannot have been written
     server.event("runtime.progress", runtime="tiny", step="sources")
@@ -188,7 +122,7 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
     assert (env / "pyvenv.cfg").is_file()
     assert not (env / runtime_install.MARKER).exists()
 
-    again = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    again = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     try:
         assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not_installed"
         again.call("runtimes.install", {"runtime": "tiny"})
@@ -202,11 +136,11 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
 
 
 def test_stop_ends_an_install_and_installs_run_one_at_a_time(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts, engine_process: StartEngine
 ) -> None:
     _stalled_source(tiny, hosts)
     data = tmp_path / "data"
-    server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    server = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     try:
         build = server.call("runtimes.install", {"runtime": "tiny"})["result"]["build"]
         server.event("runtime.progress", runtime="tiny", step="sources")
