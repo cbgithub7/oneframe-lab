@@ -5,7 +5,10 @@
 // that opens a data root goes through here (spec 003, task 8):
 //
 //   node scripts/tool.js <module> [args...]      e.g. oneframe.bench_fit test.vram --set n=1
+//   node scripts/tool.js <file.py> [args...]     e.g. engine/tests/fit_check.py
 //
+// A tool ending in `.py` is a file in the repo, run by its absolute path (spec 013); anything else
+// is a module.
 // The data root is the one the tool will open: `--data <folder>` when given, else ONEFRAME_DATA,
 // else the dev root. Ctrl+C reaches the tool itself, which treats it as a Stop; this script waits
 // for the tool to end and exits with its code.
@@ -41,29 +44,30 @@ export function toolRoot(args, env, cwd, platform = process.platform, home = hom
 }
 
 /**
- * The command that runs `module` with `args`, and the temporary folder uv is given.
+ * The command that runs `tool` with `args`, and the temporary folder uv is given.
  * @param {string} uv
- * @param {string} module
+ * @param {string} tool a module, or a `.py` file relative to the repo
  * @param {string[]} args
  * @param {NodeJS.ProcessEnv} [env]
  * @param {string} [cwd]
  */
-export function toolCommand(uv, module, args, env = process.env, cwd = process.cwd()) {
+export function toolCommand(uv, tool, args, env = process.env, cwd = process.cwd()) {
   const tmp = layout(toolRoot(args, env, cwd)).tools_tmp;
+  const target = tool.endsWith(".py") ? [path.resolve(REPO_ROOT, tool)] : ["-m", tool];
   /** @type {NodeJS.ProcessEnv} */
   const childEnv = { ...env, ...temporaryEnv(tmp) };
   return {
     command: uv,
-    args: ["run", "--project", path.join(REPO_ROOT, "engine"), "--frozen", "python", "-B", "-m", module, ...args],
+    args: ["run", "--project", path.join(REPO_ROOT, "engine"), "--frozen", "python", "-B", ...target, ...args],
     env: childEnv,
     tmp,
   };
 }
 
 function main() {
-  const [module, ...args] = process.argv.slice(2);
-  if (!module) {
-    console.error("usage: node scripts/tool.js <module> [args...]");
+  const [tool, ...args] = process.argv.slice(2);
+  if (!tool) {
+    console.error("usage: node scripts/tool.js <module | file.py> [args...]");
     return process.exit(2);
   }
   const uv = findUv();
@@ -71,7 +75,7 @@ function main() {
     console.error("uv was not found: install it, or set ONEFRAME_UV to its path.");
     return process.exit(2);
   }
-  const { command, args: argv, env, tmp } = toolCommand(uv, module, args);
+  const { command, args: argv, env, tmp } = toolCommand(uv, tool, args);
   mkdirSync(tmp, { recursive: true });
   const child = spawn(command, argv, { stdio: "inherit", env });
   // Ctrl+C goes to the tool too, which stops and says so; this waits for it rather than leaving it.

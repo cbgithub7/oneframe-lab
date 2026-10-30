@@ -1032,24 +1032,3 @@ def test_a_card_only_a_precision_change_can_use_is_still_considered(tmp_path: Pa
     assert (tight.device, tight.values["precision"], tight.reduced) == ("cuda", "fp16", True)
     never = _fit(tmp_path, held, settings=Settings(never_reduce_quality=True), **BF16_FIRST)
     assert never.device == "cpu" and never.warning is not None and never.warning["alternative"] is None
-
-
-def test_devices_the_engine_does_not_read_yet_are_named(tmp_path: Path) -> None:
-    data = _node(tmp_path)
-    data["devices"] = ["mps"]
-    data["memory"]["precisions"] = {"fp32": {"cuda_min_capability": None, "cpu": True}}
-    data["memory"]["weights"] = {"fp32": 3000, "source": SOURCE}
-    data["memory"]["changes"] = [{"set": {"chunk_size": 2048}, "costs": "speed"}]
-    m = parse(data, tmp_path)
-    got = fit(
-        m.memory,
-        _values(m),
-        set(),
-        {},
-        machines.get("no GPU, 32 GB"),
-        Target(),
-        Learned(),
-        Settings(),
-        m.devices,
-    )
-    assert got.outcome == "memory" and "does not read mps yet" in got.message

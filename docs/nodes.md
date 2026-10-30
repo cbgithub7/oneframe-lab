@@ -46,6 +46,8 @@ the code it names. The folder is named after the node's id.
 - **run.entry** names the function each run calls, `file.py:function` in the node's folder.
   **run.load**, optional and in the same form, names one called once before it, to load the model
   (below).
+- **devices** lists where the node runs, in the order it prefers: `cuda` (an NVIDIA card) and
+  `cpu`, the only devices of v1's platforms; the processor alone when left out.
 - **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
   repair, texture, convert, evaluate, export.
 
@@ -258,8 +260,9 @@ npm run bench:fit -- <node> --set resolution=512 --set resolution=1024 --set res
 runs the node once per `--set` group (from an empty cache, with nothing learned) and writes a
 report of each run's estimate, measured peak, ratio, seconds and the free memory before, to the
 data root's `reports/` unless `--out` names a file or folder. Measure a
-model's memory model at several settings this way, and name the report in its `source`. With no
-node, it runs spec 002's hardware check (AC8) on this machine's card.
+model's memory model at several settings this way, and name the report in its `source`. The node
+is required: spec 002's hardware check (AC8) on this machine's card is its own command,
+`npm run bench:fit-check`, which runs `engine/tests/fit_check.py` with the test node beside it.
 
 ## Windows: shared GPU memory
 

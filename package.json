@@ -19,6 +19,7 @@
     "engine:check": "uv run --project engine --frozen ruff check && uv run --project engine --frozen ruff format --check && uv run --project engine --frozen pyright && uv run --project engine --frozen pytest engine",
     "bench:runtime": "node scripts/tool.js oneframe.bench_runtime",
     "bench:fit": "node scripts/tool.js oneframe.bench_fit",
+    "bench:fit-check": "node scripts/tool.js engine/tests/fit_check.py",
     "diagnose": "node scripts/tool.js oneframe.diagnose",
     "models:download": "node scripts/tool.js oneframe.models.tools download",
     "models:pin": "node scripts/tool.js oneframe.models.tools pin",

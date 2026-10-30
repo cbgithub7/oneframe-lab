@@ -3,7 +3,7 @@
   "version": "1",
   "title": "VRAM test node",
   "category": "test",
-  "summary": "Allocates on its device exactly what its memory model says, for spec 002's AC8 (npm run bench:fit). It lives outside nodes/, so the app never lists it.",
+  "summary": "Allocates on its device exactly what its memory model says, for spec 002's AC8 (npm run bench:fit-check). It lives outside nodes/, so the app never lists it.",
   "outputs": { "text": "Text" },
   "params": {
     "resolution": { "type": "int", "default": 1024, "min": 64, "max": 16384 },

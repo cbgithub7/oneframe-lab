@@ -1,5 +1,5 @@
 {
-  "_comment": "How npm run bench:fit runs spec 002's AC8 with this node. The bench reads this file, so nothing outside this folder names the node or repeats its figures. `scale` is the param the bench sizes so the node's own estimate is each share of the card's budget; `fixed` holds the others there; the two groups below are the params of the overrun, and of the overrun with ctx.fallbacks turned off.",
+  "_comment": "How npm run bench:fit-check (engine/tests/fit_check.py) runs spec 002's AC8 with this node. The check reads this file and the node's manifest, so nothing else names the node or its runtime or repeats its figures. `scale` is the param the bench sizes so the node's own estimate is each share of the card's budget; `fixed` holds the others there; the two groups below are the params of the overrun, and of the overrun with ctx.fallbacks turned off.",
   "scale": "resolution",
   "fixed": { "chunk_size": 2048, "precision": "fp32" },
   "shares": [0.3, 0.5, 0.7],

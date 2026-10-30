@@ -10,8 +10,6 @@ From the [review of 2026-10-12](reviews/2026-10-12.md), sections 3 and 4, which 
 clean up before the first model node. Each item is in the approved spec named beside it. Nothing a
 person sees changes, except where a spec's answered questions say.
 
-- **"Nothing hard-coded"** (013): `oneframe/bench_fit.py` names the runtime `torch`, and ships spec
-  002's AC8 scenario inside the package (review of 2026-10-02, 4.10).
 - **Tests:**
     - shared helpers for the model tests (014);
     - the footprint test tells our writes from another program's without checking less (it failed
@@ -22,8 +20,6 @@ person sees changes, except where a spec's answered questions say.
     - nine assertions bound wall-clock time (014);
     - two tests check implementation details: the cache key's version, and the tool's private
       `_claimed` and `_wait` (014).
-- **Dead weight:** the device names `mps`, `xpu` and `rocm`, and the `amd`, `intel` and `macos`
-  options, are outside v1's platforms (013).
 
 ## The editor (step 7)
 

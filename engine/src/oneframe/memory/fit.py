@@ -134,8 +134,7 @@ class _Point:
 def _devices_here(
     devices: tuple[str, ...], machine: Mapping[str, Any], target: Target, settings: Settings
 ) -> list[Device]:
-    """The node's devices that this machine has and its runtime can use, in the manifest's order.
-    `mps`, `xpu` and `rocm` are not read yet."""
+    """The node's devices that this machine has and its runtime can use, in the manifest's order."""
     here: list[Device] = []
     for name in devices:
         if name == "cuda":
@@ -494,9 +493,6 @@ def _row(device: Device) -> dict[str, Any]:
 
 def _no_device(devices: tuple[str, ...], rule: Precision | None = None) -> str:
     listed = ", ".join(devices) or "no device"
-    unread = [d for d in devices if d not in ("cuda", "cpu")]
-    if unread and not any(d in ("cuda", "cpu") for d in devices):
-        return f"This node runs on {listed}; the engine does not read {', '.join(unread)} yet."
     if rule is not None:
         card = (
             f"a card of compute {rule.cuda_min_capability} or later" if rule.cuda_min_capability else "a card"

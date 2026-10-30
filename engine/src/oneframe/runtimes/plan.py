@@ -47,8 +47,6 @@ def _refusal(build: Build, card: dict[str, Any] | None, profile: dict[str, Any])
     """Why this GPU build cannot run here, or None when it can. The driver is checked before the
     capability, so a machine held back by its driver is told that first."""
     os_name = str(profile.get("os") or "")
-    if build.vendor != "nvidia":
-        return f"needs an {build.vendor.upper()} card; only NVIDIA cards are read so far"
     if card is None:
         return "needs an NVIDIA card, and none was found"
     if build.os and os_name not in build.os:

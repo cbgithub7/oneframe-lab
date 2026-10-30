@@ -103,7 +103,7 @@ def test_every_problem_in_a_definition_is_listed_at_once(
             builds=[
                 {"name": "cu126", "vendor": "nvidia", "min_driver": {"windows": "528.33", "beos": "1"}},
                 {"name": "cu126", "vendor": "nvidia"},
-                {"name": "rocm", "vendor": "amd", "min_capability": "gfx90a"},
+                {"name": "cu118", "vendor": "nvidia", "min_capability": "gfx90a"},
                 {"name": "cpu", "vendor": "none", "min_driver": "1"},
                 {"name": "cpu2", "vendor": "none", "disk_mb": -1},
                 {"name": "npu", "vendor": "npu"},
@@ -128,12 +128,12 @@ def test_every_problem_in_a_definition_is_listed_at_once(
     (folder / "uv.lock").unlink()
     [problems] = discover([runtime_root]).problems.values()
     expected = [
-        "builds.cu126.min_driver per OS should map windows, linux, macos to versions",
+        "builds.cu126.min_driver per OS should map windows, linux to versions",
         "builds.cu126 is listed twice",
-        'builds.rocm.min_capability should be a version like "7.5"',
+        'builds.cu118.min_capability should be a version like "7.5"',
         "builds.cpu runs on the processor, so it takes no capability or driver",
         "builds.cpu2.disk_mb should be a whole number of MB",
-        "builds.npu.vendor should be one of nvidia, amd, intel, none",
+        "builds.npu.vendor should be one of nvidia, none",
         "builds: only one build can run on the processor",
         "extensions.a.stand_in should name a folder inside many/",
         "extensions.b is optional, so it needs a why: what the nodes do without it",
@@ -146,8 +146,8 @@ def test_every_problem_in_a_definition_is_listed_at_once(
         "probe should read file.py:function, with the file in many/",
         "uv.lock is missing",
         "pyproject.toml: [tool.uv] package = false is missing; a runtime is not a package",
-        "pyproject.toml: no extra for the build(s) rocm, cpu, cpu2",
-        "pyproject.toml: the builds cu126, rocm, cpu, cpu2 should be one set in [tool.uv] conflicts",
+        "pyproject.toml: no extra for the build(s) cu118, cpu, cpu2",
+        "pyproject.toml: the builds cu126, cu118, cpu, cpu2 should be one set in [tool.uv] conflicts",
     ]
     assert problems == expected
 

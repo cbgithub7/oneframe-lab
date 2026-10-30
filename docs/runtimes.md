@@ -57,11 +57,11 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
   "min_driver": { "windows": "528.33", "linux": "525.60.13" }, "disk_mb": 6000 }
 ```
 
-- `vendor`: `nvidia`, `amd`, `intel`, or `none` for the build that runs on the processor.
+- `vendor`: `nvidia`, or `none` for the build that runs on the processor (v1 reads no other cards).
 - `min_capability`, `max_capability`: the compute capabilities its kernels cover. `"12"` as a
   maximum means any 12.x.
-- `min_driver`: the oldest driver it runs on, as one version or one per OS.
-- `os`: the systems it runs on, if not all.
+- `min_driver`: the oldest driver it runs on, as one version or one per OS (`windows`, `linux`).
+- `os`: the systems it runs on, if not both: `windows`, `linux`.
 - `disk_mb`: about how much it takes installed. A plan is blocked when the data root has less.
 
 ## The rest of runtime.json

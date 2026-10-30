@@ -1,6 +1,6 @@
 # 013: Nothing hard-coded, and v1's names
 
-Status: approved
+Status: in progress (tasks 1 to 6 done; in review in [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: the rule
   test's exceptions are keyed by where a name stands, never by file alone.
@@ -109,6 +109,12 @@ on a card.
 
 - `fit_check.py` lives in `engine/tests/`, not in `hardware/`, which ruff and pyright treat as 3.11.
 - `tool.js` takes a `.py` path besides a module, rather than the tests becoming a package.
+- The rule flags a string that is an id, or has one or `tests` as a path part, and an import:
+  prose that names a library (a message saying torch saw no card) names no runtime.
+- `test_rules.py` also has `test_a_listed_module_that_gains_a_runtime_id_is_still_caught`, so the
+  Design's keying by place is itself tested.
+- In `test_every_problem_in_a_definition_is_listed_at_once`, the build with a malformed capability
+  becomes `cu118` on `nvidia`, so its capability is still checked now that `amd` stops it first.
 
 ## Out of scope
 
