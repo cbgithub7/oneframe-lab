@@ -184,8 +184,7 @@ class _Reader:
                 self.problem(f"{where}.bytes should be a positive number")
                 ok = False
             if ok:
-                unread = any(d not in ("cuda", "cpu") for d in self.devices)  # no rule for them yet
-                runs = ("cuda" in self.devices) or (cpu and "cpu" in self.devices) or unread
+                runs = ("cuda" in self.devices) or (cpu and "cpu" in self.devices)
                 if not runs:
                     self.problem(f"{where} runs on none of the node's devices ({', '.join(self.devices)})")
                 self.precisions[name] = Precision(name, capability, cpu, float(size))

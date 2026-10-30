@@ -46,6 +46,8 @@ the code it names. The folder is named after the node's id.
 - **run.entry** names the function each run calls, `file.py:function` in the node's folder.
   **run.load**, optional and in the same form, names one called once before it, to load the model
   (below).
+- **devices** lists where the node runs, in the order it prefers: `cuda` (an NVIDIA card) and
+  `cpu`, the only devices of v1's platforms; the processor alone when left out.
 - **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
   repair, texture, convert, evaluate, export.
 

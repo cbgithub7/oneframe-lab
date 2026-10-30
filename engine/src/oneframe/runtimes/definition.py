@@ -24,8 +24,9 @@ from oneframe.reading import VERSION, ProblemsError, check_id, read_object, text
 DEFINITION = "runtime.json"
 PYPROJECT = "pyproject.toml"
 LOCK = "uv.lock"
-VENDORS = ("nvidia", "amd", "intel", "none")
-OSES = ("windows", "linux", "macos")
+# v1's platforms: Windows or Linux, with an NVIDIA card or the processor (spec 013).
+VENDORS = ("nvidia", "none")
+OSES = ("windows", "linux")
 EXTENSION_CLASSES = ("stand-in", "optional", "required")
 # torch.load on a crafted file could run code before 2.6, weights_only or not (CVE-2025-32434), and
 # its weights_only unpickler could corrupt memory, and possibly run code, before 2.10 (CVE-2026-24747).

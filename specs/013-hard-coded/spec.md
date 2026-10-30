@@ -113,6 +113,8 @@ on a card.
   prose that names a library (a message saying torch saw no card) names no runtime.
 - `test_rules.py` also has `test_a_listed_module_that_gains_a_runtime_id_is_still_caught`, so the
   Design's keying by place is itself tested.
+- In `test_every_problem_in_a_definition_is_listed_at_once`, the build with a malformed capability
+  becomes `cu118` on `nvidia`, so its capability is still checked now that `amd` stops it first.
 
 ## Out of scope
 

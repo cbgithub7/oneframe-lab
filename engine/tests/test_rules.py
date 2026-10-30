@@ -1,5 +1,5 @@
 """AGENTS.md's rules that a test can hold (spec 013): nothing in the engine names a runtime, a node or
-the tests."""
+the tests, and nothing names a platform outside v1's."""
 
 from __future__ import annotations
 
@@ -8,7 +8,12 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+from conftest import MakeRuntime
+
 import oneframe
+from oneframe.manifest import ManifestError, parse
+from oneframe.runtimes.definition import discover
 
 TESTS = Path(__file__).resolve().parent
 REPO = TESTS.parents[1]
@@ -127,3 +132,44 @@ def test_a_listed_module_that_gains_a_runtime_id_is_still_caught() -> None:
         f"{module}:{lines + 3}: an import holds 'torch'",
     ]
     assert used == {(module, "a value of LIBRARY_CACHES", "torch")}
+
+
+def test_names_outside_v1_are_refused(tmp_path: Path, make_runtime: MakeRuntime, runtime_root: Path) -> None:
+    """v1 runs on Windows or Linux, with an NVIDIA card or the processor (AGENTS.md)."""
+    (tmp_path / "node.py").write_text("def run(ctx): pass\n", encoding="utf-8")
+    node = {
+        "id": "test.devices",
+        "version": "1",
+        "title": "Devices",
+        "category": "convert",
+        "outputs": {"b": "PointMap"},
+        "run": {"where": "engine", "entry": "node.py:run"},
+    }
+    assert parse({**node, "devices": ["cuda", "cpu"]}, tmp_path).devices == ("cuda", "cpu")
+    with pytest.raises(ManifestError) as info:
+        parse({**node, "devices": ["cuda", "mps", "xpu", "rocm", "cpu"]}, tmp_path)
+    assert info.value.problems == [f"devices: unknown device {d!r}" for d in ("mps", "xpu", "rocm")]
+
+    make_runtime(
+        {
+            "id": "outside",
+            "title": "Outside",
+            "python": "3.12",
+            "builds": [
+                {"name": "rocm", "vendor": "amd"},
+                {"name": "xpu", "vendor": "intel"},
+                {"name": "cu126", "vendor": "nvidia", "os": ["windows", "macos"]},
+                {"name": "cu128", "vendor": "nvidia", "min_driver": {"linux": "570", "macos": "1"}},
+                {"name": "cpu", "vendor": "none", "os": ["macos"]},
+            ],
+        }
+    )
+    [problems] = discover([runtime_root]).problems.values()
+    for refused in (
+        "builds.rocm.vendor should be one of nvidia, none",
+        "builds.xpu.vendor should be one of nvidia, none",
+        "builds.cu126.os should list some of windows, linux",
+        "builds.cu128.min_driver per OS should map windows, linux to versions",
+        "builds.cpu.os should list some of windows, linux",
+    ):
+        assert refused in problems, problems

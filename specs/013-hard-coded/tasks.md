@@ -16,7 +16,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   and the command named in `test.vram`'s `node.json` summary and `ac8.json` comment.
 - [x] 3. **The rule's test:** add `test_no_engine_module_names_a_runtime_a_node_or_the_tests` in
   `engine/tests/test_rules.py` (AC1).
-- [ ] 4. **Names outside v1** (only if the owner said yes to question 1): narrow `VENDORS`, `OSES`
+- [x] 4. **Names outside v1** (only if the owner said yes to question 1): narrow `VENDORS`, `OSES`
   and the manifest's devices; remove memory's paths for unread devices (the parser's and the fit's)
   and the plan's other-vendor refusal; add `test_names_outside_v1_are_refused` (AC4); remove
   `test_devices_the_engine_does_not_read_yet_are_named`, as Tests lists; update the expected

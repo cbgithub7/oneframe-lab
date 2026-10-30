@@ -40,6 +40,7 @@ CATEGORIES = (
 
 PARAM_TYPES = ("int", "float", "bool", "string", "choice", "file")
 WHERE = ("engine", "runtime")
+DEVICES = ("cpu", "cuda")  # v1's: an NVIDIA card or the processor (spec 013)
 _PORT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -313,7 +314,7 @@ def _devices(data: dict[str, Any], problems: list[str]) -> tuple[str, ...] | Non
         problems.append('devices should be a list, such as ["cuda", "cpu"]')
         return None
     for device in rows:
-        if device not in ("cpu", "cuda", "mps", "xpu", "rocm"):
+        if device not in DEVICES:
             problems.append(f"devices: unknown device {device!r}")
     return tuple(rows) or ("cpu",)
 
