@@ -1,6 +1,6 @@
 # 013: Nothing hard-coded, and v1's names
 
-Status: approved
+Status: in progress (tasks 1 to 6 done; in review in [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: the rule
   test's exceptions are keyed by where a name stands, never by file alone.
