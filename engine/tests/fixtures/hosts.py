@@ -39,6 +39,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
+from fixtures.store import sha
+
+from oneframe.models.transport import Policy
+
 TLS = Path(__file__).parent / "tls"
 CA = TLS / "ca.pem"
 # A CA that signed nothing here: a client that trusts only it refuses every host.
@@ -55,8 +59,11 @@ def client_context(ca: Path = CA) -> ssl.SSLContext:
     return ssl.create_default_context(cafile=str(ca))
 
 
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+# A retry policy quick enough for tests: a stall is seen in half a second, and waits are short.
+FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
+# What a download takes in a test: TLS that trusts the test hosts' CA, the fast policy, and no
+# proxy (the system's may name one). A runtime's sources take the same as model files.
+TRANSFER: dict[str, Any] = {"context": client_context, "policy": FAST, "proxy": lambda _host: None}
 
 
 def git_oid(data: bytes) -> str:
@@ -65,9 +72,7 @@ def git_oid(data: bytes) -> str:
 
 
 def lfs_pointer(data: bytes) -> bytes:
-    return (
-        f"version https://git-lfs.github.com/spec/v1\noid sha256:{sha256(data)}\nsize {len(data)}\n".encode()
-    )
+    return f"version https://git-lfs.github.com/spec/v1\noid sha256:{sha(data)}\nsize {len(data)}\n".encode()
 
 
 # -- faults: each is used up by one request -----------------------------------------------------
@@ -184,7 +189,7 @@ class Repo:
     def commit(self, files: dict[str, bytes], lfs: Iterable[str] | None = None) -> str:
         """A new commit holding exactly `files`, which `main` then names. `lfs` names the files
         kept in git-lfs; by default, those LFS_SUFFIXES or LFS_MIN_BYTES pick."""
-        seed = json.dumps([self.id, len(self.commits), sorted((p, sha256(d)) for p, d in files.items())])
+        seed = json.dumps([self.id, len(self.commits), sorted((p, sha(d)) for p, d in files.items())])
         commit = hashlib.sha1(seed.encode()).hexdigest()
         self.commits[commit] = dict(files)
         if lfs is None:
@@ -214,7 +219,7 @@ class Repo:
             "oid": git_oid(pointer),
             "size": len(data),
             "path": path,
-            "lfs": {"oid": sha256(data), "size": len(data), "pointerSize": len(pointer)},
+            "lfs": {"oid": sha(data), "size": len(data), "pointerSize": len(pointer)},
         }
 
     def folders(self, commit: str) -> set[str]:
@@ -327,8 +332,8 @@ class Hosts:
 
     def served(self, data: bytes | str) -> list[Request]:
         """The responses that began sending this file's bytes (a sha256, or the bytes)."""
-        sha = data if isinstance(data, str) else sha256(data)
-        return [r for r in self.requests() if r.file == sha and r.method == "GET" and r.status in (200, 206)]
+        want = data if isinstance(data, str) else sha(data)
+        return [r for r in self.requests() if r.file == want and r.method == "GET" and r.status in (200, 206)]
 
     def tunnels(self) -> list[str]:
         return [r.path for r in self.requests("proxy") if r.method == "CONNECT"]
@@ -540,7 +545,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         data = repo.commits[commit][path]
         headers = {"X-Repo-Commit": commit}
         if path in repo.lfs[commit]:
-            headers["X-Linked-Etag"] = f'"{sha256(data)}"'
+            headers["X-Linked-Etag"] = f'"{sha(data)}"'
             headers["X-Linked-Size"] = str(len(data))
             headers["ETag"] = f'"{git_oid(lfs_pointer(data))}"'
             headers["Location"] = self.hosts._mint(key, data, (403, "Request has expired"))
@@ -679,7 +684,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.close_connection = True
         else:
             headers["Content-Length"] = str(size - start)
-        self.record.file = sha256(data)
+        self.record.file = sha(data)
         self.send_response(status)
         for name, value in headers.items():
             self.send_header(name, value)

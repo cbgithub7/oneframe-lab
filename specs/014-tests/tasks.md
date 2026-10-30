@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/test-guard.js
 --write` (007). No test's name or case ID changes but the one in task 7.
 
-- [ ] 1. **Store and host helpers.** `engine/tests/fixtures/store.py` with `sha`, `put` and the two
+- [x] 1. **Store and host helpers.** `engine/tests/fixtures/store.py` with `sha`, `put` and the two
   pin-row builders; `FAST` and `TRANSFER` in `fixtures/hosts.py`, whose `sha256` becomes `sha`. The
   model tests, `test_archives.py` and 011's `test_runtime_sources.py` import them and drop their
   copies.

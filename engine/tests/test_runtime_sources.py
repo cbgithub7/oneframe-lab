@@ -5,14 +5,13 @@ asked."""
 
 from __future__ import annotations
 
-import hashlib
 import threading
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import TRANSFER
-from fixtures.hosts import Drop, Hosts, NoLength, Stall
+from fixtures.hosts import FAST, TRANSFER, Drop, Hosts, NoLength, Stall
+from fixtures.store import sha
 
 from oneframe.errors import Stopped
 from oneframe.models.transport import Policy
@@ -20,14 +19,13 @@ from oneframe.runtimes.definition import Source
 from oneframe.runtimes.install import InstallFailed, fetch_source
 
 DATA = bytes(range(256)) * 4096  # 1 MiB
-SHA = hashlib.sha256(DATA).hexdigest()
+SHA = sha(DATA)
 HALF = len(DATA) // 2
-FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
 SLOW = Policy(stall_s=60, attempts=3)  # a stall alone would hold an attempt for a minute
 
 
-def _source(hosts: Hosts, data: bytes = DATA, sha: str | None = None) -> Source:
-    return Source("upstream", hosts.add_file("/up.tar.gz", data), sha or hashlib.sha256(data).hexdigest())
+def _source(hosts: Hosts, data: bytes = DATA, sha256: str | None = None) -> Source:
+    return Source("upstream", hosts.add_file("/up.tar.gz", data), sha256 or sha(data))
 
 
 def _fetch(
@@ -47,7 +45,7 @@ def test_a_source_with_the_wrong_sha256_is_refused(hosts: Hosts, tmp_path: Path)
     wrong = b"not the pinned file"
     with pytest.raises(InstallFailed) as caught:
         _fetch(_source(hosts, wrong, "0" * 64), downloads)
-    got = hashlib.sha256(wrong).hexdigest()
+    got = sha(wrong)
     assert f"whose sha256 is {got}, not the pinned {'0' * 64}" in str(caught.value)
     assert (caught.value.kind, caught.value.reason) == ("runtime", "install_failed")
     assert list(downloads.iterdir()) == []  # neither the file nor a .part is kept
@@ -55,14 +53,14 @@ def test_a_source_with_the_wrong_sha256_is_refused(hosts: Hosts, tmp_path: Path)
 
 def test_a_pinned_download_is_kept_and_not_fetched_again(hosts: Hosts, tmp_path: Path) -> None:
     data = DATA * 3 + b"tail!"  # three of the transport's chunks and a few bytes more
-    sha = hashlib.sha256(data).hexdigest()
+    digest = sha(data)
     source = _source(hosts, data)
     seen: list[tuple[int, int | None]] = []
     archive = _fetch(source, tmp_path, progress=lambda done, total: seen.append((done, total)))
-    assert archive == tmp_path / sha and archive.read_bytes() == data
+    assert archive == tmp_path / digest and archive.read_bytes() == data
     assert seen[-1] == (len(data), len(data)) and len(seen) >= 4  # a read takes a chunk at most
     assert _fetch(source, tmp_path) == archive
-    assert len(hosts.served(data)) == 1 and [p.name for p in tmp_path.iterdir()] == [sha]
+    assert len(hosts.served(data)) == 1 and [p.name for p in tmp_path.iterdir()] == [digest]
 
 
 def test_a_file_on_disk_that_does_not_match_is_fetched_again(hosts: Hosts, tmp_path: Path) -> None:

@@ -5,7 +5,6 @@ without a second request from the person; the hosts' log shows what was asked.""
 from __future__ import annotations
 
 import errno
-import hashlib
 import threading
 import time
 import urllib.parse
@@ -14,7 +13,9 @@ from typing import Any
 
 import pytest
 from fixtures.hosts import (
+    FAST,
     OTHER_CA,
+    TRANSFER,
     Drop,
     Hosts,
     IgnoreRange,
@@ -28,22 +29,20 @@ from fixtures.hosts import (
     rate_limit,
     retry_after,
 )
+from fixtures.store import sha
 
 from oneframe.errors import Stopped
 from oneframe.models import transport
 from oneframe.models.transport import DownloadFailed, Policy, Transfer
 
 DATA = bytes(range(256)) * 4096  # 1 MiB
-SHA = hashlib.sha256(DATA).hexdigest()
-FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
+SHA = sha(DATA)
 
 
 def _transfer(
     url: str, partial: Path, size: int | None = len(DATA), sha: str | None = SHA, **kw: Any
 ) -> Transfer:
-    kw.setdefault("policy", FAST)
-    kw.setdefault("context", client_context)
-    kw.setdefault("proxy", lambda _host: None)
+    kw = {**TRANSFER, **kw}
     return Transfer(url, partial, size, sha, kw.pop("stop", threading.Event()), **kw)
 
 

@@ -28,8 +28,8 @@ from fixtures.hosts import (
     git_oid,
     rate_limit,
     retry_after,
-    sha256,
 )
+from fixtures.store import sha
 
 WEIGHTS = bytes(range(256)) * 64  # 16 KiB
 CONFIG = b'{"hidden": 1024}\n'
@@ -89,7 +89,7 @@ def test_a_large_file_resolves_to_a_signed_url_that_works_once(hosts: Hosts) -> 
     url = hosts.resolve_url(repo_id, commit, "model.pt")
     status, headers, _ = get(url, method="HEAD")
     assert status == 302
-    assert headers["x-linked-etag"] == f'"{sha256(WEIGHTS)}"'
+    assert headers["x-linked-etag"] == f'"{sha(WEIGHTS)}"'
     assert headers["x-linked-size"] == str(len(WEIGHTS))
     assert headers["x-repo-commit"] == commit
     signed = headers["location"]
@@ -132,7 +132,7 @@ def test_the_apis_give_the_canonical_id_the_commit_and_each_sha256() -> None:
             url = link.split(";")[0].strip("<>") if link else None
         assert sorted(str(r["path"]) for r in rows) == ["config.json", "model.pt", "sub", "sub/extra.bin"]
         lfs = {str(r["path"]): r.get("lfs") for r in rows}
-        assert lfs["model.pt"] == {"oid": sha256(WEIGHTS), "size": len(WEIGHTS), "pointerSize": 130}
+        assert lfs["model.pt"] == {"oid": sha(WEIGHTS), "size": len(WEIGHTS), "pointerSize": 130}
         assert lfs["config.json"] is None  # a small git file has no published sha256
         form = urllib.parse.urlencode([("paths", "model.pt"), ("paths", "gone.pt")]).encode()
         status, _, data = get(

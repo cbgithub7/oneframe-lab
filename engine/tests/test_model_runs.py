@@ -6,7 +6,6 @@ one just because it is on disk."""
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import os
 import sys
@@ -16,6 +15,7 @@ from typing import Any
 import pytest
 from conftest import Events, HostRuntimes, MakeNode
 from fixtures import fit_node, machines
+from fixtures.store import put, sha, url_file
 
 from oneframe import bench_fit
 from oneframe.cache import Cache
@@ -54,26 +54,6 @@ def run(ctx):
 """
 
 
-def sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def put(data_root: Path, *contents: bytes) -> None:
-    """Place files in the store as a finished download would."""
-    store = Store(data_root)
-    store.claim()
-    for data in contents:
-        partial = store.partial(sha(data))
-        partial.parent.mkdir(parents=True, exist_ok=True)
-        partial.write_bytes(data)
-        store.place(partial, sha(data))
-
-
-def pin(name: str, data: bytes, **more: Any) -> dict[str, Any]:
-    url = f"https://files.example/{name}.pt"
-    return {"name": name, "url": url, "size": len(data), "sha256": sha(data), "format": "other", **more}
-
-
 def reader_node(make_node: MakeNode, memory: dict[str, Any] | None = None, default: str = "small") -> None:
     manifest: dict[str, Any] = {
         "id": "test.reader",
@@ -86,9 +66,12 @@ def reader_node(make_node: MakeNode, memory: dict[str, Any] | None = None, defau
         "devices": ["cpu"],
         "files_by": "checkpoint",
         "files": [
-            pin("config", CONFIG),
-            pin("weights", SMALL, checkpoints=["small"]),
-            {**pin("weights-large", LARGE, checkpoints=["large"]), "name": "weights_large"},
+            url_file("config", CONFIG, format="other"),
+            url_file("weights", SMALL, format="other", checkpoints=["small"]),
+            {
+                **url_file("weights-large", LARGE, format="other", checkpoints=["large"]),
+                "name": "weights_large",
+            },
         ],
     }
     if memory is not None:
@@ -216,7 +199,7 @@ def test_a_result_is_stored_under_the_manifest_the_run_used(
     # A re-pin on disk, without a reload: the weights now name the large file.
     path = node_root / "test.reader" / "node.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
-    manifest["files"][1] = pin("weights", LARGE, checkpoints=["small"])
+    manifest["files"][1] = url_file("weights", LARGE, format="other", checkpoints=["small"])
     path.write_text(json.dumps(manifest), encoding="utf-8")
     events.clear()
     second = loaded.run(graph(), events.append)

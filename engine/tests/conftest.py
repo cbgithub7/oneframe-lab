@@ -8,7 +8,6 @@ offline they fail with the download error rather than skip."""
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import os
@@ -23,7 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fixtures.hosts import Hosts, client_context
+from fixtures.hosts import Hosts
+from fixtures.store import sha
 
 from oneframe.cache import Cache
 from oneframe.files import is_free
@@ -302,11 +302,6 @@ def tiny(tmp_path: Path) -> Path:
     return folder
 
 
-# What a download takes in a test: TLS that trusts the test hosts' CA, and no proxy (the system's
-# may name one). A runtime's sources take the same as model files.
-TRANSFER: dict[str, Any] = {"context": client_context, "proxy": lambda _host: None}
-
-
 def upstream_archive(value: str = "upstream") -> bytes:
     """A GitHub-style source archive: one top folder holding the package upstream_pkg."""
     buffer = io.BytesIO()
@@ -321,9 +316,7 @@ def upstream_archive(value: str = "upstream") -> bytes:
 def add_source(folder: Path, url: str, data: bytes, name: str = "upstream") -> None:
     path = folder / "runtime.json"
     definition = json.loads(path.read_text(encoding="utf-8"))
-    definition["sources"] = [
-        {"name": name, "url": url, "sha256": hashlib.sha256(data).hexdigest(), "paths": ["."]}
-    ]
+    definition["sources"] = [{"name": name, "url": url, "sha256": sha(data), "paths": ["."]}]
     path.write_text(json.dumps(definition, indent=2), encoding="utf-8")
 
 

@@ -3,7 +3,6 @@ the app runs it, against the test hosts over TLS."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -17,7 +16,8 @@ from typing import Any
 
 import pytest
 from conftest import Events, MakeNode
-from fixtures.hosts import Hosts, Replace, Stall, client_context
+from fixtures.hosts import TRANSFER, Hosts, Replace, Stall
+from fixtures.store import hub_file, sha, url_file
 
 from oneframe.files import is_free, lock_file
 from oneframe.layout import Layout
@@ -26,24 +26,10 @@ from oneframe.models.store import Store
 from oneframe.models.transport import Policy
 from oneframe.server import Engine
 
-FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
 SHARED = b"config " * 1000
 SMALL = bytes(range(256)) * 2048  # 512 KiB
 LARGE = bytes(reversed(range(256))) * 4096  # 1 MiB
 OTHER = b"another node's own file" * 100
-
-
-def sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def pinned(name: str, url: str, data: bytes, **more: Any) -> dict[str, Any]:
-    return {"name": name, "url": url, "size": len(data), "sha256": sha(data), "format": "other", **more}
-
-
-def hub_pinned(name: str, repo: str, commit: str, path: str, data: bytes, **more: Any) -> dict[str, Any]:
-    row = {"name": name, "hf": repo, "revision": commit, "path": path, "size": len(data), "sha256": sha(data)}
-    return {**row, "format": "pickle", **more}
 
 
 def node_with_files(make_node: MakeNode, node_id: str, files: list[dict[str, Any]], **more: Any) -> None:
@@ -84,9 +70,9 @@ def pinned_node(hub: Hosts, make_node: MakeNode, engine: Engine) -> dict[str, st
         make_node,
         "test.files",
         [
-            {**hub_pinned("config", repo.id, commit, "config.json", SHARED), "format": "other"},
-            pinned("small", urls["small"], SMALL, checkpoints=["small"]),
-            pinned("large", urls["large"], LARGE, checkpoints=["large"]),
+            hub_file("config", repo.id, commit, "config.json", SHARED, format="other"),
+            url_file("small", SMALL, format="other", url=urls["small"], checkpoints=["small"]),
+            url_file("large", LARGE, format="other", url=urls["large"], checkpoints=["large"]),
         ],
     )
     call(engine, "nodes.reload")
@@ -99,7 +85,7 @@ def engine(tmp_path: Path, node_root: Path, events: Events, hub: Hosts) -> Itera
         tmp_path / "data",
         [node_root],
         events.append,
-        transfer={"context": client_context, "policy": FAST, "proxy": lambda _host: None},
+        transfer=TRANSFER,
     )
     try:
         yield found
@@ -154,7 +140,9 @@ def test_a_download_is_a_job_that_fetches_each_file_once(
     store = Store(engine.data)
     assert store.presence(sha(SMALL), len(SMALL)).status == "present"
     # A second node pinning the same file, at the same commit or another URL, fetches nothing.
-    node_with_files(make_node, "test.same", [pinned("again", pinned_node["small"] + "?v=2", SMALL)])
+    node_with_files(
+        make_node, "test.same", [url_file("again", SMALL, format="other", url=pinned_node["small"] + "?v=2")]
+    )
     call(engine, "nodes.reload")
     end = run_job(engine, events, "models.download", node="test.same")
     assert [f["outcome"] for f in end["files"]] == ["present"]
@@ -202,8 +190,8 @@ def test_a_re_pin_with_one_changed_file_fetches_only_that_file(
     repo = hub.repo("Ruicheng/moge-2-vitl-normal")
     first = repo.commit({"model.pt": LARGE, "config.json": SHARED})
     files = [
-        hub_pinned("model", repo.id, first, "model.pt", LARGE),
-        hub_pinned("config", repo.id, first, "config.json", SHARED),
+        hub_file("model", repo.id, first, "model.pt", LARGE, format="pickle"),
+        hub_file("config", repo.id, first, "config.json", SHARED, format="pickle"),
     ]
     node_with_files(make_node, "test.moge", files, files_by=None, params={})
     call(engine, "nodes.reload")
@@ -211,8 +199,8 @@ def test_a_re_pin_with_one_changed_file_fetches_only_that_file(
     changed = SHARED + b"\n"
     second = repo.commit({"model.pt": LARGE, "config.json": changed})
     files = [
-        hub_pinned("model", repo.id, second, "model.pt", LARGE),
-        hub_pinned("config", repo.id, second, "config.json", changed),
+        hub_file("model", repo.id, second, "model.pt", LARGE, format="pickle"),
+        hub_file("config", repo.id, second, "config.json", changed, format="pickle"),
     ]
     node_with_files(make_node, "test.moge", files, files_by=None, params={})
     call(engine, "nodes.reload")

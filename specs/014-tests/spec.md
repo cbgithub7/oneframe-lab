@@ -170,6 +170,7 @@ after. No step needs a GPU.
 - The tool tests time Ctrl+C by the tool's output, as a person does, not by its internals.
 - No pytest-timeout: each wait has its own deadline, and a new dependency needs a reason.
 - `sha` is `hashlib`'s, not 011's file helper: a test's expected value never comes from the code.
+- `TRANSFER` carries `FAST`, as most copies did; the shutdown test whose stall must hold passes `Policy()`.
 
 ## Out of scope
 

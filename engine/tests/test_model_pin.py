@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import _thread
 import contextlib
-import hashlib
 import io
 import json
 import pickle
@@ -24,7 +23,8 @@ from typing import Any
 
 import pytest
 from conftest import MakeNode
-from fixtures.hosts import Hosts, Stall, client_context, retry_after
+from fixtures.hosts import TRANSFER, Hosts, Stall, retry_after
+from fixtures.store import sha, url_file
 
 from oneframe import files
 from oneframe.layout import Layout
@@ -33,9 +33,6 @@ from oneframe.models.jobs import store_lock
 from oneframe.models.pin import pin, sniff
 from oneframe.models.store import Store, StoreRefused
 from oneframe.models.transport import Policy
-
-FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
-TRANSFER: dict[str, Any] = {"context": client_context, "policy": FAST, "proxy": lambda _host: None}
 
 
 def torch_zip() -> bytes:
@@ -56,10 +53,6 @@ MODEL = torch_zip()
 SAFE = safetensors()
 CONFIG = b'{"hidden": 1024}\n'
 DEPTH = pickle.dumps({"state_dict": {"w": [0.5] * 100}}, protocol=4)
-
-
-def sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 @pytest.fixture
@@ -259,7 +252,7 @@ def test_ctrl_c_stops_the_download_tool_as_models_stop_does(
     data = DEPTH * 50
     write_node(
         make_node,
-        [{"name": "apple", "url": url, "size": len(data), "sha256": sha(data), "format": "pickle"}],
+        [url_file("apple", data, format="pickle", url=url)],
     )
     root = tmp_path / "data"
     partial = Store(root).partial(sha(data))

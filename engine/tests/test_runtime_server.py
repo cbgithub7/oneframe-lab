@@ -17,13 +17,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import NO_GPU, TRANSFER, Events, MakeNode, add_source, upstream_archive
+from conftest import NO_GPU, Events, MakeNode, add_source, upstream_archive
 from fixtures import fit_node, machines
-from fixtures.hosts import Hosts, Stall
+from fixtures.hosts import TRANSFER, Hosts, Stall
 
 from oneframe import BUILTIN_NODES_DIR
 from oneframe.errors import Stopped
 from oneframe.models.store import Store
+from oneframe.models.transport import Policy
 from oneframe.runtimes import install as runtime_install
 from oneframe.server import Engine
 
@@ -440,7 +441,7 @@ def test_an_engine_that_shuts_down_stops_its_install(
         uv_exe,
         uv_home,
         lambda: NO_GPU,
-        transfer=TRANSFER,
+        transfer={**TRANSFER, "policy": Policy()},  # the default policy: the stall holds the download
     )
     reply = engine.handle({"id": 1, "method": "runtimes.install", "params": {"runtime": "tiny"}})
     assert reply is not None and "result" in reply

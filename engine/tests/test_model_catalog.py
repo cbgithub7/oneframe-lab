@@ -4,7 +4,6 @@ requirement 7's list). Each refusal says its reason; nothing outside the store i
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
 import signal
@@ -16,6 +15,7 @@ from typing import Any
 
 import pytest
 from conftest import Events, MakeNode, wait_free
+from fixtures.store import put, sha, url_file
 
 from oneframe.files import lock_file
 from oneframe.layout import Layout
@@ -29,25 +29,6 @@ SMALL = b"small " * 3000
 LARGE = b"large " * 7000
 OWN = b"the other node's own weights " * 50
 STRAY = b"a file from a node since deleted " * 30
-
-
-def sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def put(data_root: Path, *contents: bytes) -> None:
-    store = Store(data_root)
-    store.claim()
-    for data in contents:
-        partial = store.partial(sha(data))
-        partial.parent.mkdir(parents=True, exist_ok=True)
-        partial.write_bytes(data)
-        store.place(partial, sha(data))
-
-
-def pin(name: str, data: bytes, **more: Any) -> dict[str, Any]:
-    url = f"https://files.example/{name}.pt"
-    return {"name": name, "url": url, "size": len(data), "sha256": sha(data), "format": "pickle", **more}
 
 
 @pytest.fixture
@@ -66,14 +47,26 @@ def nodes(make_node: MakeNode) -> None:
             "params": {"checkpoint": {"type": "choice", "choices": ["small", "large"], "default": "small"}},
             "files_by": "checkpoint",
             "files": [
-                pin("config", SHARED, format="other"),
-                pin("small", SMALL, checkpoints=["small"]),
-                pin("large", LARGE, checkpoints=["large"], gated="https://huggingface.co/x/large"),
+                url_file("config", SHARED, format="other"),
+                url_file("small", SMALL, format="pickle", checkpoints=["small"]),
+                url_file(
+                    "large",
+                    LARGE,
+                    format="pickle",
+                    checkpoints=["large"],
+                    gated="https://huggingface.co/x/large",
+                ),
             ],
             "licence": {"weights": "CC BY-NC 4.0"},
         }
     )
-    make_node({**base, "id": "test.other", "files": [pin("config", SHARED, format="other"), pin("own", OWN)]})
+    make_node(
+        {
+            **base,
+            "id": "test.other",
+            "files": [url_file("config", SHARED, format="other"), url_file("own", OWN, format="pickle")],
+        }
+    )
 
 
 @pytest.fixture

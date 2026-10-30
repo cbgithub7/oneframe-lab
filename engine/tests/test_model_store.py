@@ -4,13 +4,13 @@ left as it is; a delete the system refuses keeps the file and its record."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import stat
 from pathlib import Path
 
 import pytest
+from fixtures.store import sha
 
 from oneframe import files
 from oneframe.layout import Layout
@@ -18,7 +18,7 @@ from oneframe.models import store as store_module
 from oneframe.models.store import Store, StoreRefused
 
 DATA = b"weights " * 1000
-SHA = hashlib.sha256(DATA).hexdigest()
+SHA = sha(DATA)
 
 
 def _placed(tmp_path: Path) -> Store:
