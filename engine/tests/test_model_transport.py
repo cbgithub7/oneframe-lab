@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import wait_until
 from fixtures.hosts import (
     FAST,
     OTHER_CA,
@@ -332,10 +333,10 @@ def test_stop_ends_a_stalled_download_within_two_seconds_and_keeps_the_partial(
 
     thread = threading.Thread(target=work)
     thread.start()
-    deadline = time.monotonic() + 10
-    while not hosts.requests("cdn") or (not before_headers and (tmp_path / SHA).stat().st_size < 200_000):
-        assert time.monotonic() < deadline
-        time.sleep(0.02)
+    wait_until(
+        lambda: hosts.requests("cdn") and (before_headers or (tmp_path / SHA).stat().st_size >= 200_000),
+        "the download to reach the stall",
+    )
     time.sleep(0.2)  # well into the stall
     pressed = time.monotonic()
     stop.set()

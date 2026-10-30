@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, MakeNode, wait_until
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR
@@ -215,10 +215,7 @@ def test_shutdown_stops_a_running_graph_and_its_node_process(
     try:
         reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
         assert reply is not None and "result" in reply, reply
-        end = time.monotonic() + 30
-        while not events.of("stage"):
-            assert time.monotonic() < end, events
-            time.sleep(0.05)
+        wait_until(lambda: events.of("stage"), lambda: f"the node's stage: {events}", 30)
         pid = int(events.of("stage")[0]["message"])
 
         started = time.monotonic()

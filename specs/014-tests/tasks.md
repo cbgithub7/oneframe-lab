@@ -8,7 +8,7 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   pin-row builders; `FAST` and `TRANSFER` in `fixtures/hosts.py`, whose `sha256` becomes `sha`. The
   model tests, `test_archives.py` and 011's `test_runtime_sources.py` import them and drop their
   copies.
-- [ ] 2. **Small shared helpers in `conftest.py`.** The `hub` fixture, `call`, `wait_until` (which
+- [x] 2. **Small shared helpers in `conftest.py`.** The `hub` fixture, `call`, `wait_until` (which
   `wait_free` uses) and `held_elsewhere`. The five lock holders and the hand-written deadline loops
   outside the engine clients use them.
 - [ ] 3. **In-process engines.** The `make_engine` fixture, each engine shut down at teardown, and

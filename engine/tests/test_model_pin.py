@@ -11,18 +11,15 @@ import json
 import pickle
 import signal
 import struct
-import subprocess
-import sys
-import textwrap
 import threading
 import time
 import zipfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import MakeNode
+from conftest import Holder, MakeNode, held_elsewhere
 from fixtures.hosts import TRANSFER, Hosts, Stall, retry_after
 from fixtures.store import sha, url_file
 
@@ -53,12 +50,6 @@ MODEL = torch_zip()
 SAFE = safetensors()
 CONFIG = b'{"hidden": 1024}\n'
 DEPTH = pickle.dumps({"state_dict": {"w": [0.5] * 100}}, protocol=4)
-
-
-@pytest.fixture
-def hub(hosts: Hosts, monkeypatch: pytest.MonkeyPatch) -> Hosts:
-    monkeypatch.setenv("HF_ENDPOINT", hosts.hub)
-    return hosts
 
 
 def write_node(make_node: MakeNode, files: list[dict[str, Any]], node_id: str = "test.moge") -> Path:
@@ -303,49 +294,9 @@ def test_a_hub_that_asks_for_a_long_wait_ends_the_pin_as_rate_limited(
 
 # Another process holding the store: on Windows, npm gives the prompt back before a tool it ran has
 # finished stopping (AC8's report, finding 3), so the next tool can meet the store still held.
-HOLDER = textwrap.dedent(
-    """
-    import sys
-    from pathlib import Path
-    from oneframe.files import FileLock
-    lock = FileLock(Path(sys.argv[1]))
-    assert lock.acquire()
-    print("held", flush=True)
-    sys.stdin.readline()
-    lock.release()  # let go, not killed: Windows frees a killed holder's lock only later
-    print("released", flush=True)
-    """
-)
-
-
-class _Holder:
-    def __init__(self, data: Path):
-        self.process = subprocess.Popen(
-            [sys.executable, "-c", HOLDER, str(store_lock(Store(data)).path)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-        )
-        assert self.process.stdout is not None and self.process.stdout.readline().strip() == "held"
-
-    def let_go(self) -> None:
-        assert self.process.stdin is not None and self.process.stdout is not None
-        if self.process.poll() is None and not self.process.stdin.closed:
-            self.process.stdin.write("\n")
-            self.process.stdin.close()
-            assert self.process.stdout.readline().strip() == "released"
-        self.process.wait(timeout=30)
-        self.process.stdout.close()
-
-
-@contextlib.contextmanager
-def _store_held(data: Path) -> Iterator[_Holder]:
-    holder = _Holder(data)
-    try:
-        yield holder
-    finally:
-        holder.let_go()
+def _store_held(data: Path) -> contextlib.AbstractContextManager[Holder]:
+    """The store's lock, held by another process until it lets go (conftest's held_elsewhere)."""
+    return held_elsewhere(store_lock(Store(data)).path)
 
 
 def _said_by_tools(monkeypatch: pytest.MonkeyPatch) -> list[str]:

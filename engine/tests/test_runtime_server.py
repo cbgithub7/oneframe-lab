@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import NO_GPU, Events, MakeNode, add_source, upstream_archive
+from conftest import NO_GPU, Events, MakeNode, add_source, upstream_archive, wait_until
 from fixtures import fit_node, machines
 from fixtures.hosts import TRANSFER, Hosts, Stall
 
@@ -286,9 +286,7 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
     reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
     assert reply is not None
     run = reply["result"]["run"]
-    end = time.monotonic() + WAIT_S
-    while not events.of("stage") and not events.of("run.failed") and time.monotonic() < end:
-        time.sleep(0.1)
+    wait_until(lambda: events.of("stage") or events.of("run.failed"), "the node's stage", WAIT_S)
     assert events.of("stage"), events
 
     removing = engine.handle({"id": 2, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
@@ -300,18 +298,11 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
     )
 
     engine.handle({"id": 4, "method": "run.stop", "params": {}})
-    while not events.of("run.stopped") and time.monotonic() < end:
-        time.sleep(0.1)
-    assert events.of("run.stopped")  # sent once the run let go of its runtime
+    wait_until(
+        lambda: events.of("run.stopped"), "run.stopped", WAIT_S
+    )  # sent once the run let go of its runtime
     removed = engine.handle({"id": 5, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
     assert removed is not None and removed["result"]["removed"] is not None
-
-
-def _until(check: Callable[[], bool], what: str, seconds: float = WAIT_S) -> None:
-    end = time.monotonic() + seconds
-    while not check():
-        assert time.monotonic() < end, f"{what} did not happen"
-        time.sleep(0.05)
 
 
 def _one(node: str, **params: Any) -> dict[str, Any]:
@@ -403,7 +394,7 @@ def test_an_ending_is_sent_after_its_place_is_free(
             assert "result" in ask("runtimes.install", runtime="tiny")
             assert answered.wait(30)
             assert "result" in asked["install"], asked
-            _until(lambda: len(events.of(ending)) == 2, "the end of the install asked for")
+            wait_until(lambda: len(events.of(ending)) == 2, "the end of the install asked for", WAIT_S)
             return
         store = Store(engine.data)
         store.claim()
@@ -414,14 +405,16 @@ def test_an_ending_is_sent_after_its_place_is_free(
         end = ending.removeprefix("run.")
         assert "result" in ask("graph.run", graph=_one("test.reads_in_tiny", end=end))
         if end == "stopped":
-            _until(lambda: bool(events.of("stage")), "the node's stage")
+            wait_until(lambda: events.of("stage"), "the node's stage", WAIT_S)
             ask("run.stop")
         assert answered.wait(WAIT_S)
         assert [row["sha256"] for row in asked["file"]["result"]["removed"]] == [sha], asked
         assert asked["runtime"]["result"] == {"runtime": "tiny", "removed": None}, asked
         following = asked["run"]["result"]["run"]
-        _until(
-            lambda: any(e.get("run") == following and e["event"] == "run.done" for e in events), "a next run"
+        wait_until(
+            lambda: any(e.get("run") == following and e["event"] == "run.done" for e in events),
+            "a next run",
+            WAIT_S,
         )
     finally:
         engine.shutdown()
@@ -445,9 +438,7 @@ def test_an_engine_that_shuts_down_stops_its_install(
     )
     reply = engine.handle({"id": 1, "method": "runtimes.install", "params": {"runtime": "tiny"}})
     assert reply is not None and "result" in reply
-    end = time.monotonic() + WAIT_S
-    while not events.of("runtime.progress") and not events.of("runtime.failed") and time.monotonic() < end:
-        time.sleep(0.05)
+    wait_until(lambda: events.of("runtime.progress") or events.of("runtime.failed"), "the install", WAIT_S)
     assert events.of("runtime.progress"), events
 
     closing = threading.Thread(target=engine.shutdown)
@@ -511,17 +502,13 @@ def _run_graph(engine: Engine, events: Events, node: str, **params: Any) -> list
     reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
     assert reply is not None and "result" in reply, reply
     run = reply["result"]["run"]
-    end = time.monotonic() + WAIT_S
-    while time.monotonic() < end:
-        ended = [
-            e
-            for e in events
-            if e.get("run") == run and e["event"] in ("run.done", "run.failed", "run.stopped")
-        ]
-        if ended:
-            return [e for e in events if e.get("run") == run]
-        time.sleep(0.05)
-    raise TimeoutError(f"run {run} did not end")
+    endings = ("run.done", "run.failed", "run.stopped")
+    wait_until(
+        lambda: any(e.get("run") == run and e["event"] in endings for e in events),
+        f"run {run} to end",
+        WAIT_S,
+    )
+    return [e for e in events if e.get("run") == run]
 
 
 @pytest.fixture
@@ -588,17 +575,15 @@ def test_ac3_a_second_oom_another_failure_or_stop_ends_the_node(
     reply = engine.handle({"id": 2, "method": "graph.run", "params": {"graph": graph}})
     assert reply is not None
     run_id = reply["result"]["run"]
-    end = time.monotonic() + WAIT_S
-    while (
-        not [e for e in events if e.get("run") == run_id and e["event"] == "stage"] and time.monotonic() < end
-    ):
-        time.sleep(0.05)
+    wait_until(
+        lambda: any(e.get("run") == run_id and e["event"] == "stage" for e in events), "a stage", WAIT_S
+    )
     engine.handle({"id": 3, "method": "run.stop", "params": {}})
-    while (
-        not [e for e in events if e.get("run") == run_id and e["event"] == "run.stopped"]
-        and time.monotonic() < end
-    ):
-        time.sleep(0.05)
+    wait_until(
+        lambda: any(e.get("run") == run_id and e["event"] == "run.stopped" for e in events),
+        "run.stopped",
+        WAIT_S,
+    )
     stopped = [e for e in events if e.get("run") == run_id]
     assert stopped[-1]["event"] == "run.stopped" and _kinds(stopped) == ["node.fit", "node.start"]
 

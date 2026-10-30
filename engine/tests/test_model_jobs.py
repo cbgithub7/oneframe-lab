@@ -10,12 +10,12 @@ import sys
 import textwrap
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode
+from conftest import Events, MakeNode, call, held_elsewhere, wait_until
 from fixtures.hosts import TRANSFER, Hosts, Replace, Stall
 from fixtures.store import hub_file, sha, url_file
 
@@ -47,12 +47,6 @@ def node_with_files(make_node: MakeNode, node_id: str, files: list[dict[str, Any
             **more,
         }
     )
-
-
-@pytest.fixture
-def hub(hosts: Hosts, monkeypatch: pytest.MonkeyPatch) -> Hosts:
-    monkeypatch.setenv("HF_ENDPOINT", hosts.hub)
-    return hosts
 
 
 @pytest.fixture
@@ -93,31 +87,18 @@ def engine(tmp_path: Path, node_root: Path, events: Events, hub: Hosts) -> Itera
         found.shutdown(10)
 
 
-def call(engine: Engine, method: str, **params: Any) -> dict[str, Any]:
-    return engine.handle({"id": 1, "method": method, "params": params}) or {}
-
-
 def wait_end(events: Events, job: str, seconds: float = 30) -> dict[str, Any]:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        for event in list(events):
-            if event.get("job") == job and event["event"] in ("model.done", "model.failed", "model.stopped"):
-                return event
-        time.sleep(0.02)
-    raise AssertionError(f"job {job} did not end: {events.kinds()}")
+    def ending() -> dict[str, Any] | None:
+        endings = ("model.done", "model.failed", "model.stopped")
+        return next((e for e in list(events) if e.get("job") == job and e["event"] in endings), None)
+
+    return wait_until(ending, lambda: f"job {job} to end: {events.kinds()}", seconds)
 
 
 def run_job(engine: Engine, events: Events, method: str, **params: Any) -> dict[str, Any]:
     reply = call(engine, method, **params)
     assert "result" in reply, reply
     return wait_end(events, reply["result"]["job"])
-
-
-def wait_until(check: Callable[[], bool], seconds: float = 10) -> None:
-    deadline = time.monotonic() + seconds
-    while not check():
-        assert time.monotonic() < deadline
-        time.sleep(0.02)
 
 
 def test_a_download_is_a_job_that_fetches_each_file_once(
@@ -219,25 +200,9 @@ def test_a_second_job_is_refused_busy_here_and_locked_from_another_process(
     assert (refused["kind"], refused["reason"], refused["retry"]) == ("store", "busy", True)
     stall.release.set()
     wait_end(events, started)
-    holder = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import sys, time\nfrom pathlib import Path\nfrom oneframe.files import FileLock\n"
-            "lock = FileLock(Path(sys.argv[1]))\nassert lock.acquire()\n"
-            "print('held', flush=True)\ntime.sleep(60)",
-            str(lock_file(Layout(tmp_path / "data").locks, "models")),
-        ],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        assert holder.stdout is not None and holder.stdout.readline().strip() == "held"
+    with held_elsewhere(lock_file(Layout(tmp_path / "data").locks, "models")):
         refused = call(engine, "models.download", node="test.files")["error"]
         assert (refused["kind"], refused["reason"]) == ("store", "locked")
-    finally:
-        holder.kill()
-        holder.wait()
 
 
 def test_the_next_job_starts_as_soon_as_the_last_ones_end_is_heard(
@@ -324,7 +289,7 @@ def test_stop_sends_model_stopped_within_two_seconds_and_keeps_the_partial(
     engine.models.transfer["policy"] = Policy(stall_s=60)  # the stall alone would hold it for a minute
     job = call(engine, "models.download", node="test.files")["result"]["job"]
     partial = Store(engine.data).partial(sha(SMALL))
-    wait_until(lambda: partial.exists() and partial.stat().st_size >= 100_000)
+    wait_until(lambda: partial.exists() and partial.stat().st_size >= 100_000, "100 kB of the file")
     time.sleep(0.2)
     pressed = time.monotonic()
     if by == "models.stop":
