@@ -41,7 +41,7 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Journal | `oneframe/journal.py` | Every event of a run, an install or a model job, kept in a journal; journals and step logs pruned when one opens; one helper ends each after its place is free |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
 | Server | `oneframe/server.py` | The engine's NDJSON protocol |
-| Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py` | The reports a hardware claim needs: a runtime's install, and a node's memory on a card |
+| Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py`, `engine/tests/fit_check.py` | The reports a hardware claim needs: a runtime's install, a node's memory on a card, and spec 002's check on a card, which lives with its test node |
 | Tool launcher | `scripts/tool.js` | Starts each command-line tool that opens a data root, with uv's temporary files under that root |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
 | Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js` | Electron's folders under the root, the window, the engine process, and the one IPC door, which answers with values |
