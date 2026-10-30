@@ -84,14 +84,9 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   goes under the data root (or the model store), in the folder for its kind: nothing in the install
   folder, the repo, temp, Roaming, the registry or `PATH`. `oneframe/layout.py` names every path
   under it, `app/main/paths.js` mirrors it, and `contracts/layout.json` holds the two equal. The
-  only exceptions:
-    - a file or folder the person names (a bench report with `--out`, uv's cache and Pythons with
-      `--uv-home`, which the app never passes);
-    - a dev checkout's engine environment, and its tools' own download caches (npm's, and the
-      Electron binary's);
-    - the graphics driver's own shader cache;
-    - on Linux, while the app runs, Chromium's single-instance socket (which may not fit a root's
-      path or file system) and a moment's temporary file, in the system temporary folder.
+  only exceptions are the entries of `outside` in `contracts/layout.json`, each naming who writes
+  it, where and why. The footprint test allows nothing else, and a new entry is the owner's
+  decision, as a change to this rule is.
 - **Kept files say their format.** A newer one is never overwritten, and a change of format ships
   with its migration.
 - **Deletes stay inside the root or the store.** Only inside a folder marked as the root's or the store's (until

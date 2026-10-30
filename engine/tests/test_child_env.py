@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from conftest import NO_GPU
+from conftest import NO_GPU, MakeEngine
 
 from oneframe import BUILTIN_NODES_DIR
 from oneframe.environment import (
@@ -28,7 +28,6 @@ from oneframe.executors import ProcessExecutor
 from oneframe.layout import CACHEDIR_TAG, Layout, claim_root, keep_bytecode_under
 from oneframe.manifest import parse
 from oneframe.node.job import Job
-from oneframe.server import Engine
 
 
 def test_the_child_environment_puts_every_cache_and_temporary_folder_under_the_root(tmp_path: Path) -> None:
@@ -127,32 +126,31 @@ def test_a_child_writes_no_bytecode_and_sees_the_roots_folders(tmp_path: Path) -
     assert list(jobs.iterdir()) == []  # the job's folder went with the job
 
 
-def test_an_engine_gives_each_runtime_node_its_runtimes_cache_folder(tmp_path: Path) -> None:
-    engine = Engine(tmp_path, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU)
-    try:
-        engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
-        engine.runtimes.env_for = lambda _r: {}  # type: ignore[method-assign]
-        folder = tmp_path / "node"
-        folder.mkdir()
-        (folder / "node.py").write_text("def run(ctx):\n    pass\n", encoding="utf-8")
-        row = {
-            "id": "test.rt",
-            "version": "1",
-            "title": "t",
-            "category": "test",
-            "outputs": {"image": {"type": "Image", "trust": "synthetic"}},
-            "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
-        }
-        manifest = parse(row, folder)
-        executor = engine.scheduler.executors.executor(manifest, "cpu")
-        assert isinstance(executor, ProcessExecutor)
-        assert executor.caches == Layout(tmp_path).runtime_caches / "tiny"
-        assert executor.tmp_root == engine.scratch.folder
-        # A runtime node's cache key takes the build and marker hashes from the engine's runtimes;
-        # the scheduler's default (no runtime part) would serve results from before a reinstall.
-        assert engine.scheduler.runtimes is engine.runtimes
-    finally:
-        engine.shutdown()
+def test_an_engine_gives_each_runtime_node_its_runtimes_cache_folder(
+    tmp_path: Path, make_engine: MakeEngine
+) -> None:
+    engine = make_engine(tmp_path, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU)
+    engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
+    engine.runtimes.env_for = lambda _r: {}  # type: ignore[method-assign]
+    folder = tmp_path / "node"
+    folder.mkdir()
+    (folder / "node.py").write_text("def run(ctx):\n    pass\n", encoding="utf-8")
+    row = {
+        "id": "test.rt",
+        "version": "1",
+        "title": "t",
+        "category": "test",
+        "outputs": {"image": {"type": "Image", "trust": "synthetic"}},
+        "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
+    }
+    manifest = parse(row, folder)
+    executor = engine.scheduler.executors.executor(manifest, "cpu")
+    assert isinstance(executor, ProcessExecutor)
+    assert executor.caches == Layout(tmp_path).runtime_caches / "tiny"
+    assert executor.tmp_root == engine.scratch.folder
+    # A runtime node's cache key takes the build and marker hashes from the engine's runtimes;
+    # the scheduler's default (no runtime part) would serve results from before a reinstall.
+    assert engine.scheduler.runtimes is engine.runtimes
 
 
 def test_the_cache_is_tagged_for_backup_tools(tmp_path: Path) -> None:

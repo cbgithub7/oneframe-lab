@@ -3,19 +3,13 @@ requirement 7's list). Each refusal says its reason; nothing outside the store i
 
 from __future__ import annotations
 
-import contextlib
-import hashlib
 import json
-import os
-import signal
-import subprocess
-import sys
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, MakeNode, wait_free
+from conftest import MakeNode, call, held_elsewhere, wait_free
+from fixtures.store import put, sha, url_file
 
 from oneframe.files import lock_file
 from oneframe.layout import Layout
@@ -31,26 +25,7 @@ OWN = b"the other node's own weights " * 50
 STRAY = b"a file from a node since deleted " * 30
 
 
-def sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def put(data_root: Path, *contents: bytes) -> None:
-    store = Store(data_root)
-    store.claim()
-    for data in contents:
-        partial = store.partial(sha(data))
-        partial.parent.mkdir(parents=True, exist_ok=True)
-        partial.write_bytes(data)
-        store.place(partial, sha(data))
-
-
-def pin(name: str, data: bytes, **more: Any) -> dict[str, Any]:
-    url = f"https://files.example/{name}.pt"
-    return {"name": name, "url": url, "size": len(data), "sha256": sha(data), "format": "pickle", **more}
-
-
-@pytest.fixture
+@pytest.fixture(autouse=True)  # written before the engine starts
 def nodes(make_node: MakeNode) -> None:
     base: dict[str, Any] = {
         "version": "1",
@@ -66,27 +41,26 @@ def nodes(make_node: MakeNode) -> None:
             "params": {"checkpoint": {"type": "choice", "choices": ["small", "large"], "default": "small"}},
             "files_by": "checkpoint",
             "files": [
-                pin("config", SHARED, format="other"),
-                pin("small", SMALL, checkpoints=["small"]),
-                pin("large", LARGE, checkpoints=["large"], gated="https://huggingface.co/x/large"),
+                url_file("config", SHARED, format="other"),
+                url_file("small", SMALL, format="pickle", checkpoints=["small"]),
+                url_file(
+                    "large",
+                    LARGE,
+                    format="pickle",
+                    checkpoints=["large"],
+                    gated="https://huggingface.co/x/large",
+                ),
             ],
             "licence": {"weights": "CC BY-NC 4.0"},
         }
     )
-    make_node({**base, "id": "test.other", "files": [pin("config", SHARED, format="other"), pin("own", OWN)]})
-
-
-@pytest.fixture
-def engine(tmp_path: Path, node_root: Path, events: Events, nodes: None) -> Iterator[Engine]:
-    found = Engine(tmp_path / "data", [node_root], events.append)
-    try:
-        yield found
-    finally:
-        found.shutdown(10)
-
-
-def call(engine: Engine, method: str, **params: Any) -> dict[str, Any]:
-    return engine.handle({"id": 1, "method": method, "params": params}) or {}
+    make_node(
+        {
+            **base,
+            "id": "test.other",
+            "files": [url_file("config", SHARED, format="other"), url_file("own", OWN, format="pickle")],
+        }
+    )
 
 
 def outside_the_store(data: Path) -> dict[str, bytes]:
@@ -207,25 +181,9 @@ def test_remove_is_refused_while_the_registry_has_problems_or_a_node_root_is_mis
 
 def test_remove_is_refused_during_a_job_in_this_process_or_another(engine: Engine, tmp_path: Path) -> None:
     put(engine.data, SHARED, OWN)
-    holder = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import sys, time\nfrom pathlib import Path\nfrom oneframe.files import FileLock\n"
-            "lock = FileLock(Path(sys.argv[1]))\nassert lock.acquire()\nprint('held', flush=True)\n"
-            "time.sleep(60)",
-            str(lock_file(Layout(engine.data).locks, "models")),
-        ],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        assert holder.stdout is not None and holder.stdout.readline().strip() == "held"
+    with held_elsewhere(lock_file(Layout(engine.data).locks, "models")):
         error = call(engine, "models.remove", node="test.other")["error"]
         assert (error["kind"], error["reason"]) == ("store", "locked")
-    finally:
-        holder.kill()
-        holder.wait()
     engine.models._job = Job("abc", "download", "test.moge", [])  # a job of this engine's, running
     try:
         error = call(engine, "models.remove", node="test.other")["error"]
@@ -246,37 +204,11 @@ def test_remove_is_refused_for_a_file_a_running_graph_reads_in_this_process_or_a
     other = layout.tmp / "99"
     other.mkdir(parents=True)
     held = lock_file(layout.locks, "tmp-99")
-    script = (
-        "import json, os, sys, time\nfrom pathlib import Path\nfrom oneframe.files import FileLock\n"
-        "lock = FileLock(Path(sys.argv[1]))\nassert lock.acquire()\n"
-        "Path(sys.argv[2]).write_text(json.dumps({'format': 1, 'sha256': [sys.argv[3]]}), encoding='utf-8')\n"
-        "print('reading', os.getpid(), flush=True)\ntime.sleep(600)"
-    )
-    holder = subprocess.Popen(
-        [sys.executable, "-c", script, str(held), str(other / READING), sha(OWN)],
-        stdout=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-    )
-    reader = 0
-    try:
-        assert holder.stdout is not None
-        said, pid = holder.stdout.readline().split()
-        assert said == "reading"
-        reader = int(pid)
+    listed = json.dumps({"format": 1, "sha256": [sha(OWN)]})
+    with held_elsewhere(held, write=(other / READING, listed)) as reader:
         error = call(engine, "models.remove", node="test.other")["error"]
         assert (error["reason"], error["files"]) == ("in_use", [sha(OWN)])
-    finally:
-        # The reader itself as well as the process started: on Windows a venv's python.exe is a
-        # launcher, and the interpreter behind it, which holds the lock, may outlive it a moment.
-        # Only while the launcher lives, whose handle keeps the reader's pid from being reused.
-        if reader and holder.poll() is None:
-            with contextlib.suppress(OSError):
-                os.kill(reader, signal.SIGTERM)
-        holder.kill()
-        holder.wait(timeout=30)
-        if holder.stdout is not None:
-            holder.stdout.close()
+        reader.kill()  # it ends without taking its list away
     # once that process has ended and the system has let go of its lock, its list says nothing
     wait_free(held)
     done = call(engine, "models.remove", node="test.other")["result"]

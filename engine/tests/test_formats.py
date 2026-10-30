@@ -8,11 +8,12 @@ import json
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import NO_GPU
+from conftest import NO_GPU, MakeEngine
 
 from oneframe import BUILTIN_NODES_DIR
 from oneframe.layout import LAYOUT_FORMAT, ROOT_FILE, Layout, RootRefused, claim_root
@@ -22,8 +23,12 @@ from oneframe.runtimes.manager import InstallRefused, RuntimeMissing, Runtimes
 from oneframe.server import Engine
 
 
-def _engine(data: Path, **kw: Any) -> Engine:
-    return Engine(data, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU, **kw)
+@pytest.fixture
+def engine_at(make_engine: MakeEngine) -> Callable[..., Engine]:
+    """An engine on the built-in nodes at a root, as the app starts one; each ends at teardown."""
+    return lambda data, **kw: make_engine(
+        data, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU, **kw
+    )
 
 
 # -- the root file -------------------------------------------------------------------------------
@@ -50,20 +55,24 @@ def test_a_root_whose_layout_is_newer_stops_the_engine_with_a_message(tmp_path: 
     assert [p.name for p in root.iterdir()] == [ROOT_FILE]  # nothing else was written
 
 
-def test_a_root_without_a_root_file_gets_one_on_first_start(tmp_path: Path) -> None:
+def test_a_root_without_a_root_file_gets_one_on_first_start(
+    tmp_path: Path, engine_at: Callable[..., Engine]
+) -> None:
     root = tmp_path / "root"
     (root / "cache").mkdir(parents=True)  # a root from before spec 006: format 0
-    engine = _engine(root)
+    engine = engine_at(root)
     written = json.loads((root / ROOT_FILE).read_text(encoding="utf-8"))
     assert written["format"] == LAYOUT_FORMAT and written["kind"] == "dev"
     assert engine.hello({})["warnings"] == []
 
 
-def test_a_root_of_the_other_kind_is_used_with_a_warning(tmp_path: Path) -> None:
+def test_a_root_of_the_other_kind_is_used_with_a_warning(
+    tmp_path: Path, engine_at: Callable[..., Engine]
+) -> None:
     root = tmp_path / "root"
-    _engine(root)  # a dev checkout made it
+    engine_at(root)  # a dev checkout made it
     before = (root / ROOT_FILE).read_bytes()
-    warnings = _engine(root, packaged=True).hello({})["warnings"]
+    warnings = engine_at(root, packaged=True).hello({})["warnings"]
     assert len(warnings) == 1 and "dev app" in warnings[0]
     assert (root / ROOT_FILE).read_bytes() == before
 

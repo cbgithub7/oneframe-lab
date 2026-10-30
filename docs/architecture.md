@@ -93,8 +93,10 @@ recipes that start the same way share their start.
 
 **One data root.** Everything the app, the engine and a runtime child write lies under one folder a
 person can see and remove, library caches, temporary files, bytecode and Electron's folders
-included, but for the exceptions AGENTS.md names. A footprint test proves the engine's side by
-pointing every home and temporary folder into a sandbox; Electron's folders rest on a unit test of
+included, but for the exceptions `outside` in `contracts/layout.json` lists, each with its writer,
+its paths and why. A footprint test proves the engine's side by pointing every home and temporary
+folder into a sandbox, where a write outside the root passes only at a path an entry names for what
+the engine's process tree runs; Electron's folders rest on a unit test of
 `app/main/boot.js` and a headless run. The open gaps are listed in the handoff.
 Every kept file says its format, and an older app leaves a newer one alone. A format goes up only
 when an older app would misread or damage the file, and the change that raises it brings the

@@ -6,36 +6,31 @@ from __future__ import annotations
 
 import _thread
 import contextlib
-import hashlib
 import io
 import json
 import pickle
 import signal
 import struct
-import subprocess
 import sys
-import textwrap
 import threading
 import time
 import zipfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import MakeNode
-from fixtures.hosts import Hosts, Stall, client_context, retry_after
+from conftest import Holder, MakeNode, held_elsewhere
+from fixtures.hosts import TRANSFER, Hosts, Stall, retry_after
+from fixtures.store import sha, url_file
 
 from oneframe import files
 from oneframe.layout import Layout
 from oneframe.models import tools
 from oneframe.models.jobs import store_lock
 from oneframe.models.pin import pin, sniff
-from oneframe.models.store import Store, StoreRefused
+from oneframe.models.store import Store
 from oneframe.models.transport import Policy
-
-FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
-TRANSFER: dict[str, Any] = {"context": client_context, "policy": FAST, "proxy": lambda _host: None}
 
 
 def torch_zip() -> bytes:
@@ -56,16 +51,6 @@ MODEL = torch_zip()
 SAFE = safetensors()
 CONFIG = b'{"hidden": 1024}\n'
 DEPTH = pickle.dumps({"state_dict": {"w": [0.5] * 100}}, protocol=4)
-
-
-def sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-@pytest.fixture
-def hub(hosts: Hosts, monkeypatch: pytest.MonkeyPatch) -> Hosts:
-    monkeypatch.setenv("HF_ENDPOINT", hosts.hub)
-    return hosts
 
 
 def write_node(make_node: MakeNode, files: list[dict[str, Any]], node_id: str = "test.moge") -> Path:
@@ -259,7 +244,7 @@ def test_ctrl_c_stops_the_download_tool_as_models_stop_does(
     data = DEPTH * 50
     write_node(
         make_node,
-        [{"name": "apple", "url": url, "size": len(data), "sha256": sha(data), "format": "pickle"}],
+        [url_file("apple", data, format="pickle", url=url)],
     )
     root = tmp_path / "data"
     partial = Store(root).partial(sha(data))
@@ -310,55 +295,30 @@ def test_a_hub_that_asks_for_a_long_wait_ends_the_pin_as_rate_limited(
 
 # Another process holding the store: on Windows, npm gives the prompt back before a tool it ran has
 # finished stopping (AC8's report, finding 3), so the next tool can meet the store still held.
-HOLDER = textwrap.dedent(
-    """
-    import sys
-    from pathlib import Path
-    from oneframe.files import FileLock
-    lock = FileLock(Path(sys.argv[1]))
-    assert lock.acquire()
-    print("held", flush=True)
-    sys.stdin.readline()
-    lock.release()  # let go, not killed: Windows frees a killed holder's lock only later
-    print("released", flush=True)
-    """
-)
+def _store_held(data: Path) -> contextlib.AbstractContextManager[Holder]:
+    """The store's lock, held by another process until it lets go (conftest's held_elsewhere)."""
+    return held_elsewhere(store_lock(Store(data)).path)
 
 
-class _Holder:
-    def __init__(self, data: Path):
-        self.process = subprocess.Popen(
-            [sys.executable, "-c", HOLDER, str(store_lock(Store(data)).path)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-        )
-        assert self.process.stdout is not None and self.process.stdout.readline().strip() == "held"
+class _Stderr(io.TextIOBase):
+    """Standard error while a tool runs, kept line by line as the tool says it."""
 
-    def let_go(self) -> None:
-        assert self.process.stdin is not None and self.process.stdout is not None
-        if self.process.poll() is None and not self.process.stdin.closed:
-            self.process.stdin.write("\n")
-            self.process.stdin.close()
-            assert self.process.stdout.readline().strip() == "released"
-        self.process.wait(timeout=30)
-        self.process.stdout.close()
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+        self._part = ""
 
-
-@contextlib.contextmanager
-def _store_held(data: Path) -> Iterator[_Holder]:
-    holder = _Holder(data)
-    try:
-        yield holder
-    finally:
-        holder.let_go()
+    def write(self, s: str) -> int:
+        *done, self._part = (self._part + s).split("\n")
+        self.lines.extend(done)
+        return len(s)
 
 
 def _said_by_tools(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    said: list[str] = []
-    monkeypatch.setattr(tools, "_print", said.append)
-    return said
+    """What the tools say from here on, line by line, read from their standard error as they say it,
+    so a test can act on a line while the tool still runs."""
+    stderr = _Stderr()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    return stderr.lines
 
 
 def _waiting(said: list[str]) -> bool:
@@ -384,13 +344,19 @@ def test_a_tool_waits_for_a_store_another_process_still_holds_then_runs(
     said = _said_by_tools(monkeypatch)
     monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)  # the holder lets go long before
     with _store_held(data) as holder:
-        letting_go = _when(lambda: _waiting(said), holder.let_go)  # only once the tool says it waits
-        started = time.monotonic()
+        let_go: list[float] = []
+
+        def let_go_now() -> None:
+            let_go.append(time.monotonic())
+            holder.let_go()
+
+        letting_go = _when(lambda: _waiting(said), let_go_now)  # only once the tool says it waits
         if tool == "download":
             code = tools.download(data, [node_root], "test.moge", None, TRANSFER)
         else:
             code = tools.pin_tool(data, [node_root], "test.moge", TRANSFER)
-        assert time.monotonic() - started < 10  # it went on when the store was let go, not at 60 s
+        assert let_go, f"the tool never said it waits: {said}"
+        assert time.monotonic() - let_go[0] < 5  # bound: from the let-go; the tool would wait 60 s
         letting_go.join(10)
     assert code == 0, said
     assert _waiting(said[:1]), said  # it said so before anything else
@@ -407,9 +373,7 @@ def test_ctrl_c_while_a_tool_waits_for_the_store_ends_it_with_nothing_started(
     monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)
     with _store_held(data):
         _press_ctrl_c_when(lambda: _waiting(said))
-        pressed = time.monotonic()
         assert tools.download(data, [node_root], "test.moge", None, TRANSFER) == tools.STOPPED
-        assert time.monotonic() - pressed < 10  # not the 60 s wait
     assert said[-1] == "Stopped while waiting; nothing was started."
     assert hub.requests() == [] and not list(Layout(data).journals.glob("*model-download*"))
 
@@ -436,50 +400,59 @@ def test_a_mistake_in_the_request_is_said_at_once_even_while_the_store_is_held(
     said = _said_by_tools(monkeypatch)
     monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)
     with _store_held(data):
-        started = time.monotonic()
         assert tools.download(data, [node_root], "test.moge", ["nope"], TRANSFER) == 2
-        assert time.monotonic() - started < 5
     assert not _waiting(said) and "no checkpoint 'nope'" in said[-1]
 
 
-def _scripted(attempts: list[int], refused: int, press_on: int | None = None) -> Callable[[], str]:
-    """A claim refused `locked` `refused` times and then made; on attempt `press_on`, Ctrl+C."""
-
-    def claim() -> str:
-        attempts.append(len(attempts) + 1)
-        if len(attempts) == press_on:
-            signal.raise_signal(signal.SIGINT)  # what Ctrl+C does, at that very moment
-        if len(attempts) <= refused:
-            raise StoreRefused("Another process on this data root is downloading.", "locked")
-        return "claimed"
-
-    return claim
-
-
 def test_a_tool_claims_again_until_the_store_is_let_go_saying_so_once(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, hub: Hosts, make_node: MakeNode, node_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    url = hub.add_file("/models/depth_pro.pt", DEPTH)
+    write_node(make_node, [{"name": "apple", "url": url, **_pinned(DEPTH)}])
+    data = tmp_path / "data"
     said = _said_by_tools(monkeypatch)
-    monkeypatch.setattr(tools, "LOCK_POLL_S", 0.01)
-    attempts: list[int] = []
+    monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)
     before = signal.getsignal(signal.SIGINT)
-    assert tools._claimed(_scripted(attempts, refused=3)) == ("claimed", False)
-    assert attempts == [1, 2, 3, 4] and sum(_waiting([line]) for line in said) == 1
+    with _store_held(data) as holder:
+
+        def let_go_later() -> None:
+            time.sleep(10 * tools.LOCK_POLL_S)  # refused a few more times first
+            holder.let_go()
+
+        letting_go = _when(lambda: _waiting(said), let_go_later)
+        assert tools.download(data, [node_root], "test.moge", None, TRANSFER) == 0, said
+        letting_go.join(10)
+    assert sum(_waiting([line]) for line in said) == 1, said
+    assert files.is_free(store_lock(Store(data)).path)  # the tool let the store go as it ended
     assert signal.getsignal(signal.SIGINT) is before  # Ctrl+C is the tool's own again
 
 
 def test_ctrl_c_during_a_refused_claim_ends_the_wait_and_during_a_made_one_is_passed_on(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, hub: Hosts, make_node: MakeNode, node_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    url = hub.add_file("/models/depth_pro.pt", DEPTH)
+    hub.fault(url, Stall(before_headers=True))  # the pin cannot finish before its Stop is seen
+    write_node(make_node, [{"name": "apple", "url": url}])
+    data = tmp_path / "data"
+    slow = {**TRANSFER, "policy": Policy(stall_s=60)}
     said = _said_by_tools(monkeypatch)
-    monkeypatch.setattr(tools, "LOCK_POLL_S", 0.01)
-    attempts: list[int] = []
-    assert tools._claimed(_scripted(attempts, refused=5, press_on=2)) is None  # held back, not raised
-    assert attempts == [1, 2] and said[-1] == "Stopped while waiting; nothing was started."
-    attempts.clear()
-    assert tools._claimed(_scripted(attempts, refused=1, press_on=2)) == ("claimed", True)
-    # ... which the tool then treats as a Stop of what it started, at once
-    started = threading.Event()
-    thread = threading.Thread(target=started.wait, daemon=True)
-    thread.start()
-    assert tools._wait(thread, started.set, pressed=True) and not thread.is_alive()
+    monkeypatch.setattr(tools, "LOCK_WAIT_S", 60.0)
+    before = signal.getsignal(signal.SIGINT)
+    with _store_held(data):
+        _press_ctrl_c_when(lambda: _waiting(said))
+        assert tools.pin_tool(data, [node_root], "test.moge", slow) == tools.STOPPED  # held back, not raised
+    assert said[-1] == "Stopped while waiting; nothing was started." and hub.requests() == []
+    assert signal.getsignal(signal.SIGINT) is before
+
+    claim_store = tools.claim_store
+
+    def pressed_while_claiming(*args: Any) -> Any:
+        signal.raise_signal(signal.SIGINT)  # what Ctrl+C does, at that very moment
+        return claim_store(*args)
+
+    monkeypatch.setattr(tools, "claim_store", pressed_while_claiming)
+    # The claim is made, and the Ctrl+C is passed on: what the tool started is stopped at once.
+    assert tools.pin_tool(data, [node_root], "test.moge", slow) == tools.STOPPED, said
+    assert "pin stopped; run it again to carry on." in said
+    assert files.is_free(store_lock(Store(data)).path)
+    assert signal.getsignal(signal.SIGINT) is before

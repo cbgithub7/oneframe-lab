@@ -5,7 +5,6 @@ without a second request from the person; the hosts' log shows what was asked.""
 from __future__ import annotations
 
 import errno
-import hashlib
 import threading
 import time
 import urllib.parse
@@ -13,8 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import wait_until
 from fixtures.hosts import (
+    FAST,
     OTHER_CA,
+    TRANSFER,
     Drop,
     Hosts,
     IgnoreRange,
@@ -28,22 +30,20 @@ from fixtures.hosts import (
     rate_limit,
     retry_after,
 )
+from fixtures.store import sha
 
 from oneframe.errors import Stopped
 from oneframe.models import transport
 from oneframe.models.transport import DownloadFailed, Policy, Transfer
 
 DATA = bytes(range(256)) * 4096  # 1 MiB
-SHA = hashlib.sha256(DATA).hexdigest()
-FAST = Policy(stall_s=0.5, attempts=3, first_wait_s=0.01, longest_wait_s=0.05, longest_asked_s=5)
+SHA = sha(DATA)
 
 
 def _transfer(
     url: str, partial: Path, size: int | None = len(DATA), sha: str | None = SHA, **kw: Any
 ) -> Transfer:
-    kw.setdefault("policy", FAST)
-    kw.setdefault("context", client_context)
-    kw.setdefault("proxy", lambda _host: None)
+    kw = {**TRANSFER, **kw}
     return Transfer(url, partial, size, sha, kw.pop("stop", threading.Event()), **kw)
 
 
@@ -333,15 +333,16 @@ def test_stop_ends_a_stalled_download_within_two_seconds_and_keeps_the_partial(
 
     thread = threading.Thread(target=work)
     thread.start()
-    deadline = time.monotonic() + 10
-    while not hosts.requests("cdn") or (not before_headers and (tmp_path / SHA).stat().st_size < 200_000):
-        assert time.monotonic() < deadline
-        time.sleep(0.02)
+    wait_until(
+        lambda: hosts.requests("cdn") and (before_headers or (tmp_path / SHA).stat().st_size >= 200_000),
+        "the download to reach the stall",
+    )
     time.sleep(0.2)  # well into the stall
     pressed = time.monotonic()
     stop.set()
     thread.join(5)
-    assert not thread.is_alive() and time.monotonic() - pressed < 2
+    # Spec 003 asks for a stopped download to end within 2 s; the stall alone would hold it a minute.
+    assert not thread.is_alive() and time.monotonic() - pressed < 2  # bound: spec 003's Stop
     assert isinstance(done[0], Stopped)
     partial = tmp_path / SHA
     assert (partial.stat().st_size if partial.exists() else 0) == (0 if before_headers else 200_000)

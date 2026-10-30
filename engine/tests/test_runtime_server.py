@@ -6,24 +6,32 @@ from __future__ import annotations
 
 import hashlib
 import json
-import queue
 import socket
 import subprocess
 import sys
 import threading
-import time
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import NO_GPU, TRANSFER, Events, MakeNode, add_source, upstream_archive
+from conftest import (
+    NO_GPU,
+    Events,
+    MakeEngine,
+    MakeNode,
+    StartEngine,
+    add_source,
+    upstream_archive,
+    wait_until,
+)
 from fixtures import fit_node, machines
-from fixtures.hosts import Hosts, Stall
+from fixtures.engine_process import EngineProcess
+from fixtures.hosts import TRANSFER, Hosts, Stall
 
 from oneframe import BUILTIN_NODES_DIR
 from oneframe.errors import Stopped
 from oneframe.models.store import Store
+from oneframe.models.transport import Policy
 from oneframe.runtimes import install as runtime_install
 from oneframe.server import Engine
 
@@ -32,86 +40,13 @@ WAIT_S = 180  # the first install in a session fetches Python 3.11
 SERVE = Path(__file__).parent / "fixtures" / "serve.py"
 
 
-class Server:
-    """The engine as the app runs it: a process, requests on stdin, answers and events on stdout."""
-
-    def __init__(self, data: Path, runtime_root: Path, uv: str, uv_home: Path, log: Path):
-        self.log = log.open("a", encoding="utf-8")
-        self.proc = subprocess.Popen(
-            [
-                sys.executable,
-                str(SERVE),
-                "--data",
-                str(data),
-                "--runtimes",
-                str(runtime_root),
-                "--nodes",
-                str(BUILTIN_NODES_DIR),
-                "--uv",
-                uv,
-                "--uv-home",
-                str(uv_home),
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=self.log,
-            text=True,
-            encoding="utf-8",
-        )
-        self.messages: queue.Queue[dict[str, Any]] = queue.Queue()
-        self.seen: list[dict[str, Any]] = []
-        self.next_id = 0
-        threading.Thread(target=self._read, daemon=True).start()
-        self.wait(lambda m: m.get("event") == "engine.ready", "engine.ready")
-
-    def _read(self) -> None:
-        assert self.proc.stdout is not None
-        for line in self.proc.stdout:
-            if line.strip():
-                self.messages.put(json.loads(line))
-
-    def wait(
-        self, match: Callable[[dict[str, Any]], bool], what: str, timeout: float = WAIT_S
-    ) -> dict[str, Any]:
-        for message in self.seen:
-            if match(message):
-                self.seen.remove(message)
-                return message
-        end = time.monotonic() + timeout
-        while time.monotonic() < end:
-            try:
-                message = self.messages.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            if match(message):
-                return message
-            self.seen.append(message)
-        raise TimeoutError(f"{what} did not arrive; the engine's log is {self.log.name}")
-
-    def event(self, *kinds: str, **fields: Any) -> dict[str, Any]:
-        return self.wait(
-            lambda m: m.get("event") in kinds and all(m.get(k) == v for k, v in fields.items()),
-            "/".join(kinds),
-        )
-
-    def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        assert self.proc.stdin is not None
-        self.next_id += 1
-        ident = self.next_id
-        self.proc.stdin.write(json.dumps({"id": ident, "method": method, "params": params or {}}) + "\n")
-        self.proc.stdin.flush()
-        return self.wait(lambda m: m.get("id") == ident, method)
-
-    def kill(self) -> None:
-        self.proc.kill()
-        self.proc.wait(timeout=30)
-        self.log.close()
-
-    def close(self) -> None:
-        assert self.proc.stdin is not None
-        self.proc.stdin.close()
-        self.proc.wait(timeout=30)
-        self.log.close()
+def _serve(start: StartEngine, data: Path, runtime_root: Path, uv: str, uv_home: Path) -> EngineProcess:
+    """The engine as the app runs it, on the built-in nodes and this runtime root, once it is ready."""
+    argv = [sys.executable, str(SERVE), "--data", str(data), "--runtimes", str(runtime_root)]
+    argv += ["--nodes", str(BUILTIN_NODES_DIR), "--uv", uv, "--uv-home", str(uv_home)]
+    server = start(argv, wait_s=WAIT_S)
+    server.event("engine.ready")
+    return server
 
 
 def _stalled_source(tiny: Path, hosts: Hosts) -> int:
@@ -126,10 +61,10 @@ def _stalled_source(tiny: Path, hosts: Hosts) -> int:
 
 
 def test_the_runtime_methods_work_over_the_server(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, engine_process: StartEngine
 ) -> None:
     data = tmp_path / "data"
-    server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    server = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     try:
         hello = server.call("engine.hello")["result"]
         assert {
@@ -173,11 +108,11 @@ def test_the_runtime_methods_work_over_the_server(
 
 
 def test_a_killed_install_is_not_installed_and_a_second_install_completes(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts, engine_process: StartEngine
 ) -> None:
     half = _stalled_source(tiny, hosts)
     data = tmp_path / "data"
-    server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    server = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     build = server.call("runtimes.install", {"runtime": "tiny"})["result"]["build"]
     # uv sync has finished and the source is half downloaded: the marker cannot have been written
     server.event("runtime.progress", runtime="tiny", step="sources")
@@ -187,10 +122,12 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
     assert (env / "pyvenv.cfg").is_file()
     assert not (env / runtime_install.MARKER).exists()
 
-    again = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    again = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     try:
         assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not_installed"
-        again.call("runtimes.install", {"runtime": "tiny"})
+        second = again.call("runtimes.install", {"runtime": "tiny"})
+        # A refusal fails here, by name, rather than as a wait for an ending that never comes.
+        assert "result" in second, f"the second runtimes.install was refused: {second}"
         done = again.event("runtime.done", "runtime.failed", "runtime.stopped", runtime="tiny")
         assert done["event"] == "runtime.done", done
         assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "installed"
@@ -201,11 +138,11 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
 
 
 def test_stop_ends_an_install_and_installs_run_one_at_a_time(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts, engine_process: StartEngine
 ) -> None:
     _stalled_source(tiny, hosts)
     data = tmp_path / "data"
-    server = Server(data, tiny.parent, uv_exe, uv_home, tmp_path / "engine.log")
+    server = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     try:
         build = server.call("runtimes.install", {"runtime": "tiny"})["result"]["build"]
         server.event("runtime.progress", runtime="tiny", step="sources")
@@ -226,9 +163,16 @@ def test_stop_ends_an_install_and_installs_run_one_at_a_time(
 
 
 def test_listing_and_planning_touch_no_network(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    tiny: Path,
+    uv_exe: str,
+    uv_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    make_engine: MakeEngine,
 ) -> None:
-    engine = Engine(tmp_path / "data", [BUILTIN_NODES_DIR], Events().append, [tiny.parent], uv_exe, uv_home)
+    engine = make_engine(
+        tmp_path / "data", [BUILTIN_NODES_DIR], Events().append, [tiny.parent], uv_exe, uv_home
+    )
     assert engine.runtimes.install("tiny") is not None  # the network is open for the install
     engine.runtimes._profile = None  # read the machine again, under watch
 
@@ -263,7 +207,13 @@ def test_listing_and_planning_touch_no_network(
 
 
 def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, make_node: MakeNode, node_root: Path
+    tmp_path: Path,
+    tiny: Path,
+    uv_exe: str,
+    uv_home: Path,
+    make_node: MakeNode,
+    node_root: Path,
+    make_engine: MakeEngine,
 ) -> None:
     make_node(
         {
@@ -277,7 +227,7 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
         "import time\ndef run(ctx):\n    ctx.stage('wait')\n    time.sleep(120)\n",
     )
     events = Events()
-    engine = Engine(
+    engine = make_engine(
         tmp_path / "data", [node_root], events.append, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU
     )
     assert engine.runtimes.install("tiny") is not None
@@ -285,9 +235,7 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
     reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
     assert reply is not None
     run = reply["result"]["run"]
-    end = time.monotonic() + WAIT_S
-    while not events.of("stage") and not events.of("run.failed") and time.monotonic() < end:
-        time.sleep(0.1)
+    wait_until(lambda: events.of("stage") or events.of("run.failed"), "the node's stage", WAIT_S)
     assert events.of("stage"), events
 
     removing = engine.handle({"id": 2, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
@@ -299,18 +247,11 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
     )
 
     engine.handle({"id": 4, "method": "run.stop", "params": {}})
-    while not events.of("run.stopped") and time.monotonic() < end:
-        time.sleep(0.1)
-    assert events.of("run.stopped")  # sent once the run let go of its runtime
+    wait_until(
+        lambda: events.of("run.stopped"), "run.stopped", WAIT_S
+    )  # sent once the run let go of its runtime
     removed = engine.handle({"id": 5, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
     assert removed is not None and removed["result"]["removed"] is not None
-
-
-def _until(check: Callable[[], bool], what: str, seconds: float = WAIT_S) -> None:
-    end = time.monotonic() + seconds
-    while not check():
-        assert time.monotonic() < end, f"{what} did not happen"
-        time.sleep(0.05)
 
 
 def _one(node: str, **params: Any) -> dict[str, Any]:
@@ -332,6 +273,7 @@ def test_an_ending_is_sent_after_its_place_is_free(
     make_node: MakeNode,
     node_root: Path,
     monkeypatch: pytest.MonkeyPatch,
+    make_engine: MakeEngine,
 ) -> None:
     """A listener that acts on hearing an ending is answered, never refused busy or in_use: on an
     install's, the same install again; on a run's, removing a file it read and the runtime it used,
@@ -389,50 +331,51 @@ def test_an_ending_is_sent_after_its_place_is_free(
             asked["run"] = ask("graph.run", graph=_one("test.next"))
         answered.set()
 
-    engine = Engine(tmp_path / "data", [node_root], listen, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU)
-    try:
-        if ending.startswith("runtime."):
+    engine = make_engine(
+        tmp_path / "data", [node_root], listen, [tiny.parent], uv_exe, uv_home, lambda: NO_GPU
+    )
+    if ending.startswith("runtime."):
 
-            def install(*_args: Any, **_kw: Any) -> dict[str, Any]:  # how the install ends, at once
-                if ending == "runtime.stopped":
-                    raise Stopped()
-                raise runtime_install.InstallFailed("as the test asks", "")
+        def install(*_args: Any, **_kw: Any) -> dict[str, Any]:  # how the install ends, at once
+            if ending == "runtime.stopped":
+                raise Stopped()
+            raise runtime_install.InstallFailed("as the test asks", "")
 
-            monkeypatch.setattr(runtime_install, "install", install)
-            assert "result" in ask("runtimes.install", runtime="tiny")
-            assert answered.wait(30)
-            assert "result" in asked["install"], asked
-            _until(lambda: len(events.of(ending)) == 2, "the end of the install asked for")
-            return
-        store = Store(engine.data)
-        store.claim()
-        store.partial(sha).parent.mkdir(parents=True, exist_ok=True)
-        store.partial(sha).write_bytes(weights)
-        store.place(store.partial(sha), sha)
-        engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
-        end = ending.removeprefix("run.")
-        assert "result" in ask("graph.run", graph=_one("test.reads_in_tiny", end=end))
-        if end == "stopped":
-            _until(lambda: bool(events.of("stage")), "the node's stage")
-            ask("run.stop")
-        assert answered.wait(WAIT_S)
-        assert [row["sha256"] for row in asked["file"]["result"]["removed"]] == [sha], asked
-        assert asked["runtime"]["result"] == {"runtime": "tiny", "removed": None}, asked
-        following = asked["run"]["result"]["run"]
-        _until(
-            lambda: any(e.get("run") == following and e["event"] == "run.done" for e in events), "a next run"
-        )
-    finally:
-        engine.shutdown()
+        monkeypatch.setattr(runtime_install, "install", install)
+        assert "result" in ask("runtimes.install", runtime="tiny")
+        assert answered.wait(30)
+        assert "result" in asked["install"], asked
+        wait_until(lambda: len(events.of(ending)) == 2, "the end of the install asked for", WAIT_S)
+        return
+    store = Store(engine.data)
+    store.claim()
+    store.partial(sha).parent.mkdir(parents=True, exist_ok=True)
+    store.partial(sha).write_bytes(weights)
+    store.place(store.partial(sha), sha)
+    engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
+    end = ending.removeprefix("run.")
+    assert "result" in ask("graph.run", graph=_one("test.reads_in_tiny", end=end))
+    if end == "stopped":
+        wait_until(lambda: events.of("stage"), "the node's stage", WAIT_S)
+        ask("run.stop")
+    assert answered.wait(WAIT_S)
+    assert [row["sha256"] for row in asked["file"]["result"]["removed"]] == [sha], asked
+    assert asked["runtime"]["result"] == {"runtime": "tiny", "removed": None}, asked
+    following = asked["run"]["result"]["run"]
+    wait_until(
+        lambda: any(e.get("run") == following and e["event"] == "run.done" for e in events),
+        "a next run",
+        WAIT_S,
+    )
 
 
 def test_an_engine_that_shuts_down_stops_its_install(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, hosts: Hosts, make_engine: MakeEngine
 ) -> None:
     """The app closes the engine's stdin when it quits; an install still going must not outlive it."""
     _stalled_source(tiny, hosts)
     events = Events()
-    engine = Engine(
+    engine = make_engine(
         tmp_path / "data",
         [BUILTIN_NODES_DIR],
         events.append,
@@ -440,13 +383,11 @@ def test_an_engine_that_shuts_down_stops_its_install(
         uv_exe,
         uv_home,
         lambda: NO_GPU,
-        transfer=TRANSFER,
+        transfer={**TRANSFER, "policy": Policy()},  # the default policy: the stall holds the download
     )
     reply = engine.handle({"id": 1, "method": "runtimes.install", "params": {"runtime": "tiny"}})
     assert reply is not None and "result" in reply
-    end = time.monotonic() + WAIT_S
-    while not events.of("runtime.progress") and not events.of("runtime.failed") and time.monotonic() < end:
-        time.sleep(0.05)
+    wait_until(lambda: events.of("runtime.progress") or events.of("runtime.failed"), "the install", WAIT_S)
     assert events.of("runtime.progress"), events
 
     closing = threading.Thread(target=engine.shutdown)
@@ -510,25 +451,21 @@ def _run_graph(engine: Engine, events: Events, node: str, **params: Any) -> list
     reply = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
     assert reply is not None and "result" in reply, reply
     run = reply["result"]["run"]
-    end = time.monotonic() + WAIT_S
-    while time.monotonic() < end:
-        ended = [
-            e
-            for e in events
-            if e.get("run") == run and e["event"] in ("run.done", "run.failed", "run.stopped")
-        ]
-        if ended:
-            return [e for e in events if e.get("run") == run]
-        time.sleep(0.05)
-    raise TimeoutError(f"run {run} did not end")
+    endings = ("run.done", "run.failed", "run.stopped")
+    wait_until(
+        lambda: any(e.get("run") == run and e["event"] in endings for e in events),
+        f"run {run} to end",
+        WAIT_S,
+    )
+    return [e for e in events if e.get("run") == run]
 
 
 @pytest.fixture
 def tiny_engine(
-    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, node_root: Path
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, node_root: Path, make_engine: MakeEngine
 ) -> tuple[Engine, Events]:
     events = Events()
-    engine = Engine(
+    engine = make_engine(
         tmp_path / "data", [node_root], events.append, [tiny.parent], uv_exe, uv_home, lambda: CARD_7_5
     )
     installed = engine.runtimes.install("tiny")
@@ -587,17 +524,15 @@ def test_ac3_a_second_oom_another_failure_or_stop_ends_the_node(
     reply = engine.handle({"id": 2, "method": "graph.run", "params": {"graph": graph}})
     assert reply is not None
     run_id = reply["result"]["run"]
-    end = time.monotonic() + WAIT_S
-    while (
-        not [e for e in events if e.get("run") == run_id and e["event"] == "stage"] and time.monotonic() < end
-    ):
-        time.sleep(0.05)
+    wait_until(
+        lambda: any(e.get("run") == run_id and e["event"] == "stage" for e in events), "a stage", WAIT_S
+    )
     engine.handle({"id": 3, "method": "run.stop", "params": {}})
-    while (
-        not [e for e in events if e.get("run") == run_id and e["event"] == "run.stopped"]
-        and time.monotonic() < end
-    ):
-        time.sleep(0.05)
+    wait_until(
+        lambda: any(e.get("run") == run_id and e["event"] == "run.stopped" for e in events),
+        "run.stopped",
+        WAIT_S,
+    )
     stopped = [e for e in events if e.get("run") == run_id]
     assert stopped[-1]["event"] == "run.stopped" and _kinds(stopped) == ["node.fit", "node.start"]
 
@@ -708,7 +643,7 @@ def test_ac7_nodes_fit_and_forget_load_no_model_library(
 
 
 def test_nodes_fit_refuses_what_a_graph_would_refuse(
-    tmp_path: Path, make_node: MakeNode, node_root: Path
+    tmp_path: Path, make_node: MakeNode, node_root: Path, make_engine: MakeEngine
 ) -> None:
     make_node(
         {
@@ -722,7 +657,7 @@ def test_nodes_fit_refuses_what_a_graph_would_refuse(
             "memory": fit_node.model(),
         }
     )
-    engine = Engine(tmp_path / "data", [node_root], Events().append)
+    engine = make_engine(tmp_path / "data", [node_root], Events().append)
     missing = engine.handle({"id": 1, "method": "nodes.fit", "params": {"node": "test.needs_value"}})
     assert missing is not None and "parameter prompt needs a value" in missing["error"]["message"]
     given = engine.handle(

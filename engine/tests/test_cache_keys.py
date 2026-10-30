@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from conftest import AMPERE, NO_GPU, Events, HostRuntimes, MakeNode
 
+from oneframe import cache as caching
 from oneframe.cache import KEY_VERSION, Cache
 from oneframe.files import temporary_for
 from oneframe.graph import Graph
@@ -43,8 +44,18 @@ def _node(tmp_path: Path, runtime: str | None = None) -> Manifest:
     return parse(row, folder)
 
 
-def test_the_key_version_is_2() -> None:
-    assert KEY_VERSION == 2
+def test_a_record_made_under_another_key_version_is_never_served(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A change to how keys are made raises KEY_VERSION, so no record made the old way is served."""
+    manifest = _node(tmp_path)
+    cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
+    old = cache.key(manifest, {"n": 1}, {})
+    cache.commit(old, cache.begin(old), {}, {"made": "under the old key version"})
+    assert cache.get(old) == {}  # served under the version it was made with
+    monkeypatch.setattr(caching, "KEY_VERSION", KEY_VERSION + 1)
+    new = cache.key(manifest, {"n": 1}, {})
+    assert new != old and cache.get(new) is None
 
 
 def test_changing_any_file_in_the_nodes_folder_changes_its_key(tmp_path: Path) -> None:

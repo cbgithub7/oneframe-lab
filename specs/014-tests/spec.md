@@ -1,6 +1,6 @@
 # 014: Tests that check behaviour
 
-Status: approved
+Status: in progress (tasks 1 to 10 done; in review in [PR #51](https://github.com/cbgithub7/oneframe-lab/pull/51))
 Owner approval: 2026-10-18, every open question answered as recommended
 Changed after approval (from `/code-review`, 2026-10-18), approved by the owner 2026-10-23: AC5 also
   catches an engine named or opened another way; AC7 asks each timing line to be a marked bound,
@@ -170,6 +170,7 @@ after. No step needs a GPU.
 - The tool tests time Ctrl+C by the tool's output, as a person does, not by its internals.
 - No pytest-timeout: each wait has its own deadline, and a new dependency needs a reason.
 - `sha` is `hashlib`'s, not 011's file helper: a test's expected value never comes from the code.
+- `TRANSFER` carries `FAST`, as most copies did; the shutdown test whose stall must hold passes `Policy()`.
 
 ## Out of scope
 

@@ -8,11 +8,12 @@ offline they fail with the download error rather than skip."""
 
 from __future__ import annotations
 
-import hashlib
+import contextlib
 import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import textwrap
@@ -23,13 +24,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fixtures.hosts import Hosts, client_context
+from fixtures.engine_process import EngineProcess
+from fixtures.hosts import TRANSFER, Hosts
+from fixtures.store import sha
 
 from oneframe.cache import Cache
 from oneframe.files import is_free
 from oneframe.memory.estimate import Target
+from oneframe.processes import GROUP, Child
 from oneframe.registry import Registry, discover
 from oneframe.scheduler import Scheduler
+from oneframe.server import Engine
 
 # The test guard's collection hooks (spec 007), and pytester for their tests.
 pytest_plugins = ("pytester", "fixtures.listing")
@@ -100,14 +105,93 @@ def _write(root: Path, manifest: dict[str, Any], code: str) -> Path:
     return folder
 
 
+def wait_until[T](check: Callable[[], T | None], what: str | Callable[[], str], seconds: float = 10) -> T:
+    """Wait until `check` gives something true, and give that back. Past `seconds` the test fails,
+    naming what it waited for (`what`, or what it says then)."""
+    deadline = time.monotonic() + seconds
+    while not (found := check()):
+        assert time.monotonic() < deadline, f"waited {seconds:g} s for {what() if callable(what) else what}"
+        time.sleep(0.02)
+    return found
+
+
 def wait_free(*paths: Path, seconds: float = 30) -> None:
     """Wait until nobody holds these locks. Windows lets go of a dead process's locks a little after
     it has ended ("depends upon available system resources", LockFileEx), so a test that ends a
     holder waits for its locks rather than assuming them free at once."""
-    deadline = time.monotonic() + seconds
-    while not all(is_free(p) for p in paths):
-        assert time.monotonic() < deadline, "a lock outlived its holder"
-        time.sleep(0.1)
+    wait_until(lambda: all(is_free(p) for p in paths), "the locks of a holder that ended", seconds)
+
+
+# A lock another process holds: it takes the lock, writes a file if asked (a run's reading list,
+# say), says "held" and its pid, and holds the lock until told to let go, or is killed.
+HOLDER = textwrap.dedent(
+    """
+    import os, sys
+    from pathlib import Path
+    from oneframe.files import FileLock
+    lock = FileLock(Path(sys.argv[1]))
+    assert lock.acquire()
+    if len(sys.argv) > 2:
+        Path(sys.argv[2]).write_text(sys.argv[3], encoding="utf-8")
+    print("held", os.getpid(), flush=True)
+    sys.stdin.readline()
+    lock.release()
+    print("released", flush=True)
+    """
+)
+
+
+class Holder:
+    """The process holding a lock for `held_elsewhere`: the engine's own processes.Child, so a kill
+    ends it as Stop ends a node's tree, the interpreter behind a Windows venv launcher included."""
+
+    def __init__(self, path: Path, write: tuple[Path, str] | None = None) -> None:
+        more = [str(write[0]), write[1]] if write else []
+        self.process = subprocess.Popen(
+            [sys.executable, "-c", HOLDER, str(path), *more],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            **GROUP,
+        )
+        self._child = Child(self.process, None)
+        self._said = self._child.lines(threading.Event())
+        self.pid = 0  # the interpreter's own, once it has said it holds the lock
+        try:
+            said = next(self._said, "").split()
+            assert said[:1] == ["held"], f"the holder said {said}"
+            self.pid = int(said[1])
+        except BaseException:
+            self.kill()
+            raise
+
+    def let_go(self) -> None:
+        """Release the lock and end, as a holder that finishes does. Windows frees a killed
+        holder's lock only later; one that lets go frees it at once."""
+        stdin = self.process.stdin
+        assert stdin is not None
+        if self.process.poll() is None and not stdin.closed:
+            stdin.write("\n")
+            stdin.close()
+            assert next(self._said, "") == "released"
+        self.process.wait(timeout=30)
+
+    def kill(self) -> None:
+        """End it holding the lock, as a crash would; the system lets go of the lock (see
+        wait_free). Never raises."""
+        self._child.kill(also=[self.pid] if self.pid else [])
+
+
+@contextlib.contextmanager
+def held_elsewhere(path: Path, write: tuple[Path, str] | None = None) -> Iterator[Holder]:
+    """The lock at `path`, held by another process for the block, which may let it go or kill it;
+    leaving the block lets go if it still holds it."""
+    holder = Holder(path, write)
+    try:
+        yield holder
+    finally:
+        holder.let_go()
 
 
 @pytest.fixture
@@ -302,11 +386,6 @@ def tiny(tmp_path: Path) -> Path:
     return folder
 
 
-# What a download takes in a test: TLS that trusts the test hosts' CA, and no proxy (the system's
-# may name one). A runtime's sources take the same as model files.
-TRANSFER: dict[str, Any] = {"context": client_context, "proxy": lambda _host: None}
-
-
 def upstream_archive(value: str = "upstream") -> bytes:
     """A GitHub-style source archive: one top folder holding the package upstream_pkg."""
     buffer = io.BytesIO()
@@ -321,9 +400,7 @@ def upstream_archive(value: str = "upstream") -> bytes:
 def add_source(folder: Path, url: str, data: bytes, name: str = "upstream") -> None:
     path = folder / "runtime.json"
     definition = json.loads(path.read_text(encoding="utf-8"))
-    definition["sources"] = [
-        {"name": name, "url": url, "sha256": hashlib.sha256(data).hexdigest(), "paths": ["."]}
-    ]
+    definition["sources"] = [{"name": name, "url": url, "sha256": sha(data), "paths": ["."]}]
     path.write_text(json.dumps(definition, indent=2), encoding="utf-8")
 
 
@@ -335,3 +412,58 @@ def hosts() -> Iterator[Hosts]:
         yield found
     finally:
         found.close()
+
+
+@pytest.fixture
+def hub(hosts: Hosts, monkeypatch: pytest.MonkeyPatch) -> Hosts:
+    """The test hosts, with the hub client pointed at their imitation of Hugging Face."""
+    monkeypatch.setenv("HF_ENDPOINT", hosts.hub)
+    return hosts
+
+
+MakeEngine = Callable[..., Engine]
+
+
+@pytest.fixture
+def make_engine() -> Iterator[MakeEngine]:
+    """In-process engines, made with Engine's own arguments. Each is shut down at teardown, pass or
+    fail, so no run, install, download or scratch folder outlives its test; a test may shut one
+    down itself first. Ask for it after the fixtures its engines use (hosts, say): fixtures end in
+    the reverse of their order, so the engines end first."""
+    with contextlib.ExitStack() as ending:
+
+        def make(*args: Any, **kw: Any) -> Engine:
+            made = Engine(*args, **kw)
+            ending.callback(made.shutdown)
+            return made
+
+        yield make
+
+
+@pytest.fixture
+def engine(hub: Hosts, tmp_path: Path, node_root: Path, events: Events, make_engine: MakeEngine) -> Engine:
+    """The model tests' engine: the nodes in `node_root`, downloading from the test hosts."""
+    return make_engine(tmp_path / "data", [node_root], events.append, transfer=TRANSFER)
+
+
+StartEngine = Callable[..., EngineProcess]
+
+
+@pytest.fixture
+def engine_process(tmp_path: Path) -> Iterator[StartEngine]:
+    """Engines as processes (fixtures/engine_process.py), each started with the command given and
+    its standard error in `log` (by default tmp_path / "engine.log"); each is killed at teardown,
+    pass or fail, if it is still running."""
+    with contextlib.ExitStack() as ending:
+
+        def start(argv: list[str], log: Path | None = None, **kw: Any) -> EngineProcess:
+            started = EngineProcess(argv, log or tmp_path / "engine.log", **kw)
+            ending.callback(started.kill)
+            return started
+
+        yield start
+
+
+def call(engine: Engine, method: str, **params: Any) -> dict[str, Any]:
+    """One request to an in-process engine, as the page sends it; its reply."""
+    return engine.handle({"id": 1, "method": method, "params": params}) or {}

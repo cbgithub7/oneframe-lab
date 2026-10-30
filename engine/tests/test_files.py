@@ -7,14 +7,12 @@ import errno
 import hashlib
 import json
 import shutil
-import subprocess
 import sys
-import textwrap
 import threading
 from pathlib import Path
 
 import pytest
-from conftest import wait_free
+from conftest import held_elsewhere, wait_free
 
 from oneframe import files
 from oneframe.errors import Stopped
@@ -132,33 +130,11 @@ def test_lock_names_are_safe_file_names(tmp_path: Path) -> None:
             lock_file(tmp_path, bad)
 
 
-HOLDER = textwrap.dedent(
-    """
-    import sys, time
-    from pathlib import Path
-    from oneframe.files import FileLock
-    lock = FileLock(Path(sys.argv[1]))
-    assert lock.acquire()
-    print("held", flush=True)
-    time.sleep(600)
-    """
-)
-
-
 def test_a_dead_holder_releases_its_lock(tmp_path: Path) -> None:
     path = lock_file(tmp_path, "held")
-    holder = subprocess.Popen(
-        [sys.executable, "-c", HOLDER, str(path)], stdout=subprocess.PIPE, text=True, encoding="utf-8"
-    )
-    try:
-        assert holder.stdout is not None
-        assert holder.stdout.readline().strip() == "held"
+    with held_elsewhere(path) as holder:
         assert not FileLock(path).acquire()
-    finally:
         holder.kill()
-        holder.wait(timeout=30)
-        if holder.stdout is not None:
-            holder.stdout.close()
     wait_free(path)  # Windows lets go of a dead process's locks a little late
 
 

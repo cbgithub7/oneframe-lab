@@ -4,26 +4,28 @@ The real engine runs as the app runs it, with every folder a program might write
 (HOME, USERPROFILE, APPDATA, LOCALAPPDATA, XDG_*, TMP, TEMP, TMPDIR) pointed into a sandbox, and no
 --data, so it finds its own root there. It installs the tiny runtime (uv fetches its Python into the
 new root), runs an engine node and a runtime node, and stops. Afterwards nothing new exists in the
-sandbox outside the root; on Windows the real profile's top-level folders and the registry keys
-uv would touch are unchanged. The runtime node reports its environment, which must put every
-variable spec 006's Design lists under the root."""
+sandbox outside the root; in the real profile nothing is new or changed under the default folders
+of what the engine's tree runs (footprint.WATCHED), and on Windows the registry keys uv would touch
+are unchanged. The runtime node reports its environment, which must put every
+variable spec 006's Design lists under the root.
+
+A write outside the root passes only where an entry of `outside` in contracts/layout.json allows
+it for what the engine's process tree runs. Each check is a function in fixtures/footprint.py, and
+the tests after this one show each failing."""
 
 from __future__ import annotations
 
 import json
 import os
-import queue
 import shutil
-import subprocess
 import sys
-import threading
-import time
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from conftest import TINY_RUNTIME
+from conftest import TINY_RUNTIME, StartEngine
+from fixtures import footprint
 
+from oneframe import REPO_ROOT
 from oneframe.environment import LIBRARY_CACHES
 from oneframe.layout import data_root
 
@@ -74,111 +76,9 @@ def _write_node(root: Path, manifest: dict[str, Any]) -> None:
     (folder / "helper.py").write_text('WORD = "here"\n', encoding="utf-8")
 
 
-def _snapshot(folder: Path) -> set[str]:
-    return {str(p.relative_to(folder)) for p in folder.rglob("*")}
-
-
-def _top_level(folders: list[str | None]) -> dict[str, set[str]]:
-    out: dict[str, set[str]] = {}
-    for folder in folders:
-        if folder and Path(folder).is_dir():
-            out[folder] = {p.name for p in Path(folder).iterdir()}
-    return out
-
-
-def _registry() -> dict[str, Any]:
-    """HKCU\\Software\\Python, every key and value below it, and HKCU\\Environment's Path: what uv
-    changes when it registers a Python or puts its bin folder on the path."""
-    found: dict[str, Any] = {}
-    if sys.platform != "win32":
-        return found
-    import winreg
-
-    def walk(path: str) -> None:
-        try:
-            handle = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path)
-        except OSError:
-            return
-        with handle:
-            index = 0
-            while True:
-                try:
-                    name, value, _kind = winreg.EnumValue(handle, index)
-                except OSError:
-                    break
-                found[f"{path}:{name}"] = value
-                index += 1
-            index = 0
-            children = []
-            while True:
-                try:
-                    children.append(winreg.EnumKey(handle, index))
-                except OSError:
-                    break
-                index += 1
-        found[path] = sorted(children)
-        for child in children:
-            walk(f"{path}\\{child}")
-
-    walk(r"Software\Python")
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as handle:
-            found["Environment:Path"] = winreg.QueryValueEx(handle, "Path")[0]
-    except OSError:
-        found["Environment:Path"] = None
-    return found
-
-
-class _Engine:
-    def __init__(self, argv: list[str], env: dict[str, str], cwd: Path, log: Path):
-        self.log = log.open("w", encoding="utf-8")
-        self.proc = subprocess.Popen(
-            argv,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=self.log,
-            env=env,
-            cwd=cwd,
-            text=True,
-            encoding="utf-8",
-        )
-        self.lines: queue.Queue[dict[str, Any]] = queue.Queue()
-        self.seen: list[dict[str, Any]] = []
-        threading.Thread(target=self._read, daemon=True).start()
-
-    def _read(self) -> None:
-        assert self.proc.stdout is not None
-        for line in self.proc.stdout:
-            if line.strip():
-                self.lines.put(json.loads(line))
-
-    def wait(self, match: Callable[[dict[str, Any]], bool], what: str) -> dict[str, Any]:
-        end = time.monotonic() + WAIT_S
-        while time.monotonic() < end:
-            try:
-                message = self.lines.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            self.seen.append(message)
-            if match(message):
-                return message
-        raise TimeoutError(f"{what} did not arrive; the engine's log is {self.log.name}")
-
-    def call(self, ident: int, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        assert self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps({"id": ident, "method": method, "params": params}) + "\n")
-        self.proc.stdin.flush()
-        return self.wait(lambda m: m.get("id") == ident, method)
-
-    def close(self) -> int:
-        assert self.proc.stdin is not None
-        self.proc.stdin.close()
-        code = self.proc.wait(timeout=60)
-        self.log.close()
-        return code
-
-
-def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) -> None:
+def test_ac2_nothing_is_written_outside_the_root(
+    tmp_path: Path, uv_exe: str, engine_process: StartEngine
+) -> None:
     sandbox = tmp_path / "sandbox"
     home = sandbox / "home"
     env_folders = {
@@ -213,16 +113,16 @@ def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) ->
     runtimes = sandbox / "runtimes"
     shutil.copytree(TINY_RUNTIME, runtimes / "tiny")
 
-    before = _snapshot(sandbox)
-    real = [os.environ.get(n) for n in ("USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME")]
-    real_before, registry_before = _top_level(real), _registry()
+    before = footprint.snapshot(sandbox)
+    real = footprint.watched(footprint.WATCHED, os.environ, footprint.system())
+    real_before, registry_before = footprint.profile(real), footprint.registry()
 
     argv = [sys.executable, "-m", "oneframe.server", "--nodes", str(nodes), "--runtimes", str(runtimes)]
-    engine = _Engine([*argv, "--uv", uv_exe], env, sandbox, tmp_path / "engine.log")
+    engine = engine_process([*argv, "--uv", uv_exe], env=env, cwd=sandbox, wait_s=WAIT_S)
     try:
         ready = engine.wait(lambda m: m.get("event") == "engine.ready", "engine.ready")
         assert Path(ready["data"]) == root
-        reply = engine.call(1, "runtimes.install", {"runtime": "tiny"})
+        reply = engine.call("runtimes.install", {"runtime": "tiny"})
         assert "error" not in reply, reply
         done = engine.wait(lambda m: m.get("event") in ("runtime.done", "runtime.failed"), "the install")
         assert done["event"] == "runtime.done", done
@@ -231,7 +131,7 @@ def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) ->
             "nodes": {"e": {"node": ENGINE_NODE["id"]}, "r": {"node": RUNTIME_NODE["id"]}},
             "edges": [],
         }
-        reply = engine.call(2, "graph.run", {"graph": graph})
+        reply = engine.call("graph.run", {"graph": graph})
         assert "error" not in reply, reply
         end = engine.wait(lambda m: m.get("event") in ("run.done", "run.failed", "run.stopped"), "the run")
         assert end["event"] == "run.done", end
@@ -249,18 +149,108 @@ def test_ac2_nothing_is_written_outside_the_root(tmp_path: Path, uv_exe: str) ->
         assert Path(runtime_seen[name]).is_relative_to(root / "cache" / "tmp"), name
     assert runtime_seen["PYTHONDONTWRITEBYTECODE"] == "1"
 
-    # Nothing new in the sandbox outside the root.
-    root_part = str(root.relative_to(sandbox))
-    outside = sorted(
-        p for p in _snapshot(sandbox) - before if p != root_part and not p.startswith(root_part + os.sep)
-    )
+    # Nothing new in the sandbox outside the root, but where an exception allows it.
+    allowed = footprint.allowed(footprint.OUTSIDE, footprint.ENGINE_TREE, env, REPO_ROOT, footprint.system())
+    outside = footprint.written_outside(before, footprint.snapshot(sandbox), sandbox, root, allowed)
     assert outside == [], outside
     assert (root / "uv" / "python").is_dir() and any((root / "uv" / "python").iterdir())
     assert (root / "uv" / "cache").is_dir() and any((root / "uv" / "cache").iterdir())
     assert not (root / "cache" / "tmp").exists() or list((root / "cache" / "tmp").iterdir()) == []
 
     # The real profile, and the registry, are as they were.
-    after = _top_level(real)
-    for folder, names in real_before.items():
-        assert after.get(folder, set()) - names == set(), folder
-    assert _registry() == registry_before
+    assert footprint.profile_changes(real_before, footprint.profile(real)) == []
+    assert footprint.registry_changes(registry_before, footprint.registry()) == []
+
+
+def test_a_write_an_exception_names_passes_only_while_it_is_listed(tmp_path: Path) -> None:
+    """AC1: a write where an entry allows the engine is not reported; once the entry is gone, or names
+    the app as its writer, it is."""
+    sandbox = tmp_path / "sandbox"
+    root, home = sandbox / "root", sandbox / "home"
+    root.mkdir(parents=True)
+    home.mkdir()
+    env = {"HOME": str(home)}
+    entry = {
+        "writer": "engine",
+        "systems": [footprint.system()],
+        "what": "-",
+        "why": "-",
+        "paths": ["{HOME}/.cache/thing"],
+    }
+    before = footprint.snapshot(sandbox)
+    (home / ".cache" / "thing").mkdir(parents=True)
+    (home / ".cache" / "thing" / "kept.bin").write_bytes(b"x")
+    (root / "inside.txt").write_text("x", encoding="utf-8")
+    after = footprint.snapshot(sandbox)
+
+    def reported(entries: list[dict[str, Any]]) -> list[str]:
+        allowed = footprint.allowed(entries, footprint.ENGINE_TREE, env, tmp_path, footprint.system())
+        return footprint.written_outside(before, after, sandbox, root, allowed)
+
+    assert reported([entry]) == []
+    made = [(".cache",), (".cache", "thing"), (".cache", "thing", "kept.bin")]
+    written = [str(Path("home", *parts)) for parts in made]
+    assert reported([]) == written
+    assert reported([{**entry, "writer": "app"}]) == written
+    assert reported([{**entry, "systems": ["elsewhere"]}]) == written
+
+
+def test_every_exception_says_who_writes_it_where_and_why() -> None:
+    assert footprint.OUTSIDE, "contracts/layout.json lists the data root's exceptions"
+    every = {name: f"/{name}" for name in footprint.VARIABLES}
+    for entry in footprint.OUTSIDE:
+        assert set(entry) == {"writer", "systems", "what", "why", "paths"}, entry
+        assert entry["writer"] in footprint.WRITERS, entry
+        assert entry["systems"] and set(entry["systems"]) <= set(footprint.SYSTEMS), entry
+        assert entry["what"].strip() and entry["why"].strip(), entry
+        for spelled in entry["paths"]:  # from the environment or the checkout, nothing else
+            assert footprint.expand(spelled, every, Path("/checkout")) is not None, spelled
+
+
+def test_a_registry_change_is_reported() -> None:
+    before = {"Software\\Python": ["PythonCore"], "Environment:Path": "C:\\bin"}
+    assert footprint.registry_changes(before, dict(before)) == []
+    changed = {**before, "Environment:Path": "C:\\bin;C:\\uv", "Software\\Python\\Astral": []}
+    assert footprint.registry_changes(before, changed) == ["Environment:Path", "Software\\Python\\Astral"]
+    assert footprint.registry_changes(changed, before) == ["Environment:Path", "Software\\Python\\Astral"]
+
+
+def _profile(home: Path) -> tuple[list[Path], footprint.Profile]:
+    """A profile with one watched folder that exists, holding a cache folder, and one that does not."""
+    (home / "AppData" / "uv" / "cache").mkdir(parents=True)
+    (home / "AppData" / "uv" / "cache" / "old.whl").write_bytes(b"old")
+    folders = [home / "AppData" / "uv", home / ".local" / "bin"]
+    return folders, footprint.profile(folders)
+
+
+def test_a_write_inside_a_watched_folder_that_exists_is_seen(tmp_path: Path) -> None:
+    """AC2: a file two levels inside a watched folder that existed before; a check of the profile's
+    top-level names alone, as before, did not see it."""
+    folders, before = _profile(tmp_path)
+    made = tmp_path / "AppData" / "uv" / "cache" / "new.whl"
+    made.write_bytes(b"new")
+    assert str(made) in footprint.profile_changes(before, footprint.profile(folders))
+
+
+def test_a_new_folder_outside_the_watched_list_is_not_reported(tmp_path: Path) -> None:
+    """AC3: a new top-level folder in the profile, as a runner's Firefox once made, is another
+    program's; the check of top-level names reported it."""
+    folders, before = _profile(tmp_path)
+    (tmp_path / "AppData" / "Mozilla" / "Firefox").mkdir(parents=True)
+    (tmp_path / "AppData" / "Mozilla" / "Firefox" / "profiles.ini").write_text(
+        "[General]\n", encoding="utf-8"
+    )
+    assert footprint.profile_changes(before, footprint.profile(folders)) == []
+
+
+def test_a_file_rewritten_in_a_watched_folder_is_seen(tmp_path: Path) -> None:
+    folders, before = _profile(tmp_path)
+    rewritten = tmp_path / "AppData" / "uv" / "cache" / "old.whl"
+    rewritten.write_bytes(b"rewritten, longer")
+    assert str(rewritten) in footprint.profile_changes(before, footprint.profile(folders))
+
+
+def test_a_watched_folder_that_appears_is_seen(tmp_path: Path) -> None:
+    folders, before = _profile(tmp_path)
+    (tmp_path / ".local" / "bin").mkdir(parents=True)
+    assert footprint.profile_changes(before, footprint.profile(folders)) == [str(tmp_path / ".local" / "bin")]

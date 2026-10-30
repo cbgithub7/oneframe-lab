@@ -12,7 +12,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from conftest import NO_GPU, wait_free
+from conftest import NO_GPU, MakeEngine, wait_free
 
 from oneframe import BUILTIN_NODES_DIR, scratch
 from oneframe.files import is_free, lock_file
@@ -57,14 +57,12 @@ def test_a_tool_makes_its_folder_the_process_temporary_folder_until_it_ends(tmp_
     assert (tempfile.gettempdir(), os.environ.get("TMPDIR")) == before
 
 
-def test_an_engine_keeps_its_runs_and_jobs_in_its_own_folder(tmp_path: Path) -> None:
-    engine = Engine(tmp_path, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU)
-    try:
-        assert engine.scratch.folder.parent == Layout(tmp_path).tmp
-        assert engine.cache.tmp.parent == engine.scratch.folder
-        assert engine.scheduler.tmp_root == engine.scratch.folder
-    finally:
-        engine.shutdown()
+def test_an_engine_keeps_its_runs_and_jobs_in_its_own_folder(tmp_path: Path, make_engine: MakeEngine) -> None:
+    engine = make_engine(tmp_path, [BUILTIN_NODES_DIR], lambda _m: None, profile=lambda: NO_GPU)
+    assert engine.scratch.folder.parent == Layout(tmp_path).tmp
+    assert engine.cache.tmp.parent == engine.scratch.folder
+    assert engine.scheduler.tmp_root == engine.scratch.folder
+    engine.shutdown()
     assert not engine.scratch.folder.exists()
 
 
@@ -86,7 +84,9 @@ HELPER = textwrap.dedent(
 )
 
 
-def test_ac5_two_processes_on_one_root(tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path) -> None:
+def test_ac5_two_processes_on_one_root(
+    tmp_path: Path, tiny: Path, uv_exe: str, uv_home: Path, make_engine: MakeEngine
+) -> None:
     data = tmp_path / "data"
     layout = Layout(data)
     helper = subprocess.Popen(
@@ -94,7 +94,7 @@ def test_ac5_two_processes_on_one_root(tmp_path: Path, tiny: Path, uv_exe: str, 
     )
 
     def start() -> Engine:
-        return Engine(
+        return make_engine(
             data,
             [BUILTIN_NODES_DIR],
             lambda _m: None,
@@ -108,15 +108,13 @@ def test_ac5_two_processes_on_one_root(tmp_path: Path, tiny: Path, uv_exe: str, 
         assert helper.stdout is not None
         theirs = Path(helper.stdout.readline().strip())
         engine = start()
-        try:
-            assert (theirs / "work.txt").read_text(encoding="utf-8") == "busy"  # kept
-            assert engine.scratch.folder != theirs
-            for method in ("runtimes.install", "runtimes.remove"):
-                reply = engine.handle({"id": 1, "method": method, "params": {"runtime": "tiny"}}) or {}
-                assert reply["error"]["reason"] == "locked", (method, reply)
-            assert engine.runtimes.installing() is None  # the refused install claimed nothing
-        finally:
-            engine.shutdown()
+        assert (theirs / "work.txt").read_text(encoding="utf-8") == "busy"  # kept
+        assert engine.scratch.folder != theirs
+        for method in ("runtimes.install", "runtimes.remove"):
+            reply = engine.handle({"id": 1, "method": method, "params": {"runtime": "tiny"}}) or {}
+            assert reply["error"]["reason"] == "locked", (method, reply)
+        assert engine.runtimes.installing() is None  # the refused install claimed nothing
+        engine.shutdown()
     finally:
         helper.kill()
         helper.wait(timeout=30)
@@ -125,14 +123,11 @@ def test_ac5_two_processes_on_one_root(tmp_path: Path, tiny: Path, uv_exe: str, 
 
     wait_free(lock_file(layout.locks, f"tmp-{theirs.name}"), lock_file(layout.locks, "runtime-tiny"))
     engine = start()
-    try:
-        assert not theirs.exists() or theirs == engine.scratch.folder  # the dead helper's folder went
-        assert not (theirs / "work.txt").exists()
-        done = engine.runtimes.install("tiny")
-        assert done is not None and engine.runtimes.list()["runtimes"][0]["status"] == "installed"
-        assert is_free(lock_file(layout.locks, "runtime-tiny"))  # released when the install ended
-    finally:
-        engine.shutdown()
+    assert not theirs.exists() or theirs == engine.scratch.folder  # the dead helper's folder went
+    assert not (theirs / "work.txt").exists()
+    done = engine.runtimes.install("tiny")
+    assert done is not None and engine.runtimes.list()["runtimes"][0]["status"] == "installed"
+    assert is_free(lock_file(layout.locks, "runtime-tiny"))  # released when the install ended
 
 
 def test_a_dead_processs_folder_that_cannot_be_removed_is_passed_over(

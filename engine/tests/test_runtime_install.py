@@ -15,13 +15,12 @@ from conftest import (
     AMPERE,
     NO_GPU,
     TINY_RUNTIME,
-    TRANSFER,
     Events,
     MakeNode,
     add_source,
     upstream_archive,
 )
-from fixtures.hosts import Hosts
+from fixtures.hosts import TRANSFER, Hosts
 
 from oneframe.cache import Cache
 from oneframe.graph import Graph
