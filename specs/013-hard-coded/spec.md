@@ -109,6 +109,10 @@ on a card.
 
 - `fit_check.py` lives in `engine/tests/`, not in `hardware/`, which ruff and pyright treat as 3.11.
 - `tool.js` takes a `.py` path besides a module, rather than the tests becoming a package.
+- The rule flags a string that is an id, or has one or `tests` as a path part, and an import:
+  prose that names a library (a message saying torch saw no card) names no runtime.
+- `test_rules.py` also has `test_a_listed_module_that_gains_a_runtime_id_is_still_caught`, so the
+  Design's keying by place is itself tested.
 
 ## Out of scope
 

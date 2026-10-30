@@ -14,7 +14,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   (AC2). Move the five scenario tests to `test_fit_check.py`, names kept. Update `AGENTS.md`
   Commands, the `bench:fit` section of `docs/nodes.md`, the Benches row of `docs/architecture.md`,
   and the command named in `test.vram`'s `node.json` summary and `ac8.json` comment.
-- [ ] 3. **The rule's test:** add `test_no_engine_module_names_a_runtime_a_node_or_the_tests` in
+- [x] 3. **The rule's test:** add `test_no_engine_module_names_a_runtime_a_node_or_the_tests` in
   `engine/tests/test_rules.py` (AC1).
 - [ ] 4. **Names outside v1** (only if the owner said yes to question 1): narrow `VENDORS`, `OSES`
   and the manifest's devices; remove memory's paths for unread devices (the parser's and the fit's)
