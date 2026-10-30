@@ -37,7 +37,9 @@ VARIABLES = (
     "TMPDIR",
 )
 
-# A path relative to the folder snapshotted: its size (-1 for a folder) and modification time.
+# A path relative to the folder snapshotted: a file's size and modification time, or (-1, 0) for a
+# folder. A folder's own time is left out: NTFS updates it in its parent's listing lazily, so it
+# can change between two looks with nothing written, and what is in a folder speaks for it.
 Snapshot = dict[str, tuple[int, int]]
 
 
@@ -88,7 +90,7 @@ def snapshot(folder: Path) -> Snapshot:
                 info = entry.stat(follow_symlinks=False)
             except OSError:
                 continue
-            found[entry.path[start:]] = (-1 if is_dir else info.st_size, info.st_mtime_ns)
+            found[entry.path[start:]] = (-1, 0) if is_dir else (info.st_size, info.st_mtime_ns)
             if is_dir:
                 pending.append(entry.path)
     return found
