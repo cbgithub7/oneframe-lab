@@ -18,7 +18,7 @@ adds or renames a test rewrites `engine/tests/collected.txt` with `node scripts/
   `engine_process` fixture, each process killed at teardown if still running. It replaces `Server`,
   `Client` and `_Engine`. Add `test_an_engine_process_that_says_nothing_fails_the_wait_by_name`.
   AC4's and AC5's commands print nothing.
-- [ ] 5. **The killed install.** Its second `runtimes.install` reply is asserted before any wait
+- [x] 5. **The killed install.** Its second `runtimes.install` reply is asserted before any wait
   (AC6).
 - [ ] 6. **Bounds**, test by test as the spec's Tests section says; each bound kept carries a
   `# bound:` comment saying why it is evidence (AC7).

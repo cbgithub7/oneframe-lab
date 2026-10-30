@@ -125,7 +125,9 @@ def test_a_killed_install_is_not_installed_and_a_second_install_completes(
     again = _serve(engine_process, data, tiny.parent, uv_exe, uv_home)
     try:
         assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "not_installed"
-        again.call("runtimes.install", {"runtime": "tiny"})
+        second = again.call("runtimes.install", {"runtime": "tiny"})
+        # A refusal fails here, by name, rather than as a wait for an ending that never comes.
+        assert "result" in second, f"the second runtimes.install was refused: {second}"
         done = again.event("runtime.done", "runtime.failed", "runtime.stopped", runtime="tiny")
         assert done["event"] == "runtime.done", done
         assert again.call("runtimes.list")["result"]["runtimes"][0]["status"] == "installed"
