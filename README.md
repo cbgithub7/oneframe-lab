@@ -21,10 +21,12 @@ person presses Download.
 
 The engine (node manifests, typed ports, graph planning, a content-addressed cache, and a scheduler
 that runs nodes in-process or in their own runtime), the runtime manager (spec 001), fitting each
-node to the memory a machine has (spec 002), the Electron shell, and the checks. No real model has
-run yet: the only nodes are a photo source and a depth-to-points converter. The model store's core
-(spec 003) is done, checked against the real hosts; a clean-up comes next, then the first real
-models.
+node to the memory a machine has (spec 002), the model store's core (spec 003), checked against
+the real hosts, the Electron shell, and the checks. The clean-up the
+[review of 2026-10-12](docs/reviews/2026-10-12.md) asked for (specs 007 to 014) is done.
+No real model has run yet: the only nodes are a photo source and a depth-to-points
+converter. First light comes next: Depth Pro and MoGe-3 run from the page. Its spec, 005, is still
+to be drafted in [specs/](specs/README.md).
 [docs/handoff.md](docs/handoff.md) has the state and what comes next.
 
 ## Layout
