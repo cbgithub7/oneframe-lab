@@ -6,6 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 import { envWithPinnedTools, pinnedToolDirs } from "../../.claude/hooks/pinned-tools.js";
+import { run, treeFingerprint } from "../../.claude/hooks/tree.js";
 
 /** A project pinning Node 24.21.0 and uv 0.12.20, and a home where the tools may be installed.
  * @param {{ node?: boolean, uv?: boolean }} installed */
@@ -55,5 +56,29 @@ test("a project that pins nothing leaves the environment alone", () => {
     assert.deepEqual(pinnedToolDirs(base, base), []);
   } finally {
     rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("the stop hook's fingerprint changes when an untracked file's contents change", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "oneframe-tree-"));
+  const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: path.join(root, ".no-config") };
+  const git = (/** @type {string[]} */ ...args) => assert.ok(run(root, env, "git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args]).ok, `git ${args[0]}`);
+  try {
+    git("init", "-q");
+    writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n");
+    git("add", ".gitignore");
+    git("commit", "-q", "-m", "first");
+    writeFileSync(path.join(root, "new.js"), "one\n");
+    const before = treeFingerprint(root, env);
+    assert.equal(treeFingerprint(root, env), before, "the same tree gives the same fingerprint");
+
+    writeFileSync(path.join(root, "new.js"), "two\n");
+    const edited = treeFingerprint(root, env);
+    assert.notEqual(edited, before, "an edit to an untracked file is a change");
+
+    writeFileSync(path.join(root, "ignored.txt"), "anything");
+    assert.equal(treeFingerprint(root, env), edited, "an ignored file is not");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
