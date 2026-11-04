@@ -19,6 +19,15 @@ then cut down to.
    steady), its peak card memory and peak process memory, at the settings `spike.py` lists, and
    whether the depths look sane (finite share, metres).
 
+## Already known (a cloud session, 2026-11-04)
+
+The self-test passed on Linux on the processor (no card, no weights): both `cpu` environments
+build from the locks; Depth Pro imports and runs on numpy 2.5.4 (952 M parameters, 65 s a run at
+its 1536 px, 8.1 GB peak process memory, with random weights); MoGe-2 and MoGe-3 (the stand-in in
+place, no refiner) import and run, each giving points, depth, mask, normals and intrinsics, with
+no connection attempted. What only the owner's PC can show: Windows, the `cu126` build on the
+1070, the real weights loading under `weights_only`, and the real numbers.
+
 ## Run it (a local session)
 
 From the repo's root on the owner's PC, with the checks green. `<work>` is a new folder of the

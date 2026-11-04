@@ -164,6 +164,8 @@ def main() -> int:
         key: value for key, value in vars(args).items() if key not in ("weights", "out")
     }
     result["weights"] = "random" if args.weights is None else "pinned"
+    if args.model == "depth_pro":
+        del result["resolution_level"]  # MoGe's alone
     stage = "import"
     try:
         started = time.perf_counter()
