@@ -21,6 +21,7 @@ import datetime
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -71,9 +72,20 @@ def folder_mb(path: Path) -> float:
     return round(sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 2**20, 1)
 
 
-def scrub(text: str) -> str:
-    """No user name in what the report keeps."""
-    return text.replace(str(Path.home()), "%USERPROFILE%")
+def scrub(value: Any) -> Any:
+    """No user name in what the report keeps: the home folder, in any case and with either slash,
+    in every string of a row."""
+    text = str(Path.home())
+    parts = [re.escape(part) for part in re.split(r"[\\/]", text) if part]
+    lead = r"[\\/]" if text.startswith(("/", "\\")) else ""  # a POSIX home begins with its slash
+    home = re.compile(lead + r"[\\/]".join(parts) + r"(?![^\\/\s\"'])", re.IGNORECASE)
+    if isinstance(value, str):
+        return home.sub("%USERPROFILE%", value)
+    if isinstance(value, dict):
+        return {key: scrub(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [scrub(item) for item in value]
+    return value
 
 
 def child_env(work: Path, layout: Layout) -> dict[str, str]:
@@ -155,13 +167,20 @@ def run(model: str, python: Path, setting: dict[str, Any], device: str, args: ar
                               errors="replace", timeout=RUN_TIMEOUT_S, check=False)  # fmt: skip
     except subprocess.TimeoutExpired:
         return {"model": model, "device": device, **setting, "outcome": f"timed out after {RUN_TIMEOUT_S} s"}
-    lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
-    row: dict[str, Any] = json.loads(lines[-1]) if lines else {"model": model, "device": device, **setting}
-    if not lines:
-        row.update(outcome=f"died (exit {done.returncode})", stderr=scrub(done.stderr[-3000:]))
+    row: dict[str, Any] | None = None
+    for line in reversed(done.stdout.splitlines()):  # the result is the last JSON object printed
+        try:
+            found = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(found, dict) and "outcome" in found:
+            row = found
+            break
+    if row is None:
+        row = {"model": model, "device": device, **setting, "outcome": f"died (exit {done.returncode})"}
+        row["stderr"] = done.stderr[-3000:]
     row["process_s"] = round(time.monotonic() - started, 1)
-    if "trace" in row:
-        row["trace"] = scrub(row["trace"])
+    row = scrub(row)
     print(
         f"   {row.get('outcome')}: infer {row.get('infer_s')} s, peak {row.get('peak_reserved_mb')} MB",
         flush=True,
@@ -271,7 +290,9 @@ def main() -> int:
     out = args.work / f"{record['date']}-spike{'-self-test' if args.self_test else ''}.json"
     out.write_text(json.dumps(record, indent=1, default=str) + "\n", encoding="utf-8")
     print("\n" + table(record["runs"]) + f"\n\nWritten: {out}")
-    return 0 if all(r.get("outcome") == "passed" for r in record["runs"]) else 1
+    # A model that fails or runs out of memory is a finding; the spike fails only when a setting
+    # could not be measured at all (no environment, a process that died or timed out).
+    return 0 if all(r.get("outcome") in ("passed", "oom", "failed") for r in record["runs"]) else 1
 
 
 if __name__ == "__main__":

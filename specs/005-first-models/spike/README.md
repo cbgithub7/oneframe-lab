@@ -34,10 +34,11 @@ From the repo's root on the owner's PC, with the checks green. `<work>` is a new
 spike's own, outside the repo: for example `%LOCALAPPDATA%\OneframeLab-spike` in cmd,
 `$env:LOCALAPPDATA\OneframeLab-spike` in PowerShell, `"$LOCALAPPDATA/OneframeLab-spike"` in Git Bash.
 
-**Steps 2 and 3 install environments, so run them from a terminal opened from the Start menu,
-outside Claude desktop's package:** uv's installs from inside it failed on this PC on 2026-10-25
-(os error 32; the handoff's "Open" list). A session inside the package gives the owner the commands
-and reads the JSON they write.
+**Run all three steps from one terminal opened from the Start menu, outside Claude desktop's
+package:** uv's installs from inside it failed on this PC on 2026-10-25 (os error 32; the handoff's
+"Open" list), and a write under `AppData` from inside it may land in the package's own copy, where
+the spike, run from outside, would not find the weights. A session inside the package gives the
+owner the commands and reads the JSON they write.
 
 1. The weights into the model store (about 1.9, 1.3 and 1.5 GB; skip any already there):
 
@@ -65,6 +66,10 @@ and reads the JSON they write.
 
    The work folder is the spike's own: the environments, the libraries' caches and the outputs (`outputs/*.npz`) go there, and
    nothing else outside the data root, whose uv cache it shares. Delete it once the report is in.
+
+MoGe's `fp16` rows are upstream's own fp16 path: autocast over fp32 weights (`use_fp16`), so their
+weights on the card equal fp32's and only the working memory differs. Depth Pro's `fp16` casts the
+weights. Each card row gives the load's own peak (`load_peak_*`) apart from the run's (`peak_*`).
 
 ## What passing looks like
 

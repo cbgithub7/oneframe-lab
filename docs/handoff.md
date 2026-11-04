@@ -89,8 +89,8 @@ leaves this list in the PR that commits its report.
     - **Branch:** `claude/awesome-meitner-xdnwd5` (`main` once its PR merges).
     - **Commands:** in [`specs/005-first-models/spike/README.md`](../specs/005-first-models/spike/README.md),
       "Run it": three `npm run models:download` commands (about 4.7 GB), a self-test, then the spike
-      on a photo the owner picks. The two spike commands build environments (about 6 GB), so they
-      run from a terminal outside Claude desktop's package.
+      on a photo the owner picks, all from one terminal outside Claude desktop's package (the
+      spike builds environments, about 6 GB, and must find the weights where the download put them).
     - **Passing:** the spike's JSON holds a row for every setting, each `passed`, `oom` or `failed`
       with its error; a model that fails is a finding, not a failed step.
     - **Report:** `<date>-spike.json` and `<date>-spike.md`, in a `reports` folder beside spec 005's

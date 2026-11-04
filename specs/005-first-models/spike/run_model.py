@@ -164,6 +164,7 @@ def main() -> int:
         key: value for key, value in vars(args).items() if key not in ("weights", "out")
     }
     result["weights"] = "random" if args.weights is None else "pinned"
+    result["photo"] = "synthetic" if args.photo.startswith("synthetic:") else Path(args.photo).name
     if args.model == "depth_pro":
         del result["resolution_level"]  # MoGe's alone
     stage = "import"
@@ -177,6 +178,7 @@ def main() -> int:
         device = torch.device(args.device)
         if args.device == "cuda":
             torch.cuda.init()
+            torch.cuda.reset_peak_memory_stats()
             result["card"] = torch.cuda.get_device_name(0)
             result["capability"] = ".".join(map(str, torch.cuda.get_device_capability(0)))
         dtype = torch.float16 if args.precision == "fp16" else torch.float32
@@ -191,6 +193,9 @@ def main() -> int:
         if args.device == "cuda":
             torch.cuda.synchronize()
             result["weights_on_card_mb"] = round(torch.cuda.memory_allocated() / 2**20, 1)
+            # The load's own peak, which the fit before a load must allow for, then the run's.
+            result["load_peak_allocated_mb"] = round(torch.cuda.max_memory_allocated() / 2**20, 1)
+            result["load_peak_reserved_mb"] = round(torch.cuda.max_memory_reserved() / 2**20, 1)
             torch.cuda.reset_peak_memory_stats()
         result["load_s"] = round(time.perf_counter() - started, 2)
         result["parameters_m"] = round(sum(p.numel() for p in model.parameters()) / 1e6, 1)
