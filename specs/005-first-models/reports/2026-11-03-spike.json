@@ -1,0 +1,1021 @@
+{
+ "spike": "005-first-models",
+ "date": "2026-11-03",
+ "self_test": false,
+ "machine": {
+  "os": "Windows-10-10.0.19045-SP0",
+  "python_engine": "3.15.1",
+  "gpu": "NVIDIA GeForce GTX 1070, 6.1, 8192 MiB, 575 MiB, 582.66",
+  "uv": "uv 0.13.5 (46776a95d 2026-10-21 x86_64-pc-windows-msvc)"
+ },
+ "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+ "environments": [
+  {
+   "family": "depth_pro",
+   "extra": "cu126",
+   "seconds": 30.2,
+   "outcome": "passed",
+   "disk_mb": 4197.5
+  },
+  {
+   "family": "moge",
+   "extra": "cu126",
+   "seconds": 28.1,
+   "outcome": "passed",
+   "disk_mb": 4381.6
+  },
+  {
+   "family": "depth_pro",
+   "extra": "cpu",
+   "seconds": 0.5,
+   "outcome": "passed",
+   "disk_mb": 642.0
+  },
+  {
+   "family": "moge",
+   "extra": "cpu",
+   "seconds": 0.5,
+   "outcome": "passed",
+   "disk_mb": 826.2
+  }
+ ],
+ "runs": [
+  {
+   "model": "depth_pro",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp32",
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 15.48,
+   "weights_on_card_mb": 3636.1,
+   "load_peak_allocated_mb": 3636.1,
+   "load_peak_reserved_mb": 3658.0,
+   "load_s": 37.41,
+   "parameters_m": 952.0,
+   "infer_s": [
+    19.54,
+    20.83
+   ],
+   "peak_allocated_mb": 8796.7,
+   "peak_reserved_mb": 11742.0,
+   "outputs": {
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 1.0,
+     "min_median_max_m": [
+      1.354,
+      3.611,
+      16.385
+     ]
+    },
+    "focal_px": 2073.8
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 96.7
+  },
+  {
+   "model": "depth_pro",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp16",
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 7.0,
+   "weights_on_card_mb": 1825.9,
+   "load_peak_allocated_mb": 3641.0,
+   "load_peak_reserved_mb": 3658.0,
+   "load_s": 30.72,
+   "parameters_m": 952.0,
+   "infer_s": [
+    5.91,
+    5.55
+   ],
+   "peak_allocated_mb": 5002.1,
+   "peak_reserved_mb": 9458.0,
+   "outputs": {
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 1.0,
+     "min_median_max_m": [
+      1.354,
+      3.609,
+      16.461
+     ]
+    },
+    "focal_px": 2073.3
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 51.2
+  },
+  {
+   "model": "moge2",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp32",
+   "resolution_level": 0,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.4,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 15.01,
+   "parameters_m": 330.9,
+   "infer_s": [
+    3.71,
+    0.36
+   ],
+   "peak_allocated_mb": 1874.2,
+   "peak_reserved_mb": 2236.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.6287,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.9431,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8732,
+     "min_median_max_m": [
+      2.508,
+      7.54,
+      126.726
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 31.1
+  },
+  {
+   "model": "moge2",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp32",
+   "resolution_level": 5,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.37,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 11.99,
+   "parameters_m": 330.9,
+   "infer_s": [
+    3.72,
+    0.82
+   ],
+   "peak_allocated_mb": 2197.1,
+   "peak_reserved_mb": 2488.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.6055,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.9083,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8734,
+     "min_median_max_m": [
+      2.659,
+      7.448,
+      145.799
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 28.8
+  },
+  {
+   "model": "moge2",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp32",
+   "resolution_level": 9,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.98,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 12.66,
+   "parameters_m": 330.9,
+   "infer_s": [
+    4.26,
+    1.28
+   ],
+   "peak_allocated_mb": 2483.0,
+   "peak_reserved_mb": 2916.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.6041,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.9062,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8735,
+     "min_median_max_m": [
+      2.654,
+      7.246,
+      127.53
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 30.7
+  },
+  {
+   "model": "moge2",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp16",
+   "resolution_level": 9,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.3,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 12.42,
+   "parameters_m": 330.9,
+   "infer_s": [
+    4.13,
+    1.28
+   ],
+   "peak_allocated_mb": 2680.5,
+   "peak_reserved_mb": 2964.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.6045,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.9067,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8735,
+     "min_median_max_m": [
+      2.656,
+      7.255,
+      127.355
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 29.5
+  },
+  {
+   "model": "moge3",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp32",
+   "resolution_level": 0,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.45,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 15.18,
+   "parameters_m": 330.9,
+   "infer_s": [
+    3.48,
+    0.36
+   ],
+   "peak_allocated_mb": 1938.9,
+   "peak_reserved_mb": 2256.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.6188,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.9282,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8734,
+     "min_median_max_m": [
+      2.812,
+      7.28,
+      123.662
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 30.9
+  },
+  {
+   "model": "moge3",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp32",
+   "resolution_level": 5,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.1,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 12.4,
+   "parameters_m": 330.9,
+   "infer_s": [
+    3.81,
+    0.82
+   ],
+   "peak_allocated_mb": 2208.0,
+   "peak_reserved_mb": 2488.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.5839,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.8758,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8736,
+     "min_median_max_m": [
+      2.671,
+      7.015,
+      144.852
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 28.5
+  },
+  {
+   "model": "moge3",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp32",
+   "resolution_level": 9,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.48,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 13.03,
+   "parameters_m": 330.9,
+   "infer_s": [
+    4.28,
+    1.3
+   ],
+   "peak_allocated_mb": 2498.4,
+   "peak_reserved_mb": 3142.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.5738,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.8607,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8736,
+     "min_median_max_m": [
+      2.622,
+      6.851,
+      131.336
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 30.7
+  },
+  {
+   "model": "moge3",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cuda",
+   "precision": "fp16",
+   "resolution_level": 9,
+   "weights": "pinned",
+   "torch": "2.14.0+cu126",
+   "numpy": "2.5.4",
+   "card": "NVIDIA GeForce GTX 1070",
+   "capability": "6.1",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.18,
+   "weights_on_card_mb": 1327.4,
+   "load_peak_allocated_mb": 1391.4,
+   "load_peak_reserved_mb": 1400.0,
+   "load_s": 12.48,
+   "parameters_m": 330.9,
+   "infer_s": [
+    4.24,
+    1.24
+   ],
+   "peak_allocated_mb": 2696.5,
+   "peak_reserved_mb": 2964.0,
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.5741,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.8612,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8736,
+     "min_median_max_m": [
+      2.621,
+      6.847,
+      130.988
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 30.1
+  },
+  {
+   "model": "depth_pro",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cpu",
+   "precision": "fp32",
+   "weights": "pinned",
+   "torch": "2.14.0+cpu",
+   "numpy": "2.5.4",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.47,
+   "load_s": 27.85,
+   "parameters_m": 952.0,
+   "infer_s": [
+    99.84,
+    98.99
+   ],
+   "outputs": {
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 1.0,
+     "min_median_max_m": [
+      1.354,
+      3.611,
+      16.385
+     ]
+    },
+    "focal_px": 2073.8
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 235.6
+  },
+  {
+   "model": "moge2",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cpu",
+   "precision": "fp32",
+   "resolution_level": 0,
+   "weights": "pinned",
+   "torch": "2.14.0+cpu",
+   "numpy": "2.5.4",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.33,
+   "load_s": 13.0,
+   "parameters_m": 330.9,
+   "infer_s": [
+    12.5,
+    9.2
+   ],
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.6287,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.9431,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8732,
+     "min_median_max_m": [
+      2.508,
+      7.54,
+      126.725
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 46.4
+  },
+  {
+   "model": "moge3",
+   "photo": "Tateyama Kurobe mountain route in Toyama Prefecture Japan.jpg",
+   "device": "cpu",
+   "precision": "fp32",
+   "resolution_level": 0,
+   "weights": "pinned",
+   "torch": "2.14.0+cpu",
+   "numpy": "2.5.4",
+   "photo_px": [
+    2880,
+    1920
+   ],
+   "import_s": 6.22,
+   "load_s": 11.21,
+   "parameters_m": 330.9,
+   "infer_s": [
+    12.16,
+    9.33
+   ],
+   "outputs": {
+    "points": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.6188,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.9282,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "float32",
+     "finite_share": 0.8734,
+     "min_median_max_m": [
+      2.812,
+      7.28,
+      123.661
+     ]
+    },
+    "mask": {
+     "shape": [
+      1920,
+      2880
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      1920,
+      2880,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 44.2
+  }
+ ]
+}
