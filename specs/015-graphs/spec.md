@@ -35,6 +35,9 @@ wiring aids, layer 1. It lands after 005, whose nodes the graph it ships names; 
 5. **One graph ships**, as a starting point: a photo, Depth Pro and MoGe side by side, each to
    points. Nothing in the engine reads it, and tests build their own graphs but one, which checks
    that the shipped graphs plan.
+6. **A failure stops only what depends on it** (017's open question 3, answered 2026-11-04). A run
+   goes on with every step that does not need the failed one's outputs, and ends failed, naming
+   each step that failed and each that did not run because of it.
 
 ## Acceptance criteria
 
@@ -58,6 +61,10 @@ wiring aids, layer 1. It lands after 005, whose nodes the graph it ships names; 
   `graphs.get`, and is gone after `graphs.remove`. Fails today: no such methods.
 - [ ] AC6: `test_shipped_graphs_plan` (`test_graphs.py`): the repo's `graphs/` holds at least one
   graph, and each plans against the repo's nodes with no problem.
+- [ ] AC7: `test_a_failure_stops_only_what_depends_on_it` (`test_scheduler.py`): in a graph of two
+  branches from one source, a node that fails in one branch leaves the other branch run and done,
+  the failed node's dependents never started, and the run ending `run.failed` with both named.
+  Fails today: the run ends at the first failure.
 
 ## Design
 
@@ -91,7 +98,12 @@ with the door's photo tokens.
 and the MoGe node, each feeding `convert.depth_to_points` or giving points directly, as their ports
 say, with `page` fields that place the two results side by side (017 reads them).
 
-**Docs:** architecture.md (graphs as data, the five methods, the new reason), handoff.
+**The scheduler** (`scheduler.py`) keeps going past a failed step: a step whose inputs come from
+a failed or skipped one gets `node.skipped` (naming the step it waited on) and does not start, and
+the run's `run.failed` lists the failed and the skipped. A Stop still ends the whole run.
+
+**Docs:** architecture.md (graphs as data, the five methods, the new reason, `node.skipped` and the
+run's ending), handoff.
 
 Risks: a `page` object grows without bound (the page's concern; the engine only keeps it); two
 engines on one root save the same name at once (the writer is atomic, so the last one wins whole).
@@ -101,8 +113,11 @@ engines on one root save the same name at once (the writer is atomic, so the las
 - Added: `test_page_fields_survive_a_round_trip`, `test_what_fits_agrees_with_plan` (`test_graph.py`);
   `test_graphs_are_found_by_looking`, `test_saving_keeps_shipped_graphs_and_newer_formats`,
   `test_shipped_graphs_plan` (`test_graphs.py`); `test_a_graph_round_trips_over_the_protocol`
-  (`test_server_and_nodes.py`); the layout row for `graphs` in `contracts/layout.json`, which both
+  (`test_server_and_nodes.py`); `test_a_failure_stops_only_what_depends_on_it`
+  (`test_scheduler.py`); the layout row for `graphs` in `contracts/layout.json`, which both
   suites check.
+- Changed: a test that expects a run to end at its first failure while another branch could
+  still run expects the new rule.
 - Removed: none
 - Renamed: none
 
@@ -127,7 +142,7 @@ Every criterion is a test in `npm run engine:check`, in CI on Windows and Ubuntu
 - The page that edits, saves and runs a graph: 017.
 - Wiring aids beyond layer 1 (auto-wiring, a goal search): the editor, step 7.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-04: every one as recommended)
 
 1. **The page's fields** are kept as a `page` object on the graph and on each node, opaque to the
    engine. A saved graph is a file a person keeps, so its shape is hard to change. Recommended:

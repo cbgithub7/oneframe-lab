@@ -1,6 +1,6 @@
 # 005: The first model nodes: Depth Pro and MoGe
 
-Status: draft
+Status: draft, to be cut to what its spike finds before approval (the owner, 2026-11-04)
 Owner approval: (date, once approved)
 
 The first of four specs for step 3, first light, which is too large for one: this one, then
@@ -119,6 +119,12 @@ weights (the job frees the runner's preinstalled tools first if it must).
 
 ## Verification
 
+**Before approval, the spike** (the owner, 2026-11-04): `spike/README.md` holds its questions, its
+commands for a local session on the owner's PC, and the report it leaves in `reports/`. This spec is
+then rewritten to what the spike found, and approved.
+
+**Once approved:**
+
 AC1 and AC4 run in `npm run engine:check`; AC2 and AC3 in CI's `models (cpu)`. AC5 and AC6, in
 a local session on the owner's PC (Windows, GTX 1070), from the branch, with `ONEFRAME_DATA` at a
 new empty folder:
@@ -153,7 +159,7 @@ with a report from a card of compute 8.0 or newer (the Improve-loop spike's rent
 - The page, graphs and results: 015 to 017.
 - MoGe-3 ViT-G, other depth families: a node each, later. Keeping models loaded: spec 004.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-04: every one as recommended)
 
 1. **MoGe-3 without its refinement**, on every machine until a card of compute 8.0 or newer
    reports: MoGe-3's network, labelled `refine_steps: 0`, but not the model as published.

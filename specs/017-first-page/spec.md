@@ -146,7 +146,7 @@ AC8, in a local session on the owner's PC, from the branch, with a new empty fol
 - Settings, the model store's list and removal, and runtime removal on the page: later pages.
 - Packaging three.js: step 8.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-04: every one as recommended)
 
 1. **Two variants side by side** are two branches of one graph, each output the person chooses to
    show in its own pane. Recommended: yes; comparing two graphs is step 7's.
@@ -155,5 +155,5 @@ AC8, in a local session on the owner's PC, from the branch, with a new empty fol
    the CSP allows only by hash; step 7 decides on a bundler.
 3. **A run that meets a failure** stops today, so a missing runtime for one branch also stops the
    other. Recommended: in this spec, the scheduler keeps running every step that does not depend on
-   the failed one, and the page shows each branch's own ending; a requirement and a criterion
-   join this spec if so.
+   the failed one, and the page shows each branch's own ending. The scheduler's part is spec
+   015's (its requirement 6); the page shows `node.skipped` on a card.

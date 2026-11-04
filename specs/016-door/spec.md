@@ -133,7 +133,7 @@ Requirement 6 is held by `engine.test.js`'s check that every method the page may
 - The page that uses this: 017. `models.list`, `models.remove`, `models.verify` and settings on the
   page: when a page needs them. Removing imports nobody's graph names: with the cache's cap.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-04: every one as recommended)
 
 1. **The rule "one door into the page"** names only `engine:request` with a method from
    `ENGINE_METHODS`. This adds the app's own methods (`APP_METHODS`) through that channel, and a
