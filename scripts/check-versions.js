@@ -9,11 +9,12 @@
 //
 // Checked: npm devDependencies, the engine's direct Python dependencies (as locked), the engine's
 // Python minor version, the uv the engine requires, the Node LTS the project targets and the
-// matching @types/node, and every GitHub Action (pinned by commit, with the version in a comment).
+// matching @types/node, every GitHub Action (pinned by commit, with the version in a comment), and
+// the uv each workflow installs, which must be the engine's.
 //
 // With --rules-only, only the rules a change can break fail the check: exact pins, actions pinned
-// by commit, .node-version matching engines.node, @types/node on engines.node's major, and
-// exceptions that name what is pinned. Being
+// by commit, .node-version matching engines.node, @types/node on engines.node's major, the
+// workflows' uv matching the engine's, and exceptions that name what is pinned. Being
 // behind the latest release, or an exception's date passing, is left to the run on main and the
 // weekly run, so an upstream release never turns an unrelated pull request red.
 
@@ -108,13 +109,70 @@ async function pythonRows() {
     const latest = meta.info.version;
     rows.push({ area: "pypi", name, pinned, latest, released: meta.releases?.[latest]?.[0]?.upload_time_iso_8601 });
   }
-  const uvPin = pyproject.match(/required-version\s*=\s*">=([\d.]+)"/)?.[1];
+  const uvPin = engineUvPin(pyproject);
   if (uvPin) {
     const meta = await json("https://pypi.org/pypi/uv/json");
     rows.push({ area: "tool", name: "uv", pinned: uvPin, latest: meta.info.version,
       released: meta.releases?.[meta.info.version]?.[0]?.upload_time_iso_8601 });
   }
   return rows;
+}
+
+/** @param {string} pyproject engine/pyproject.toml's text @returns {string | undefined} the uv it requires */
+export function engineUvPin(pyproject) {
+  return pyproject.match(/required-version\s*=\s*"(?:>=|==)?\s*([\d.]+)"/)?.[1];
+}
+
+/**
+ * The `version` given to each `astral-sh/setup-uv` step in a workflow, by line; null where a step
+ * gives none.
+ * @param {string} text a workflow's YAML
+ * @returns {Array<{ line: number, version: string | null }>}
+ */
+export function workflowUvVersions(text) {
+  const lines = text.split(/\r?\n/);
+  const found = [];
+  for (const [i, line] of lines.entries()) {
+    const step = line.match(/^(\s*)(-\s+)?uses:\s*["']?astral-sh\/setup-uv@/);
+    if (!step) continue;
+    const keys = step[1].length + (step[2]?.length ?? 0); // the indent of the step's own keys
+    let inWith = false;
+    let version = null;
+    for (const next of lines.slice(i + 1)) {
+      if (!next.trim() || next.trim().startsWith("#")) continue;
+      const indent = next.length - next.trimStart().length;
+      if (indent < keys || (indent === keys && next.trimStart().startsWith("-"))) break; // the next step
+      if (indent === keys) inWith = /^with:\s*(#.*)?$/.test(next.trim());
+      else if (inWith) version = next.match(/^\s*version:\s*["']?([^"'\s#]+)/)?.[1] ?? version;
+    }
+    found.push({ line: i + 1, version });
+  }
+  return found;
+}
+
+/**
+ * Every workflow step that installs a uv other than the engine's pin, as a line to print.
+ * @param {Array<{ file: string, text: string }>} workflows
+ * @param {string | undefined} pin the uv engine/pyproject.toml requires
+ * @returns {string[]}
+ */
+export function workflowUvProblems(workflows, pin) {
+  const problems = [];
+  for (const { file, text } of workflows) {
+    for (const { line, version } of workflowUvVersions(text)) {
+      if (version === pin) continue;
+      const installs = version === null ? "gives setup-uv no version" : `installs uv ${version}`;
+      problems.push(`${file}:${line} ${installs}, but engine/pyproject.toml requires ${pin ? `uv ${pin}` : "no uv version"}.`);
+    }
+  }
+  return problems;
+}
+
+/** Each workflow's file name and text. */
+function workflows() {
+  const dir = path.join(".github", "workflows");
+  return readdirSync(path.join(ROOT, dir)).filter((f) => /\.ya?ml$/.test(f)).sort()
+    .map((file) => ({ file: path.posix.join(".github/workflows", file), text: read(path.join(dir, file)) }));
 }
 
 /** The newest stable CPython minor that uv can install, against engine/.python-version. */
@@ -139,11 +197,10 @@ async function nodeRow() {
 
 /** Every `uses: owner/repo@<sha> # vX.Y.Z` in the workflows, against the repo's newest tag. */
 function actionRows() {
-  const dir = path.join(ROOT, ".github", "workflows");
   const rows = [];
   const seen = new Set();
-  for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
-    for (const m of read(path.join(".github", "workflows", file)).matchAll(/uses:\s*([\w.-]+\/[\w.-]+)@(\S+)(?:\s*#\s*(v[\d.]+))?/g)) {
+  for (const { file, text } of workflows()) {
+    for (const m of text.matchAll(/uses:\s*([\w.-]+\/[\w.-]+)@(\S+)(?:\s*#\s*(v[\d.]+))?/g)) {
       const [, repo, ref, comment] = m;
       if (seen.has(repo)) continue;
       seen.add(repo);
@@ -172,14 +229,15 @@ export function typesFollowNode(pinned, enginesNode) {
 }
 
 /**
- * How many failures count. Rules-only counts the rules a change can break (`rule` failures and
- * exceptions for names pinned nowhere), not pins behind their latest release.
+ * How many failures count. Rules-only counts the rules a change can break (`rule` failures, and
+ * broken rules outside the rows: exceptions for names pinned nowhere, a workflow's uv that is not
+ * the engine's), not pins behind their latest release.
  * @param {Array<{ status: string, rule?: boolean }>} rows
- * @param {number} strayExceptions
+ * @param {number} brokenRules
  * @param {boolean} rulesOnly
  */
-export function failureCount(rows, strayExceptions, rulesOnly) {
-  return rows.filter((r) => r.status === "fail" && (!rulesOnly || r.rule)).length + strayExceptions;
+export function failureCount(rows, brokenRules, rulesOnly) {
+  return rows.filter((r) => r.status === "fail" && (!rulesOnly || r.rule)).length + brokenRules;
 }
 
 async function main() {
@@ -203,11 +261,13 @@ async function main() {
   for (const name of exceptions.keys()) {
     if (!rows.some((r) => r.name === name)) console.log(` FAIL   versions.json has an exception for ${name}, which is not pinned anywhere.`);
   }
+  const uvProblems = workflowUvProblems(workflows(), engineUvPin(read("engine/pyproject.toml")));
+  for (const problem of uvProblems) console.log(` FAIL   ${problem}`);
   const stray = [...exceptions.keys()].filter((n) => !rows.some((r) => r.name === n)).length;
-  const failed = failureCount(rows, stray, rulesOnly);
+  const failed = failureCount(rows, stray + uvProblems.length, rulesOnly);
   if (rulesOnly && !failed) console.log("\nrules only: pins follow the rules (being behind is judged on main and weekly).");
   if (failed) {
-    console.log(`\n${failed} pin(s) are behind with no current reason. Update them, or add a dated exception with a reason to versions.json.`);
+    console.log(`\n${failed} pin(s) fail. Fix a broken rule; update a pin that is behind, or add a dated exception with a reason to versions.json.`);
     process.exitCode = 1;
   }
 }

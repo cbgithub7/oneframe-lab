@@ -64,7 +64,7 @@ jobs:
         with:
           version: "0.13.5"
       # Everywhere: the rules a change can break (exact pins, actions pinned by commit, Node and
-      # engines agreeing, exceptions naming what is pinned).
+      # engines agreeing, the workflows' uv the engine's, exceptions naming what is pinned).
       - name: Pins follow the rules
         if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         run: npm run versions -- --rules-only
