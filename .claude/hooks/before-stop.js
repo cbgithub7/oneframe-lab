@@ -7,29 +7,18 @@
 // it lets the turn end with a warning instead, so an unfixable failure cannot loop forever; the
 // PR's CI still stands in the way.
 
-import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { envWithPinnedTools } from "./pinned-tools.js";
+import { run as runIn, treeFingerprint } from "./tree.js";
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 const ENV = envWithPinnedTools(ROOT);
 const MAX_BLOCKS = 3;
 
-/**
- * Run a command. On Windows only npm and .cmd shims need a shell; everything else runs directly,
- * so a project path with spaces in it works.
- * @param {string} command @param {string[]} args
- */
-function run(command, args) {
-  const shell = process.platform === "win32" && (command === "npm" || command.endsWith(".cmd"));
-  const quote = (/** @type {string} */ s) => (shell && /\s/.test(s) ? `"${s}"` : s);
-  const r = spawnSync(quote(command), args.map(quote), { cwd: ROOT, env: ENV, encoding: "utf8", shell, maxBuffer: 64 * 1024 * 1024 });
-  return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
-}
+const run = (/** @type {string} */ command, /** @type {string[]} */ args) => runIn(ROOT, ENV, command, args);
 
 /** @type {any} */
 let input = {};
@@ -54,9 +43,7 @@ const ahead = run("git", ["rev-list", "--count", "@{upstream}..HEAD"]);
 const unpushed = ahead.ok && Number.parseInt(ahead.out, 10) > 0;
 if (!status.trim() && !unpushed) process.exit(0);
 
-const head = run("git", ["rev-parse", "HEAD"]).out.trim();
-const diff = run("git", ["diff", "HEAD"]).out;
-const fingerprint = createHash("sha256").update(head).update(status).update(diff).digest("hex");
+const fingerprint = treeFingerprint(ROOT, ENV);
 if (state.passed === fingerprint) process.exit(0);
 
 const checks = [
