@@ -20,7 +20,7 @@ install or download them. Nothing starts the app in CI either, so no test sees t
    its nodes as a card, and saves the person's graph, by name or as a new one.
 2. **Settings come from manifests.** Each param is drawn from its manifest type (`int` and
    `float` within their bounds, `bool`, `choice`, `string`, and `file` as "Pick a photo", which
-   asks `photo.pick`). A value the person set is marked as set, which the fit never changes, and
+   asks `photo.pick` and shows the import's name; v1's only file params are images). A value the person set is marked as set, which the fit never changes, and
    can be reset to its default.
 3. **Wiring by what fits.** Each input shows what feeds it. Connecting one lists what fits there
    from `graph.fits`, a converter named where one is needed; a node is added from the catalogue,
@@ -28,9 +28,12 @@ install or download them. Nothing starts the app in CI either, so no test sees t
 4. **Run and Stop, and what happened.** Each card shows its node's state from the run's events:
    the fit (device, precision, what the fit changed, its warning), progress, cached, done with its
    seconds, or failed with its message and `next`.
-5. **What a run needs is one press away.** A failure of kind `runtime`, reason `not_installed` or
-   `out_of_date`, offers Install (`runtimes.install`, with its progress); one of kind `files`
-   offers Download (`models.download`, with its progress); each then offers Run again.
+5. **What a run needs is one press away.** A failure's kind and reason decide the offer:
+   `runtime`/`not_installed` or `out_of_date` offers Install (`runtimes.install`, with its
+   progress); `files`/`not_downloaded` or `incomplete` offers Download (`models.download`, with its
+   progress); `runtime`/`installing` and `files`/`downloading` wait for that job's ending; every
+   other failure with `retry` true offers Run again; the rest show their message and `next`. Each
+   finished Install or Download offers Run again.
 6. **Viewers by port type, side by side.** Any output can be shown; the shown ones sit in panes
    side by side, kept in the graph's `page` fields. An `Image` is a picture; a `Depth` a false
    colour image with its range in metres or units; a `PointMap` a point cloud to orbit, with
@@ -47,23 +50,27 @@ install or download them. Nothing starts the app in CI either, so no test sees t
 - [ ] AC2: The node test "the npz reader reads what numpy writes" (`page.test.js`): `.npz` files
   written by numpy (float32 and bool arrays, stored and deflated) committed under
   `tests/app/fixtures/` read back to the same shapes and values.
-- [ ] AC3: The node test "a failure offers what it needs" (`page.test.js`): each kind and reason
-  of architecture.md's table maps to Install, Download, Run again or nothing, as requirement 5 says,
-  and a kind the page does not know offers nothing and shows the message.
+- [ ] AC3: The node test "a failure offers what it needs" (`page.test.js`): every kind and reason
+  of architecture.md's table, each with its `retry`, gets the offer requirement 5 gives it, and a
+  kind the page does not know gets none.
 - [ ] AC4: The Playwright test "the first page runs a graph and shows two results"
   (`tests/e2e/first-page.test.js`), in CI on Windows and Ubuntu: the app starts on an empty data
   root with test nodes and a test graph from `tests/app/fixtures/` (engine nodes, no torch), the
-  dialog answers a fixture photo, a setting is changed, Run gives two panes, each with a viewer
-  showing a value fetched through `oneframe-value://`. Fails today: no such page.
+  dialog answers a fixture photo, Run gives two panes, and each viewer draws a value fetched
+  through `oneframe-value://`. Fails today: no such page.
 - [ ] AC5: The same Playwright file, "Stop ends a run and the page says so": a test node that
   waits is stopped from the page, and its card says stopped within 5 s.
 - [ ] AC6: `test_the_page_names_nothing` (`test_rules.py`, beside spec 013's rule): no file under
   `app/renderer/` holds a repo node's, graph's or runtime's id. Fails if the page hard-codes one.
-- [ ] AC7 (hardware): on the owner's PC (Windows, GTX 1070), from an empty data root, the shipped
+- [ ] AC7: The node test "every viewer is for a port type that exists" (`page.test.js`): each
+  module in `app/renderer/viewers/` names a type in `contracts/port-types.json`.
+- [ ] AC8 (hardware): on the owner's PC (Windows, GTX 1070), from an empty data root, the shipped
   graph opened from the page, a photo picked, the runtimes installed and the files downloaded from
-  the page's own offers, and a run that shows Depth Pro's and MoGe's point clouds side by side. A
+  the page's own offers, and a run that shows Depth Pro's and MoGe's point clouds side by side
+  (`depth.moge3`, or `depth.moge2` if 005's open question 1 goes that way). A
   report under `specs/017-first-page/reports/` gives each node's seconds, its fit, peak VRAM, and
   a screenshot.
+
 
 ## Design
 
@@ -73,17 +80,25 @@ edits, the set/default marks), `form.js` (a control per param type), `run-view.j
 from events, and AC3's offers), `npz.js` (a reader of numpy's `.npz`: a zip of `.npy`, stored or
 deflated through `DecompressionStream`), and `viewers/` (one module per port type, chosen by the
 type's name from `ports.list`, never a node's). The point cloud is drawn with three.js, a new
-dependency loaded from `node_modules` (open question 2); the false colour is a fixed perceptual
+runtime dependency loaded from `node_modules` (open question 2); the false colour is a fixed perceptual
 map in code. `index.html` keeps its CSP, plus 016's scheme.
 
 **The layout:** the catalogue on the left; the graph's cards in the middle; the panes on the right,
 side by side, one per shown output. A pane's place, and which outputs are shown, are `page` fields
 of the graph (015), so a saved graph opens as it was left.
 
+**Folders of the person's own.** `app/main/paths.js`'s `engineCommand` passes each folder in
+`ONEFRAME_NODES` and `ONEFRAME_GRAPHS` (lists, as `PATH` is) to the engine as `--nodes` and
+`--graphs`, after the repo's: how a person tries a node of their own, and how the e2e test gives
+its fixtures.
+
 **`tests/e2e/`** (new) uses Playwright's Electron support (`@playwright/test`, a new dev
-dependency at its latest release). It stubs `dialog.showOpenDialog` from the test, in the main
-process, so the app has no test hook. CI runs it after the app checks, under `xvfb-run` on Ubuntu,
-with `ONEFRAME_NO_SANDBOX=1` only where the runner is root, as today.
+dependency at its latest release), run by a new `npm run e2e`. It replaces `dialog.showOpenDialog`
+from the test, in the main process. CI runs it after the app checks, under `xvfb-run` on Ubuntu;
+`ONEFRAME_NO_SANDBOX=1` only where the runner runs as root.
+
+**Docs:** AGENTS.md's Commands (`npm run e2e`), architecture.md (the page's modules, the viewers),
+nodes.md (folders of the person's own).
 
 **The shipped graph** (015's `graphs/first-light.json`) shows both nodes' point clouds; its `page`
 fields are written by this page and committed once.
@@ -96,7 +111,7 @@ deadlines that name what they waited for, as spec 014 requires).
 ## Tests
 
 - Added: in `tests/app/page.test.js` (new), "a settings form is drawn from a manifest", "the npz
-  reader reads what numpy writes", "a failure offers what it needs"; in
+  reader reads what numpy writes", "a failure offers what it needs", "every viewer is for a port type that exists"; in
   `tests/e2e/first-page.test.js` (new), "the first page runs a graph and shows two results", "Stop
   ends a run and the page says so"; `test_the_page_names_nothing` (`test_rules.py`).
 - Removed: none
@@ -104,12 +119,13 @@ deadlines that name what they waited for, as spec 014 requires).
 
 ## Verification
 
-AC1 to AC6 are tests in `npm run check` (the e2e file as `npm run e2e`, which CI runs, and which
-`npm run check` does not, since it starts Electron), in CI on Windows and Ubuntu.
+AC1 to AC3 and AC7 are node tests in `npm run check`; AC6 is in `npm run engine:check`; AC4 and AC5
+run in `npm run e2e`, which starts Electron and so is not part of `npm run check`. All run in CI on
+Windows and Ubuntu.
 
-AC7, in a local session on the owner's PC, from the branch, with a new empty folder:
+AC8, in a local session on the owner's PC, from the branch, with a new empty folder:
 
-1. `set ONEFRAME_DATA=<new empty folder>` then `npm start`.
+1. In PowerShell, `$env:ONEFRAME_DATA = "<new empty folder>"`, then `npm start`.
 2. Open "first light", pick a photo, press Run; press Install and Download as the page offers;
    Run again until both panes show their point clouds.
 3. `npm run diagnose`, and write `specs/017-first-page/reports/<date>-local.md` from the journal:
@@ -120,7 +136,8 @@ AC7, in a local session on the owner's PC, from the branch, with a new empty fol
 - Cards in a column, not a canvas: the canvas is step 7's, and the cards are what it will draw.
 - The page's models are plain modules tested with `node --test`, so most of the page is checked
   without a browser; Playwright checks only that the pieces meet.
-- The dialog is stubbed from the test, so the app ships no test switch.
+- The dialog is replaced from the test; the node and graph folders the test gives are a feature a
+  person uses too.
 - Linked cameras across point panes: the point of side by side is to compare one view.
 
 ## Out of scope
@@ -134,4 +151,9 @@ AC7, in a local session on the owner's PC, from the branch, with a new empty fol
 1. **Two variants side by side** are two branches of one graph, each output the person chooses to
    show in its own pane. Recommended: yes; comparing two graphs is step 7's.
 2. **three.js** (MIT) for the point viewer, the viewer step 7 extends with Spark. Recommended: yes,
-   at its latest release, pinned exactly.
+   at its latest release, pinned exactly. Without a bundler, Spark will need an import map, which
+   the CSP allows only by hash; step 7 decides on a bundler.
+3. **A run that meets a failure** stops today, so a missing runtime for one branch also stops the
+   other. Recommended: in this spec, the scheduler keeps running every step that does not depend on
+   the failed one, and the page shows each branch's own ending; a requirement and a criterion
+   join this spec if so.
