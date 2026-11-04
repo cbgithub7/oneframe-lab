@@ -41,8 +41,9 @@ with no new approval.
 updates the handoff; no second PR does only that. A hardware step left for after the merge goes
 under "Waiting on a local session" in the handoff, in that same PR.
 
-**A model node needs no spec** when nothing outside its folder changes (`AGENTS.md`, rule 1). Its PR
-brings the manifest, the code, a test that runs it on the processor, and a `bench:fit` report from
+**A model node needs no spec** when nothing outside its folder changes but its own test (`AGENTS.md`,
+rule 1). Its PR brings the manifest, the code, a test in `engine/tests/` that runs it on the
+processor with the collected list `test-guard.js --write` gives, and a `bench:fit` report from
 a real card, whose numbers the memory model names; the PR's description stands in for the spec. A
 new runtime family, a change to the engine, the app or a contract, or a licence question needs a
 spec.

@@ -18,8 +18,9 @@ the [README](README.md#commands).
    document, never on the design: work that needs more becomes two specs. An agent reviews the
    draft; the owner approves it once, before code, and again only if its requirements, criteria or
    open questions change. The spec, not the chat, is the source of truth. **A model node needs no
-   spec** when nothing outside its folder changes: one PR with its manifest, its code, a test that
-   runs it on the processor, and a `bench:fit` report from a real card. A new runtime family, an
+   spec** when nothing outside its folder changes but its own test: one PR with its manifest, its
+   code, a test in `engine/tests/` that runs it on the processor (and the collected list the test
+   guard writes), and a `bench:fit` report from a real card. A new runtime family, an
    engine, app or contract change, or a licence question still needs one.
 2. **Agents decide what can be undone,** and log each choice under "Decisions taken" in one line
    with its reason. The owner decides product behaviour, licences and money, the platform matrix,
