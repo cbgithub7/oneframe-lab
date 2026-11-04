@@ -16,6 +16,29 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
                          JSON job in, NDJSON events out, network closed, its processes ended on Stop
 ```
 
+## Words used here
+
+| Word | Means |
+| --- | --- |
+| node | One step of a graph, a folder with `node.json` and its code: an *engine node* runs in the engine's process, a *runtime node* in a child process in its runtime |
+| manifest | A node's `node.json`: its ports, params, where it runs, the files it reads, its memory model |
+| port, type, facet | A node's input or output; its data kind (`Depth`); and the facets that say what the values mean (`kind=metric`). Two ports connect when the output's facets fit the input's |
+| converter | A `convert` node of one input and one output that the plan inserts between two ports that differ only in facets |
+| trust | What a value rests on: `measured` (seen in the photo), `predicted` (a model's guess) or `synthetic` (made from generated views) |
+| graph, recipe | Which nodes, with which params, connected how: JSON a person builds and saves |
+| plan | A graph checked and put in order, converters inserted |
+| runtime, build | A model family's own Python environment (`runtimes/<id>/`), and one way to install it: `cu130`, `cu126` or `cpu` |
+| stand-in | A small pure-Python package a runtime ships in place of a compiled one it cannot install |
+| fit | The settings, device and precision a node gets before it loads, so it fits the memory this machine has free |
+| budget, margin, cap | The memory a fit allows a node; what it keeps back; the limit torch's allocator is held to |
+| ways | Cheaper ways a node tries one step after running out of memory (`ctx.fallbacks`); `made_with` records the way each step finished |
+| key | A cache entry's name, a hash of all that produced it; a value is `<key>:<port>` |
+| data root, model store | The one folder everything is written under; and the part of it that holds model files, once each by sha256 |
+| journal | The record of every event of a run, an install or a model job, kept before the event is sent |
+| ending | A run's, install's or job's last event (`run.done`, `runtime.failed`, ...), sent after what it held is free |
+| door | `engine:request`, the page's one way to the engine, through `app/main/door.js` |
+| spike, report | A time-boxed question answered by throwaway code; the numbers from a real machine that a hardware claim needs |
+
 ## The parts
 
 | Part | File | Job |

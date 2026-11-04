@@ -16,8 +16,10 @@ else.
 One gate: the owner approves the spec once, design included. A spec is a contract, not a log:
 
 - **Length.** Aim for 150 lines. One not yet done is never longer than 200: `npm run check` fails it.
-  The owner may allow more, case by case, when the design cannot fit (`AGENTS.md`, rule 1): the
-  spec then says `Length allowed: N lines (the owner, <date>)` under its status.
+  The owner may allow more, case by case, only when a spec cannot be designed well within 200
+  lines, or fitting would cut what the design needs. Ask with what does not fit and what was tried,
+  how many lines past 200 and in which sections, and what fitting would lose. An approved one says
+  `Length allowed: N lines (the owner, <date>)` under its status, and the docs check holds it to N.
 - **Acceptance criteria.** At most 8, each one check. A criterion that hides a list of further
   checks is several criteria.
 - **The limits are on the document, never on the design.** Work that needs more than one spec
@@ -30,8 +32,20 @@ One gate: the owner approves the spec once, design included. A spec is a contrac
 - **How the work went** (findings, review rounds, what was tried) goes in the PR's description, not
   the spec. `Status:` says the stage and, once done, the PR; it is not a changelog.
 
-A change after approval is a new approval: say what changed and why in one line under the status,
-and ask the owner.
+A change after approval that touches its requirements, acceptance criteria or open questions is a
+new approval: say what changed and why in one line under the status, and ask the owner. Any other
+change (wording, a mechanism, a review's fix within the design) is logged under "Decisions taken",
+with no new approval.
+
+**Done in the same PR.** The PR that implements a spec sets its `Status:` to done, with the PR, and
+updates the handoff; no second PR does only that. A hardware step left for after the merge goes
+under "Waiting on a local session" in the handoff, in that same PR.
+
+**A model node needs no spec** when nothing outside its folder changes (`AGENTS.md`, rule 1). Its PR
+brings the manifest, the code, a test that runs it on the processor, and a `bench:fit` report from
+a real card, whose numbers the memory model names; the PR's description stands in for the spec. A
+new runtime family, a change to the engine, the app or a contract, or a licence question needs a
+spec.
 
 Specs 001 and 002 were written under the earlier process, with a separate `plan.md` approved after
 the spec.
