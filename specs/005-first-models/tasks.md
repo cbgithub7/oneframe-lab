@@ -4,7 +4,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` with
 `node scripts/test-guard.js --write` (007).
 
-- [ ] 1. **The photo script:** `engine/tests/models/photos.py <original>` writes `photo-full.jpg`,
+- [x] 1. **The photo script:** `engine/tests/models/photos.py <original>` writes `photo-full.jpg`,
   `photo-1536.jpg`, `photo-768.jpg` and `photo-512.jpg` beside itself (the long side at that size),
   upright, RGB, with no metadata; a test of it on a made photo with EXIF orientation and GPS. Then a
   local session can put the owner's photo in at any time (task 10).
