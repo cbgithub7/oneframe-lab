@@ -26,6 +26,22 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 5. **The `moge` runtime** (requirements 1 and 4): `runtimes/moge/` the same way, upstream at
   `74fbce0` and `utils3d_moge` as pinned `sources`, `huggingface-hub` among its dependencies and no
   `gradio`, the `flex_gemm` stand-in (imports, raises on use), `uv.lock`, `ruff.toml`.
+  *Pick up here (2026-11-05): task 6. What the last session worked out for it:*
+    - *Figures in MB from the spike's MiB (the spec's Design): Depth Pro working `1248 + 1041 x
+      bytes` (5,412 at fp32, 3,330 at fp16); MoGe working `bytes x (a + b x resolution_level)`,
+      MoGe-2 a 143.4 and b 17.74, MoGe-3 a 160.4 and b 16.28, fp16's `bytes` 4.68 (both: the spike's
+      level 9 at fp16). No pixels term yet: AC7 fits one.*
+    - *Depth Pro's load: build under `torch.device("meta")`, `load_state_dict(..., assign=True)`
+      from its fp16 file, cast on the processor, then move to `ctx.device`: no fp32 copy on a card.
+      Its own `infer` resizes to 1536 px and back.*
+    - *MoGe: `MoGeModel.from_pretrained(ctx.file(...))`, MoGe-3 with `model_kwargs={"refiner":
+      None}` and `refine_steps=0`; `infer(image, resolution_level=..., use_fp16=...)` gives points,
+      depth (inf where masked), mask, normalised intrinsics and normal.*
+    - *`ctx.output` takes no trust: Depth Pro's camera is declared `predicted`, its `source` facet
+      set at run time (`estimated`, or the input camera's).*
+    - *Here the `cpu` builds install from `git archive` copies put in
+      `<root>/runtimes/<id>/downloads/<sha256>` (docs/runtimes.md). Apple's CDN and Hugging Face
+      are unreachable from a cloud session: the nodes run here with random weights only.*
 - [ ] 6. **The three nodes** (requirements 2, 3, 6, 9): `nodes/depth.depth_pro/`,
   `nodes/depth.moge3/` and `nodes/depth.moge2/`, each a `node.json` (the ports with their facets,
   the params, the files from `specs/003-model-store/live/`, the memory model from the spike's
