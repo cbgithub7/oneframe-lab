@@ -51,6 +51,67 @@ jobs:
       - name: No test removed without a reason in a spec
         run: node scripts/test-guard.js --base origin/${{ github.base_ref || 'main' }}
 
+  models:
+    # Spec 005, AC2 and AC3: every runtime's build for a machine with no card, every node's files,
+    # and each model node run on the processor with its real weights. Nothing here names a node or a
+    # runtime: the loops and run_on_cpu.py find them in nodes/ and runtimes/.
+    name: models (cpu), ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # Downloads of 4.7 GB when the store's cache misses, three installs and Depth Pro's 1536 px on 4
+    # cores; a hang ends here.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    env:
+      # A data root of the job's own in the workspace: the model store is at one path on both
+      # systems, so one cache of it serves both.
+      ONEFRAME_DATA: ${{ github.workspace }}/ci-data
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.5"
+      - name: Engine environment (exactly engine/uv.lock)
+        run: uv sync --project engine --frozen
+      - name: Room for the weights and the runtimes (tools of a Linux runner this job does not use)
+        if: runner.os == 'Linux'
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: The model store's key, from the sha256 of every file the nodes pin
+        id: store
+        run: echo "key=$(uv run --project engine --frozen python engine/tests/models/run_on_cpu.py --cache-key)" >> "$GITHUB_OUTPUT"
+      - name: The model store, kept once for both systems
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ci-data/models
+          key: ${{ steps.store.outputs.key }}
+          restore-keys: models-
+          enableCrossOsArchive: true
+      - name: uv's cache, per system, by the runtimes' locks
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ci-data/uv/cache
+          key: uv-${{ runner.os }}-${{ hashFiles('runtimes/*/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-
+      - name: Every node's files (only what the cache lacks is downloaded)
+        run: for node in nodes/*/; do npm run models:download -- "$(basename "$node")"; done
+      - name: Every runtime's build for this machine (the processor's, as a runner has no card)
+        run: for runtime in runtimes/*/; do npm run bench:runtime -- "$(basename "$runtime")"; done
+      - name: Each runtime's code checked with its own interpreter (AC3)
+        run: npm run runtime:check -- --every-runtime
+      - name: Each model node on the 512 px photo (AC2)
+        run: node scripts/tool.js engine/tests/models/run_on_cpu.py
+      - name: Disk left
+        if: always()
+        run: df -h .
+
   versions:
     name: versions follow the policy
     runs-on: ubuntu-latest

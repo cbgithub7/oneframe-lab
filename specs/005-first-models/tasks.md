@@ -54,12 +54,16 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `test_the_model_nodes_fit_a_range_of_machines` (AC1).
   *Done 2026-11-05: each ran `done` through `bench:fit --graph` on a cloud processor with random
   weights of the real shapes ([report](reports/2026-11-05-cloud-cpu.md)), which also set MoGe's
-  system figure; `runtime:check` passes with both runtimes installed. Pick up here: task 7.*
-- [ ] 7. **CI** (AC2, AC3): `engine/tests/models/run_on_cpu.py` (every node of the runtimes it
+  system figure; `runtime:check` passes with both runtimes installed.*
+- [x] 7. **CI** (AC2, AC3): `engine/tests/models/run_on_cpu.py` (every node of the runtimes it
   installed, fed the 512 px photo; each run `done`; valid depths above 0 and below 1,000 m) and the
   job `models (cpu)` in `.github/workflows/checks.yml`, which also runs `runtime_check` over every
   runtime. The bench graphs `specs/005-first-models/bench/photo-768.json`, `photo-1536.json` and
   `photo-full.json`.
+  *Done 2026-11-05, unverified until CI runs it on the PR: here `run_on_cpu.py` passed MoGe-2 and
+  MoGe-3 and failed Depth Pro on random weights (10,000 m, which the bound catches). The job loops
+  over `nodes/*/` and `runtimes/*/` with the existing commands, and `run_on_cpu.py` finds the photo's
+  node by its ports, so nothing names a node or a runtime. Pick up here: task 8.*
 - [ ] 8. **Docs:** `docs/nodes.md` (a node's `ruff.toml`), `docs/runtimes.md` (a stand-in for an
   optional step's import; a runtime's `ruff.toml`), the handoff's MoGe item, and "Waiting on a local
   session" (tasks 10 and 11, with their commands and reports).
