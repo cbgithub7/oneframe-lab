@@ -1,7 +1,7 @@
 # 005: The first model nodes: Depth Pro and MoGe
 
-Status: draft, cut to what its spike found and its questions answered (2026-11-05), for approval
-Owner approval: (date, once approved)
+Status: approved (2026-11-05)
+Owner approval: 2026-11-05, every open question answered (below)
 
 The first of four specs for step 3, first light, before [015](../015-graphs/spec.md) (graphs as
 data), [016](../016-door/spec.md) (photos and results through the door) and
@@ -108,9 +108,10 @@ weights), Depth Pro's 5.41 GB at fp32 and 3.33 at fp16, MoGe-2's 0.57, 0.91 and 
 and 9. They are the models' allocations at those settings, a first estimate every machine corrects
 (`learned.json`), never a choice made for that card. The local session fits them again on the 768
 and 1536 px photos and AC7 checks them on the full one. A figure one card alone measured says so;
-Depth Pro's fp32 on a card stays the spike's until a card that holds it reports. MoGe's weights are
-fp32's at both precisions, its fp16 working memory is measured, not halved (its own `bytes`), and
-`precision` is not among its `changes`; Depth Pro's `changes` hold fp16, costing quality.
+Depth Pro's fp32 on a card stays the spike's until a card that holds it reports (an RTX 5080 may,
+later). MoGe's weights are fp32's at both precisions, its fp16 working memory is measured, not
+halved (its own `bytes`), and `precision` is not among its `changes`; Depth Pro's `changes` hold
+fp16, costing quality.
 
 **Checks per Python.** Each runtime's folder and runtime node's folder holds a `ruff.toml` that
 extends the root's and sets its runtime's Python, which the hooks format for. `pyrightconfig.json`
@@ -149,7 +150,7 @@ terminal from the Start menu, outside Claude desktop's package, `ONEFRAME_DATA` 
 
 1. The photo, first: `uv run --project engine --frozen python engine/tests/models/photos.py
    "%USERPROFILE%\Pictures\My Photos\Galaxy S21 Ultra\Camera\20250615_124545.jpg"`; look at what it
-   wrote, stop and ask if anybody can be recognised, and commit it.
+   wrote, and commit it.
 2. AC6: `npm run bench:runtime -- depth_pro`, then `npm run bench:runtime -- moge`.
 3. `npm run models:download -- depth.depth_pro`, `-- depth.moge3`, `-- depth.moge2`.
 4. For each `<graph>` of `specs/005-first-models/bench/photo-768.json` and `photo-1536.json`:
@@ -194,5 +195,5 @@ terminal from the Start menu, outside Claude desktop's package, `ONEFRAME_DATA` 
    Depth Pro's pinned weights are under its code's licence (Design).
 3. **Depth Pro on a card too small for fp32** (2026-11-05): keep spec 002's rule and fp32 first, the
    shipped graph (015) leaving `precision` unset; and nothing designed around the 1070 (req. 9).
-4. **The photo CI and the bench read** (2026-11-05): the owner's own, taken on 2025-06-15 with a
-   Galaxy S21 Ultra, given under the repo's licence; a local session puts it in (Verification).
+4. **The photo CI and the bench read** (2026-11-05): the owner's own, a plane in a museum with
+   nobody in it, given under the repo's licence; a local session puts it in (Verification).
