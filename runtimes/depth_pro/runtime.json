@@ -1,0 +1,44 @@
+{
+  "_sources": [
+    "Builds, driver floors and compute capabilities: as runtimes/torch's, whose torch (2.14.0) this runtime pins; see its _sources.",
+    "Wheels: every package in uv.lock has a cp314 or pure-Python wheel for win_amd64 and manylinux x86_64, so an install compiles nothing (checked 2026-11-05).",
+    "disk_mb is left out until spec 005's bench:runtime report measures a real install.",
+    "The upstream: apple/ml-depth-pro at 9e65e4d, the commit spec 005's spike ran; its package is in src/.",
+    "Each source's sha256 is of GitHub's archive as downloaded on the owner's PC (2026-11-05); `git archive --format=tar --prefix=<repo>-<commit>/ <commit> | gzip -n` on a clone gives the same bytes."
+  ],
+  "id": "depth_pro",
+  "title": "Depth Pro",
+  "summary": "Apple's Depth Pro, from its GitHub code: metric depth and a focal length from one photo.",
+  "python": "3.14",
+  "builds": [
+    {
+      "name": "cu130",
+      "vendor": "nvidia",
+      "min_capability": "7.5",
+      "max_capability": "12",
+      "min_driver": "580"
+    },
+    {
+      "name": "cu126",
+      "vendor": "nvidia",
+      "min_capability": "5.0",
+      "max_capability": "9",
+      "min_driver": "525"
+    },
+    {
+      "name": "cpu",
+      "vendor": "none"
+    }
+  ],
+  "sources": [
+    {
+      "name": "ml-depth-pro",
+      "url": "https://codeload.github.com/apple/ml-depth-pro/tar.gz/9e65e4dbe9568d23c546fcec53302b10445e109e",
+      "sha256": "cd95d329c24b090770c867b3b208abf321b918d4d70d7eb7884c87e44ac270c0",
+      "paths": [
+        "src"
+      ]
+    }
+  ],
+  "probe": "probe.py:run"
+}

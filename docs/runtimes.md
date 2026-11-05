@@ -98,7 +98,11 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
   fetched as a model file is, by the model store's transport: retried, and after a Stop or a kill
   resumed from a `.part` under `downloads/` where the host honours a range (GitHub's archive host
   does not, so there it starts again). Its sha256 is checked, every file in it must stay inside its
-  folder, and `paths` inside it are made importable.
+  folder, and `paths` inside it are made importable, relative to the archive's one top folder. A
+  GitHub archive (`https://codeload.github.com/<owner>/<repo>/tar.gz/<commit>`) can be pinned from
+  a clone where the host itself is out of reach: `git archive --format=tar
+  --prefix=<repo>-<commit>/ <commit> | gzip -n | sha256sum` gives the bytes it serves (checked on
+  spec 005's three sources against downloads, 2026-11-05).
 - `env`: variables set for every node run in this runtime. It may not set what the engine sets or
   removes for every run: the hub libraries' offline flags, hub tokens and endpoints, torch's
   `weights_only` switches, what keeps a run under the data root (the library caches, the

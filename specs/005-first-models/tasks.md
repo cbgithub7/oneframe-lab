@@ -20,12 +20,10 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   in the tool's scratch. `runtimes/torch/ruff.toml`; `pyrightconfig.json` leaves `nodes/` and
   `runtimes/` out; `npm run engine:check` runs it.
   `test_runtime_code_is_checked_at_its_runtimes_python`.
-  *Pick up here (2026-11-05): task 4. Tasks 1 to 3 are on `claude/eloquent-archimedes-74uqi8`,
-  stacked on PR #58; task 10, the photo, can run now (the handoff's "Waiting on a local session").*
-- [ ] 4. **The `depth_pro` runtime** (requirement 1): `runtimes/depth_pro/` with its builds as the
+- [x] 4. **The `depth_pro` runtime** (requirement 1): `runtimes/depth_pro/` with its builds as the
   torch runtime's (`cu130`, `cu126`, `cpu`), upstream at `9e65e4d` as a pinned `source`, its
   dependencies listed (`numpy>=2`), `torchvision` beside torch, `uv.lock`, `ruff.toml`.
-- [ ] 5. **The `moge` runtime** (requirements 1 and 4): `runtimes/moge/` the same way, upstream at
+- [x] 5. **The `moge` runtime** (requirements 1 and 4): `runtimes/moge/` the same way, upstream at
   `74fbce0` and `utils3d_moge` as pinned `sources`, `huggingface-hub` among its dependencies and no
   `gradio`, the `flex_gemm` stand-in (imports, raises on use), `uv.lock`, `ruff.toml`.
 - [ ] 6. **The three nodes** (requirements 2, 3, 6, 9): `nodes/depth.depth_pro/`,
