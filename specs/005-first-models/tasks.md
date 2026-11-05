@@ -41,7 +41,12 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
       set at run time (`estimated`, or the input camera's).*
     - *Here the `cpu` builds install from `git archive` copies put in
       `<root>/runtimes/<id>/downloads/<sha256>` (docs/runtimes.md). Apple's CDN and Hugging Face
-      are unreachable from a cloud session: the nodes run here with random weights only.*
+      are unreachable from a cloud session: the nodes run here with random weights only. The spike
+      shows how to build each with none (`spike/run_model.py`, `spike/moge/configs/`); a test
+      checkpoint for `from_pretrained` is `{"model_config": ..., "model": state_dict}`.*
+    - *The work stays on this branch, and the PR (task 9) goes from it, stacked on PR #58 until that
+      merges. For the PR: `runtime:check` is its own npm script, which `engine:check` runs (a test
+      holds every engine tool to `scripts/tool.js`); the spec says `engine:check` runs it.*
 - [ ] 6. **The three nodes** (requirements 2, 3, 6, 9): `nodes/depth.depth_pro/`,
   `nodes/depth.moge3/` and `nodes/depth.moge2/`, each a `node.json` (the ports with their facets,
   the params, the files from `specs/003-model-store/live/`, the memory model from the spike's
