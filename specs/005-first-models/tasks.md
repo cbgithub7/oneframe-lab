@@ -43,7 +43,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   session" (tasks 10 and 11, with their commands and reports).
 - [ ] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one by
   one, AC6 and AC7 pending hardware.
-- [ ] 10. **A local session: the photo** (Verification, step 1), committed to the branch. CI's
+- [x] 10. **A local session: the photo** (Verification, step 1), committed to the branch. CI's
   `models (cpu)` job cannot pass without it.
 - [ ] 11. **A local session: AC6 and AC7** (Verification, steps 2 to 5), the figures fitted into the
   manifests and the reports under `specs/005-first-models/reports/`.

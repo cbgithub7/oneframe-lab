@@ -85,16 +85,8 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **Spec 005's photo** (its task 10), which CI's `models (cpu)` job will need. The script is on
-   the branch `claude/eloquent-archimedes-74uqi8` only, so switch to it first:
-   `git fetch origin`, then `git switch claude/eloquent-archimedes-74uqi8`, then `git pull`. From
-   the repo's root, in PowerShell (cmd spells the variable `%USERPROFILE%`):
-   `uv run --project engine --frozen python engine/tests/models/photos.py "$env:USERPROFILE\Pictures\My Photos\Galaxy S21 Ultra\Camera\20250615_124545.jpg"`.
-   Passing: it prints four sizes, and `engine/tests/models/` holds `photo-full.jpg`,
-   `photo-1536.jpg`, `photo-768.jpg` and `photo-512.jpg`, upright. Commit the four to the branch
-   and push; no report.
-
-The last item passed on 2026-11-03 on the GTX 1070: spec 005's spike, all 13
+Nothing is waiting. The owner put spec 005's photo in on 2026-11-04 (its task 10).
+Before it, the last item passed on 2026-11-03 on the GTX 1070: spec 005's spike, all 13
 settings ([report](../specs/005-first-models/reports/2026-11-03-spike.md)), run by Grok Bot outside
 Claude desktop's package. Before it, on 2026-10-30: spec 013's check on a card
 ([report](../specs/013-hard-coded/reports/2026-10-30-local.md)); on 2026-10-25: spec 010's probes on a card
