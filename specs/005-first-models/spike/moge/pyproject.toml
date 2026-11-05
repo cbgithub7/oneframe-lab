@@ -1,0 +1,47 @@
+# Spec 005's spike: a throwaway environment for Microsoft's MoGe (MoGe-2 and MoGe-3), not a runtime.
+# Upstream is not on PyPI, so it comes from GitHub at a full commit. Its package requires FlexGEMM
+# (Triton kernels, for MoGe-3's refinement only, and none for a GTX 1070) and gradio (its demo), and
+# pins torch to its own CUDA index; `dependency-metadata` restates what it needs without those three.
+# MoGe-3's code still imports `flex_gemm`, so `stand-ins/` holds one that imports and raises on use.
+# Lock with `uv lock --project specs/005-first-models/spike/moge`.
+[project]
+name = "oneframe-spike-moge"
+version = "0"
+requires-python = "==3.14.*"
+dependencies = ["moge @ git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a"]
+
+[project.optional-dependencies]
+cu126 = ["torch==2.14.0", "torchvision==0.29.1"]
+cpu = ["torch==2.14.0", "torchvision==0.29.1"]
+
+[tool.uv]
+package = false
+conflicts = [[{ extra = "cu126" }, { extra = "cpu" }]]
+environments = [
+  "sys_platform == 'win32' and platform_machine == 'AMD64'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", extra = "cu126" }, { index = "pytorch-cpu", extra = "cpu" }]
+torchvision = [{ index = "pytorch-cu126", extra = "cu126" }, { index = "pytorch-cpu", extra = "cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.dependency-metadata]]
+name = "moge"
+version = "3.0.0"
+requires-dist = [
+  "click>=8.3.1", "numpy>=2", "opencv-python-headless", "scipy>=1.8", "pillow", "matplotlib",
+  "trimesh>=4.11", "huggingface-hub", "requests", "tqdm", "torch>=2.4", "torchvision>=0.19",
+  "utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37",
+  "pipeline @ git+https://github.com/EasternJournalist/pipeline.git@1c511390d90226c00c101f34b84df26a0f8789b4",
+]

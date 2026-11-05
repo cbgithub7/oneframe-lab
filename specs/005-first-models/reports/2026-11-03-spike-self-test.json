@@ -1,0 +1,222 @@
+{
+ "spike": "005-first-models",
+ "date": "2026-11-03",
+ "self_test": true,
+ "machine": {
+  "os": "Windows-10-10.0.19045-SP0",
+  "python_engine": "3.15.1",
+  "gpu": "NVIDIA GeForce GTX 1070, 6.1, 8192 MiB, 892 MiB, 582.66",
+  "uv": "uv 0.13.5 (46776a95d 2026-10-21 x86_64-pc-windows-msvc)"
+ },
+ "photo": "synthetic",
+ "environments": [
+  {
+   "family": "depth_pro",
+   "extra": "cpu",
+   "seconds": 44.8,
+   "outcome": "passed",
+   "disk_mb": 642.0
+  },
+  {
+   "family": "moge",
+   "extra": "cpu",
+   "seconds": 41.4,
+   "outcome": "passed",
+   "disk_mb": 826.2
+  }
+ ],
+ "runs": [
+  {
+   "model": "depth_pro",
+   "photo": "synthetic",
+   "device": "cpu",
+   "precision": "fp32",
+   "weights": "random",
+   "torch": "2.14.0+cpu",
+   "numpy": "2.5.4",
+   "photo_px": [
+    640,
+    480
+   ],
+   "import_s": 11.51,
+   "load_s": 37.26,
+   "parameters_m": 952.0,
+   "infer_s": [
+    104.39,
+    102.38
+   ],
+   "outputs": {
+    "depth": {
+     "shape": [
+      480,
+      640
+     ],
+     "dtype": "float32",
+     "finite_share": 1.0,
+     "min_median_max_m": [
+      10000.0,
+      10000.0,
+      10000.0
+     ]
+    },
+    "focal_px": 539105.0
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 257.2
+  },
+  {
+   "model": "moge2",
+   "photo": "synthetic",
+   "device": "cpu",
+   "precision": "fp32",
+   "resolution_level": 0,
+   "weights": "random",
+   "torch": "2.14.0+cpu",
+   "numpy": "2.5.4",
+   "photo_px": [
+    640,
+    480
+   ],
+   "import_s": 6.96,
+   "load_s": 16.75,
+   "parameters_m": 330.9,
+   "infer_s": [
+    11.6,
+    8.76
+   ],
+   "outputs": {
+    "points": {
+     "shape": [
+      480,
+      640,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      -0.0579,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      -0.0772,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      480,
+      640
+     ],
+     "dtype": "float32",
+     "finite_share": 0.9781,
+     "min_median_max_m": [
+      0.021,
+      0.274,
+      0.562
+     ]
+    },
+    "mask": {
+     "shape": [
+      480,
+      640
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      480,
+      640,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 45.7
+  },
+  {
+   "model": "moge3",
+   "photo": "synthetic",
+   "device": "cpu",
+   "precision": "fp32",
+   "resolution_level": 0,
+   "weights": "random",
+   "torch": "2.14.0+cpu",
+   "numpy": "2.5.4",
+   "photo_px": [
+    640,
+    480
+   ],
+   "import_s": 6.63,
+   "load_s": 11.4,
+   "parameters_m": 330.9,
+   "infer_s": [
+    11.71,
+    8.56
+   ],
+   "outputs": {
+    "points": {
+     "shape": [
+      480,
+      640,
+      3
+     ],
+     "dtype": "float32"
+    },
+    "intrinsics": [
+     [
+      0.625,
+      0.0,
+      0.5
+     ],
+     [
+      0.0,
+      0.8333,
+      0.5
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "depth": {
+     "shape": [
+      480,
+      640
+     ],
+     "dtype": "float32",
+     "finite_share": 0.0
+    },
+    "mask": {
+     "shape": [
+      480,
+      640
+     ],
+     "dtype": "bool"
+    },
+    "normal": {
+     "shape": [
+      480,
+      640,
+      3
+     ],
+     "dtype": "float32"
+    }
+   },
+   "outcome": "passed",
+   "peak_rss_mb": null,
+   "process_s": 39.5
+  }
+ ]
+}

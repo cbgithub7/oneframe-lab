@@ -8,7 +8,7 @@ when that spec lands.
 
 - **Wiring aids**, the owner's idea, proposed on 2026-10-12 and not yet decided. Layer 1, "what
   fits here" answered by the engine (valid targets for a connection, and why the others do not
-  fit), is proposed for spec 005, since the page needs the engine's connection rule anyway. Then:
+  fit), is proposed for [spec 015](../specs/015-graphs/spec.md), since the page needs the engine's connection rule anyway. Then:
     - wiring a new node's input that exactly one output fits, and asking when several do;
     - a goal search ("a photo to a splat"), bounded in depth, ranked by what this machine can run,
       what is downloaded, and trust.
