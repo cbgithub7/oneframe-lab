@@ -63,10 +63,12 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   *Done 2026-11-05, unverified until CI runs it on the PR: here `run_on_cpu.py` passed MoGe-2 and
   MoGe-3 and failed Depth Pro on random weights (10,000 m, which the bound catches). The job loops
   over `nodes/*/` and `runtimes/*/` with the existing commands, and `run_on_cpu.py` finds the photo's
-  node by its ports, so nothing names a node or a runtime. Pick up here: task 8.*
-- [ ] 8. **Docs:** `docs/nodes.md` (a node's `ruff.toml`), `docs/runtimes.md` (a stand-in for an
+  node by its ports, so nothing names a node or a runtime.*
+- [x] 8. **Docs:** `docs/nodes.md` (a node's `ruff.toml`), `docs/runtimes.md` (a stand-in for an
   optional step's import; a runtime's `ruff.toml`), the handoff's MoGe item, and "Waiting on a local
   session" (tasks 10 and 11, with their commands and reports).
+  *Done 2026-11-05: task 10 was already done, so only task 11 waits there. Pick up here: task 9,
+  in a fresh session (`/code-review` on the branch, then the PR from it to `main`).*
 - [ ] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one by
   one, AC6 and AC7 pending hardware.
 - [x] 10. **A local session: the photo** (Verification, step 1), committed to the branch. CI's

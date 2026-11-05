@@ -1,7 +1,16 @@
 # Writing a node
 
 A node is a folder in `nodes/` (or any folder the engine is pointed at) holding `node.json` and
-the code it names. The folder is named after the node's id.
+the code it names. The folder is named after the node's id. A node that runs in a runtime also holds
+a `ruff.toml` for that runtime's Python, since its code runs there and not in the engine's:
+
+```toml
+extend = "../../ruff.toml"
+target-version = "py314"  # its runtime's "python" in runtime.json
+```
+
+`npm run runtime:check` holds the file to the runtime's Python, and runs pyright over the folder
+with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md#checks)).
 
 ## node.json
 
@@ -300,5 +309,8 @@ does not change this setting for you: it has no documented interface.
 ## Testing a node
 
 Put a test beside the engine tests that runs the node through the scheduler with tiny inputs. For
-model nodes, keep a CPU path or a small checkpoint so CI can run it without a GPU, and measure its
-memory model on a card with `bench:fit`.
+model nodes, keep a CPU path, and measure the memory model on a card with `bench:fit`. CI's
+`models (cpu)` job runs every node that runs in a runtime with its real weights on the processor:
+it installs every runtime and every node's files, then `engine/tests/models/run_on_cpu.py` feeds
+each one a photo and fails a run that does not end `done`, or a depth outside 0 to 1,000 m. A node
+fed by more than an image needs its own graph there.

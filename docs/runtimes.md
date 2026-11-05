@@ -16,6 +16,7 @@ nothing in the engine or the app names one. A node says which runtime it runs in
 | `pyproject.toml` | A virtual uv project (`[tool.uv] package = false`). Each build is an extra, and all the extras are one set in `[tool.uv] conflicts` |
 | `uv.lock` | Committed. `uv lock --project runtimes/<id>` makes it; installing runs exactly what it says |
 | `runtime.json` | The builds and what each needs from the machine, the Python, compiled extensions, pinned sources, environment variables |
+| `ruff.toml` | `extend = "../../ruff.toml"` and `target-version` for the runtime's Python, so ruff and the hooks lint and format the folder's code for it; each node that runs here holds one too ([nodes.md](nodes.md)) |
 
 The test runtime, `engine/tests/runtimes/tiny/`, is a complete small example.
 
@@ -90,7 +91,10 @@ In `runtime.json`, `builds` lists them fastest first, each with what it needs:
 - `python`: the CPython this runtime uses, 3.11 or newer (the child that runs each node starts with
   `-P`). uv fetches it; a system Python is never used.
 - `extensions`: compiled packages, each in one class.
-    - `stand-in`: a pure-Python replacement ships in this folder and is put on the path.
+    - `stand-in`: a pure-Python replacement ships in this folder and is put on the path. It may
+      also stand for a package upstream imports at its top but runs only in a step the nodes leave
+      out: then it imports, and every use raises, so the step run by mistake fails loudly instead
+      of giving another result (the `moge` runtime's `flex_gemm`, for MoGe-3's refinement).
     - `optional`: left out; `why` says what the nodes do without it.
     - `required`: needs a compiler. The runtime is blocked on every machine, and the reason names
       the package and `needs`. Prebuilt wheels will be added per runtime when a node needs one.
@@ -121,6 +125,12 @@ runtimes that are fine:
   even with `weights_only` (CVE-2025-32434 before 2.6, CVE-2026-24747 before 2.10), so a lock that
   holds one is refused;
 - each extension, source and variable is well formed, and every source's address is https.
+
+Its code is checked at its own Python by `npm run runtime:check` (part of `npm run engine:check`):
+its folder's and each of its nodes' `ruff.toml` must target the runtime's `python`, and where the
+runtime is installed, pyright runs over them with its interpreter, its packages, sources and
+stand-ins. A runtime not installed is named and left unchecked; CI's `models (cpu)` job installs
+them all and passes `--every-runtime`, which makes that a failure.
 
 ## Locking
 
