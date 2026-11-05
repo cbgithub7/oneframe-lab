@@ -85,12 +85,14 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **Spec 005's photo** (its task 10), which CI's `models (cpu)` job will need. Branch
-   `claude/eloquent-archimedes-74uqi8`. From the repo's root, in any terminal:
-   `uv run --project engine --frozen python engine/tests/models/photos.py "%USERPROFILE%\Pictures\My Photos\Galaxy S21 Ultra\Camera\20250615_124545.jpg"`
-   (`$env:USERPROFILE` in PowerShell). Passing: it prints four sizes, and `engine/tests/models/`
-   holds `photo-full.jpg`, `photo-1536.jpg`, `photo-768.jpg` and `photo-512.jpg`, upright. Commit
-   the four to the branch and push; no report.
+1. **Spec 005's photo** (its task 10), which CI's `models (cpu)` job will need. The script is on
+   the branch `claude/eloquent-archimedes-74uqi8` only, so switch to it first:
+   `git fetch origin`, then `git switch claude/eloquent-archimedes-74uqi8`, then `git pull`. From
+   the repo's root, in PowerShell (cmd spells the variable `%USERPROFILE%`):
+   `uv run --project engine --frozen python engine/tests/models/photos.py "$env:USERPROFILE\Pictures\My Photos\Galaxy S21 Ultra\Camera\20250615_124545.jpg"`.
+   Passing: it prints four sizes, and `engine/tests/models/` holds `photo-full.jpg`,
+   `photo-1536.jpg`, `photo-768.jpg` and `photo-512.jpg`, upright. Commit the four to the branch
+   and push; no report.
 
 The last item passed on 2026-11-03 on the GTX 1070: spec 005's spike, all 13
 settings ([report](../specs/005-first-models/reports/2026-11-03-spike.md)), run by Grok Bot outside
