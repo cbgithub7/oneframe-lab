@@ -13,7 +13,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   graph and each input's size, and every row gives the system estimate (`needs.system`) and peak
   (`peak_ram_mb`). `test_bench_fit_measures_a_node_in_a_graph`. Update the `bench:fit` section of
   `docs/nodes.md` and the command's line in `AGENTS.md`.
-- [ ] 3. **Checks per Python** (AC5): `oneframe.runtime_check` reads the runtime definitions and the
+- [x] 3. **Checks per Python** (AC5): `oneframe.runtime_check` reads the runtime definitions and the
   node manifests, checks each runtime folder's and runtime node folder's `ruff.toml` (it extends the
   root's; its target is the runtime's Python), and runs pyright per installed runtime over its
   folder and nodes with its interpreter and Python, and over the engine's nodes, its configuration

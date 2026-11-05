@@ -41,10 +41,11 @@ test("a tool given as a .py path runs that file, by its absolute path", () => {
 
 test("every npm tool that opens a data root starts through scripts/tool.js", () => {
   const scripts = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")).scripts;
-  for (const name of ["bench:runtime", "bench:fit", "diagnose", "models:download", "models:pin"]) {
+  for (const name of ["bench:runtime", "bench:fit", "diagnose", "models:download", "models:pin", "runtime:check"]) {
     assert.match(scripts[name], /^node scripts\/tool\.js oneframe\./, name);
   }
   assert.equal(scripts["bench:fit-check"], "node scripts/tool.js engine/tests/fit_check.py");
+  assert.match(scripts["engine:check"], /&& npm run runtime:check &&/, "engine:check");
 });
 
 const uv = findUv();

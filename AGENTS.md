@@ -102,7 +102,10 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   the docs check (every link in the docs leads somewhere, every repo path they name exists outside
   specs and the dated reviews in `docs/reviews/`, and no spec being worked on is over 200 lines,
   or over the length the owner allowed it)
-- `npm run engine:check`: ruff, ruff format, pyright, pytest
+- `npm run engine:check`: ruff, ruff format, pyright, `runtime:check`, pytest
+- `npm run runtime:check [-- --every-runtime]`: each runtime's code, and its nodes', held to a
+  `ruff.toml` for its runtime's Python, and checked by pyright with that runtime's interpreter
+  where it is installed; with `--every-runtime`, one not installed is a failure (spec 005)
 - `npm run versions`: version policy
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
   did (the numbers a hardware claim needs)
@@ -126,5 +129,6 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   from the collection; `--write` rewrites it, so a change that adds or renames a test commits the
   list
 - The tools that open a data root (`bench:runtime`, `bench:fit`, `bench:fit-check`, `diagnose`,
-  `models:*`) start through `scripts/tool.js`, which keeps uv's temporary files under that root
+  `models:*`, `runtime:check`) start through `scripts/tool.js`, which keeps uv's temporary files
+  under that root
 - `npm start`: the app (needs `npm run engine:sync` once)
