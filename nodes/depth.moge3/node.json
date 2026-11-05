@@ -1,0 +1,149 @@
+{
+  "_sources": [
+    "Ports, params and code: spec 005 (specs/005-first-models/spec.md).",
+    "The weights' file: pinned by spec 003's live run (specs/003-model-store/live/live.moge3), which spec 005's spike loaded on the owner's PC.",
+    "The memory model: spec 005's spike on an NVIDIA GeForce GTX 1070 (compute 6.1, 8 GB) on a 2880 x 1920 photo, read from torch's allocated memory and turned from MiB into MB. A first estimate every machine corrects (learned.json), never a choice made for that card; spec 005's local session fits it again with bench:fit, with a term for the photo's size.",
+    "fp16 is upstream's autocast over fp32 weights: it shrinks no weights and, on the spike's card, took more working memory, so its bytes are measured, not halved, and the fit never picks it (it is not among the changes).",
+    "fp16 on any card: torch runs half precision on every card its builds support; the spike ran it on compute 6.1 only.",
+    "Without its refinement: its refiner runs FlexGEMM's Triton kernels, for cards of compute 8.0 or newer, which no build installs yet (spec 005, requirement 4). The checkpoint's refiner tensors are left unread; with the refinement, this node's memory model is measured again on such a card.",
+    "Licences: the code's from the README and LICENSE of microsoft/MoGe at 74fbce0, the runtime's pin. The weights' licence is on the model's card on Hugging Face (links.weights), which a cloud session cannot reach: a local session reads it and writes it here (spec 005)."
+  ],
+  "id": "depth.moge3",
+  "version": "1",
+  "title": "MoGe-3 (ViT-L, no refinement)",
+  "category": "depth",
+  "summary": "Microsoft's MoGe-3, ViT-L, without its refinement for now: a metric point map, its depth, the valid pixels, the camera and normals from one photo. Each output's meta says refine_steps 0.",
+  "inputs": {
+    "image": "Image"
+  },
+  "outputs": {
+    "points": {
+      "type": "PointMap[frame=camera, scale=metric]",
+      "trust": "predicted",
+      "doc": "Metres, in the camera's OpenCV axes, at the photo's size."
+    },
+    "depth": {
+      "type": "Depth[kind=metric, measure=z]",
+      "trust": "predicted",
+      "doc": "Metres along the camera's axis; the points' z."
+    },
+    "mask": {
+      "type": "Mask[kind=binary, marks=valid]",
+      "trust": "predicted",
+      "doc": "The pixels with a point: the sky and anything else the model masks are not."
+    },
+    "camera": {
+      "type": "Camera[model=pinhole, source=estimated]",
+      "trust": "predicted",
+      "doc": "The camera the points were made with, in pixels."
+    },
+    "normals": {
+      "type": "Normals[frame=camera_opencv]",
+      "trust": "predicted",
+      "doc": "Unit normals in the camera's OpenCV axes; zero where masked."
+    }
+  },
+  "params": {
+    "resolution_level": {
+      "type": "int",
+      "default": 9,
+      "min": 0,
+      "max": 9,
+      "label": "Resolution level",
+      "doc": "How many tokens the network sees, from 0 (fewest: faster, less memory, coarser) to 9 (upstream's default)."
+    }
+  },
+  "run": {
+    "where": "runtime",
+    "runtime": "moge",
+    "entry": "node.py:run",
+    "load": "node.py:load"
+  },
+  "devices": [
+    "cuda",
+    "cpu"
+  ],
+  "files": [
+    {
+      "name": "weights",
+      "hf": "Ruicheng/moge-3-vitl",
+      "revision": "184008f877d7ad1ad4c2cd2182a9bd1f63d0e5be",
+      "path": "model.pt",
+      "gated": false,
+      "size": 1481333394,
+      "sha256": "9b41b7b9f65ad80aab7ad686f5e9cc0d1fd33f1964022618dfbcd52fc1fb7925",
+      "format": "pickle"
+    }
+  ],
+  "memory": {
+    "precisions": {
+      "fp32": {
+        "cuda_min_capability": null,
+        "cpu": true
+      },
+      "fp16": {
+        "cuda_min_capability": null,
+        "cpu": false,
+        "bytes": 4.68
+      }
+    },
+    "weights": {
+      "fp32": 1392,
+      "fp16": 1392,
+      "source": "specs/005-first-models/reports/2026-11-03-spike.md: on the card once loaded, 1,327 MiB at both precisions (the refiner, left out, is not on the card), on a GTX 1070 (compute 6.1)"
+    },
+    "working": {
+      "mb": 0,
+      "terms": [
+        {
+          "coef": 160.4,
+          "of": [
+            "bytes"
+          ]
+        },
+        {
+          "coef": 16.28,
+          "of": [
+            "bytes",
+            "resolution_level"
+          ]
+        }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-03-spike.md: the run's allocated peak less the weights, 612, 881 and 1,171 MiB at fp32 and levels 0, 5 and 9, on a GTX 1070 (compute 6.1) and a 2880 x 1920 photo; a line through levels 0 and 9, and fp16's bytes from its run at level 9"
+    },
+    "system_mb": {
+      "mb": 178,
+      "terms": [
+        {
+          "coef": 2,
+          "of": [
+            "weights"
+          ]
+        }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-05-cloud-cpu.md: the checkpoint read beside the network upstream builds, twice the weights, and 178 MB more, from the peaks at level 0 (2,957 and 2,962 MB for MoGe-2 and MoGe-3) on a cloud session's processor (Intel Xeon, 4 cores) with random weights of the real shapes; on a card, not measured yet: spec 005's local session fits it with bench:fit"
+    },
+    "changes": [
+      {
+        "set": {
+          "resolution_level": 5
+        },
+        "costs": "quality"
+      },
+      {
+        "set": {
+          "resolution_level": 0
+        },
+        "costs": "quality"
+      }
+    ]
+  },
+  "licence": {
+    "code": "MIT (microsoft/MoGe), but for its copy of DINOv2's code, Apache-2.0",
+    "weights": "not read yet: on the model's card (links.weights)"
+  },
+  "links": {
+    "repo": "https://github.com/microsoft/MoGe",
+    "weights": "https://huggingface.co/Ruicheng/moge-3-vitl"
+  }
+}

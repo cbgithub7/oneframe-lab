@@ -26,7 +26,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 5. **The `moge` runtime** (requirements 1 and 4): `runtimes/moge/` the same way, upstream at
   `74fbce0` and `utils3d_moge` as pinned `sources`, `huggingface-hub` among its dependencies and no
   `gradio`, the `flex_gemm` stand-in (imports, raises on use), `uv.lock`, `ruff.toml`.
-  *Pick up here (2026-11-05): task 6. What the last session worked out for it:*
+  *What the session before task 6 worked out for it (2026-11-05):*
     - *Figures in MB from the spike's MiB (the spec's Design): Depth Pro working `1248 + 1041 x
       bytes` (5,412 at fp32, 3,330 at fp16); MoGe working `bytes x (a + b x resolution_level)`,
       MoGe-2 a 143.4 and b 17.74, MoGe-3 a 160.4 and b 16.28, fp16's `bytes` 4.68 (both: the spike's
@@ -47,11 +47,14 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
     - *The work stays on this branch, and the PR (task 9) goes from it to `main` (PR #58 is merged).
       For the PR: `runtime:check` is its own npm script, which `engine:check` runs (a test
       holds every engine tool to `scripts/tool.js`); the spec says `engine:check` runs it.*
-- [ ] 6. **The three nodes** (requirements 2, 3, 6, 9): `nodes/depth.depth_pro/`,
+- [x] 6. **The three nodes** (requirements 2, 3, 6, 9): `nodes/depth.depth_pro/`,
   `nodes/depth.moge3/` and `nodes/depth.moge2/`, each a `node.json` (the ports with their facets,
   the params, the files from `specs/003-model-store/live/`, the memory model from the spike's
   figures in MB, naming the card, the licences), `node.py` (`load` and `run`) and `ruff.toml`.
   `test_the_model_nodes_fit_a_range_of_machines` (AC1).
+  *Done 2026-11-05: each ran `done` through `bench:fit --graph` on a cloud processor with random
+  weights of the real shapes ([report](reports/2026-11-05-cloud-cpu.md)), which also set MoGe's
+  system figure; `runtime:check` passes with both runtimes installed. Pick up here: task 7.*
 - [ ] 7. **CI** (AC2, AC3): `engine/tests/models/run_on_cpu.py` (every node of the runtimes it
   installed, fed the 512 px photo; each run `done`; valid depths above 0 and below 1,000 m) and the
   job `models (cpu)` in `.github/workflows/checks.yml`, which also runs `runtime_check` over every
@@ -65,4 +68,6 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 10. **A local session: the photo** (Verification, step 1), committed to the branch. CI's
   `models (cpu)` job cannot pass without it.
 - [ ] 11. **A local session: AC6 and AC7** (Verification, steps 2 to 5), the figures fitted into the
-  manifests and the reports under `specs/005-first-models/reports/`.
+  manifests and the reports under `specs/005-first-models/reports/`. Also the licence on each MoGe
+  weights' card (`links.weights` in `nodes/depth.moge2/` and `nodes/depth.moge3/`), which a cloud
+  session cannot reach, written into the manifests' `licence.weights`.

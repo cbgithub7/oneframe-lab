@@ -148,9 +148,8 @@ AC1, AC4 and AC5 run in `npm run engine:check`; AC2 and AC3 in CI's `models (cpu
 in; the rest in a local session on the owner's PC (Windows, GTX 1070), from the branch's root, in a
 terminal from the Start menu, outside Claude desktop's package, `ONEFRAME_DATA` a new folder:
 
-1. The photo, first: `uv run --project engine --frozen python engine/tests/models/photos.py
-   "%USERPROFILE%\Pictures\My Photos\Galaxy S21 Ultra\Camera\20250615_124545.jpg"`; look at what it
-   wrote, and commit it.
+1. The photo, first (done, task 10): `uv run --project engine --frozen python
+   engine/tests/models/photos.py <the original>`; look at what it wrote, and commit it.
 2. AC6: `npm run bench:runtime -- depth_pro`, then `npm run bench:runtime -- moge`.
 3. `npm run models:download -- depth.depth_pro`, `-- depth.moge3`, `-- depth.moge2`.
 4. For each `<graph>` of `specs/005-first-models/bench/photo-768.json` and `photo-1536.json`:
@@ -181,6 +180,8 @@ terminal from the Start menu, outside Claude desktop's package, `ONEFRAME_DATA` 
 - pyright per runtime from the definitions, ruff by a `ruff.toml` per folder that `runtime_check`
   holds: nothing outside a folder names its node, and the hooks format for its Python.
 - The photo as JPEG: a full-size PNG would be tens of MB in git.
+- fp16 needs no compute capability: torch runs half precision on every card its builds support.
+- Depth Pro scales a connected camera to the photo; one of another shape is not this photo's.
 
 ## Out of scope
 
