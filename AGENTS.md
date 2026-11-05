@@ -1,129 +1,98 @@
 # Oneframe Lab: rules for coding agents
 
-A local, single-photo 3D playground: Electron shell, a Python 3.15 engine run by uv, and nodes
-(model adapters) declared by manifests. This file is the shared rule set for any agent; keep it
-short and true. Changing a rule, a command or the layout means updating this file in the same
-change -- a stale rules file is worse than none.
+A local, single-photo 3D playground: an Electron shell, a Python 3.15 engine run by uv, and nodes
+(model adapters) declared by manifests. These are the rules for any agent, kept short and true: a
+rule, a command or the layout that changes is changed here in the same change. Each rule names what
+holds it; "review" means nothing automatic does yet.
 
-**Start here:** [docs/handoff.md](docs/handoff.md) (state, decisions, what is next), then the
-spec you are working on in `specs/`. Read [docs/architecture.md](docs/architecture.md) before
-changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a node.
+**Start here:** [docs/handoff.md](docs/handoff.md) (state, decisions, what is next), then the spec
+you are working on in `specs/`. Read [docs/architecture.md](docs/architecture.md) before changing
+anything structural, and [docs/nodes.md](docs/nodes.md) before adding a node. The commands are in
+the [README](README.md#commands).
 
 ## How work is done
 
 1. **Spec first, in one document.** Anything larger than a small fix has a folder in `specs/` with
-   `spec.md`, which holds the plan too, and `tasks.md` ([specs/README.md](specs/README.md)). A spec
-   is a contract: aim for 150 lines, never more than 200 (the docs check fails a longer one that is
-   not done or dropped), and at most 8 acceptance criteria, none hiding a list of further checks.
-   The limits are on the document, never on the design: work that needs more becomes two specs, each
-   standing alone, and nothing the design needs is cut or bent to fit. Only when a spec cannot be
-   designed well within 200 lines, or fitting would cut needed functionality, ask the owner for an
-   exception, case by case: what does not fit and what was tried, how many lines past 200 and in
-   which sections, and what fitting would lose. An approved one says `Length allowed: N lines (the
-   owner, <date>)` under its status, and the docs check holds it to N. Mechanisms belong in code and
-   tests, and how the work went belongs in the PR. An agent reviews the draft; the owner approves it
-   once, before code is written. The spec, not the chat, is the source of truth.
-2. **Agents decide what can be undone.** An agent makes reversible choices itself and logs each
-   under "Decisions taken" in the spec, in one line with its reason. The owner decides product
-   behaviour, licences and money, the platform matrix, data formats that are hard to change, and
-   these rules.
-3. **Spikes answer feasibility.** A question such as "does this model run on Windows" is a spike:
-   time-boxed, no spec, a throwaway branch, ending in a report the owner reads.
+   `spec.md`, which holds the plan too, and `tasks.md`, within the limits of
+   [specs/README.md](specs/README.md) (the docs check holds the length). The limits are on the
+   document, never on the design: work that needs more becomes two specs. An agent reviews the
+   draft; the owner approves it once, before code, and again only if its requirements, criteria or
+   open questions change. The spec, not the chat, is the source of truth. **A model node needs no
+   spec** when nothing outside its folder changes but its own test: one PR with its manifest, its
+   code, a test in `engine/tests/` that runs it on the processor (and the collected list the test
+   guard writes), and a `bench:fit` report from a real card. A new runtime family, an
+   engine, app or contract change, or a licence question still needs one.
+2. **Agents decide what can be undone,** and log each choice under "Decisions taken" in one line
+   with its reason. The owner decides product behaviour, licences and money, the platform matrix,
+   data formats that are hard to change, and these rules.
+3. **Spikes answer feasibility** ("does this model run on Windows"): time-boxed, no spec,
+   throwaway code, ending in a report the owner reads.
 4. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
 5. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
-   and before a PR. Acceptance criteria in the spec are checked one by one in the PR.
-6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test or a
-   case may be removed, skipped or emptied only when the spec lists it under "- Removed", with the
-   reason, and renamed only when the spec lists it under "- Renamed". `node scripts/test-guard.js`
-   enforces this in the hooks and in CI, over every collected case; it needs the engine
-   environment.
-7. **The PR is where the owner decides.** An agent's job ends when it opens the pull request.
-   Nothing merges to `main` except through a PR with green CI.
-8. **Hardware claims need a report.** Nothing is called tested or working on a GPU without
-   numbers from a real run on real hardware (seconds, peak VRAM, the fit that finished). A report
-   from any real machine counts, the owner's or a rented one, and names it. Cloud sessions have no
-   GPU; say plainly what is unverified.
+   and before a PR; the PR checks the spec's acceptance criteria one by one.
+6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test or case
+   is removed, skipped or emptied only under the spec's "- Removed", with its reason, and renamed
+   only under "- Renamed". Held by `node scripts/test-guard.js`, in the hooks and in CI.
+7. **The PR is where the owner decides.** An agent's job ends when it opens the PR, which also sets
+   the spec's `Status:` to done. Nothing merges to `main` but through a PR with green CI.
+8. **Hardware claims need a report:** numbers from a real run on a named real machine (seconds,
+   peak VRAM, the fit that finished). Cloud sessions have no GPU; say plainly what is unverified.
 
 ## Rules
 
-- **The graph is the person's.** The product is an editor, a playground where a person builds
-  graphs. A graph that ships with the app is a starting point saved as data, like one the person
-  saves; nothing in the engine or the page depends on one existing, or works around the graph to
-  do what a graph would. Tests build their own nodes and graphs.
-- **Nothing hard-coded.** No code outside a node's folder names a node, a model, or a
-  pipeline. The engine and app learn what exists from `nodes/*/node.json`; ports come from
-  `contracts/port-types.json`. A new model is a new folder, never an edit to the engine or app.
-- **One way to do each thing.** Before writing a helper, find the one that exists: starting and
-  stopping a process, a child's environment, writing a file in one step, hashing, downloading,
-  paths under the root. A second way to do the same thing needs its reason in the spec.
-- **Any card that can run it.** The app targets every machine that can run a model, from no GPU
-  to the largest cards. The owner's GTX 1070 is the only card we can test on; it is never the
-  target. No default, margin, threshold, formula or model choice is tuned to it, and nothing
-  decides on a card's name: hardware decisions come from what the machine reports (compute
-  capability, total and free memory, driver). A test of a hardware decision covers a range of
-  machines, not one card. A report from the 1070 proves a mechanism works; it tunes nothing.
-  For v1, "any machine" means Windows or Linux on x86-64, with an NVIDIA card or the processor;
-  macOS and AMD or Intel GPUs are out for now. A Linux-only node may run in WSL, decided by the
-  Improve-loop spike.
-- **Ports are typed, facets included.** Never connect values whose facets differ without a
-  converter node. Disparity must never flow silently into a metric port.
-- **Light engine.** Importing `oneframe.server` loads no numpy, Pillow, torch or other model
-  library (a test holds this). Heavy code lives in nodes; model code runs in the node's runtime.
-- **No network during a run.** Runtime children refuse Python-level connections, are told hub
-  libraries are offline, and get no hub token. This stops accidents, not malicious code. Everything
-  a node reads is fetched by Download first.
-- **One door into the page.** The renderer is sandboxed and isolated and reaches the engine only
-  through `engine:request` with a method from `ENGINE_METHODS` in `app/main/methods.js`. Progress is
-  pushed as events; nothing polls.
-- **Versions.** Latest stable for the app, the engine and the tools, with exact pins. A runtime
-  pins the newest release its family's code and wheels support, backed by a bench report; a build
-  may keep an older torch line for cards a newer one drops. Every exception is written in
-  `versions.json` with a reason and a review date ([docs/versions.md](docs/versions.md)). Check
-  the latest release before adding any dependency.
-- **One data root.** Everything the app, the engine, a runtime child or a command-line tool writes
-  goes under the data root (or the model store), in the folder for its kind: nothing in the install
-  folder, the repo, temp, Roaming, the registry or `PATH`. `oneframe/layout.py` names every path
-  under it, `app/main/paths.js` mirrors it, and `contracts/layout.json` holds the two equal. The
-  only exceptions are the entries of `outside` in `contracts/layout.json`, each naming who writes
-  it, where and why. The footprint test allows nothing else, and a new entry is the owner's
-  decision, as a change to this rule is.
+- **The graph is the person's.** The product is an editor where a person builds graphs; a shipped
+  graph is a starting point saved as data. Nothing in the engine or the page depends on one, and
+  tests build their own nodes and graphs. Held by review.
+- **Nothing hard-coded.** No code outside a node's folder names a node, a model, a runtime or a
+  pipeline; the engine learns them from `nodes/*/node.json`, and ports from
+  `contracts/port-types.json`. Held by `test_no_engine_module_names_a_runtime_a_node_or_the_tests`.
+- **One way to do each thing.** Find the helper that exists (processes, a child's environment, file
+  writes, hashing, downloads, paths) before writing one; a second needs its reason in the spec.
+  Held by review.
+- **Any machine that can run it,** from no GPU to the largest cards. Hardware decisions come from
+  what the machine reports (compute capability, memory, driver), never a card's name, and a test
+  of one covers a range of machines. The owner's GTX 1070 proves mechanisms and tunes nothing. v1
+  is Windows or Linux on x86-64, with an NVIDIA card or the processor. Held by
+  `test_names_outside_v1_are_refused` and the fit's tests.
+- **Ports are typed, facets included.** Values whose facets differ connect only through a
+  converter; disparity never flows into a metric port. Held by
+  `test_plan_refuses_type_mismatch_and_cycles` and
+  `test_a_facet_mismatch_at_run_time_is_the_edges_failure_not_the_nodes`.
+- **Light engine.** Importing `oneframe.server` loads no numpy, Pillow, torch or model library;
+  model code runs in its runtime. Held by
+  `test_importing_the_server_loads_no_numeric_or_model_library`.
+- **No network during a run.** Runtime children refuse connections, are told hubs are offline and
+  get no hub token; everything a node reads is fetched by Download first. This stops accidents,
+  not malicious code. Held by `test_the_network_is_closed_during_a_run` and
+  `test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token`.
+- **One door into the page.** The page is sandboxed and isolated, and reaches the engine only
+  through `engine:request` with a method from `ENGINE_METHODS` (`app/main/methods.js`); progress is
+  pushed as events, and nothing polls. Held by "the door refuses what the page may not ask, as
+  values".
+- **The page is safe to load.** Its content security policy allows only the app's own files: no
+  remote code, style, font or frame, no inline script. It never navigates away, and it reads
+  nothing by path. Held by review until the page's tests hold it.
+- **The page works for everyone.** Every control is reachable and usable from the keyboard, with
+  focus shown and a name a screen reader reads. Nothing is said by colour alone, and text meets
+  WCAG 2.2 AA contrast. Held by review until the page's tests hold it.
+- **The page has budgets.** Input is answered within 100 ms, and a run shows its first event
+  within 1 s of Run. A viewer draws within a budget of points and memory, kept in code and named
+  in the spec that adds it. Held by review until the page's tests hold it.
+- **Versions.** Latest stable, pinned exactly. A runtime pins the newest release its family's code
+  and wheels support, backed by a bench report. Every exception is in `versions.json` with its
+  reason and review date ([docs/versions.md](docs/versions.md)). Held by `npm run versions`.
+- **One data root.** Everything the app, the engine, a runtime child or a tool writes goes under
+  the data root or the model store, at a path `oneframe/layout.py` names (`app/main/paths.js`
+  mirrors it; `contracts/layout.json` holds the two equal). The only exceptions are its `outside`
+  entries, and a new one is the owner's. Held by `test_ac2_nothing_is_written_outside_the_root`.
 - **Kept files say their format.** A newer one is never overwritten, and a change of format ships
-  with its migration.
-- **Deletes stay inside the root or the store.** Only inside a folder marked as the root's or the store's (until
-  packaging adds the mark, inside the folders the layout names), never the person's own work.
-- **Separate roots.** A dev checkout and a packaged app never share one.
-- **Honest labels.** `trust` on an output is measured, predicted or synthetic. Never mark a
-  generated result measured.
-- `encoding="utf-8"` on every text open in Python; Windows defaults to cp1252.
-
-## Commands
-
-- `npm run check`: eslint, tsc (JSDoc types, `// @ts-check` in every JS file), node tests, and
-  the docs check (every link in the docs leads somewhere, every repo path they name exists outside
-  specs and the dated reviews in `docs/reviews/`, and no spec being worked on is over 200 lines,
-  or over the length the owner allowed it)
-- `npm run engine:check`: ruff, ruff format, pyright, pytest
-- `npm run versions`: version policy
-- `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
-  did (the numbers a hardware claim needs)
-- `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
-  its estimates beside the peaks measured
-- `npm run bench:fit-check`: spec 002's hardware check on this machine's card, run from
-  `engine/tests/fit_check.py` with the test node beside it
-- `npm run models:pin -- [--nodes <folder>] <node>`: resolve a node's file sources to commits, fetch
-  each file through the model store, and write its size, sha256, format and `gated` into the manifest
-- `npm run models:download -- [--nodes <folder>] <node> [--checkpoint c | --all]`: fetch a node's
-  files into the store, as `models.download` does; Ctrl+C stops it and the next run resumes. Both
-  model tools wait up to 10 s for a store another process still holds (on Windows, npm gives the
-  prompt back before a stopped tool has ended)
-- `npm run diagnose`: one file in the data root's `reports/` to hand over when something failed:
-  versions, machine, runtimes, settings, what was learned, the latest journals and logs, with the
-  user's name taken out of every path and hub tokens scrubbed
-- `node scripts/test-guard.js [--write]`: no test or case removed, skipped, emptied or renamed
-  without a line in a spec the branch changed. It compares the engine's collected IDs with
-  `engine/tests/collected.txt` at the merge base, and fails when the list in the checkout differs
-  from the collection; `--write` rewrites it, so a change that adds or renames a test commits the
-  list
-- The tools that open a data root (`bench:runtime`, `bench:fit`, `bench:fit-check`, `diagnose`,
-  `models:*`) start through `scripts/tool.js`, which keeps uv's temporary files under that root
-- `npm start`: the app (needs `npm run engine:sync` once)
+  with its migration. Held by the tests in `engine/tests/test_formats.py`.
+- **Deletes stay inside the root or the store,** in folders the layout names. They never touch the
+  person's own work unless the person asks for that one thing by name. Held by
+  `test_remove_deletes_only_that_runtime` and
+  `test_removing_a_checkpoint_deletes_only_its_files_and_partials`.
+- **Separate roots.** A dev checkout and a packaged app never share one. Held by "the packaged app
+  and a dev checkout get different roots, and so different locks".
+- **Honest labels.** `trust` on an output is measured, predicted or synthetic, and a generated
+  result is never marked measured. Held by `test_trust_is_inherited_as_the_weakest_input`.
+- **`encoding="utf-8"` on every text open in Python;** Windows defaults to cp1252. Held by review.

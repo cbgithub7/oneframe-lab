@@ -63,7 +63,7 @@ export const SPEC_MAX_LINES = 200;
 
 /**
  * Why a spec is too long, or null: only a spec not yet done or dropped is held to the cap, or to
- * the length the owner allowed it (`Length allowed: N lines`, AGENTS.md rule 1).
+ * the length the owner allowed it (`Length allowed: N lines`, specs/README.md).
  * @param {string} text the spec.md
  * @returns {string | null}
  */
