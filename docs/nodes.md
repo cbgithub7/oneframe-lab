@@ -258,11 +258,21 @@ npm run bench:fit -- <node> --set resolution=512 --set resolution=1024 --set res
 ```
 
 runs the node once per `--set` group (from an empty cache, with nothing learned) and writes a
-report of each run's estimate, measured peak, ratio, seconds and the free memory before, to the
-data root's `reports/` unless `--out` names a file or folder. Measure a
-model's memory model at several settings this way, and name the report in its `source`. The node
-is required: spec 002's hardware check (AC8) on this machine's card is its own command,
-`npm run bench:fit-check`, which runs `engine/tests/fit_check.py` with the test node beside it.
+report of each run's estimate, measured peak, ratio, the system memory's estimate and peak,
+seconds and the free memory before, to the data root's `reports/` unless `--out` names a file or
+folder. Measure a model's memory model at several settings this way, and name the report in its
+`source`. The node is required: spec 002's hardware check (AC8) on this machine's card is its own
+command, `npm run bench:fit-check`, which runs `engine/tests/fit_check.py` with the test node beside it.
+
+A node that needs an input is measured inside a graph that gives it one:
+
+```
+npm run bench:fit -- --graph <graph.json> <step> --set precision=fp32 --set precision=fp16
+```
+
+`<step>` is then the key of the node in the graph. What it depends on runs once; the step runs at
+every group, over the graph's own params, and never from the cache. The report names the graph and
+the size of each input.
 
 ## Windows: shared GPU memory
 

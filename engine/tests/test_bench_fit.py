@@ -11,6 +11,7 @@ import pytest
 from conftest import HostRuntimes, MakeNode
 
 from oneframe import bench_fit
+from oneframe.graph import Graph
 from oneframe.registry import discover
 
 SOURCE = "allocated by the node itself"
@@ -112,3 +113,78 @@ def test_the_report_is_named_by_date_and_card_in_a_folder(tmp_path: Path) -> Non
     record = {"date": "2026-10-01T12:00:00+00:00", "card": {"name": "NVIDIA GeForce Something 9000"}}
     assert bench_fit.report_path(tmp_path, record) == tmp_path / "2026-10-01-something-9000-fit.md"
     assert bench_fit.report_path(tmp_path / "mine.md", record) == tmp_path / "mine.md"
+
+
+# A photo of 64 x 50 px, which a node that needs an image is sized by: 0.01 MB a pixel, so 32 MB.
+PHOTO: dict[str, Any] = {
+    "id": "test.photo",
+    "version": "1",
+    "title": "Photo",
+    "category": "test",
+    "outputs": {"image": {"type": "Image[alpha=none]", "trust": "measured"}},
+}
+PHOTO_CODE = """
+def run(ctx):
+    p = ctx.path("photo.png"); p.write_bytes(b"pixels")
+    ctx.output("image", p, meta={"width": 64, "height": 50})
+"""
+NEEDS_IMAGE: dict[str, Any] = {
+    **SMALL_NODE,
+    "id": "test.needs_image",
+    "inputs": {"image": "Image"},
+    "memory": {
+        **SMALL_NODE["memory"],
+        "working": {
+            "mb": 20,
+            "terms": [{"coef": 0.1, "of": ["resolution"]}, {"coef": 0.01, "of": ["image.pixels"]}],
+            "source": SOURCE,
+        },
+    },
+}
+NEEDS_IMAGE_CODE = """
+def run(ctx):
+    assert ctx.inputs["image"].path.is_file()
+    mb = 40 + 20 + 0.1 * ctx.params["resolution"] + 32
+    block = bytearray(int(mb * 1_000_000))
+    for i in range(0, len(block), 4096):
+        block[i] = 1
+    p = ctx.path("t.txt"); p.write_text("x"); ctx.output("text", p)
+"""
+
+
+def test_bench_fit_measures_a_node_in_a_graph(tmp_path: Path, make_node: MakeNode, node_root: Path) -> None:
+    make_node(PHOTO, PHOTO_CODE)
+    make_node(NEEDS_IMAGE, NEEDS_IMAGE_CODE)
+    registry = discover([node_root])
+    scheduler = bench_fit.make_scheduler(None, registry, HostRuntimes(), tmp_path / "cache")
+    graph = Graph.from_json(
+        {
+            "version": 1,
+            "nodes": {
+                "photo": {"node": "test.photo"},
+                "measured": {"node": "test.needs_image", "params": {"resolution": 200}},
+            },
+            "edges": [{"from": "photo.image", "to": "measured.image"}],
+        }
+    )
+    groups = [{"resolution": 400}, {"resolution": 400}, {}]
+    record = bench_fit.bench_in_graph(scheduler, graph, "measured", groups, "bench.json")
+    rows = record["runs"]
+    assert [r["status"] for r in rows] == ["done", "done", "done"], [r["error"] for r in rows]
+    # The photo's real size reached the fit: 40 + 20 + resolution / 10 + 32 MB.
+    assert [r["estimate_mb"] for r in rows] == [132, 132, 112]
+    assert record["inputs"] == {"image": "64 x 50 px"}
+    # What the node depends on ran once, before; every group was served it, and fitted and ran the
+    # node itself, the same settings twice included.
+    assert [r["served"] for r in rows] == [["photo"], ["photo"], ["photo"]]
+    assert all(r["fits"] for r in rows)
+    assert [r["label"] for r in rows] == ["resolution=400", "resolution=400", "the graph's settings"]
+    for row in rows:
+        assert row["system_estimate_mb"] is not None
+        if sys.platform in ("linux", "win32"):  # resident memory is read there
+            assert row["system_measured_mb"] is not None and row["system_ratio"] is not None
+    report = bench_fit.render({**record, "date": "2026-11-05T00:00:00+00:00", "engine": "0"})
+    assert "Step `measured` of `bench.json`; inputs: image 64 x 50 px." in report
+    assert "| System estimate | System peak | System ratio |" in report
+    with pytest.raises(bench_fit.BenchGraphError, match="no step called 'missing'"):
+        bench_fit.bench_in_graph(scheduler, graph, "missing", groups, "bench.json")

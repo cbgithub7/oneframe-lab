@@ -107,7 +107,8 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
   did (the numbers a hardware claim needs)
 - `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
-  its estimates beside the peaks measured
+  its estimates beside the peaks measured, the device's and the system's; with `--graph <file>`,
+  `<node>` is a step of that graph, fed its real inputs
 - `npm run bench:fit-check`: spec 002's hardware check on this machine's card, run from
   `engine/tests/fit_check.py` with the test node beside it
 - `npm run models:pin -- [--nodes <folder>] <node>`: resolve a node's file sources to commits, fetch

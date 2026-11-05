@@ -8,7 +8,7 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   `photo-1536.jpg`, `photo-768.jpg` and `photo-512.jpg` beside itself (the long side at that size),
   upright, RGB, with no metadata; a test of it on a made photo with EXIF orientation and GPS. Then a
   local session can put the owner's photo in at any time (task 10).
-- [ ] 2. **`bench:fit --graph <file>`** (AC4): the positional argument is then the key of the node
+- [x] 2. **`bench:fit --graph <file>`** (AC4): the positional argument is then the key of the node
   to measure; what it depends on runs once, the node never from the cache; the report names the
   graph and each input's size, and every row gives the system estimate (`needs.system`) and peak
   (`peak_ram_mb`). `test_bench_fit_measures_a_node_in_a_graph`. Update the `bench:fit` section of
