@@ -67,10 +67,12 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 8. **Docs:** `docs/nodes.md` (a node's `ruff.toml`), `docs/runtimes.md` (a stand-in for an
   optional step's import; a runtime's `ruff.toml`), the handoff's MoGe item, and "Waiting on a local
   session" (tasks 10 and 11, with their commands and reports).
-  *Done 2026-11-05: task 10 was already done, so only task 11 waits there. Pick up here: task 9,
-  in a fresh session (`/code-review` on the branch, then the PR from it to `main`).*
-- [ ] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one by
+  *Done 2026-11-05: task 10 was already done, so only task 11 waits there.*
+- [x] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one by
   one, AC6 and AC7 pending hardware.
+  *Done 2026-11-06: 13 findings, 11 fixed and 2 answered in the PR,
+  [PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60). Pick up here: CI's `models (cpu)`
+  job on the PR (AC2, AC3), then task 11 in a local session.*
 - [x] 10. **A local session: the photo** (Verification, step 1), committed to the branch. CI's
   `models (cpu)` job cannot pass without it.
 - [ ] 11. **A local session: AC6 and AC7** (Verification, steps 2 to 5), the figures fitted into the
