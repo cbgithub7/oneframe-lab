@@ -188,3 +188,8 @@ def test_bench_fit_measures_a_node_in_a_graph(tmp_path: Path, make_node: MakeNod
     assert "| System estimate | System peak | System ratio |" in report
     with pytest.raises(bench_fit.BenchGraphError, match="no step called 'missing'"):
         bench_fit.bench_in_graph(scheduler, graph, "missing", groups, "bench.json")
+    # A file that is not a graph is named, never a traceback.
+    for text in ('{"version": 1, "nodes": []}', '{"version": 1, "nodes": {"a": 1}}', "["):
+        bad = tmp_path / "bad.json"
+        bad.write_text(text, encoding="utf-8")
+        assert bench_fit.main(["measured", "--graph", str(bad), "--data", str(tmp_path / "data")]) == 2, text

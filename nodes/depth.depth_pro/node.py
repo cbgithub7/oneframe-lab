@@ -82,19 +82,16 @@ def run(ctx: Context, model: Any) -> dict[str, Any]:
 def scaled(ctx: Context, camera: dict[str, Any], width: int, height: int) -> dict[str, Any]:
     """The camera at the photo's size: a camera for the same photo at another size scales with it.
     One of another shape is not this photo's."""
-    sx, sy = width / float(camera["width"]), height / float(camera["height"])
+    try:
+        sx, sy = width / float(camera["width"]), height / float(camera["height"])
+        fx, fy, cx, cy = (float(camera[k]) for k in ("fx", "fy", "cx", "cy"))
+    except (KeyError, TypeError, ValueError, ZeroDivisionError) as exc:
+        ctx.fail(f"The camera does not say its fx, fy, cx, cy, width and height in pixels ({exc!r}).")
     if abs(sx - sy) > 0.01 * sx:
         ctx.fail(
             f"The camera is for a {camera['width']} × {camera['height']} image, which is not this "
             f"photo's shape ({width} × {height})."
         )
     found = dict(camera)  # a pose, if it has one, stays
-    found.update(
-        fx=float(camera["fx"]) * sx,
-        fy=float(camera["fy"]) * sy,
-        cx=float(camera["cx"]) * sx,
-        cy=float(camera["cy"]) * sy,
-        width=width,
-        height=height,
-    )
+    found.update(fx=fx * sx, fy=fy * sy, cx=cx * sx, cy=cy * sy, width=width, height=height)
     return found

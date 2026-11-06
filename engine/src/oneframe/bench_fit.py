@@ -113,7 +113,7 @@ def measure(
     mine = [e for e in events if e.get("step") == step]
     fits = [e for e in mine if e["event"] == "node.fit"]
     done = next((e for e in mine if e["event"] == "node.done"), None)
-    failed = next((e for e in events if e["event"] == "node.failed"), None)
+    failed = next((e for e in mine if e["event"] == "node.failed"), None)
     last = fits[-1] if fits else {}  # the fit of the attempt that finished, or failed last
     device = (done or {}).get("made_with", {}).get("device") or last.get("device")
     needs = last.get("needs") or {}
@@ -417,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.graph is not None:
             try:
                 graph = Graph.from_json(read_object(args.graph, BenchGraphError)[0])
-            except (BenchGraphError, GraphError, KeyError, TypeError) as exc:
+            except (BenchGraphError, GraphError, AttributeError, KeyError, TypeError) as exc:
                 print(f"{args.graph}: not a graph the bench can read: {exc}", file=sys.stderr)
                 return 2
             if args.node not in graph.nodes:

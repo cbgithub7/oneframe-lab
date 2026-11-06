@@ -128,7 +128,10 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   `engine/tests/collected.txt` at the merge base, and fails when the list in the checkout differs
   from the collection; `--write` rewrites it, so a change that adds or renames a test commits the
   list
+- `node scripts/tool.js engine/tests/models/run_on_cpu.py`: CI's `models (cpu)` check, once every
+  runtime and every node's files are in: each node that runs in a runtime, fed the 512 px photo,
+  ends `done` on the processor with every valid depth between 0 and 1,000 m (spec 005)
 - The tools that open a data root (`bench:runtime`, `bench:fit`, `bench:fit-check`, `diagnose`,
-  `models:*`, `runtime:check`) start through `scripts/tool.js`, which keeps uv's temporary files
-  under that root
+  `models:*`, `runtime:check`, `run_on_cpu.py`) start through `scripts/tool.js`, which keeps uv's
+  temporary files under that root
 - `npm start`: the app (needs `npm run engine:sync` once)

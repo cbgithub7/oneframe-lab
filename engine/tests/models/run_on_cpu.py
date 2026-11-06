@@ -6,9 +6,10 @@ runs once every runtime and every node's files are in:
 
 Every node that runs in a runtime is fed the 512 px photo beside this file, through the node that
 brings a photo in (found by its ports, not its name), in a graph of the two. Each run must end
-`done`, the scheduler having checked every output against its port, on whatever device the fit
-picks (the processor, on a machine with no card); every valid depth it gives must lie above 0 and
-below 1,000 m. A node that needs more than an image, or whose runtime or files are missing, is a
+`done` on the processor, the scheduler having checked every output against its port; every valid
+depth it gives must lie above 0 and below 1,000 m. It is for a machine with no card, as CI's are:
+where the fit puts a node on a card, the run is a failure, since the processor's path went
+unchecked. A node that needs more than an image, or whose runtime or files are missing, is a
 failure, named. Each run is bench:fit's: a cache of its own, so nothing is served, and nothing is
 learned. Nothing here names a node or a runtime (spec 013).
 
@@ -126,7 +127,10 @@ def check(data: Path, registry: Registry, manager: Runtimes) -> int:
                 p: depth_check(v) for p, v in result.outputs.get("step", {}).items() if v.type == "Depth"
             }
             problems = [f"{port}: {why}" for port, (why, _held) in checked.items() if why]
-            where = f"on {done.get('made_with', {}).get('device')} in {done.get('seconds')} s"
+            device = done.get("made_with", {}).get("device")
+            where = f"on {device} in {done.get('seconds')} s"
+            if device != "cpu":
+                problems.append(f"it ran on {device}, not the processor: run this on a machine with no card")
             if problems:
                 print(f"FAILED {node.id}, {where}: {'; '.join(problems)}")
                 failed += 1

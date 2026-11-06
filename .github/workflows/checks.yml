@@ -57,8 +57,8 @@ jobs:
     # runtime: the loops and run_on_cpu.py find them in nodes/ and runtimes/.
     name: models (cpu), ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # Downloads of 4.7 GB when the store's cache misses, three installs and Depth Pro's 1536 px on 4
-    # cores; a hang ends here.
+    # Every node's files when the store's cache misses, every runtime's install, and each model run
+    # on the runner's processor; a hang ends here.
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -86,13 +86,17 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
       - name: The model store's key, from the sha256 of every file the nodes pin
         id: store
-        run: echo "key=$(uv run --project engine --frozen python engine/tests/models/run_on_cpu.py --cache-key)" >> "$GITHUB_OUTPUT"
+        run: |
+          key=$(uv run --project engine --frozen python engine/tests/models/run_on_cpu.py --cache-key)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      # Restored by its exact key only: a store restored from an older key, saved again under the new
+      # one, would keep every file no node pins any more.
       - name: The model store, kept once for both systems
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: restore-store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ci-data/models
           key: ${{ steps.store.outputs.key }}
-          restore-keys: models-
           enableCrossOsArchive: true
       - name: uv's cache, per system, by the runtimes' locks
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -102,6 +106,14 @@ jobs:
           restore-keys: uv-${{ runner.os }}-
       - name: Every node's files (only what the cache lacks is downloaded)
         run: for node in nodes/*/; do npm run models:download -- "$(basename "$node")"; done
+      # Saved here, not when the job ends, so a run that fails after the downloads keeps them.
+      - name: Keep the model store for the next run
+        if: steps.restore-store.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ci-data/models
+          key: ${{ steps.store.outputs.key }}
+          enableCrossOsArchive: true
       - name: Every runtime's build for this machine (the processor's, as a runner has no card)
         run: for runtime in runtimes/*/; do npm run bench:runtime -- "$(basename "$runtime")"; done
       - name: Each runtime's code checked with its own interpreter (AC3)

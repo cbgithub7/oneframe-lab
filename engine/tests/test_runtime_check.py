@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,20 @@ def test_runtime_code_is_checked_at_its_runtimes_python(
     assert by_name["old"].folders == (old, old_node)
     assert by_name["new"].python == "3.14" and by_name["new"].interpreter is None
     assert "not installed" in by_name["new"].why and by_name["new"].folders == (new, new_node)
-    assert runtime_check.pyright_config(by_name["old"])["pythonVersion"] == "3.11"
+    # pyright sees the node API alone of the engine, as a runtime child does.
+    api = runtime_check.node_api(tmp_path / "scratch")
+    config = runtime_check.pyright_config(by_name["old"], api)
+    assert (config["pythonVersion"], config["extraPaths"]) == ("3.11", [str(api)])
+    assert sorted(p.name for p in (api / "oneframe").iterdir()) == ["__init__.py", "node"]
+    assert (api / "oneframe" / "node" / "context.py").is_file()
+    # A node in a runtime there is no definition of would go unchecked, so it is named.
+    orphan = make_node(a_node("test.orphan", "gone"))
+    problems = runtime_check.unchecked(discover_runtimes([runtime_root]), discover([node_root]))
+    assert problems == [f"{orphan}: runs in 'gone', which is no runtime here"]
+    (orphan / "node.json").write_text("{", encoding="utf-8")  # and one whose manifest cannot be read
+    problems = runtime_check.unchecked(discover_runtimes([runtime_root]), discover([node_root]))
+    assert len(problems) == 1 and str(orphan) in problems[0], problems
+    shutil.rmtree(orphan)
 
     # Each runtime folder and runtime node's folder holds a ruff.toml for its runtime's Python.
     ruff_toml(old, "py311")

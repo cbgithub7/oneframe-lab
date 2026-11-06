@@ -11,8 +11,14 @@ runtime definitions and the node manifests, and:
   runtime's Python, so ruff, and the hooks after each edit, lint and format it for that Python;
 - runs pyright once per runtime installed here over its folder and its nodes, with that runtime's
   interpreter (its packages, its sources and stand-ins) at its Python, and once over the engine's
-  nodes with the engine's own. Each configuration is written in the tool's scratch under the data
-  root; pyright keeps its own cache where `npm run engine:check`'s does.
+  nodes with the engine's own. In a runtime's run, pyright sees only `oneframe.node` of the engine,
+  as its child does, so a runtime node's import of anything else of it is an error here, not in the
+  child; the engine's own interpreter has all of it, as an engine node's process has. Each
+  configuration is written in the tool's scratch under the data root; pyright keeps its own cache
+  where `npm run engine:check`'s does.
+
+A node or runtime whose definition cannot be read, and a node that names a runtime there is none
+of, is a failure: its code would otherwise go unchecked.
 
 A runtime not installed here is named and left unchecked, or, with `--every-runtime` (CI's models
 job, which installs them all), is a failure. Nothing here names a runtime or a node.
@@ -23,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import threading
 import tomllib
@@ -30,7 +37,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR, REPO_ROOT, __version__, processes
+from oneframe import BUILTIN_NODES_DIR, REPO_ROOT, __version__, processes
+from oneframe.child import NODE_API
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.registry import Registry, discover
 from oneframe.runtimes.definition import RuntimeSet
@@ -77,6 +85,17 @@ def groups(runtimes: RuntimeSet, registry: Registry, interpreter_for: Callable[[
     return found
 
 
+def unchecked(runtimes: RuntimeSet, registry: Registry) -> list[str]:
+    """What no group can check: a definition or manifest that cannot be read, and a node that runs in
+    a runtime there is no definition of."""
+    problems = [f"{path}: {'; '.join(why)}" for path, why in sorted(runtimes.problems.items())]
+    problems += [f"{path}: {'; '.join(why)}" for path, why in sorted(registry.problems.items())]
+    for manifest in sorted(registry.nodes.values(), key=lambda m: m.id):
+        if manifest.run.where == "runtime" and manifest.run.runtime not in runtimes.runtimes:
+            problems.append(f"{manifest.folder}: runs in {manifest.run.runtime!r}, which is no runtime here")
+    return problems
+
+
 def target_for(python: str) -> str:
     """ruff's name for a Python: "3.14" is "py314"."""
     return "py" + python.replace(".", "")
@@ -113,14 +132,27 @@ def ruff_problems(found: list[Group], root_config: Path = ROOT_RUFF) -> list[str
     return problems
 
 
-def pyright_config(group: Group) -> dict[str, object]:
-    """pyright's settings for one group: its Python, and the node API (`oneframe.node`) beside its
-    code, as the child puts it on the path. Its folders go on pyright's command line, since a
+def node_api(folder: Path) -> Path:
+    """A folder holding what node code may import of the engine, as a runtime child gives it: a
+    package `oneframe` with `oneframe.node` in it and nothing else (oneframe/child.py)."""
+    root = folder / "node-api"
+    package = root / "oneframe"
+    if not package.is_dir():
+        shutil.copytree(NODE_API, package / "node", ignore=shutil.ignore_patterns("__pycache__"))
+        (package / "__init__.py").write_text(
+            '"""Only oneframe.node, as a runtime child has it."""\n', encoding="utf-8"
+        )
+    return root
+
+
+def pyright_config(group: Group, api: Path) -> dict[str, object]:
+    """pyright's settings for one group: its Python, and `api`, the node API alone (node_api), ahead
+    of anything its interpreter has. Its folders go on pyright's command line, since a
     configuration's `include` takes no absolute path."""
     return {
         "pythonVersion": group.python,
         "typeCheckingMode": "standard",
-        "extraPaths": [str(ENGINE_DIR.parent)],
+        "extraPaths": [str(api)],
     }
 
 
@@ -128,7 +160,7 @@ def check_with_pyright(group: Group, folder: Path, say: Callable[[str], None] = 
     """pyright over one group, with its interpreter; True when it found no error."""
     assert group.interpreter is not None
     config = folder / f"pyright-{group.name}.json"
-    config.write_text(json.dumps(pyright_config(group), indent=2), encoding="utf-8")
+    config.write_text(json.dumps(pyright_config(group, node_api(folder)), indent=2), encoding="utf-8")
     argv = [sys.executable, "-m", "pyright", "-p", str(config), "--pythonpath", str(group.interpreter)]
     argv += [str(folder) for folder in group.folders]
     code, _ = processes.run(argv, env=dict(os.environ), on_line=say, stop=threading.Event())
@@ -158,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     registry = discover(args.nodes or [BUILTIN_NODES_DIR])
     found = groups(definitions, registry, manager.python_for)
     failed = False
-    for problem in ruff_problems(found):
+    for problem in [*unchecked(definitions, registry), *ruff_problems(found)]:
         print(problem, file=sys.stderr)
         failed = True
     with for_tool(Layout(data)) as mine:
