@@ -111,8 +111,9 @@ Claude desktop's package. Before it, on 2026-10-30: spec 013's check on a card
 - **For first light (step 3):**
     - requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop` (review of 2026-10-02, 4.2);
-    - pyright on the first node that imports torch, and a CI job with real torch on the processor
-      (review of 2026-10-02, 4.11); CI does not start the app either;
+    - CI does not start the app (review of 2026-10-02, 4.11; its other half, pyright on the nodes
+      that import torch and a CI job with real torch on the processor, is spec 005's
+      `runtime:check` and `models (cpu)`);
     - `models.*` and `nodes.fit` are not on the page's method list.
 - **MoGe-3's refinement needs a newer card.** Its code imports FlexGEMM, built on Triton, which
   supports NVIDIA cards from compute 8.0 and publishes Linux wheels only; FlexGEMM runs only in
