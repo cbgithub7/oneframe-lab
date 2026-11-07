@@ -32,13 +32,13 @@ from oneframe.cache import Cache
 from oneframe.graph import Graph, GraphError, GraphNode
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
-from oneframe.memory.estimate import evaluate
+from oneframe.memory.estimate import Target, evaluate
 from oneframe.memory.learned import LearnedStore, StoreKey
 from oneframe.memory.settings import Settings
 from oneframe.node import Value
 from oneframe.reading import ProblemsError, read_object
 from oneframe.registry import Registry, discover
-from oneframe.runtimes.manager import Runtimes, RuntimeSide, find_uv
+from oneframe.runtimes.manager import RuntimeMissing, Runtimes, RuntimeSide, find_uv
 from oneframe.scheduler import Scheduler, for_root
 from oneframe.scratch import for_tool
 
@@ -341,14 +341,60 @@ def run_table(rows: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def card_of(profile: dict[str, Any], target: Target) -> dict[str, Any] | None:
+    """The card of `profile` that `target` names; None when it names none (the processor)."""
+    if target.card is None:
+        return None
+    return next((g for g in profile.get("gpus") or [] if g.get("index") == target.card), None)
+
+
+def machine_of(runtimes: Runtimes, manifest: Manifest) -> dict[str, Any]:
+    """Where a report ran, so the report alone says so: the machine's profile, and the card the
+    node's runtime build uses here, as the fit finds it (None for the processor)."""
+    profile = runtimes.profile(refresh=True)
+    card = None
+    if manifest.run.where == "runtime" and manifest.run.runtime:
+        with contextlib.suppress(RuntimeMissing):
+            card = card_of(profile, runtimes.device_target(manifest.run.runtime))
+    return {"profile": runtimes.profile_summary(), "card": card}
+
+
+def machine_line(record: dict[str, Any]) -> str | None:
+    """The machine a report ran on, from the profile it recorded; None when it recorded none."""
+    profile = record.get("profile")
+    if not profile:
+        return None
+    total = (profile.get("system") or {}).get("total_mb")
+    where = str(profile.get("os") or "an unknown system")
+    if total:
+        where += f" with {megabytes(total)} of memory"
+    card = record.get("card") or {}
+    gpus = profile.get("gpus") or []
+    parts = [where, *([f"driver {profile.get('driver')}"] if gpus else [])]
+    for gpu in gpus:
+        mine = ", the card this node's build uses" if card and gpu.get("index") == card.get("index") else ""
+        parts.append(
+            f"card {gpu.get('index')}, {gpu.get('name')} (compute {gpu.get('capability')}, "
+            f"{megabytes(gpu.get('vram_total_mb'))}){mine}"
+        )
+    if not card:
+        why = (profile.get("nvidia") or {}).get("why")
+        parts.append("no card for this node" + (f" ({why})" if why and not gpus else ""))
+    return f"Machine: {'; '.join(parts)}."
+
+
 def heading(record: dict[str, Any]) -> list[str]:
-    """A report's first lines: what it measured, when, with which engine, and in which graph."""
+    """A report's first lines: what it measured, when, with which engine, on which machine, and in
+    which graph."""
     out = [
         f"# Fit report: {record.get('node')}",
         "",
         f"{record.get('date')} · engine {record.get('engine')}",
         "",
     ]
+    machine = machine_line(record)
+    if machine:
+        out += [machine, ""]
     if record.get("mode") == "graph":
         inputs = ", ".join(f"{port} {size}" for port, size in (record.get("inputs") or {}).items())
         out += [f"Step `{record.get('step')}` of `{record.get('graph')}`; inputs: {inputs or 'none'}.", ""]
@@ -360,15 +406,24 @@ def render(record: dict[str, Any]) -> str:
     return "\n".join([*heading(record), "## Runs", "", *run_table(record.get("runs") or []), ""])
 
 
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower().replace("nvidia", "").replace("geforce", "")).strip("-")
+
+
 def report_path(out: Path, record: dict[str, Any]) -> Path:
-    """A folder gets `YYYY-MM-DD-<card>-fit.md`; a file is used as it is."""
-    if out.suffix.lower() != ".md":
-        name = str((record.get("card") or {}).get("name") or record.get("node") or "machine")
-        slug = re.sub(r"[^a-z0-9]+", "-", name.lower().replace("nvidia", "").replace("geforce", "")).strip(
-            "-"
-        )
-        return out / f"{str(record.get('date', ''))[:10]}-{slug or 'machine'}-fit.md"
-    return out
+    """A folder gets `YYYY-MM-DD-<card>-<node>-fit.md`, `cpu` for the card when the node had none
+    here, and a number after `fit` when that name is taken, so a report never replaces another. A
+    file is used as it is."""
+    if out.suffix.lower() == ".md":
+        return out
+    card = (record.get("card") or {}).get("name")
+    where = _slug(str(card)) if card else ("cpu" if record.get("profile") else "")
+    name = "-".join(part for part in (where, _slug(str(record.get("node") or ""))) if part) or "machine"
+    stem = f"{str(record.get('date', ''))[:10]}-{name}-fit"
+    path, number = out / f"{stem}.md", 2
+    while path.exists():
+        path, number = out / f"{stem}-{number}.md", number + 1
+    return path
 
 
 # -- the command ---------------------------------------------------------------------------------
@@ -434,6 +489,7 @@ def main(argv: list[str] | None = None) -> int:
             print(str(exc), file=sys.stderr)
             return 2
         scheduler = make_scheduler(data, registry, manager, work / "cache", tmp_root=mine.folder)
+        record.update(machine_of(manager, manifest))
         if graph is None:
             record.update(bench_node(scheduler, node, groups))
         else:
