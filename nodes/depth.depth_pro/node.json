@@ -2,7 +2,7 @@
   "_sources": [
     "Ports, the one param and the code: spec 005 (specs/005-first-models/spec.md).",
     "The weights' file: pinned by spec 003's live run (specs/003-model-store/live/live.depth_pro), which spec 005's spike loaded on the owner's PC.",
-    "The memory model: spec 005's spike on an NVIDIA GeForce GTX 1070 (compute 6.1, 8 GB) on a 2880 x 1920 photo, read from torch's allocated memory and turned from MiB into MB. A first estimate every machine corrects (learned.json), never a choice made for that card; spec 005's local session fits it again with bench:fit.",
+    "The memory model: spec 005's local session on an NVIDIA GeForce GTX 1070 (compute 6.1, 8 GB), fitted with bench:fit on the 768 and 1536 px photos and checked on the full one, beside its spike's weights and fp32 figures (allocated memory, turned from MiB into MB). A first estimate every machine corrects (learned.json), never a choice made for that card.",
     "fp16 on any card: torch runs half precision on every card its builds support; the spike ran it on compute 6.1 only.",
     "Licences: from the README and LICENSE of apple/ml-depth-pro at 9e65e4d, the runtime's pin."
   ],
@@ -54,14 +54,20 @@
       "source": "specs/005-first-models/reports/2026-11-03-spike.md: on the card once loaded, 3,636 and 1,826 MiB, on a GTX 1070 (compute 6.1)"
     },
     "working": {
-      "mb": 1248,
-      "terms": [{ "coef": 1041, "of": ["bytes"] }],
-      "source": "specs/005-first-models/reports/2026-11-03-spike.md: the run's allocated peak less the weights, 5,161 MiB at fp32 and 3,176 at fp16, on a GTX 1070 (compute 6.1) and a 2880 x 1920 photo; a line through the two. The network runs at 1536 px whatever the photo's size"
+      "mb": 3166,
+      "terms": [
+        { "coef": 561.6, "of": ["bytes"] },
+        { "coef": 0.00000755, "of": ["image.pixels"] }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-06-ac7.md: bench:fit's peaks less the weights on a GTX 1070 (compute 6.1), on the 768 and 1536 px photos: at fp16 on the card, torch's reserve, 6,206 and 6,178 MB (4,289 MB working, the larger); at fp32 on a card, the spike's 5,161 MiB (specs/005-first-models/reports/2026-11-03-spike.md, allocated memory) until a card that holds it reports, which also covers the processor's 8,836 and 8,842 MB. A line through the two precisions; the pixels term is the steepest rise from 768 to 1536 px any setting showed (the processor's). The network runs at 1536 px whatever the photo's size"
     },
     "system_mb": {
-      "mb": 0,
-      "terms": [{ "coef": 1, "of": ["weights"] }],
-      "source": "the weights, which pass through system memory as they load (they are cast on the processor before a card); on a card, not measured yet: the spike could not read process memory on Windows (its finding 4), and spec 005's local session fits it with bench:fit. On a cloud session's processor, a whole run at fp32 peaked at 8,364 MB, under its estimate of 9,225 (specs/005-first-models/reports/2026-11-05-cloud-cpu.md)"
+      "mb": 2657,
+      "terms": [
+        { "coef": 0.5, "of": ["bytes", "weights"] },
+        { "coef": -1, "of": ["weights"] }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-06-ac7.md: at fp16 on a GTX 1070 (compute 6.1), the process's peak, 2,657 MB on both photos, when the weights' file (fp16) is read and cast to fp16, which copies nothing. At fp32 on a card, not measured (it does not fit this one): the load holds the file and its fp32 cast at once (node.py), so the terms add the cast, the fp32 weights, and nothing at fp16"
     },
     "changes": [{ "set": { "precision": "fp16" }, "costs": "quality" }],
     "time": {
