@@ -76,7 +76,12 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
   local session on a new branch from `main`, whose PR marks the spec done.*
 - [x] 10. **A local session: the photo** (Verification, step 1), committed to the branch. CI's
   `models (cpu)` job cannot pass without it.
-- [ ] 11. **A local session: AC6 and AC7** (Verification, steps 2 to 5), the figures fitted into the
+- [x] 11. **A local session: AC6 and AC7** (Verification, steps 2 to 5), the figures fitted into the
   manifests and the reports under `specs/005-first-models/reports/`. Also the licence on each MoGe
   weights' card (`links.weights` in `nodes/depth.moge2/` and `nodes/depth.moge3/`), which a cloud
   session cannot reach, written into the manifests' `licence.weights`.
+  *Done 2026-11-06 on the GTX 1070, outside Claude desktop's package: both passed
+  ([AC6](reports/2026-11-06-ac6.md), [AC7](reports/2026-11-06-ac7.md)); both licences MIT; a 10 GB
+  card among the test machines, with the owner's go-ahead, so AC1's test still reaches every
+  branch. The AC7 report's findings (MoGe's peak is a larger-of, bench:fit's report names) are
+  for a cloud session.*

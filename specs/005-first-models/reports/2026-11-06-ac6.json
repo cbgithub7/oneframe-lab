@@ -1,0 +1,43 @@
+{
+  "spec": "005-first-models",
+  "criterion": "AC6",
+  "outcome": "passed",
+  "date": "2026-11-06",
+  "commit": "ec8af638f642cfb44a262ba7114b980dccd2b9c4",
+  "machine": {
+    "os": "Windows 10 Pro, build 10.0.19045.6466",
+    "gpu": "NVIDIA GeForce GTX 1070",
+    "compute_capability": "6.1",
+    "vram_mb": 8590,
+    "driver": "582.66",
+    "free_disk_gb": 95.2,
+    "other_gpu_processes": [
+      "desktop programs only, graphics (C+G), 704 MiB in use: explorer, SearchApp, TextInputHost, ShellExperienceHost, Steam's web helper, Logitech G HUB, Brave, Cursor, Discord, Grok Bot, Claude"
+    ]
+  },
+  "tools": {
+    "node": "24.22.1",
+    "uv": "0.13.5",
+    "python": "engine 3.15.1; both runtimes CPython 3.14.9",
+    "powershell": "7.4.19"
+  },
+  "commands": [
+    "npm run bench:runtime -- depth_pro",
+    "npm run bench:runtime -- moge"
+  ],
+  "results": {
+    "seconds": { "depth_pro_install": 169.3, "depth_pro_probe": 4.741, "moge_install": 84.0, "moge_probe": 3.751 },
+    "peak_vram_mb": { "depth_pro_probe": 0.0, "moge_probe": 0.0 },
+    "fit": "both plans: cu126 (cu130 refused: it needs compute capability 7.5, the card is 6.1; cpu not chosen: a GPU build runs here); moge: flex_gemm replaced by its stand-in",
+    "installs": {
+      "depth_pro": { "build": "cu126", "python": "3.14.9", "size_mb": 4526, "packages": 29, "torch": "2.14.0+cu126", "torchvision": "0.29.1+cu126" },
+      "moge": { "build": "cu126", "python": "3.14.9", "size_mb": 4746, "packages": 28, "torch": "2.14.0+cu126", "torchvision": "0.29.1+cu126" }
+    },
+    "probes": {
+      "depth_pro": { "torch": "2.14.0+cu126", "cuda": "12.6", "cuda_available": true, "numpy": "2.5.4", "timm": "1.0.31", "depth_pro": true },
+      "moge": { "torch": "2.14.0+cu126", "cuda": "12.6", "cuda_available": true, "numpy": "2.5.4", "opencv": "5.0.0", "moge": ["MoGeModel", "MoGeModel"] }
+    },
+    "notes": "Run outside Claude desktop's package: Grok Bot started one PowerShell script in its own window (pwsh < pwsh < Grok Bot < Grok Bot < explorer), with ONEFRAME_DATA a new folder on D:. No os error 32. The reports: 2026-11-06-runtime-depth_pro.md and 2026-11-06-runtime-moge.md (their own dates are UTC, 2026-11-07)."
+  },
+  "local_changes": "none: the commit adds only the MoGe weights' licences to their manifests (text) over main's 7c49094"
+}
