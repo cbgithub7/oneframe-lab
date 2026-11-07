@@ -1,0 +1,625 @@
+{
+  "spec": "005-first-models",
+  "criterion": "AC7",
+  "outcome": "passed",
+  "date": "2026-11-06",
+  "commit": "0ad0551e3522b8b603e0d33548ead53f18a57d79",
+  "machine": {
+    "os": "Windows 10 Pro, build 10.0.19045.6466",
+    "gpu": "NVIDIA GeForce GTX 1070",
+    "compute_capability": "6.1",
+    "vram_mb": 8590,
+    "driver": "582.66",
+    "free_disk_gb": 86.0,
+    "other_gpu_processes": [
+      "desktop programs only, graphics (C+G), 537 MiB in use before step 5: explorer, SearchApp, TextInputHost, ShellExperienceHost, Logitech G HUB, Brave, Cursor, Grok Bot, Claude"
+    ]
+  },
+  "tools": {
+    "node": "24.22.1",
+    "uv": "0.13.5",
+    "python": "engine 3.15.1; both runtimes CPython 3.14.9",
+    "powershell": "7.4.19"
+  },
+  "commands": [
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-768.json depth_pro --set precision=fp32 --set precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-768.json moge3 --set resolution_level=0 --set resolution_level=5 --set resolution_level=9 --set resolution_level=9 precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-768.json moge2 --set resolution_level=0 --set resolution_level=5 --set resolution_level=9 --set resolution_level=9 precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-1536.json depth_pro --set precision=fp32 --set precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-1536.json moge3 --set resolution_level=0 --set resolution_level=5 --set resolution_level=9 --set resolution_level=9 precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-1536.json moge2 --set resolution_level=0 --set resolution_level=5 --set resolution_level=9 --set resolution_level=9 precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-full.json depth_pro --set precision=fp32 --set precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-full.json moge3 --set resolution_level=0 --set resolution_level=5 --set resolution_level=9 --set resolution_level=9 precision=fp16",
+    "npm run bench:fit -- --graph specs/005-first-models/bench/photo-full.json moge2 --set resolution_level=0 --set resolution_level=5 --set resolution_level=9 --set resolution_level=9 precision=fp16"
+  ],
+  "results": {
+    "seconds": {
+      "bench_768": [
+        131,
+        76,
+        78
+      ],
+      "bench_1536": [
+        126,
+        82,
+        80
+      ],
+      "bench_full": [
+        136,
+        107,
+        107
+      ]
+    },
+    "peak_vram_mb": 6205.5,
+    "fit": "Depth Pro: fp32 on the processor (its estimate does not fit the card), fp16 on the card; MoGe-2 and MoGe-3 on the card at every setting. On the full photo every peak, the card's and the system's, is at most its estimate: the largest ratio is 1.0",
+    "worst_ratio_full_photo": 1.0,
+    "runs": [
+      {
+        "photo": "768 x 346",
+        "node": "depth.depth_pro",
+        "settings": {
+          "precision": "fp32"
+        },
+        "device": "cpu",
+        "estimate_mb": 9225,
+        "peak_mb": 8836.0,
+        "peak_is": "the process's peak (processor)",
+        "peak_allocated_mb": null,
+        "ratio": 0.9578,
+        "system_estimate_mb": 9225,
+        "system_peak_mb": 8836.0,
+        "system_ratio": 0.9578,
+        "seconds": 108.32,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.depth_pro",
+        "settings": {
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 5245,
+        "peak_mb": 6205.5,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 5187.6,
+        "ratio": 1.1831,
+        "system_estimate_mb": 1915,
+        "system_peak_mb": 2656.6,
+        "system_ratio": 1.3873,
+        "seconds": 11.341,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 0,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2034,
+        "peak_mb": 1841.3,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 1693.1,
+        "ratio": 0.9053,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3488.4,
+        "system_ratio": 1.1777,
+        "seconds": 12.857,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 5,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2359,
+        "peak_mb": 2382.4,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2093.9,
+        "ratio": 1.0099,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3488.9,
+        "system_ratio": 1.1779,
+        "seconds": 11.933,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2620,
+        "peak_mb": 2761.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2392.8,
+        "ratio": 1.0542,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3487.9,
+        "system_ratio": 1.1775,
+        "seconds": 11.83,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 2828,
+        "peak_mb": 3063.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2598.2,
+        "ratio": 1.0834,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3487.6,
+        "system_ratio": 1.1774,
+        "seconds": 12.049,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 0,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 1966,
+        "peak_mb": 1841.3,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 1687.0,
+        "ratio": 0.9366,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3334.3,
+        "system_ratio": 1.1257,
+        "seconds": 12.29,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 5,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2320,
+        "peak_mb": 2382.4,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2081.6,
+        "ratio": 1.0269,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3334.3,
+        "system_ratio": 1.1257,
+        "seconds": 13.076,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2604,
+        "peak_mb": 2761.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2375.5,
+        "ratio": 1.0606,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3333.9,
+        "system_ratio": 1.1256,
+        "seconds": 13.26,
+        "fitted_from": true
+      },
+      {
+        "photo": "768 x 346",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 2810,
+        "peak_mb": 3063.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2581.0,
+        "ratio": 1.0904,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3334.8,
+        "system_ratio": 1.1259,
+        "seconds": 11.813,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.depth_pro",
+        "settings": {
+          "precision": "fp32"
+        },
+        "device": "cpu",
+        "estimate_mb": 9225,
+        "peak_mb": 8842.3,
+        "peak_is": "the process's peak (processor)",
+        "peak_allocated_mb": null,
+        "ratio": 0.9585,
+        "system_estimate_mb": 9225,
+        "system_peak_mb": 8842.3,
+        "system_ratio": 0.9585,
+        "seconds": 104.366,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.depth_pro",
+        "settings": {
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 5245,
+        "peak_mb": 6178.2,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 5193.2,
+        "ratio": 1.1779,
+        "system_estimate_mb": 1915,
+        "system_peak_mb": 2656.8,
+        "system_ratio": 1.3874,
+        "seconds": 11.029,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 0,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2034,
+        "peak_mb": 1832.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 1701.8,
+        "ratio": 0.9011,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3488.5,
+        "system_ratio": 1.1778,
+        "seconds": 13.3,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 5,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2359,
+        "peak_mb": 2384.5,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2103.6,
+        "ratio": 1.0108,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3488.2,
+        "system_ratio": 1.1777,
+        "seconds": 13.219,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2620,
+        "peak_mb": 2860.5,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2403.0,
+        "ratio": 1.0918,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3488.9,
+        "system_ratio": 1.1779,
+        "seconds": 14.637,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 2828,
+        "peak_mb": 3093.3,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2607.4,
+        "ratio": 1.0938,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3488.3,
+        "system_ratio": 1.1777,
+        "seconds": 13.685,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 0,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 1966,
+        "peak_mb": 1832.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 1696.1,
+        "ratio": 0.9323,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3334.3,
+        "system_ratio": 1.1257,
+        "seconds": 12.856,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 5,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2320,
+        "peak_mb": 2384.5,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2091.3,
+        "ratio": 1.0278,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3334.6,
+        "system_ratio": 1.1258,
+        "seconds": 14.46,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2604,
+        "peak_mb": 2860.5,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2385.0,
+        "ratio": 1.0985,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3334.9,
+        "system_ratio": 1.1259,
+        "seconds": 14.646,
+        "fitted_from": true
+      },
+      {
+        "photo": "1536 x 691",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 2810,
+        "peak_mb": 3093.3,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2590.4,
+        "ratio": 1.1008,
+        "system_estimate_mb": 2962,
+        "system_peak_mb": 3334.6,
+        "system_ratio": 1.1258,
+        "seconds": 12.413,
+        "fitted_from": true
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.depth_pro",
+        "settings": {
+          "precision": "fp32"
+        },
+        "device": "cpu",
+        "estimate_mb": 9280,
+        "peak_mb": 8985.5,
+        "peak_is": "the process's peak (processor)",
+        "peak_allocated_mb": null,
+        "ratio": 0.9683,
+        "system_estimate_mb": 9280,
+        "system_peak_mb": 8985.5,
+        "system_ratio": 0.9683,
+        "seconds": 110.49,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.depth_pro",
+        "settings": {
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 6259,
+        "peak_mb": 6186.6,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 5230.2,
+        "ratio": 0.9884,
+        "system_estimate_mb": 2657,
+        "system_peak_mb": 2656.6,
+        "system_ratio": 0.9998,
+        "seconds": 12.779,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 0,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2695,
+        "peak_mb": 2480.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2032.0,
+        "ratio": 0.9206,
+        "system_estimate_mb": 3489,
+        "system_peak_mb": 3488.6,
+        "system_ratio": 0.9999,
+        "seconds": 20.509,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 5,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 3236,
+        "peak_mb": 2598.4,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2176.2,
+        "ratio": 0.803,
+        "system_estimate_mb": 3489,
+        "system_peak_mb": 3488.7,
+        "system_ratio": 0.9999,
+        "seconds": 19.887,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 3669,
+        "peak_mb": 2887.8,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2475.8,
+        "ratio": 0.7871,
+        "system_estimate_mb": 3489,
+        "system_peak_mb": 3488.7,
+        "system_ratio": 0.9999,
+        "seconds": 19.5,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge3",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 3919,
+        "peak_mb": 3099.6,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2681.5,
+        "ratio": 0.7909,
+        "system_estimate_mb": 3489,
+        "system_peak_mb": 3488.0,
+        "system_ratio": 0.9997,
+        "seconds": 18.799,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 0,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 2695,
+        "peak_mb": 2392.9,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 1945.6,
+        "ratio": 0.8879,
+        "system_estimate_mb": 3335,
+        "system_peak_mb": 3335.0,
+        "system_ratio": 1.0,
+        "seconds": 21.894,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 5,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 3236,
+        "peak_mb": 2598.4,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2164.0,
+        "ratio": 0.803,
+        "system_estimate_mb": 3335,
+        "system_peak_mb": 3334.8,
+        "system_ratio": 0.9999,
+        "seconds": 19.865,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp32"
+        },
+        "device": "cuda",
+        "estimate_mb": 3669,
+        "peak_mb": 2887.8,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2458.8,
+        "ratio": 0.7871,
+        "system_estimate_mb": 3335,
+        "system_peak_mb": 3334.4,
+        "system_ratio": 0.9998,
+        "seconds": 18.323,
+        "fitted_from": false
+      },
+      {
+        "photo": "4000 x 1800",
+        "node": "depth.moge2",
+        "settings": {
+          "resolution_level": 9,
+          "precision": "fp16"
+        },
+        "device": "cuda",
+        "estimate_mb": 3919,
+        "peak_mb": 3099.6,
+        "peak_is": "torch's reserved peak on the card",
+        "peak_allocated_mb": 2664.5,
+        "ratio": 0.7909,
+        "system_estimate_mb": 3335,
+        "system_peak_mb": 3334.5,
+        "system_ratio": 0.9999,
+        "seconds": 18.537,
+        "fitted_from": false
+      }
+    ],
+    "notes": "Steps 4 and 5 of the spec's Verification, 768 and 1536 px on commit ec8af63 with the figures then in main, the full photo on 0ad0551 with the figures fitted from them (083e685; 0ad0551 adds a test machine only). Peaks and estimates are the raw figures of each run's journal (node.fit and node.done); the bench's own reports, which round them, are 2026-11-06-fit-<photo>-<node>.md. Run outside Claude desktop's package through Grok Bot (pwsh < pwsh < Grok Bot < Grok Bot < explorer), on phase A's data root."
+  },
+  "local_changes": "the three manifests' memory figures fitted from steps 4's reports (083e685), and a 10 GB card among the test machines so AC1's test reaches its fp16 branches (0ad0551, the owner's go-ahead)"
+}

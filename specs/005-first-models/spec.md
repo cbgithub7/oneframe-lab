@@ -1,6 +1,6 @@
 # 005: The first model nodes: Depth Pro and MoGe
 
-Status: approved (2026-11-05)
+Status: done (tasks 1 to 10 merged 2026-11-06 in [PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60); task 11, AC6 and AC7, passed on a GTX 1070 on 2026-11-06: [AC6](reports/2026-11-06-ac6.md), [AC7](reports/2026-11-06-ac7.md))
 Owner approval: 2026-11-05, every open question answered (below)
 
 The first of four specs for step 3, first light, before [015](../015-graphs/spec.md) (graphs as
@@ -66,9 +66,9 @@ there. `bench:fit` cannot measure a node that needs an image, and runtime code i
 - [x] AC5: `test_runtime_code_is_checked_at_its_runtimes_python` (`test_runtime_check.py`): for test
   runtimes of two Pythons, their nodes and the engine's, `runtime_check` gives each its interpreter
   and Python, and names a folder whose `ruff.toml` is missing or for another Python. Fails today.
-- [ ] AC6 (hardware): `npm run bench:runtime -- depth_pro` and `-- moge` on the owner's PC
+- [x] AC6 (hardware): `npm run bench:runtime -- depth_pro` and `-- moge` on the owner's PC
   (Windows, GTX 1070) install and probe the build the plan picks.
-- [ ] AC7 (hardware): `npm run bench:fit` on the same PC, on the full-size photo, which no figure
+- [x] AC7 (hardware): `npm run bench:fit` on the same PC, on the full-size photo, which no figure
   was fitted on: every peak it measures, the device's and the system's, is at most its estimate
   (the report's ratio at most 1).
 
@@ -182,6 +182,13 @@ terminal from the Start menu, outside Claude desktop's package, `ONEFRAME_DATA` 
 - The photo as JPEG: a full-size PNG would be tens of MB in git.
 - fp16 needs no compute capability: torch runs half precision on every card its builds support.
 - Depth Pro scales a connected camera to the photo; one of another shape is not this photo's.
+- The local session's fit (2026-11-06): the pixels term the steepest rise from 768 to 1536 px any
+  setting showed, then each figure the smallest covering every raw peak; one rule, so no figure is
+  picked to pass AC7 ([report](reports/2026-11-06-ac7.md)).
+- Depth Pro's system memory at fp32 on a card from its load code (the fp16 file and its fp32 cast
+  at once), not measured: no figure from the 1070 can show it, and too low a figure runs out.
+- A 10 GB card among the test machines (the owner, 2026-11-06): AC1's test reached no fp16 branch
+  once Depth Pro's fp16 figure became the reserve's.
 
 ## Out of scope
 
