@@ -115,13 +115,13 @@ desktop's package. Before it, the owner put spec 005's photo in on 2026-11-04 (i
   ([report](../specs/005-first-models/reports/2026-11-03-spike.md)). Spec 005's `depth.moge3`
   ships so, its refiner left unbuilt and every output's meta saying `refine_steps: 0`. The
   refinement itself is unverified until a card of compute 8.0 or newer reports.
-- **Spec 005's fit on the card left two findings** ([AC7 report](../specs/005-first-models/reports/2026-11-06-ac7.md),
-  findings 1 and 3): MoGe's peak is the larger of a part that grows with the level and one that
-  grows with the photo, which a memory model's sum of terms over-estimates (at 7.2 MP, peaks of 79
-  to 80 % of the estimates at levels 5 and 9); and `bench:fit` gives every report of one node on
-  one day the same name, and names no card in it. Also, from its checks: a race in
-  `test_model_transport.py`'s wait for the stall (line 337 stats a partial that may not exist yet),
-  which failed once on Windows.
+- **MoGe's peak is a larger-of** ([AC7 report](../specs/005-first-models/reports/2026-11-06-ac7.md),
+  finding 1): the larger of a part that grows with the level and one that grows with the photo,
+  which a memory model's sum of terms over-estimates (at 7.2 MP, peaks of 79 to 80 % of the
+  estimates at levels 5 and 9). A `max` in the formula, or another form, is for a later spec, with
+  a larger photo to fit on. (Its finding 3, `bench:fit`'s report names, and the transport test's
+  race it found are fixed: a report is named by card and node, never replaces another, and names
+  the machine.)
 - **A runtime install started from inside Claude desktop fails on the owner's PC** (2026-10-25):
   four times uv stopped with os error 32 on a folder it had just emptied, with uv 0.13.5 and
   0.12.20 and either lock, while the same installs from outside the package passed

@@ -331,10 +331,19 @@ def test_stop_ends_a_stalled_download_within_two_seconds_and_keeps_the_partial(
         except BaseException as exc:
             done.append(exc)
 
+    partial = tmp_path / SHA
+
+    def kept() -> int:
+        """The partial's size; 0 before it exists, which the CDN's request can come before."""
+        try:
+            return partial.stat().st_size
+        except FileNotFoundError:
+            return 0
+
     thread = threading.Thread(target=work)
     thread.start()
     wait_until(
-        lambda: hosts.requests("cdn") and (before_headers or (tmp_path / SHA).stat().st_size >= 200_000),
+        lambda: hosts.requests("cdn") and (before_headers or kept() >= 200_000),
         "the download to reach the stall",
     )
     time.sleep(0.2)  # well into the stall
@@ -344,8 +353,7 @@ def test_stop_ends_a_stalled_download_within_two_seconds_and_keeps_the_partial(
     # Spec 003 asks for a stopped download to end within 2 s; the stall alone would hold it a minute.
     assert not thread.is_alive() and time.monotonic() - pressed < 2  # bound: spec 003's Stop
     assert isinstance(done[0], Stopped)
-    partial = tmp_path / SHA
-    assert (partial.stat().st_size if partial.exists() else 0) == (0 if before_headers else 200_000)
+    assert kept() == (0 if before_headers else 200_000)
 
 
 def test_a_host_that_ignores_ranges_on_a_flaky_line_never_runs_out_of_attempts(
