@@ -183,7 +183,7 @@ terminal from the Start menu, outside Claude desktop's package, `ONEFRAME_DATA` 
 - fp16 needs no compute capability: torch runs half precision on every card its builds support.
 - Depth Pro scales a connected camera to the photo; one of another shape is not this photo's.
 - The local session's fit (2026-11-06): the pixels term the steepest rise from 768 to 1536 px any
-  setting showed, then each figure the smallest covering every raw peak; one rule, so no figure is
+  setting showed, then each figure the smallest covering every peak; one rule, so no figure is
   picked to pass AC7 ([report](reports/2026-11-06-ac7.md)).
 - Depth Pro's system memory at fp32 on a card from its load code (the fp16 file and its fp32 cast
   at once), not measured: no figure from the 1070 can show it, and too low a figure runs out.

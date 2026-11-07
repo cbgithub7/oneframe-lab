@@ -5,7 +5,7 @@
     "The memory model: spec 005's local session on an NVIDIA GeForce GTX 1070 (compute 6.1, 8 GB), fitted with bench:fit on the 768 and 1536 px photos, with a term for the photo's size, and checked on the full one, beside its spike's weights (allocated memory, turned from MiB into MB). A first estimate every machine corrects (learned.json), never a choice made for that card.",
     "fp16 is upstream's autocast over fp32 weights: it shrinks no weights and, on the spike's card, took more working memory, so its bytes are measured, not halved, and the fit never picks it (it is not among the changes).",
     "fp16 on any card: torch runs half precision on every card its builds support; the spike ran it on compute 6.1 only.",
-    "Without its refinement: its refiner runs FlexGEMM's Triton kernels, for cards of compute 8.0 or newer, which no build installs yet (spec 005, requirement 4). The checkpoint's refiner tensors are left unread; with the refinement, this node's memory model is measured again on such a card.",
+    "Without its refinement: its refiner runs FlexGEMM's Triton kernels, for cards of compute 8.0 or newer, which no build installs yet (spec 005, requirement 4). The checkpoint's refiner tensors are read with the file, so they count in system memory, but never put in the network; with the refinement, this node's memory model is measured again on such a card.",
     "Licences: the code's from the README and LICENSE of microsoft/MoGe at 74fbce0, the runtime's pin. The weights' licence from the model's card on Hugging Face (links.weights) at the pinned revision, read by spec 005's local session on 2026-11-06."
   ],
   "id": "depth.moge3",

@@ -1,8 +1,9 @@
 """The machines spec 002's tests fit nodes on, as `hardware.profile()` dicts.
 
-They are written from the spec's list of machine profiles and the plan's test table, not recorded
-on real cards: they cover the range the app targets, from no GPU to an 80 GB card, so no test of a
-hardware decision rests on one card. MB are 10^6 bytes, as the profile reports them; a card's total
+They are written from the spec's list of machine profiles and the plan's test table (the 10 GB one
+added by spec 005, so its test reaches Depth Pro's fp16 branches), not recorded on real cards: they
+cover the range the app targets, from no GPU to an 80 GB card, so no test of a hardware decision
+rests on one card. MB are 10^6 bytes, as the profile reports them; a card's total
 is its MiB as nvidia-smi reports them (a 4096 MiB card is 4295 MB).
 
 Card names are for people only. `renamed()` gives every card another name, and a fit that changes
