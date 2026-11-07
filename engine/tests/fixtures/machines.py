@@ -55,6 +55,7 @@ MACHINES: dict[str, dict[str, Any]] = {
     "4 GB, compute 7.5, 8 GB": machine([card(0, "7.5", 4295, 3900)], 5000, 8590),
     "6 GB, compute 7.5": machine([card(0, "7.5", 6442, 6000)], 10000, 17180),
     "8 GB, compute 6.1, 1.5 GB held": machine([CARD_8GB_HELD], 10000, 17180),
+    "10 GB, compute 8.6": machine([card(0, "8.6", 10737, 10000)], 10000, 17180),
     "12 GB, compute 8.6": machine([card(0, "8.6", 12885, 12000)], 24000, 34360),
     "24 GB, compute 8.9": machine([CARD_24GB], 50000, 68719),
     "80 GB, compute 9.0": machine([card(0, "9.0", 85899, 84000)], 200000, 274878),
