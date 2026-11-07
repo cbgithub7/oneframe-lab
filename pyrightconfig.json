@@ -3,15 +3,13 @@
   "typeCheckingMode": "standard",
   "venvPath": "engine",
   "venv": ".venv",
-  "include": ["engine/src", "engine/tests", "nodes", "runtimes"],
+  "include": ["engine/src", "engine/tests"],
   "executionEnvironments": [
     { "root": "engine/src/oneframe/child.py", "pythonVersion": "3.11", "extraPaths": ["engine/src"] },
     { "root": "engine/src/oneframe/node", "pythonVersion": "3.11", "extraPaths": ["engine/src"] },
     { "root": "engine/tests/runtimes", "pythonVersion": "3.11" },
     { "root": "engine/tests/hardware", "pythonVersion": "3.11", "extraPaths": ["engine/src"] },
     { "root": "engine/tests", "extraPaths": ["engine/tests", "engine/src"] },
-    { "root": "engine/src" },
-    { "root": "nodes" },
-    { "root": "runtimes/torch", "pythonVersion": "3.14" }
+    { "root": "engine/src" }
   ]
 }

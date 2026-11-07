@@ -102,12 +102,16 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   the docs check (every link in the docs leads somewhere, every repo path they name exists outside
   specs and the dated reviews in `docs/reviews/`, and no spec being worked on is over 200 lines,
   or over the length the owner allowed it)
-- `npm run engine:check`: ruff, ruff format, pyright, pytest
+- `npm run engine:check`: ruff, ruff format, pyright, `runtime:check`, pytest
+- `npm run runtime:check [-- --every-runtime]`: each runtime's code, and its nodes', held to a
+  `ruff.toml` for its runtime's Python, and checked by pyright with that runtime's interpreter
+  where it is installed; with `--every-runtime`, one not installed is a failure (spec 005)
 - `npm run versions`: version policy
 - `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
   did (the numbers a hardware claim needs)
 - `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
-  its estimates beside the peaks measured
+  its estimates beside the peaks measured, the device's and the system's; with `--graph <file>`,
+  `<node>` is a step of that graph, fed its real inputs
 - `npm run bench:fit-check`: spec 002's hardware check on this machine's card, run from
   `engine/tests/fit_check.py` with the test node beside it
 - `npm run models:pin -- [--nodes <folder>] <node>`: resolve a node's file sources to commits, fetch
@@ -124,6 +128,10 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
   `engine/tests/collected.txt` at the merge base, and fails when the list in the checkout differs
   from the collection; `--write` rewrites it, so a change that adds or renames a test commits the
   list
+- `node scripts/tool.js engine/tests/models/run_on_cpu.py`: CI's `models (cpu)` check, once every
+  runtime and every node's files are in: each node that runs in a runtime, fed the 512 px photo,
+  ends `done` on the processor with every valid depth between 0 and 1,000 m (spec 005)
 - The tools that open a data root (`bench:runtime`, `bench:fit`, `bench:fit-check`, `diagnose`,
-  `models:*`) start through `scripts/tool.js`, which keeps uv's temporary files under that root
+  `models:*`, `runtime:check`, `run_on_cpu.py`) start through `scripts/tool.js`, which keeps uv's
+  temporary files under that root
 - `npm start`: the app (needs `npm run engine:sync` once)
