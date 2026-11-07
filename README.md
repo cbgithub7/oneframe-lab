@@ -24,9 +24,10 @@ that runs nodes in-process or in their own runtime), the runtime manager (spec 0
 node to the memory a machine has (spec 002), the model store's core (spec 003), checked against
 the real hosts, the Electron shell, and the checks. The clean-up the
 [review of 2026-10-12](docs/reviews/2026-10-12.md) asked for (specs 007 to 014) is done.
-No real model has run yet: the only nodes are a photo source and a depth-to-points
-converter. First light comes next: Depth Pro and MoGe-3 run from the page. Its spec, 005, is still
-to be drafted in [specs/](specs/README.md).
+The first model nodes (spec 005) are in: Depth Pro, MoGe-2 and MoGe-3 (without its refinement),
+each family in its own runtime, run by CI on the processor and checked on a GTX 1070. The page
+still only lists nodes. First light, running them from the page side by side, needs three more
+specs, 015 to 017, drafted in [specs/](specs/README.md).
 [docs/handoff.md](docs/handoff.md) has the state and what comes next.
 
 ## Layout
