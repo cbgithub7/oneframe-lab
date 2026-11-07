@@ -49,9 +49,10 @@ Green in CI on Windows and Ubuntu, each spec with its reports:
 Beside them: the engine's core (typed ports, manifests, graph planning with converters, the cache,
 the scheduler, the NDJSON server); an Electron 45 shell whose sandboxed page lists nodes through
 one door; two built-in nodes (`source.image`, `convert.depth_to_points`); one runtime, `torch`,
-with no model code. On spec 005's branch, until its PR lands: the first model nodes
-(`depth.depth_pro`, `depth.moge3`, `depth.moge2`) and their runtimes (`depth_pro`, `moge`). No
-editor or viewer yet.
+with no model code. Spec 005's first model nodes (`depth.depth_pro`, `depth.moge3`,
+`depth.moge2`) and their runtimes (`depth_pro`, `moge`), run with their real weights on the
+processor by CI's `models (cpu)` job; on a card, they wait on a local session. No editor or viewer
+yet.
 
 ## Next, in order
 
@@ -71,7 +72,7 @@ one PR for the owner to read.
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 2b | Clean-up: the review's sections 3 and 4 ([review](reviews/2026-10-12.md)), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 done ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)); 011 done ([PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44)); 012 done ([PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47)); 013 done ([PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49)); 014 done ([PR #51](https://github.com/cbgithub7/oneframe-lab/pull/51)); the clean-up is done |
-| 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog; "what fits here" answered by the engine. A local spike first, then four specs, worked in this order: [the first model nodes](../specs/005-first-models/spec.md), [graphs as data](../specs/015-graphs/spec.md), [photos and results through the door](../specs/016-door/spec.md), [the first page](../specs/017-first-page/spec.md) | spike, 005, 015, 016, 017 | drafted and reviewed 2026-11-04, every open question answered as recommended; the [spike](../specs/005-first-models/spike/README.md) passed on the GTX 1070 on 2026-11-03, every setting ([report](../specs/005-first-models/reports/2026-11-03-spike.md)); 005 approved 2026-11-05, every open question answered (the 1070 a bench, never the target; the owner's photo for CI and the bench); its tasks 1 to 8 and 10 done on the branch `claude/eloquent-archimedes-74uqi8` (not yet on `main`; PR #58 brought the spec), the three nodes run on a cloud processor with random weights ([report](../specs/005-first-models/reports/2026-11-05-cloud-cpu.md)); its PR open ([PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60)), CI's `models (cpu)` job its AC2 and AC3, and task 11 waiting on a local session; then 015 to 017 as one decision |
+| 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog; "what fits here" answered by the engine. A local spike first, then four specs, worked in this order: [the first model nodes](../specs/005-first-models/spec.md), [graphs as data](../specs/015-graphs/spec.md), [photos and results through the door](../specs/016-door/spec.md), [the first page](../specs/017-first-page/spec.md) | spike, 005, 015, 016, 017 | drafted and reviewed 2026-11-04, every open question answered as recommended; the [spike](../specs/005-first-models/spike/README.md) passed on the GTX 1070 on 2026-11-03, every setting ([report](../specs/005-first-models/reports/2026-11-03-spike.md)); 005 approved 2026-11-05, every open question answered (the 1070 a bench, never the target; the owner's photo for CI and the bench); its tasks 1 to 10 merged ([PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60)): AC1 to AC5 pass, AC2 and AC3 in CI's `models (cpu)` job with the real weights on Windows and Ubuntu ([run](https://github.com/cbgithub7/oneframe-lab/actions/runs/42309103039)); AC6 and AC7, task 11, waiting on a local session; then 015 to 017 as one decision |
 | 6 | Improve-loop spike, after first light: one view synthesiser and one reconstructor, and whether WSL is needed, on a card larger than the 1070, which cannot run the view synthesisers | spike | agreed 2026-10-12; moved after first light 2026-11-04; no rented GPU (the owner, 2026-11-05): waiting on an RTX 5080 the owner may reach later |
 | 3c | Graph model 2, before step 4: collections and "for each", runs up to a node and a slot per device, a structured param, the port contract in the cache key, scene facets and `Audio`, the vocabularies in `contracts/`, the source image's id ([review of 2026-11-04](reviews/2026-11-04.md), section 5) | new | agreed 2026-11-04; after first light |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
@@ -87,8 +88,8 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **Spec 005's AC6 and AC7** (its task 11), on the branch `claude/eloquent-archimedes-74uqi8`, in
-   a terminal from the Start menu, outside Claude desktop's package, with `ONEFRAME_DATA` a new
+1. **Spec 005's AC6 and AC7** (its task 11), on a new branch from `main` (PR #60 merged spec
+   005's branch), in a terminal from the Start menu, outside Claude desktop's package, with `ONEFRAME_DATA` a new
    folder: the spec's Verification, steps 2 to 5. `npm run bench:runtime -- depth_pro`, then
    `-- moge`; `npm run models:download -- depth.depth_pro`, `-- depth.moge3`, `-- depth.moge2`;
    the `bench:fit --graph` commands of step 4 on `specs/005-first-models/bench/photo-768.json` and
@@ -96,7 +97,8 @@ leaves this list in the PR that commits its report.
    commands on `photo-full.json`. Passing: both installs probe the build the plan picks (AC6), and
    on the full photo every peak, the card's and the system's, is at most its estimate (AC7). Also
    the licence on each MoGe weights' card (`links.weights`), into the manifests'
-   `licence.weights`. Reports: `specs/005-first-models/reports/`, committed to the branch.
+   `licence.weights`. Reports: `specs/005-first-models/reports/`, committed to that branch, whose
+   PR marks spec 005 done.
 
 The owner put spec 005's photo in on 2026-11-04 (its task 10).
 Before it, the last item passed on 2026-11-03 on the GTX 1070: spec 005's spike, all 13

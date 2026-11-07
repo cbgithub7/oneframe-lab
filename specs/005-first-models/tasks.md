@@ -71,8 +71,9 @@ adds, moves, renames or removes a test rewrites `engine/tests/collected.txt` wit
 - [x] 9. `/code-review` on the branch and fix what it finds; open the PR, checking AC1 to AC7 one by
   one, AC6 and AC7 pending hardware.
   *Done 2026-11-06: 13 findings, 11 fixed and 2 answered in the PR,
-  [PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60). Pick up here: CI's `models (cpu)`
-  job on the PR (AC2, AC3), then task 11 in a local session.*
+  [PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60). Its `models (cpu)` job passed AC2
+  and AC3 with the real weights on Windows and Ubuntu ([run](https://github.com/cbgithub7/oneframe-lab/actions/runs/42309103039)). Pick up here: task 11, in a
+  local session on a new branch from `main`, whose PR marks the spec done.*
 - [x] 10. **A local session: the photo** (Verification, step 1), committed to the branch. CI's
   `models (cpu)` job cannot pass without it.
 - [ ] 11. **A local session: AC6 and AC7** (Verification, steps 2 to 5), the figures fitted into the

@@ -49,21 +49,21 @@ there. `bench:fit` cannot measure a node that needs an image, and runtime code i
 
 ## Acceptance criteria
 
-- [ ] AC1: `test_the_model_nodes_fit_a_range_of_machines` (`test_model_nodes.py`): fitted on every
+- [x] AC1: `test_the_model_nodes_fit_a_range_of_machines` (`test_model_nodes.py`): fitted on every
   machine of `engine/tests/fixtures/machines.py` (no card; 2 to 80 GB at compute 5.2 to 9.0), Depth
   Pro runs at fp32 on each card its fp32 estimate fits, else on the processor, offering fp16 where
   fp16 fits; MoGe at its defaults on each card that holds them; renaming the cards changes nothing.
-- [ ] AC2: The CI job `models (cpu)`, on Windows and Ubuntu, installs every runtime's `cpu` build
+- [x] AC2: The CI job `models (cpu)`, on Windows and Ubuntu, installs every runtime's `cpu` build
   and the nodes' files (`npm run models:download`, cached by sha256), and runs
   `engine/tests/models/run_on_cpu.py`, which feeds the 512 px photo to every node of those runtimes:
   each run ends `done` (the scheduler checks every output against its port), and every valid depth
   lies above 0 and below 1,000 m. Fails today.
-- [ ] AC3: The same job runs `python -m oneframe.runtime_check`, and pyright finds no error in any
+- [x] AC3: The same job runs `python -m oneframe.runtime_check`, and pyright finds no error in any
   runtime's folder or nodes, each checked with its runtime's interpreter and Python.
-- [ ] AC4: `test_bench_fit_measures_a_node_in_a_graph` (`test_bench_fit.py`): in a test graph of an
+- [x] AC4: `test_bench_fit_measures_a_node_in_a_graph` (`test_bench_fit.py`): in a test graph of an
   image source and a node that needs an image, `--graph` measures the node at each `--set` group,
   never from the cache, the source run once, with each run's system estimate and peak. Fails today.
-- [ ] AC5: `test_runtime_code_is_checked_at_its_runtimes_python` (`test_runtime_check.py`): for test
+- [x] AC5: `test_runtime_code_is_checked_at_its_runtimes_python` (`test_runtime_check.py`): for test
   runtimes of two Pythons, their nodes and the engine's, `runtime_check` gives each its interpreter
   and Python, and names a folder whose `ruff.toml` is missing or for another Python. Fails today.
 - [ ] AC6 (hardware): `npm run bench:runtime -- depth_pro` and `-- moge` on the owner's PC
