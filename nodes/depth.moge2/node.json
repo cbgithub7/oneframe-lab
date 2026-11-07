@@ -5,7 +5,7 @@
     "The memory model: spec 005's spike on an NVIDIA GeForce GTX 1070 (compute 6.1, 8 GB) on a 2880 x 1920 photo, read from torch's allocated memory and turned from MiB into MB. A first estimate every machine corrects (learned.json), never a choice made for that card; spec 005's local session fits it again with bench:fit, with a term for the photo's size.",
     "fp16 is upstream's autocast over fp32 weights: it shrinks no weights and, on the spike's card, took more working memory, so its bytes are measured, not halved, and the fit never picks it (it is not among the changes).",
     "fp16 on any card: torch runs half precision on every card its builds support; the spike ran it on compute 6.1 only.",
-    "Licences: the code's from the README and LICENSE of microsoft/MoGe at 74fbce0, the runtime's pin. The weights' licence is on the model's card on Hugging Face (links.weights), which a cloud session cannot reach: a local session reads it and writes it here (spec 005)."
+    "Licences: the code's from the README and LICENSE of microsoft/MoGe at 74fbce0, the runtime's pin. The weights' licence from the model's card on Hugging Face (links.weights) at the pinned revision, read by spec 005's local session on 2026-11-06."
   ],
   "id": "depth.moge2",
   "version": "1",
@@ -139,7 +139,7 @@
   },
   "licence": {
     "code": "MIT (microsoft/MoGe), but for its copy of DINOv2's code, Apache-2.0",
-    "weights": "not read yet: on the model's card (links.weights)"
+    "weights": "MIT: the licence on the model's card (links.weights) at the pinned revision cb0e8bb, which has no other text and names facebook/dinov2-large (Apache-2.0) as its base model"
   },
   "links": {
     "repo": "https://github.com/microsoft/MoGe",
