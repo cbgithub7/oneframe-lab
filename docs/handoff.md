@@ -27,7 +27,7 @@ proposal": https://claude.ai/code/artifact/9df2417a-7122-415a-8b5d-f65daf5bc123
   earlier app, may be read for what it learned; nothing is ported or copied from it, and nothing
   here has to match it.
 
-## State (2026-10-30)
+## State (2026-11-06)
 
 Green in CI on Windows and Ubuntu, each spec with its reports:
 
@@ -44,12 +44,14 @@ Green in CI on Windows and Ubuntu, each spec with its reports:
 | [011](../specs/011-files/spec.md) | One file hash, one move into place and one free space, in `files.py`; runtime sources fetched by the model store's transport (https only, retried, resumed), which now reads GitHub's archives; every path from the layout, `cache/objects` included | CI on Windows and Ubuntu; [PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44) |
 | [012](../specs/012-modules/spec.md) | Memory and runtimes as packages whose roots hold only a docstring, so reading a manifest loads only the memory model, and planning neither the manager nor the install; one way to read a definition (`reading.py`), where a malformed one is a problem, never a crash; `parse` and the install in named steps | CI on Windows and Ubuntu; [PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47) |
 | [013](../specs/013-hard-coded/spec.md) | Nothing in the engine names a runtime, a node or the tests, which a test holds; spec 002's check on a card lives with its node as `npm run bench:fit-check`, and `bench:fit` needs a node; names outside v1 (devices `mps`, `xpu`, `rocm`; vendors `amd`, `intel`; OS `macos`) refused | CI on Windows and Ubuntu; [PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49); the check on a card on the GTX 1070 ([report](../specs/013-hard-coded/reports/2026-10-30-local.md)) |
+| [005](../specs/005-first-models/spec.md) | The first model nodes, `depth.depth_pro`, `depth.moge3` (no refinement) and `depth.moge2`, and their runtimes; memory models fitted on a card; `bench:fit --graph`; each runtime's code checked at its Python; CI's `models (cpu)` runs them with the real weights | AC2 and AC3 in CI; AC6 and AC7 on the GTX 1070 ([AC6](../specs/005-first-models/reports/2026-11-06-ac6.md), [AC7](../specs/005-first-models/reports/2026-11-06-ac7.md)); [PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60) |
 | [014](../specs/014-tests/spec.md) | Each test helper once, in `conftest.py` and `engine/tests/fixtures/`; every engine a test starts, in-process or as a process, ended by a fixture, its whole tree; every wait with a deadline that names what it waited for; wall-clock bounds only where they are evidence, marked; the data root's exceptions as `outside` in `contracts/layout.json`, which the footprint test reads, and the real profile checked deep in our programs' default folders | CI on Windows and Ubuntu; [PR #51](https://github.com/cbgithub7/oneframe-lab/pull/51) |
 
 Beside them: the engine's core (typed ports, manifests, graph planning with converters, the cache,
 the scheduler, the NDJSON server); an Electron 45 shell whose sandboxed page lists nodes through
 one door; two built-in nodes (`source.image`, `convert.depth_to_points`); one runtime, `torch`,
-with no model code. No model node, editor or viewer yet.
+with no model code; spec 005's first model nodes and their runtimes (`depth_pro`, `moge`). No
+editor or viewer yet.
 
 ## Next, in order
 
@@ -59,11 +61,19 @@ numbers the reviews use; steps 1 and 2 (specs 006 and 003) are done, and so is 2
 small fixes and process rules ([PR #24](https://github.com/cbgithub7/oneframe-lab/pull/24)), and 2b, the clean-up
 (specs 007 to 014). Step 3 is next.
 
+The [review of 2026-11-04](reviews/2026-11-04.md) changed the order with the owner (every decision
+as recommended): infrastructure and clean-up wait until first light passes on the 1070, but for
+what blocks it; a local spike comes before spec 005's approval; the Improve-loop spike follows first
+light; a "graph model 2" spec comes after first light and before step 4. Its rule changes (a light
+path for model nodes, approval only on substance, `AGENTS.md` trimmed, rules for the page) come as
+one PR for the owner to read.
+
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 2b | Clean-up: the review's sections 3 and 4 ([review](reviews/2026-10-12.md)), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 done ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)); 011 done ([PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44)); 012 done ([PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47)); 013 done ([PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49)); 014 done ([PR #51](https://github.com/cbgithub7/oneframe-lab/pull/51)); the clean-up is done |
-| 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog. Proposed for the owner with the spec: "what fits here" answered by the engine | 005 | next: its spec is to draft; it starts from the pins in `specs/003-model-store/live/` |
-| 6 | Improve-loop spike, beside step 3: one view synthesiser and one reconstructor, and whether WSL is needed, on a rented GPU (the 1070 cannot run the view synthesisers) | spike | agreed 2026-10-12; waiting on the owner to rent one |
+| 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog; "what fits here" answered by the engine. A local spike first, then four specs, worked in this order: [the first model nodes](../specs/005-first-models/spec.md), [graphs as data](../specs/015-graphs/spec.md), [photos and results through the door](../specs/016-door/spec.md), [the first page](../specs/017-first-page/spec.md) | spike, 005, 015, 016, 017 | drafted and reviewed 2026-11-04, every open question answered as recommended; the [spike](../specs/005-first-models/spike/README.md) passed on the GTX 1070 on 2026-11-03, every setting ([report](../specs/005-first-models/reports/2026-11-03-spike.md)); 005 approved 2026-11-05, every open question answered (the 1070 a bench, never the target; the owner's photo for CI and the bench); its tasks 1 to 10 merged ([PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60)): AC1 to AC5 pass, AC2 and AC3 in CI's `models (cpu)` job with the real weights on Windows and Ubuntu ([run](https://github.com/cbgithub7/oneframe-lab/actions/runs/42309103039)); AC6 and AC7, task 11, passed on the GTX 1070 on 2026-11-06, the figures fitted ([AC7 report](../specs/005-first-models/reports/2026-11-06-ac7.md)): 005 done; then 015 to 017 as one decision |
+| 6 | Improve-loop spike, after first light: one view synthesiser and one reconstructor, and whether WSL is needed, on a card larger than the 1070, which cannot run the view synthesisers | spike | agreed 2026-10-12; moved after first light 2026-11-04; no rented GPU (the owner, 2026-11-05): waiting on an RTX 5080 the owner may reach later |
+| 3c | Graph model 2, before step 4: collections and "for each", runs up to a node and a slot per device, a structured param, the port contract in the cache key, scene facets and `Audio`, the vocabularies in `contracts/`, the source image's id ([review of 2026-11-04](reviews/2026-11-04.md), section 5) | new | agreed 2026-11-04; after first light |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
 | 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times steps 3 and 4 measure | 004 | not started |
@@ -77,9 +87,14 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-Nothing is waiting. The last item passed on 2026-10-30 on the GTX 1070: spec 013's check on a
-card ([report](../specs/013-hard-coded/reports/2026-10-30-local.md)), run by Grok Bot outside
-Claude desktop's package. Before it, on 2026-10-25: spec 010's probes on a card
+Nothing is waiting. The last item passed on 2026-11-06 on the GTX 1070: spec 005's AC6 and AC7,
+both runtimes installed and every peak on the full photo at most its estimate
+([AC6](../specs/005-first-models/reports/2026-11-06-ac6.md),
+[AC7](../specs/005-first-models/reports/2026-11-06-ac7.md)), run by Grok Bot outside Claude
+desktop's package. Before it, the owner put spec 005's photo in on 2026-11-04 (its task 10); on
+2026-11-03, spec 005's spike passed, all 13 settings
+([report](../specs/005-first-models/reports/2026-11-03-spike.md)); on 2026-10-30: spec 013's check on a card
+([report](../specs/013-hard-coded/reports/2026-10-30-local.md)); on 2026-10-25: spec 010's probes on a card
 ([report](../specs/010-scheduler/reports/2026-10-25-local.md)) and the torch runtime's new lock
 ([report](../specs/001-runtime-manager/reports/2026-10-25-torch-lock-local.md)).
 
@@ -88,15 +103,25 @@ Claude desktop's package. Before it, on 2026-10-25: spec 010's probes on a card
 - **For first light (step 3):**
     - requests are answered on the engine's input loop, so a slow `runtimes.remove`, or
       `nodes.fit` waiting on nvidia-smi, holds up `run.stop` (review of 2026-10-02, 4.2);
-    - pyright on the first node that imports torch, and a CI job with real torch on the processor
-      (review of 2026-10-02, 4.11); CI does not start the app either;
+    - CI does not start the app (review of 2026-10-02, 4.11; its other half, pyright on the nodes
+      that import torch and a CI job with real torch on the processor, is spec 005's
+      `runtime:check` and `models (cpu)`);
     - `models.*` and `nodes.fit` are not on the page's method list.
-- **MoGe-3 may not run on older cards, or on Windows.** Its code imports FlexGEMM, built on
-  Triton, which supports NVIDIA cards from compute 8.0 and publishes Linux wheels only; FlexGEMM
-  runs only in MoGe-3's optional refinement, and the `moge` package requires it for every version.
-  Whether MoGe-3, or MoGe-2 through that package, installs and runs on an older card or on Windows
-  is unverified, and spec 005's to check. If MoGe-3 does not run on the 1070, step 3 uses MoGe-2
-  there (the owner, 2026-10-11).
+- **MoGe-3's refinement needs a newer card.** Its code imports FlexGEMM, built on Triton, which
+  supports NVIDIA cards from compute 8.0 and publishes Linux wheels only; FlexGEMM runs only in
+  MoGe-3's optional refinement, and the `moge` package requires it for every version. Spec 005's
+  spike ran MoGe-3 without it (a stand-in for `flex_gemm`, `refine_steps=0`), and MoGe-2 from the
+  same code, on the 1070 on Windows
+  ([report](../specs/005-first-models/reports/2026-11-03-spike.md)). Spec 005's `depth.moge3`
+  ships so, its refiner left unbuilt and every output's meta saying `refine_steps: 0`. The
+  refinement itself is unverified until a card of compute 8.0 or newer reports.
+- **Spec 005's fit on the card left two findings** ([AC7 report](../specs/005-first-models/reports/2026-11-06-ac7.md),
+  findings 1 and 3): MoGe's peak is the larger of a part that grows with the level and one that
+  grows with the photo, which a memory model's sum of terms over-estimates (at 7.2 MP, peaks of 79
+  to 80 % of the estimates at levels 5 and 9); and `bench:fit` gives every report of one node on
+  one day the same name, and names no card in it. Also, from its checks: a race in
+  `test_model_transport.py`'s wait for the stall (line 337 stats a partial that may not exist yet),
+  which failed once on Windows.
 - **A runtime install started from inside Claude desktop fails on the owner's PC** (2026-10-25):
   four times uv stopped with os error 32 on a folder it had just emptied, with uv 0.13.5 and
   0.12.20 and either lock, while the same installs from outside the package passed

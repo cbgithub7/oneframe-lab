@@ -1,0 +1,86 @@
+{
+  "_sources": [
+    "Ports, the one param and the code: spec 005 (specs/005-first-models/spec.md).",
+    "The weights' file: pinned by spec 003's live run (specs/003-model-store/live/live.depth_pro), which spec 005's spike loaded on the owner's PC.",
+    "The memory model: spec 005's local session on an NVIDIA GeForce GTX 1070 (compute 6.1, 8 GB), fitted with bench:fit on the 768 and 1536 px photos and checked on the full one, beside its spike's weights and fp32 figures (allocated memory, turned from MiB into MB). A first estimate every machine corrects (learned.json), never a choice made for that card.",
+    "fp16 on any card: torch runs half precision on every card its builds support; the spike ran it on compute 6.1 only.",
+    "Licences: from the README and LICENSE of apple/ml-depth-pro at 9e65e4d, the runtime's pin."
+  ],
+  "id": "depth.depth_pro",
+  "version": "1",
+  "title": "Depth Pro",
+  "category": "depth",
+  "summary": "Apple's Depth Pro: sharp metric depth and the focal length from one photo, at a fixed 1536 px. Uses a known camera's focal length when one is connected.",
+  "inputs": {
+    "image": "Image",
+    "camera": {
+      "type": "Camera[model=pinhole]",
+      "optional": true,
+      "doc": "Known intrinsics: its focal length is used instead of the estimate, and it is the camera handed on."
+    }
+  },
+  "outputs": {
+    "depth": {
+      "type": "Depth[kind=metric, measure=z]",
+      "trust": "predicted",
+      "doc": "Metres along the camera's axis, at the photo's size."
+    },
+    "camera": {
+      "type": "Camera[model=pinhole]",
+      "trust": "predicted",
+      "doc": "The camera the depth was made with: its own focal estimate (source estimated), or the connected one's, at the photo's size."
+    }
+  },
+  "params": {},
+  "run": { "where": "runtime", "runtime": "depth_pro", "entry": "node.py:run", "load": "node.py:load" },
+  "devices": ["cuda", "cpu"],
+  "files": [
+    {
+      "name": "weights",
+      "url": "https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt",
+      "size": 1904446787,
+      "sha256": "3eb35ca68168ad3d14cb150f8947a4edf85589941661fdb2686259c80685c0ce",
+      "format": "pickle"
+    }
+  ],
+  "memory": {
+    "precisions": {
+      "fp32": { "cuda_min_capability": null, "cpu": true },
+      "fp16": { "cuda_min_capability": null, "cpu": false }
+    },
+    "weights": {
+      "fp32": 3813,
+      "fp16": 1915,
+      "source": "specs/005-first-models/reports/2026-11-03-spike.md: on the card once loaded, 3,636 and 1,826 MiB, on a GTX 1070 (compute 6.1)"
+    },
+    "working": {
+      "mb": 3166,
+      "terms": [
+        { "coef": 561.6, "of": ["bytes"] },
+        { "coef": 0.00000755, "of": ["image.pixels"] }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-06-ac7.md: bench:fit's peaks less the weights on a GTX 1070 (compute 6.1), on the 768 and 1536 px photos: at fp16 on the card, torch's reserve, 6,206 and 6,178 MB (4,289 MB working, the larger); at fp32 on a card, the spike's 5,161 MiB (specs/005-first-models/reports/2026-11-03-spike.md, allocated memory) until a card that holds it reports, which also covers the processor's 8,836 and 8,842 MB. A line through the two precisions; the pixels term is the steepest rise from 768 to 1536 px any setting showed (the processor's). The network runs at 1536 px whatever the photo's size"
+    },
+    "system_mb": {
+      "mb": 2657,
+      "terms": [
+        { "coef": 0.5, "of": ["bytes", "weights"] },
+        { "coef": -1, "of": ["weights"] }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-06-ac7.md: at fp16 on a GTX 1070 (compute 6.1), the process's peak, 2,657 MB on both photos, when the weights' file (fp16) is read and cast to fp16, which copies nothing. At fp32 on a card, not measured (it does not fit this one): the load holds the file and its fp32 cast at once (node.py), so the terms add the cast, the fp32 weights, and nothing at fp16"
+    },
+    "changes": [{ "set": { "precision": "fp16" }, "costs": "quality" }],
+    "time": {
+      "cpu": {
+        "seconds": 135,
+        "at": { "precision": "fp32" },
+        "source": "specs/005-first-models/reports/2026-11-03-spike.md: import, load and first inference (7, 28 and 100 s) on an Intel Core i7-4770K, 4 cores"
+      }
+    }
+  },
+  "licence": {
+    "code": "Apple's sample-code licence (apple/ml-depth-pro, LICENSE)",
+    "weights": "Apple's sample-code licence, the code's: its README releases the weights under the same LICENSE (Hugging Face's copy of them says apple-amlr)"
+  },
+  "links": { "repo": "https://github.com/apple/ml-depth-pro" }
+}

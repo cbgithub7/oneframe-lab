@@ -1,8 +1,9 @@
 """The machines spec 002's tests fit nodes on, as `hardware.profile()` dicts.
 
-They are written from the spec's list of machine profiles and the plan's test table, not recorded
-on real cards: they cover the range the app targets, from no GPU to an 80 GB card, so no test of a
-hardware decision rests on one card. MB are 10^6 bytes, as the profile reports them; a card's total
+They are written from the spec's list of machine profiles and the plan's test table (the 10 GB one
+added by spec 005, so its test reaches Depth Pro's fp16 branches), not recorded on real cards: they
+cover the range the app targets, from no GPU to an 80 GB card, so no test of a hardware decision
+rests on one card. MB are 10^6 bytes, as the profile reports them; a card's total
 is its MiB as nvidia-smi reports them (a 4096 MiB card is 4295 MB).
 
 Card names are for people only. `renamed()` gives every card another name, and a fit that changes
@@ -55,6 +56,7 @@ MACHINES: dict[str, dict[str, Any]] = {
     "4 GB, compute 7.5, 8 GB": machine([card(0, "7.5", 4295, 3900)], 5000, 8590),
     "6 GB, compute 7.5": machine([card(0, "7.5", 6442, 6000)], 10000, 17180),
     "8 GB, compute 6.1, 1.5 GB held": machine([CARD_8GB_HELD], 10000, 17180),
+    "10 GB, compute 8.6": machine([card(0, "8.6", 10737, 10000)], 10000, 17180),
     "12 GB, compute 8.6": machine([card(0, "8.6", 12885, 12000)], 24000, 34360),
     "24 GB, compute 8.9": machine([CARD_24GB], 50000, 68719),
     "80 GB, compute 9.0": machine([card(0, "9.0", 85899, 84000)], 200000, 274878),

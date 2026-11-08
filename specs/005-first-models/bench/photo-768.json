@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "title": "Spec 005's bench: the 768 px photo into each model node",
+  "nodes": {
+    "photo": {
+      "node": "source.image",
+      "params": {
+        "path": "engine/tests/models/photo-768.jpg"
+      }
+    },
+    "depth_pro": {
+      "node": "depth.depth_pro"
+    },
+    "moge3": {
+      "node": "depth.moge3"
+    },
+    "moge2": {
+      "node": "depth.moge2"
+    }
+  },
+  "edges": [
+    {
+      "from": "photo.image",
+      "to": "depth_pro.image"
+    },
+    {
+      "from": "photo.image",
+      "to": "moge3.image"
+    },
+    {
+      "from": "photo.image",
+      "to": "moge2.image"
+    }
+  ]
+}

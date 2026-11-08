@@ -195,12 +195,15 @@ async function nodeRow() {
   return { area: "tool", name: "Node (LTS)", pinned, latest: lts.version.replace(/^v/, ""), released: lts.date };
 }
 
-/** Every `uses: owner/repo@<sha> # vX.Y.Z` in the workflows, against the repo's newest tag. */
+/**
+ * Every `uses: owner/repo@<sha> # vX.Y.Z` in the workflows, against the repo's newest tag; an action
+ * in a folder of its repository (`owner/repo/path@<sha>`) is held to its repository's tags.
+ */
 function actionRows() {
   const rows = [];
   const seen = new Set();
   for (const { file, text } of workflows()) {
-    for (const m of text.matchAll(/uses:\s*([\w.-]+\/[\w.-]+)@(\S+)(?:\s*#\s*(v[\d.]+))?/g)) {
+    for (const m of text.matchAll(/uses:\s*([\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@(\S+)(?:\s*#\s*(v[\d.]+))?/g)) {
       const [, repo, ref, comment] = m;
       if (seen.has(repo)) continue;
       seen.add(repo);

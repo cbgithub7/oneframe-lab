@@ -1,0 +1,4 @@
+# Code here runs in the depth_pro runtime's Python, not the engine's: lint and format it for that one.
+# oneframe.runtime_check holds this file to runtime.json's "python" (spec 005).
+extend = "../../ruff.toml"
+target-version = "py314"

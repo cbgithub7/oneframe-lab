@@ -1,0 +1,55 @@
+# Microsoft's MoGe, MoGe-2 and MoGe-3 from one upstream. Its code is not on PyPI, so it comes from
+# GitHub at a full commit, as a pinned source in runtime.json, with utils3d_moge, its git
+# dependency, beside it; this file lists what that code imports for inference (spec 005). Upstream's
+# own package requires FlexGEMM (Triton kernels for MoGe-3's refinement only, a stand-in here) and
+# gradio (its demo), and pins torch to its own index: none of the three is here.
+# Lock with `uv lock --project runtimes/moge` (needs download.pytorch.org and pypi.org).
+[project]
+name = "oneframe-runtime-moge"
+version = "1"
+description = "Oneframe Lab runtime: Microsoft's MoGe (MoGe-2 and MoGe-3)."
+requires-python = "==3.14.*"
+dependencies = [
+  "numpy==2.5.4", "scipy==1.18.1", "opencv-python-headless==5.0.0.93", "pillow==13.0.0", "huggingface-hub==2.4.0",
+]
+
+[project.optional-dependencies]
+cu130 = ["torch==2.14.0", "torchvision==0.29.1"]
+cu126 = ["torch==2.14.0", "torchvision==0.29.1"]
+cpu = ["torch==2.14.0", "torchvision==0.29.1"]
+
+[tool.uv]
+package = false
+conflicts = [[{ extra = "cu130" }, { extra = "cu126" }, { extra = "cpu" }]]
+# The app runs on Windows; Linux is CI's second system.
+environments = [
+  "sys_platform == 'win32' and platform_machine == 'AMD64'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", extra = "cu130" },
+  { index = "pytorch-cu126", extra = "cu126" },
+  { index = "pytorch-cpu", extra = "cpu" },
+]
+torchvision = [
+  { index = "pytorch-cu130", extra = "cu130" },
+  { index = "pytorch-cu126", extra = "cu126" },
+  { index = "pytorch-cpu", extra = "cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

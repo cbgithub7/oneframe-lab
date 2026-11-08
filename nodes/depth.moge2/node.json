@@ -1,0 +1,154 @@
+{
+  "_sources": [
+    "Ports, params and code: spec 005 (specs/005-first-models/spec.md).",
+    "The weights' file: pinned by spec 003's live run (specs/003-model-store/live/live.moge2), which spec 005's spike loaded on the owner's PC.",
+    "The memory model: spec 005's local session on an NVIDIA GeForce GTX 1070 (compute 6.1, 8 GB), fitted with bench:fit on the 768 and 1536 px photos, with a term for the photo's size, and checked on the full one, beside its spike's weights (allocated memory, turned from MiB into MB). A first estimate every machine corrects (learned.json), never a choice made for that card.",
+    "fp16 is upstream's autocast over fp32 weights: it shrinks no weights and, on the spike's card, took more working memory, so its bytes are measured, not halved, and the fit never picks it (it is not among the changes).",
+    "fp16 on any card: torch runs half precision on every card its builds support; the spike ran it on compute 6.1 only.",
+    "Licences: the code's from the README and LICENSE of microsoft/MoGe at 74fbce0, the runtime's pin. The weights' licence from the model's card on Hugging Face (links.weights) at the pinned revision, read by spec 005's local session on 2026-11-06."
+  ],
+  "id": "depth.moge2",
+  "version": "1",
+  "title": "MoGe-2 (ViT-L)",
+  "category": "depth",
+  "summary": "Microsoft's MoGe-2, ViT-L with normals: a metric point map, its depth, the valid pixels, the camera and normals from one photo.",
+  "inputs": {
+    "image": "Image"
+  },
+  "outputs": {
+    "points": {
+      "type": "PointMap[frame=camera, scale=metric]",
+      "trust": "predicted",
+      "doc": "Metres, in the camera's OpenCV axes, at the photo's size."
+    },
+    "depth": {
+      "type": "Depth[kind=metric, measure=z]",
+      "trust": "predicted",
+      "doc": "Metres along the camera's axis; the points' z."
+    },
+    "mask": {
+      "type": "Mask[kind=binary, marks=valid]",
+      "trust": "predicted",
+      "doc": "The pixels with a point: the sky and anything else the model masks are not."
+    },
+    "camera": {
+      "type": "Camera[model=pinhole, source=estimated]",
+      "trust": "predicted",
+      "doc": "The camera the points were made with, in pixels."
+    },
+    "normals": {
+      "type": "Normals[frame=camera_opencv]",
+      "trust": "predicted",
+      "doc": "Unit normals in the camera's OpenCV axes; zero where masked."
+    }
+  },
+  "params": {
+    "resolution_level": {
+      "type": "int",
+      "default": 9,
+      "min": 0,
+      "max": 9,
+      "label": "Resolution level",
+      "doc": "How many tokens the network sees, from 0 (fewest: faster, less memory, coarser) to 9 (upstream's default)."
+    }
+  },
+  "run": {
+    "where": "runtime",
+    "runtime": "moge",
+    "entry": "node.py:run",
+    "load": "node.py:load"
+  },
+  "devices": [
+    "cuda",
+    "cpu"
+  ],
+  "files": [
+    {
+      "name": "weights",
+      "hf": "Ruicheng/moge-2-vitl-normal",
+      "revision": "cb0e8bbd6b1e243589717c78e750b1ba4c093acf",
+      "path": "model.pt",
+      "gated": false,
+      "size": 1323815904,
+      "sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01",
+      "format": "pickle"
+    }
+  ],
+  "memory": {
+    "precisions": {
+      "fp32": {
+        "cuda_min_capability": null,
+        "cpu": true
+      },
+      "fp16": {
+        "cuda_min_capability": null,
+        "cpu": false,
+        "bytes": 4.72
+      }
+    },
+    "weights": {
+      "fp32": 1392,
+      "fp16": 1392,
+      "source": "specs/005-first-models/reports/2026-11-03-spike.md: on the card once loaded, 1,327 MiB at both precisions, on a GTX 1070 (compute 6.1)"
+    },
+    "working": {
+      "mb": 0,
+      "terms": [
+        {
+          "coef": 104.07,
+          "of": [
+            "bytes"
+          ]
+        },
+        {
+          "coef": 27.05,
+          "of": [
+            "bytes",
+            "resolution_level"
+          ]
+        },
+        {
+          "coef": 0.0001232,
+          "of": [
+            "image.pixels"
+          ]
+        }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-06-ac7.md: torch's reserved peak less the weights on a GTX 1070 (compute 6.1), on the 768 and 1536 px photos, at fp32 and levels 0, 5 and 9 and at fp16 and level 9 (MoGe-3's peaks the same): the pixels term the steepest rise from 768 to 1536 px any setting showed (level 9's, 123 MB a megapixel), then the smallest line in the level, and fp16's bytes, that cover every peak"
+    },
+    "system_mb": {
+      "mb": 551,
+      "terms": [
+        {
+          "coef": 2,
+          "of": [
+            "weights"
+          ]
+        }
+      ],
+      "source": "specs/005-first-models/reports/2026-11-06-ac7.md: the checkpoint read beside the network upstream builds, twice the weights, and the process: 3,335 MB at most at every setting on both photos, on a GTX 1070 (compute 6.1). On a cloud session's processor, with random weights, it peaked at 2,957 MB at level 0 (specs/005-first-models/reports/2026-11-05-cloud-cpu.md)"
+    },
+    "changes": [
+      {
+        "set": {
+          "resolution_level": 5
+        },
+        "costs": "quality"
+      },
+      {
+        "set": {
+          "resolution_level": 0
+        },
+        "costs": "quality"
+      }
+    ]
+  },
+  "licence": {
+    "code": "MIT (microsoft/MoGe), but for its copy of DINOv2's code, Apache-2.0",
+    "weights": "MIT: the licence on the model's card (links.weights) at the pinned revision cb0e8bb, which has no other text and names facebook/dinov2-large (Apache-2.0) as its base model"
+  },
+  "links": {
+    "repo": "https://github.com/microsoft/MoGe",
+    "weights": "https://huggingface.co/Ruicheng/moge-2-vitl-normal"
+  }
+}
