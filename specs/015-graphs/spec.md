@@ -3,11 +3,11 @@
 Status: draft
 Owner approval: (date, once approved)
 
-The second of four specs for step 3, first light, which is too large for one: [005](../005-first-models/spec.md)
-(the first model nodes), this one, [016](../016-door/spec.md) (photos and results through the door)
-and [017](../017-first-page/spec.md) (the page). From the [review of 2026-10-12](../../docs/reviews/2026-10-12.md),
+The second of five specs for step 3, first light, which is too large for one: [005](../005-first-models/spec.md)
+(the first model nodes), this one, [016](../016-door/spec.md) (photos and results through the door),
+[018](../018-protocol/spec.md) (the protocol, declared) and [017](../017-first-page/spec.md) (the page). From the [review of 2026-10-12](../../docs/reviews/2026-10-12.md),
 section 2 ("there is no home for a pipeline") and section 5, item 5; and the [roadmap](../../docs/roadmap.md)'s
-wiring aids, layer 1. It lands after 005, whose nodes the graph it ships names; 016 and 017 need it.
+wiring aids, layer 1. It lands after 005, whose nodes the graph it ships names; 016, 018 and 017 need it.
 
 ## Problem
 
