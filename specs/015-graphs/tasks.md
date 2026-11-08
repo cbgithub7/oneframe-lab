@@ -13,7 +13,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   check, `reading.check_id` and the store's device names moved into `reading`; the reason
   `graph`/`newer_format`; a `graphs` path in `layout.py`, `paths.js` and `contracts/layout.json`.
   AC2, AC3.
-- [ ] 4. **On the protocol.** `graphs.list`, `graphs.get`, `graphs.save`, `graphs.remove` and
+- [x] 4. **On the protocol.** `graphs.list`, `graphs.get`, `graphs.save`, `graphs.remove` and
   `graph.fits` on the server; `--graphs` names the shipped folders, the repo's `graphs/` by
   default. AC5.
 - [ ] 5. **The graph that ships.** `graphs/first-light.json`: the photo, Depth Pro to points, MoGe-3

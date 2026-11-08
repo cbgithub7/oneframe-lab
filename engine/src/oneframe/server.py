@@ -11,6 +11,10 @@ way in is this process's own stdin, which only the app holds.
 Only one graph runs at a time: they share one GPU, and a second run would only fight the first for
 memory. A run asked for while another is going is refused with the running one's id.
 
+Graphs are kept as files (graphs.py): the shipped ones in the folders `--graphs` names, the
+person's under the data root. `graph.fits` answers what a port could connect to, by the rule
+`plan()` follows.
+
 Runtimes (the environments heavy nodes run in) are listed, planned, installed and removed here too.
 An install answers at once and reports itself as runtime.* events; one runs at a time, and a
 runtime the running graph uses is neither installed over nor removed.
@@ -31,10 +35,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
+from oneframe import BUILTIN_GRAPHS_DIR, BUILTIN_NODES_DIR, __version__, graphs, hardware, ports
 from oneframe.cache import Cache
 from oneframe.errors import Failure, failure
-from oneframe.graph import Graph, Step, plan, step_params
+from oneframe.graph import Graph, Step, fits, plan, step_params
 from oneframe.journal import engine_crash
 from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory.learned import LearnedStore
@@ -76,9 +80,11 @@ class Engine:
         scratch: Scratch | None = None,
         warnings: list[str] | None = None,
         transfer: dict[str, Any] | None = None,
+        graph_roots: list[Path] | None = None,
     ):
         """`warnings`: the root's, when the caller has already claimed it (layout.open_root).
-        `transfer`: options for each download (a test's TLS context, policy or proxy)."""
+        `transfer`: options for each download (a test's TLS context, policy or proxy).
+        `graph_roots`: the folders of graphs that ship (default: the repo's graphs/)."""
         self.data = data
         self.layout = Layout(data)
         # Before anything is written under the root: a newer layout stops the engine here.
@@ -86,6 +92,7 @@ class Engine:
         # This process's own folder under cache/tmp/; the start sweeps only dead processes' folders.
         self.scratch = scratch or Scratch.claim(self.layout)
         self.node_roots = node_roots
+        self.graph_roots = graph_roots if graph_roots is not None else [BUILTIN_GRAPHS_DIR]
         self.say = say
         self.registry: Registry = discover(node_roots)
         self.cache = Cache(self.layout.objects, self.scratch.folder / "runs")
@@ -119,7 +126,12 @@ class Engine:
             "nodes.forget": self.nodes_forget,
             "ports.list": self.ports_list,
             "graph.validate": self.graph_validate,
+            "graph.fits": self.graph_fits,
             "graph.run": self.graph_run,
+            "graphs.list": self.graphs_list,
+            "graphs.get": self.graphs_get,
+            "graphs.save": self.graphs_save,
+            "graphs.remove": self.graphs_remove,
             "run.stop": self.run_stop,
             "runtimes.list": self.runtimes_list,
             "runtimes.plan": self.runtimes_plan,
@@ -195,6 +207,37 @@ class Engine:
     def graph_validate(self, params: dict[str, Any]) -> dict[str, Any]:
         the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry)
         return {"order": the_plan.order, "notes": the_plan.notes}
+
+    def graph_fits(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{graph, port}`: what `port` (`step.port`) could connect to, in the graph and by adding a
+        node, each with how (graph.fits)."""
+        graph = Graph.from_json(_required(params, "graph"))
+        return fits(graph, str(_required(params, "port")), self.registry)
+
+    def _graphs(self) -> graphs.Listing:
+        return graphs.discover(self.graph_roots, self.layout.graphs)
+
+    def graphs_list(self, _params: dict[str, Any]) -> dict[str, Any]:
+        """Every graph that ships and every one the person saved, by name, and each broken file."""
+        return self._graphs().to_json()
+
+    def graphs_get(self, params: dict[str, Any]) -> dict[str, Any]:
+        found = self._graphs().get(str(_required(params, "name")))
+        return {**found.summary(), "graph": found.graph.to_json()}
+
+    def graphs_save(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{name, graph}`: the person's graph, written under the data root; a shipped one of that
+        name is left as it is, and shadowed."""
+        graphs.save(self.layout.graphs, _required(params, "name"), _required(params, "graph"))
+        return self._graphs().get(str(params["name"])).summary()
+
+    def graphs_remove(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{name}`: the person's own graph, deleted because they asked for it by name. A shipped
+        one of that name is then the one listed (`now`)."""
+        name = _required(params, "name")
+        graphs.remove(self.layout.graphs, name)
+        now = self._graphs().graphs.get(str(name))
+        return {"name": name, "removed": True, "now": now.summary() if now is not None else None}
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
         graph = Graph.from_json(_required(params, "graph"))
@@ -371,6 +414,13 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
         help="a folder of nodes; repeat for more (default: the built-in nodes)",
     )
     parser.add_argument(
+        "--graphs",
+        type=Path,
+        action="append",
+        default=None,
+        help="a folder of graphs that ship; repeat for more (default: the repo's graphs/)",
+    )
+    parser.add_argument(
         "--runtimes",
         type=Path,
         action="append",
@@ -419,6 +469,7 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
             scratch=scratch,
             warnings=warnings,
             transfer=transfer,
+            graph_roots=args.graphs,
         )
     except RootRefused as exc:
         say({"event": "engine.failed", **exc.to_json()})
