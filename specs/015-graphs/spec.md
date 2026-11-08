@@ -135,6 +135,8 @@ Every criterion is a test in `npm run engine:check`, in CI on Windows and Ubuntu
 - One `connect` for `plan()` and `fits()`, under "one way to do each thing".
 - `depends` for an open facet, until manifests can say which setting decides it (roadmap).
 - A saved graph holds no path: a `file` param holds what 016's import gives, a content hash.
+- A shipped graph leaves its photo unset, for the person to pick; AC6 gives each `file` param it
+  leaves empty a test file before planning, and holds that none is set.
 
 ## Out of scope
 

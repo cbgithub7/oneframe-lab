@@ -16,7 +16,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 4. **On the protocol.** `graphs.list`, `graphs.get`, `graphs.save`, `graphs.remove` and
   `graph.fits` on the server; `--graphs` names the shipped folders, the repo's `graphs/` by
   default. AC5.
-- [ ] 5. **The graph that ships.** `graphs/first-light.json`: the photo, Depth Pro to points, MoGe-3
+- [x] 5. **The graph that ships.** `graphs/first-light.json`: the photo, Depth Pro to points, MoGe-3
   beside it. AC6.
 - [ ] 6. **A failure stops only what depends on it.** The scheduler goes on past a failed step;
   `node.skipped` for each step that waited on it; `run.failed` lists the failed and the skipped.
