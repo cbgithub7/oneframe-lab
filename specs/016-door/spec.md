@@ -1,7 +1,7 @@
 # 016: Photos and results through the door
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved (2026-11-08)
+Owner approval: 2026-11-08, with 015, 018 and 017 as one decision; every open question answered as recommended (2026-11-04)
 
 The third of five specs for step 3, first light: [005](../005-first-models/spec.md),
 [015](../015-graphs/spec.md), this one, [018](../018-protocol/spec.md) and

@@ -1,7 +1,7 @@
 # 018: The protocol, declared
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved (2026-11-08)
+Owner approval: 2026-11-08, with 015, 016 and 017 as one decision; no open questions
 
 The fourth of five specs for step 3, first light: [005](../005-first-models/spec.md) (the model
 nodes), [015](../015-graphs/spec.md) (graphs as data), [016](../016-door/spec.md) (photos and

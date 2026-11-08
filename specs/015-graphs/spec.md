@@ -1,7 +1,7 @@
 # 015: Graphs as data, and what fits here
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved (2026-11-08)
+Owner approval: 2026-11-08, with 016, 018 and 017 as one decision; every open question answered as recommended (2026-11-04)
 
 The second of five specs for step 3, first light, which is too large for one: [005](../005-first-models/spec.md)
 (the first model nodes), this one, [016](../016-door/spec.md) (photos and results through the door),

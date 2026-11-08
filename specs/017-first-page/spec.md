@@ -1,7 +1,7 @@
 # 017: The first page: a graph to change, and two results side by side
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved (2026-11-08)
+Owner approval: 2026-11-08, with 015, 016 and 018 as one decision; every open question answered as recommended (2026-11-04), and esbuild now rather than at step 7 (Decisions taken)
 
 The last of five specs for step 3, first light: [005](../005-first-models/spec.md) (the model
 nodes), [015](../015-graphs/spec.md) (graphs as data, what fits here), [016](../016-door/spec.md)
