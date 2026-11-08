@@ -9,7 +9,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `direct`, `via`, `depends` or `no`; the plan lists the edges it accepts pending a value's facets;
   `fits()` answers every opposite port of the graph and of the registry, an input already fed and
   an edge that closes a cycle included. AC4.
-- [ ] 3. **Graphs as files.** `oneframe/graphs.py`: `discover`, `get`, `save`, `remove`; one name
+- [x] 3. **Graphs as files.** `oneframe/graphs.py`: `discover`, `get`, `save`, `remove`; one name
   check, `reading.check_id` and the store's device names moved into `reading`; the reason
   `graph`/`newer_format`; a `graphs` path in `layout.py`, `paths.js` and `contracts/layout.json`.
   AC2, AC3.

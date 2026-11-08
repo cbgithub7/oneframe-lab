@@ -17,6 +17,8 @@ from typing import Any, Protocol, TypeIs
 
 ID = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 VERSION = re.compile(r"^\d+(?:\.\d+)*$")
+# Names Windows keeps for devices, with any extension: CON, NUL.txt, COM1, LPT9.bin, ...
+_DEVICE = re.compile(r"^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$", re.IGNORECASE)
 
 
 class ProblemsError(ValueError):
@@ -62,6 +64,11 @@ def check_id(value: str, problems: list[str]) -> str:
         problems.append(f"id {value!r} should be lower case words joined by . _ or -")
         return ""
     return value
+
+
+def device_name(name: str) -> bool:
+    """Whether Windows keeps `name`, a file's or folder's, for a device, so no file can have it."""
+    return bool(_DEVICE.match(name))
 
 
 def number(value: Any) -> TypeIs[int | float]:

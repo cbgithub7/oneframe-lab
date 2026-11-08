@@ -250,6 +250,11 @@ class Layout:
         return self.root / "logs" / "locks"
 
     @property
+    def graphs(self) -> Path:
+        """`<name>.json` per graph the person saved: their own work, which only they remove."""
+        return self.root / "graphs"
+
+    @property
     def reports(self) -> Path:
         """Bench reports and diagnostics, written for a person to read or hand over."""
         return self.root / "reports"

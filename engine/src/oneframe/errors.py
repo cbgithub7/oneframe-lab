@@ -115,7 +115,10 @@ KINDS: dict[str, Kind] = {
     ),
     "graph": Kind(
         "The graph cannot run; `problems` says why.",
-        reasons={"busy": (True, "Another run is going; runs go one at a time.")},
+        reasons={
+            "busy": (True, "Another run is going; runs go one at a time."),
+            "newer_format": (False, "A newer version of the app saved it; it is left as it is."),
+        },
     ),
     "root": Kind(
         "The engine cannot use this data root; nothing under it was changed.",
