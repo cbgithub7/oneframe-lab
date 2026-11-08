@@ -177,6 +177,64 @@ def test_failures_are_classified_and_leave_nothing_cached(
     assert not list((tmp_path / "cache" / "tmp").glob("*")), "nor its working folder"
 
 
+@pytest.mark.usefixtures("basic_nodes")
+def test_a_failure_stops_only_what_depends_on_it(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Two branches from one photo: one fails, so the step after it never starts, and the other
+    runs to the end. The run then ends failed, naming the step that failed and the one skipped."""
+    make_node(
+        {
+            "id": "test.fails",
+            "version": "1",
+            "title": "F",
+            "category": "test",
+            "inputs": {"image": "Image"},
+            "outputs": {"depth": "Depth[kind=metric, measure=z]"},
+        },
+        "def run(ctx):\n    raise RuntimeError('this branch fails')\n",
+    )
+    make_node(
+        {
+            "id": "test.after",
+            "version": "1",
+            "title": "A",
+            "category": "test",
+            "inputs": {"depth": "Depth"},
+            "outputs": {"depth": "Depth[kind=metric, measure=z]"},
+        },
+        "def run(ctx):\n    raise AssertionError('never started')\n",
+    )
+    graph = _graph(
+        {
+            "i": {"node": "test.image"},
+            "bad": {"node": "test.fails"},
+            "after": {"node": "test.after"},
+            "d": {"node": "test.const_depth"},
+        },
+        [("i.image", "bad.image"), ("bad.depth", "after.depth"), ("i.image", "d.image")],
+    )
+    result = scheduler_for().run(graph, events.append)
+    assert result.status == "failed"
+    assert (result.failed, result.skipped) == (["bad"], ["after"])
+    assert set(result.outputs) == {"i", "d"}, "the other branch ran to the end"
+    assert [e["step"] for e in events.of("node.start")] == ["i", "bad", "d"]
+    assert [e["step"] for e in events.of("node.done")] == ["i", "d"]
+    [failed] = events.of("node.failed")
+    assert failed["step"] == "bad" and "this branch fails" in failed["message"]
+    [skipped] = events.of("node.skipped")
+    assert skipped == {
+        "event": "node.skipped",
+        "step": "after",
+        "node": "test.after",
+        "waited_on": "bad",
+        "run": result.run,
+    }
+    ending = events[-1]
+    assert ending["event"] == "run.failed" and ending["step"] == "bad"
+    assert (ending["failed"], ending["skipped"]) == (["bad"], ["after"])
+
+
 def test_an_open_facet_is_checked_when_the_value_arrives(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:

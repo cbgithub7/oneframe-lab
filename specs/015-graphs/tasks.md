@@ -18,7 +18,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   default. AC5.
 - [x] 5. **The graph that ships.** `graphs/first-light.json`: the photo, Depth Pro to points, MoGe-3
   beside it. AC6.
-- [ ] 6. **A failure stops only what depends on it.** The scheduler goes on past a failed step;
+- [x] 6. **A failure stops only what depends on it.** The scheduler goes on past a failed step;
   `node.skipped` for each step that waited on it; `run.failed` lists the failed and the skipped.
   AC7.
 - [ ] 7. **Docs and the end.** architecture.md (graphs as data, the five methods, the new reason,
