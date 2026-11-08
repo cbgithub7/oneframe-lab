@@ -96,7 +96,8 @@ page code could import `node:fs` and pass. It splits in three, each run by `npm 
 page's (`app/renderer/`: DOM, no Node), the preload's (`require` for Electron's renderer modules,
 no DOM), and the rest's (main, scripts, hooks and tests: Node, no DOM). ESLint refuses `node:` and
 `electron` imports under `app/renderer/`. The node tests import only the page's models, which use
-neither, so the rest's config checks them too.
+neither, so the rest's config checks them too; AC7 reads the viewers' files instead of importing
+them.
 
 **The point viewer's budget,** which the page rule on budgets asks this spec to name: at most 1
 million points drawn a pane (`POINT_BUDGET`), at the smallest whole stride over the map's rows and
@@ -133,8 +134,9 @@ waits are on events, with deadlines that name what they waited for, as spec 014 
 
 - Added: in `tests/app/page.test.js` (new), "a settings form is drawn from a manifest", "the npz
   reader reads what numpy writes", "a failure offers what it needs", "every viewer is for a port
-  type that exists"; in `tests/e2e/first-page.test.js` (new), "the first page runs a graph and shows two results", "Stop
-  ends a run and the page says so"; `test_the_page_names_nothing` (`test_rules.py`).
+  type that exists"; in `tests/e2e/first-page.test.js` (new), "the first page runs a graph and
+  shows two results", "Stop ends a run and the page says so"; `test_the_page_names_nothing`
+  (`test_rules.py`).
 - Removed: none
 - Renamed: none
 
@@ -168,7 +170,8 @@ AC8, in a local session on the owner's PC, from the branch, with a new empty fol
 - Linked cameras across point panes: the point of side by side is to compare one view.
 - esbuild, as the review of 2026-11-04 asks (section 5, item 3), not an import map: an inline map
   is re-hashed into the CSP at every change, and step 8 bundles anyway. Spark joins the same bundle
-  at step 7, which settles open question 2's note on it.
+  at step 7. This changes open question 2's note that step 7 decides on a bundler; the owner sees
+  it when approving.
 - Three type configs, as the same review asks (section 2, item 4): a page that imports Node must
   fail `npm run check`, not pass because one config gives every file both.
 - The bundle in `dist/renderer/`, ignored by git, as `node_modules` is: the build's output, not the

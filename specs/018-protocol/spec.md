@@ -26,8 +26,8 @@ page with no check failing.
 2. **Nothing undeclared is sent.** Every event the engine makes, and every answer it gives, is
    checked against the declaration. In the tests a problem fails the test that caused it; in the
    app it is logged once per name, and the message still goes.
-3. **The docs say the same.** architecture.md's Events section names the declared events, both
-   ways, as its failure table is held to `oneframe/errors.py`.
+3. **The docs say the same.** architecture.md's Events section ends with a list of every event by
+   name, held to the declaration both ways, as its failure table is held to `oneframe/errors.py`.
 4. **The page's types come from it.** `app/protocol.d.ts` is generated from the contract and
    committed, and `npm run check` fails when it is not current. The preload, the door, the engine
    client and the page type their messages from it, never as `any`.
@@ -42,8 +42,9 @@ page with no check failing.
   none. Fails today: no contract.
 - [ ] AC2: The engine's suite passes with `conftest.py`'s autouse check, which fails any test after
   which `protocol.problems()` holds a problem: every event and answer the suite makes is declared.
-- [ ] AC3: `test_architecture_names_every_declared_event` (`test_protocol.py`): the event names in
-  architecture.md's Events section are exactly the contract's, both ways.
+- [ ] AC3: `test_architecture_names_every_declared_event` (`test_protocol.py`): the list of every
+  event that closes architecture.md's Events section holds exactly the contract's events, both
+  ways; the methods its prose names are not in that list.
 - [ ] AC4: The node test "the page's types are the contract's" (`protocol.test.js`, new):
   `node scripts/protocol-types.js` fails when `app/protocol.d.ts` differs from what the contract
   gives (a field changed, an event added), naming the difference, and passes on the committed file.
@@ -59,16 +60,17 @@ page with no check failing.
 **`contracts/protocol.json`** (new, `"format": 1`) holds `methods`, `events` and `shapes`. A field
 is `{"type": ..., "optional": true, "page": false}`, the last two only where they apply. Types are
 few: `string`, `integer`, `number`, `boolean`, `object`, `array` (with `of`), and a shape's name
-for a nested value the page reads (a fit, a value, a failure, whose fields `errors.py` already
-declares). An `object` without a shape is free-form (`meta`, `made_with`). Each event says whether
+for a nested value the page reads (a fit, a value, and a failure, whose kinds and reasons
+`errors.py` declares). An `object` without a shape is free-form (`meta`, `made_with`). Each event says whether
 the engine or the app (`engine.exit`, `engine.failed` from `main.js`) sends it.
 
 **`oneframe/protocol.py`** (new) reads the contract once with `reading.read_object`, and has
 `event(name, **fields)`, which builds and checks an event, `check_answer(method, result)`, and
 `problems()`. It loads no library (the light-engine test still holds). Every module that builds a
-declared event as a dict literal builds it with `protocol.event` instead. Events a node's child
-makes (`stage`, `progress` and `ceiling` among them) are built in the runtime's Python, which does
-not read the contract; the scheduler checks each as it passes it on. `server.py`'s
+declared event in the engine's process does so with `protocol.event`, not a dict literal. The code
+that runs in a node's child (`node/context.py`, `node/usage.py`: `stage`, `progress`, `ceiling`)
+keeps its literals, since a runtime's Python does not read the contract; the scheduler checks each
+such event as it passes it on. `server.py`'s
 `handle` checks each answer. A problem is logged once per event or method name and kept for
 `problems()`; `conftest.py` gains an autouse fixture that fails a test after which it is not empty,
 then clears it.
@@ -83,12 +85,15 @@ types by JSDoc.
 manifest's `folder`, the hello's `data`) and logs a message the contract does not declare; its
 scrubbing of the root, the repo and the home folder in other strings stays as 016 has it.
 
-**Docs:** architecture.md (Events: the contract is the declaration, the prose its reading),
+**Docs:** architecture.md (Events: the contract is the declaration, the prose its reading, and
+the list of every event),
 nodes.md (a node's `stage` and `progress` fields), the commands list (`protocol-types.js`).
 
 Risks: the first run of the suite with the check finds every field the prose missed (the first
 task declares what the code sends today, then the suite names the rest); a child's events are
-checked only when the engine passes them on (that is where they reach the page).
+checked only when the engine passes them on (that is where they reach the page); a thread that
+outlives its test records its problem against the next one (each problem names its event, and so
+its sender).
 
 ## Tests
 
