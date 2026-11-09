@@ -18,7 +18,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 4. **The page's types.** `scripts/protocol-types.js [--write]` writes `app/protocol.d.ts`, run
   by `npm run check` without `--write`; the preload, `door.js`, `engine.js` and the page import
   its types by JSDoc. AC4.
-- [ ] 5. **The door strips by the contract.** `forPage` removes the fields marked `"page": false`
+- [x] 5. **The door strips by the contract.** `forPage` removes the fields marked `"page": false`
   instead of its `PATH_FIELDS`, keeps its scrubbing of the root, the repo and the home folder, and
   logs a message the contract does not declare, once per name. AC5.
 - [ ] 6. **Every method declared.** `engine.test.js`: each of `ENGINE_METHODS`, `APP_METHODS` and

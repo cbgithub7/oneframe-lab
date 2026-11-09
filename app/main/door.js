@@ -9,17 +9,17 @@
 // main process: `photo.pick` shows the system's open dialog and has the engine import the file by
 // its content, so the page learns the import's id and the file's name, never its path.
 //
-// No path reaches the page (`forPage`, on every answer and every event main.js sends): a local path
-// in a field named path, folder or data is removed (a value's file, a manifest's folder, the
-// hello's data root), and the data root, the repo and the home folder are written <data>, <repo>
-// and ~ in every other string, as `npm run diagnose` does for its file. The page asks for a value's
-// file by its key instead (values.js).
-
-import path from "node:path";
+// No path reaches the page (`forPage`, on every answer and every event main.js sends): the fields
+// contracts/protocol.json marks "page": false are removed wherever its declaration puts them (a
+// value's file, a manifest's folder, the hello's data root), and the data root, the repo and the
+// home folder are written <data>, <repo> and ~ in every other string, as `npm run diagnose` does
+// for its file. The page asks for a value's file by its key instead (values.js). A message the
+// contract does not declare as it is still goes, and is logged once per event or method name.
 
 import { EngineError } from "./engine.js";
 import { appFailure } from "./failures.js";
 import { APP_METHODS, ENGINE_METHODS } from "./methods.js";
+import { logOnce, problems, stripped } from "./protocol.js";
 
 /** @typedef {import("./failures.js").Failure} Failure */
 /** @typedef {import("../protocol.js").Wire.Methods} Methods */
@@ -31,12 +31,11 @@ import { APP_METHODS, ENGINE_METHODS } from "./methods.js";
 /**
  * @typedef {{ ready: boolean, request: (method: string, params: Record<string, unknown>) => Promise<unknown> }} Engine
  * @typedef {{ data: string, repo: string, home: string }} Places the folders no answer may name
- * @typedef {{ pick?: () => Promise<string | null>, places?: Places }} App what main.js gives the
- *   door: the open dialog (the file chosen, or null), and the folders to keep from the page
+ * @typedef {{ pick?: () => Promise<string | null>, places?: Places, log?: (line: string) => void }} App
+ *   what main.js gives the door: the open dialog (the file chosen, or null), the folders to keep
+ *   from the page, and where a message the contract does not declare is logged
  */
 
-/** Fields that hold a local path, which the page is never sent. */
-const PATH_FIELDS = new Set(["path", "folder", "data"]);
 const SEPARATORS = String.raw`[\\/]+`;
 /** Not part of a longer name, before or after: /home/ana is not in /home/anabel. */
 const BEFORE = String.raw`(?<![\w.~-])`;
@@ -44,9 +43,6 @@ const AFTER = String.raw`(?![\w.~-])`;
 
 /** @param {string} text */
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** @param {string} text */
-const isLocalPath = (text) => path.win32.isAbsolute(text) || path.posix.isAbsolute(text);
 
 /**
  * A folder as it may be spelled in text: either separator, repeated or not, in any case.
@@ -80,13 +76,20 @@ function rulesFor(places) {
 }
 
 /**
- * `payload` as the page may see it: no local path, and no data root, repo or home folder in any
- * string or key.
- * @param {unknown} payload
+ * `payload` as the page may see it: an event, or the door's answer to `method`, without the fields
+ * the contract marks "page": false, and with no data root, repo or home folder in any string or
+ * key. What the contract does not declare is logged with `log`, once per event or method name.
+ * @template T
+ * @param {T} payload
  * @param {Places} places
- * @returns {any}
+ * @param {{ method?: string, log?: (line: string) => void }} [how]
+ * @returns {T}
  */
-export function forPage(payload, places) {
+export function forPage(payload, places, { method, log } = {}) {
+  if (log) {
+    const name = method ?? String(/** @type {{ event?: unknown }} */ (payload)?.event);
+    logOnce(name, problems(payload, { method }), log);
+  }
   const rules = rulesFor(places);
   /** @param {string} text */
   const scrub = (text) => rules.reduce((out, { re, label }) => out.replace(re, label), text);
@@ -97,13 +100,10 @@ export function forPage(payload, places) {
     if (value === null || typeof value !== "object") return value;
     /** @type {Record<string, unknown>} */
     const out = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (PATH_FIELDS.has(key) && typeof item === "string" && isLocalPath(item)) continue;
-      out[scrub(key)] = walk(item);
-    }
+    for (const [key, item] of Object.entries(value)) out[scrub(key)] = walk(item);
     return out;
   };
-  return walk(payload);
+  return /** @type {T} */ (walk(stripped(payload, { method })));
 }
 
 /**
@@ -132,7 +132,8 @@ async function pickPhoto(engine, pick) {
  * @returns {Promise<Answer>}
  */
 export async function answer(engine, sender, page, method, params, down = null, app = {}) {
-  const seen = (/** @type {Answer} */ reply) => (app.places ? forPage(reply, app.places) : reply);
+  const seen = (/** @type {Answer} */ reply) =>
+    (app.places ? forPage(reply, app.places, { method: String(method), log: app.log }) : reply);
   if (sender !== page) return { ok: false, error: appFailure("refused", "Refused: a request from an unknown page.") };
   const own = typeof method === "string" && APP_METHODS.has(method);
   if (typeof method !== "string" || !(own || ENGINE_METHODS.has(method))) {
