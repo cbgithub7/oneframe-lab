@@ -11,6 +11,21 @@ import { EventEmitter } from "node:events";
 import { APP_FAILURES } from "./failures.js";
 
 /** @typedef {import("./failures.js").Failure} Failure */
+/**
+ * The protocol as the engine sends it (app/protocol.d.ts, from contracts/protocol.json).
+ * @typedef {import("../protocol.js").Wire.Methods} Methods
+ * @typedef {import("../protocol.js").Wire.Event} Event
+ * @typedef {import("../protocol.js").Wire.EngineReadyEvent} EngineReady
+ */
+/**
+ * A declared method's params and answer; anything for another, which the engine refuses.
+ * @template {string} M
+ * @typedef {M extends keyof Methods ? Methods[M]["params"] : Record<string, unknown>} ParamsOf
+ */
+/**
+ * @template {string} M
+ * @typedef {M extends keyof Methods ? Methods[M]["answer"] : unknown} AnswerOf
+ */
 
 /**
  * @typedef {{ command: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv,
@@ -26,7 +41,7 @@ import { APP_FAILURES } from "./failures.js";
 export class EngineError extends Error {
   /**
    * @param {string} message
-   * @param {Partial<Failure> & { problems?: Array<{node?: string, port?: string, message: string}> }} [detail]
+   * @param {Partial<Failure>} [detail]
    */
   constructor(message, detail = {}) {
     super(message);
@@ -71,6 +86,7 @@ export class EngineClient extends EventEmitter {
    * Start the process. Resolves with the engine's `engine.ready` event; rejects with an EngineError
    * when the engine says it cannot start (`engine.failed`, such as a data root laid out by a newer
    * version), or with an Error when it exits without a word.
+   * @returns {Promise<EngineReady>}
    */
   start() {
     if (this.child) throw new Error("The engine is already running.");
@@ -99,7 +115,7 @@ export class EngineClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       /** @type {EngineError | null} */
       let refused = null;
-      /** @param {any} event */
+      /** @param {Event} event */
       const onEvent = (event) => {
         if (event.event === "engine.failed") refused = new EngineError(String(event.message), event);
         if (event.event !== "engine.ready") return;
@@ -120,11 +136,12 @@ export class EngineClient extends EventEmitter {
 
   /**
    * Ask the engine something. Resolves with its result or rejects with an EngineError.
-   * @param {string} method
-   * @param {Record<string, unknown>} [params]
-   * @returns {Promise<any>}
+   * @template {string} M
+   * @param {M} method
+   * @param {ParamsOf<M>} [params]
+   * @returns {Promise<AnswerOf<M>>}
    */
-  request(method, params = {}) {
+  request(method, params) {
     const child = this.child;
     if (!child || !this.ready) return Promise.reject(new EngineError("The engine is not running.", APP_FAILURES.not_running));
     const id = this.nextId++;
@@ -137,7 +154,7 @@ export class EngineClient extends EventEmitter {
         }, timeoutMs)
         : undefined;
       this.pending.set(id, { resolve, reject, timer, method });
-      child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
+      child.stdin.write(`${JSON.stringify({ id, method, params: params ?? {} })}\n`);
     });
   }
 

@@ -21,16 +21,20 @@ function el(tag, className, text) {
   return node;
 }
 
-/** @param {Record<string, unknown>} ports */
+/** @typedef {import("../protocol.js").Page.Manifest} Manifest */
+
+/** A manifest's ports, as written: a type, or an object with one. @param {Record<string, unknown> | undefined} ports */
 function portText(ports) {
   return Object.entries(ports ?? {})
-    .map(([name, spec]) => `${name}: ${typeof spec === "string" ? spec : /** @type {any} */ (spec).type}`)
+    .map(([name, spec]) => `${name}: ${typeof spec === "string" ? spec : /** @type {{ type?: string }} */ (spec).type}`)
     .join(", ") || "none";
 }
 
 async function loadNodes() {
-  const { nodes, problems } = await api.request("nodes.list");
-  /** @type {Map<string, any[]>} */
+  const listed = await api.request("nodes.list");
+  if ("stopped" in listed) return; // the engine is closing
+  const { nodes, problems } = listed;
+  /** @type {Map<string, Manifest[]>} */
   const byCategory = new Map();
   for (const node of nodes) {
     const list = byCategory.get(node.category) ?? [];
@@ -49,8 +53,8 @@ async function loadNodes() {
     }
   }
   nodesEl.replaceChildren(fragment);
-  problemsEl.replaceChildren(...Object.entries(problems ?? {}).map(([file, list]) =>
-    el("div", "problem", `${file}: ${/** @type {string[]} */ (list).join("; ")}`)));
+  problemsEl.replaceChildren(...Object.entries(problems).map(([file, list]) =>
+    el("div", "problem", `${file}: ${list.join("; ")}`)));
 }
 
 api.onEvent((event) => {
@@ -68,7 +72,7 @@ api.onEvent((event) => {
 api.request("engine.hello").then((hello) => {
   setStatus("ready", `Engine ${hello.engine} · Python ${hello.python} · ${hello.nodes} nodes`);
   return loadNodes();
-}).catch((/** @type {any} */ failure) => {
+}).catch((/** @type {OneframeFailure | undefined} */ failure) => {
   // Not ready yet, and the engine.ready event will arrive; or it failed before this page subscribed,
   // and the app answers with why.
   if (failure?.kind === "request" && failure?.reason === "not_running" && failure?.retry) return;

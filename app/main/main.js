@@ -60,7 +60,9 @@ process.on("unhandledRejection", (reason) => log.write("main", `unhandled reject
  */
 let down = null;
 
-/** @param {Record<string, unknown>} payload */
+/** @typedef {import("../protocol.js").Wire.Event} Event the contract's (app/protocol.d.ts) */
+
+/** An event, as the page may see it (door.js). @param {Event} payload */
 function send(payload) {
   if (win && !win.isDestroyed()) win.webContents.send("engine:event", forPage(payload, PLACES));
 }
@@ -87,7 +89,7 @@ async function startEngine() {
   const client = new EngineClient({ ...spec, requestTimeoutMs: 60_000 });
   engine = client;
   client.on("log", (line) => log.write("engine", line));
-  client.on("event", (event) => {
+  client.on("event", (/** @type {Event} */ event) => {
     // Kept before it is sent, so a page that subscribes a moment later still learns why.
     if (event.event === "engine.failed") down = new EngineError(String(event.message), event).failure;
     send(event);

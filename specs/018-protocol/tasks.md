@@ -15,7 +15,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   AC2.
 - [x] 3. **The docs say the same.** architecture.md's Events section ends with the list of every
   event, held to the contract both ways. AC3.
-- [ ] 4. **The page's types.** `scripts/protocol-types.js [--write]` writes `app/protocol.d.ts`, run
+- [x] 4. **The page's types.** `scripts/protocol-types.js [--write]` writes `app/protocol.d.ts`, run
   by `npm run check` without `--write`; the preload, `door.js`, `engine.js` and the page import
   its types by JSDoc. AC4.
 - [ ] 5. **The door strips by the contract.** `forPage` removes the fields marked `"page": false`

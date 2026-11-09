@@ -124,7 +124,9 @@ test("the real engine starts from its lock file and lists the built-in nodes", {
       try {
         const ready = await client.start();
         assert.match(ready.python, /^3\.15\./);
-        const { nodes } = await client.request("nodes.list");
+        const listed = await client.request("nodes.list");
+        assert.ok(!("stopped" in listed), "nodes.list was answered");
+        const { nodes } = listed;
         assert.ok(nodes.some((/** @type {any} */ n) => n.id === "source.image"));
         // Every method the page may call is one the engine has.
         const missing = [...ENGINE_METHODS].filter((m) => !ready.methods.includes(m));

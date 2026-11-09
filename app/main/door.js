@@ -22,9 +22,14 @@ import { appFailure } from "./failures.js";
 import { APP_METHODS, ENGINE_METHODS } from "./methods.js";
 
 /** @typedef {import("./failures.js").Failure} Failure */
-/** @typedef {{ ok: true, result: unknown } | { ok: false, error: Failure }} Answer */
+/** @typedef {import("../protocol.js").Wire.Methods} Methods */
 /**
- * @typedef {{ ready: boolean, request: (method: string, params: Record<string, unknown>) => Promise<any> }} Engine
+ * The door's answer: a result, or the failure as a value.
+ * @template [T=unknown]
+ * @typedef {{ ok: true, result: T } | { ok: false, error: Failure }} Answer
+ */
+/**
+ * @typedef {{ ready: boolean, request: (method: string, params: Record<string, unknown>) => Promise<unknown> }} Engine
  * @typedef {{ data: string, repo: string, home: string }} Places the folders no answer may name
  * @typedef {{ pick?: () => Promise<string | null>, places?: Places }} App what main.js gives the
  *   door: the open dialog (the file chosen, or null), and the folders to keep from the page
@@ -110,7 +115,8 @@ export function forPage(payload, places) {
 async function pickPhoto(engine, pick) {
   const chosen = await pick();
   if (chosen === null) return null;
-  const imported = await engine.request("inputs.import", { path: chosen });
+  const imported = /** @type {Methods["inputs.import"]["answer"]} */ (await engine.request("inputs.import", { path: chosen }));
+  if ("stopped" in imported) return null; // the engine is closing
   return { id: imported.id, name: imported.name };
 }
 
