@@ -1,6 +1,6 @@
 # 015: Graphs as data, and what fits here
 
-Status: approved (2026-11-08)
+Status: done ([PR #65](https://github.com/cbgithub7/oneframe-lab/pull/65))
 Owner approval: 2026-11-08, with 016, 018 and 017 as one decision; every open question answered as recommended (2026-11-04)
 
 The second of five specs for step 3, first light, which is too large for one: [005](../005-first-models/spec.md)
