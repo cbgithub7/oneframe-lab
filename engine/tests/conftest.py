@@ -30,6 +30,7 @@ from fixtures.store import sha
 
 from oneframe.cache import Cache
 from oneframe.files import is_free
+from oneframe.layout import Layout
 from oneframe.memory.estimate import Target
 from oneframe.processes import GROUP, Child
 from oneframe.registry import Registry, discover
@@ -276,10 +277,12 @@ def host_runtimes() -> HostRuntimes:
 
 @pytest.fixture
 def scheduler_for(tmp_path: Path, node_root: Path, host_runtimes: HostRuntimes) -> Callable[..., Scheduler]:
-    """A scheduler for the test's nodes, its runtimes `host_runtimes` unless the test gives others."""
+    """A scheduler for the test's nodes, its runtimes `host_runtimes` unless the test gives others,
+    and its imports those under Layout(tmp_path)."""
 
     def make(**kw: Any) -> Scheduler:
         kw.setdefault("runtimes", host_runtimes)
+        kw.setdefault("imports", Layout(tmp_path).inputs)  # where import_file(Layout(tmp_path)) puts one
         return Scheduler(
             discover([node_root]), Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp"), **kw
         )

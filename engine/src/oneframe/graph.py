@@ -6,7 +6,7 @@ A recipe is plain JSON so it can be saved, shared and edited by hand:
       "version": 1,
       "title": "Photo to point map",
       "nodes": {
-        "photo": {"node": "source.image", "params": {"path": "C:/photos/chair.jpg"}},
+        "photo": {"node": "source.image", "params": {"path": "<the photo's import id>"}},
         "depth": {"node": "depth.moge2"},
         "points": {"node": "convert.depth_to_points"}
       },
@@ -25,10 +25,12 @@ and a converter node bridges them, the converter is inserted and the plan says s
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from oneframe import ports
 from oneframe.errors import Failure, failure
+from oneframe.inputs import find
 from oneframe.manifest import Manifest, check_param
 from oneframe.ports import PortSpec
 from oneframe.registry import Registry
@@ -221,8 +223,12 @@ def connect(output: PortSpec, accepts: PortSpec, converters: list[Manifest]) -> 
     return Connection("no", reason="mismatch", message=why)
 
 
-def step_params(manifest: Manifest, given: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """A step's params: what the graph gives, the defaults for the rest, and every problem."""
+def step_params(
+    manifest: Manifest, given: dict[str, Any], imports: Path | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    """A step's params: what the graph gives, the defaults for the rest, and every problem. A
+    `file` param names an import, found in `imports` (the layout's `inputs`): the step is given
+    that file, so the node reads a file, and the graph holds no path."""
     params: dict[str, Any] = {}
     problems: list[str] = []
     for name, param in manifest.params.items():
@@ -233,12 +239,20 @@ def step_params(manifest: Manifest, given: dict[str, Any]) -> tuple[dict[str, An
         why = check_param(name, param, value)
         if why:
             problems.append(why)
+        elif param.type == "file":
+            found = find(imports, value) if imports is not None else None
+            if found is None:
+                problems.append(f"{name}: no imported file has the id {value}")
+            else:
+                value = str(found)
         params[name] = value
     problems += [f"{manifest.id} has no parameter {name}" for name in given if name not in manifest.params]
     return params, problems
 
 
-def plan(graph: Graph, registry: Registry) -> Plan:
+def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
+    """The order to run `graph` in, its converters inserted; every problem at once as GraphError.
+    `imports`: the folder a `file` param's import is found in (the layout's `inputs`)."""
     problems: list[dict[str, str]] = []
     notes: list[str] = []
 
@@ -254,7 +268,7 @@ def plan(graph: Graph, registry: Registry) -> Plan:
         if manifest is None:
             problem(key, f"no node called {gnode.node!r} is installed")
             continue
-        params, wrong = step_params(manifest, gnode.params)
+        params, wrong = step_params(manifest, gnode.params, imports)
         for why in wrong:
             problem(key, why)
         steps[key] = Step(

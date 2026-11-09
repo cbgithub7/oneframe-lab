@@ -28,6 +28,7 @@ from typing import Any
 from oneframe import BUILTIN_NODES_DIR, __version__
 from oneframe.bench_fit import make_scheduler
 from oneframe.graph import Graph
+from oneframe.inputs import import_file
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest
 from oneframe.node import Value
@@ -58,8 +59,9 @@ def photo_source(registry: Registry) -> Manifest:
     return found[0]
 
 
-def graph_for(source: Manifest, node: Manifest) -> Graph | str:
-    """The photo wired to each of the node's Image inputs; or why a photo alone cannot feed it."""
+def graph_for(source: Manifest, node: Manifest, photo: str) -> Graph | str:
+    """The photo, imported as `photo`, wired to each of the node's Image inputs; or why a photo
+    alone cannot feed it."""
     param = next(name for name, p in source.params.items() if p.type == "file")
     edges = []
     for port, spec in node.inputs.items():
@@ -69,7 +71,7 @@ def graph_for(source: Manifest, node: Manifest) -> Graph | str:
             return f"it needs a {spec.type} on {port}, which a photo alone cannot give"
     if not edges:
         return "it takes no image"
-    nodes = {"photo": {"node": source.id, "params": {param: str(PHOTO)}}, "step": {"node": node.id}}
+    nodes = {"photo": {"node": source.id, "params": {param: photo}}, "step": {"node": node.id}}
     return Graph.from_json({"version": 1, "nodes": nodes, "edges": edges})
 
 
@@ -102,9 +104,10 @@ def check(data: Path, registry: Registry, manager: Runtimes) -> int:
         print("No node runs in a runtime: nothing to check.")
         return 1
     failed = 0
+    photo, _name = import_file(Layout(data), PHOTO)  # as the page's dialog imports one
     with for_tool(Layout(data)) as mine:
         for node in nodes:
-            graph = graph_for(source, node)
+            graph = graph_for(source, node, photo)
             if isinstance(graph, str):
                 print(f"FAILED {node.id}: {graph}.")
                 failed += 1

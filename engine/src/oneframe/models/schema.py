@@ -24,7 +24,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from oneframe.reading import device_name
+from oneframe.reading import device_name, is_sha256
 
 if TYPE_CHECKING:
     from oneframe.manifest import Param
@@ -35,7 +35,6 @@ PRECISION = "precision"  # never keys files: the engine picks it, and the weight
 
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _REFUSED_CHARS = set('<>"|?*')
 _DRIVE = re.compile(r"^[A-Za-z]:")
@@ -190,7 +189,7 @@ def _file(
         problems.append(f"{at}.size should be the file's size in bytes, a whole number (npm run models:pin)")
         size = 0
     sha = row.get("sha256")
-    if not isinstance(sha, str) or not _SHA256.match(sha):
+    if not is_sha256(sha):
         problems.append(f"{at}.sha256 should be 64 lower-case hex digits (npm run models:pin)")
     kind = row.get("format")
     if kind not in FORMATS:

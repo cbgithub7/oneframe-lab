@@ -17,6 +17,7 @@ from typing import Any, Protocol, TypeIs
 
 ID = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 VERSION = re.compile(r"^\d+(?:\.\d+)*$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 # Names Windows keeps for devices, with any extension: CON, NUL.txt, COM1, LPT9.bin, ...
 _DEVICE = re.compile(r"^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$", re.IGNORECASE)
 
@@ -64,6 +65,11 @@ def check_id(value: str, problems: list[str]) -> str:
         problems.append(f"id {value!r} should be lower case words joined by . _ or -")
         return ""
     return value
+
+
+def is_sha256(value: object) -> bool:
+    """Whether `value` is a sha256 as the app writes one: 64 lower-case hex digits."""
+    return isinstance(value, str) and bool(SHA256.match(value))
 
 
 def device_name(name: str) -> bool:

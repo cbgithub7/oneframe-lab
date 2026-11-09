@@ -156,6 +156,7 @@ class Scheduler:
         learned: LearnedStore | None = None,
         tmp_root: Path | None = None,
         journal_dir: Path | None = None,
+        imports: Path | None = None,
     ):
         self.registry = registry
         self.cache = cache
@@ -173,6 +174,7 @@ class Scheduler:
         self.learned = learned or LearnedStore(None)
         self.tmp_root = tmp_root  # where the files a run reads are listed
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
+        self.imports = imports  # where a file param's import is found (the layout's inputs)
 
     def _key(
         self, run: _RunState, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]
@@ -214,7 +216,7 @@ class Scheduler:
             emit(dict(event, run=run_id))
 
         run = _RunState(run_id, say, stop)
-        the_plan: Plan = plan(graph, self.registry)
+        the_plan: Plan = plan(graph, self.registry, self.imports)
         say({"event": "run.start", "order": the_plan.order, "notes": the_plan.notes})
         # Every file the graph's nodes could read, at any checkpoint, is listed for the whole run,
         # so a remove in any process leaves them alone until it ends.
@@ -730,6 +732,7 @@ def for_root(
         executors=OneProcessPerRun(side, tmp_root=tmp_root, log_dir=layout.step_logs if layout else None),
         store=Store(data) if data is not None else None,
         journal_dir=layout.journals if layout else None,
+        imports=layout.inputs if layout else None,
         machine=machine,
         settings=settings,
         learned=learned,

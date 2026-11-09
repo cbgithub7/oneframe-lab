@@ -63,6 +63,7 @@
     "step_logs": "logs/steps",
     "crashes": "logs/crashes",
     "locks": "logs/locks",
+    "inputs": "inputs",
     "graphs": "graphs",
     "reports": "reports"
   },

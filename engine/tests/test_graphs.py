@@ -9,6 +9,8 @@ import pytest
 from oneframe import BUILTIN_GRAPHS_DIR, BUILTIN_NODES_DIR, graphs
 from oneframe.errors import Failure
 from oneframe.graph import plan
+from oneframe.inputs import import_file
+from oneframe.layout import Layout
 from oneframe.registry import discover
 
 
@@ -111,7 +113,7 @@ def test_saving_keeps_shipped_graphs_and_newer_formats(tmp_path: Path) -> None:
 
 def test_shipped_graphs_plan(tmp_path: Path) -> None:
     """Every graph that ships plans against the repo's nodes. It leaves its photo for the person to
-    pick, so each `file` param is given a file here, and none is set in the graph."""
+    pick, so each `file` param is given an imported file here, and none is set in the graph."""
     found = graphs.discover([BUILTIN_GRAPHS_DIR], tmp_path / "saved")
     assert found.graphs, "the repo's graphs/ ships no graph"
     assert found.problems == {}
@@ -119,11 +121,13 @@ def test_shipped_graphs_plan(tmp_path: Path) -> None:
     assert registry.problems == {}
     photo = tmp_path / "photo.png"
     photo.write_bytes(b"a photo the person picks")
+    layout = Layout(tmp_path / "data")
+    picked, _name = import_file(layout, photo)
     for name, shipped in found.graphs.items():
         assert shipped.source == "shipped"
         for key, gnode in shipped.graph.nodes.items():
             for param_name, param in registry.get(gnode.node).params.items():
                 if param.type == "file":
                     assert param_name not in gnode.params, f"{name}: {key} ships a {param_name}"
-                    gnode.params[param_name] = str(photo)
-        plan(shipped.graph, registry)
+                    gnode.params[param_name] = picked
+        plan(shipped.graph, registry, layout.inputs)
