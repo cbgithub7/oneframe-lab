@@ -484,9 +484,12 @@ class Requests:
                 if not self._queue:
                     return
                 message = self._queue.popleft()
-            reply = self.engine.handle(message)
-            if reply is not None:
-                self.say(reply)
+            try:
+                reply = self.engine.handle(message)
+                if reply is not None:
+                    self.say(reply)
+            except Exception:  # a reply that cannot be said: logged, and the next request answered
+                LOGGER.exception("answering %s failed", message.get("method"))
 
     def close(self, timeout: float = 30) -> None:
         """No more requests: each still queued is answered as stopped, and the one being answered

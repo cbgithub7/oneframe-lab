@@ -53,6 +53,27 @@ function spelled(folder) {
   return new RegExp(BEFORE + lead + parts.map(escape).join(SEPARATORS) + AFTER, "giu");
 }
 
+/** @type {WeakMap<Places, Array<{ re: RegExp, label: string }>>} */
+const RULES = new WeakMap();
+
+/**
+ * The scrubbing rules for `places`, built once for each: every event goes through them.
+ * @param {Places} places
+ */
+function rulesFor(places) {
+  const known = RULES.get(places);
+  if (known) return known;
+  const named = /** @type {Array<[string, string]>} */ ([
+    [places.data, "<data>"],
+    [places.repo, "<repo>"],
+    [places.home, "~"],
+  ]).filter(([folder]) => folder.split(/[\\/]+/).filter(Boolean).length > 0);
+  // The longest first: the data root and the repo are often in the home folder.
+  const rules = named.sort((a, b) => b[0].length - a[0].length).map(([folder, label]) => ({ re: spelled(folder), label }));
+  RULES.set(places, rules);
+  return rules;
+}
+
 /**
  * `payload` as the page may see it: no local path, and no data root, repo or home folder in any
  * string or key.
@@ -61,13 +82,7 @@ function spelled(folder) {
  * @returns {any}
  */
 export function forPage(payload, places) {
-  const named = /** @type {Array<[string, string]>} */ ([
-    [places.data, "<data>"],
-    [places.repo, "<repo>"],
-    [places.home, "~"],
-  ]).filter(([folder]) => folder.split(/[\\/]+/).filter(Boolean).length > 0);
-  // The longest first: the data root and the repo are often in the home folder.
-  const rules = named.sort((a, b) => b[0].length - a[0].length).map(([folder, label]) => ({ re: spelled(folder), label }));
+  const rules = rulesFor(places);
   /** @param {string} text */
   const scrub = (text) => rules.reduce((out, { re, label }) => out.replace(re, label), text);
   /** @param {unknown} value @returns {unknown} */
@@ -122,7 +137,8 @@ export async function answer(engine, sender, page, method, params, down = null, 
   }
   if (own && !app.pick) return { ok: false, error: appFailure("refused", `Refused: ${method} is not offered here.`) };
   if (!engine || !engine.ready) {
-    return { ok: false, error: down ?? appFailure("not_running", "The engine is not running.", "Wait for it to start.") };
+    // Why it did not start may name a path (uv's), so it is scrubbed like any answer.
+    return seen({ ok: false, error: down ?? appFailure("not_running", "The engine is not running.", "Wait for it to start.") });
   }
   try {
     const result = own
