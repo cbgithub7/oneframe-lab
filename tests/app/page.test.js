@@ -2,7 +2,7 @@
 // The page's models (spec 017), checked without a browser: each is a plain module under
 // app/renderer/ that uses neither Node nor the DOM, so these tests import it as it is.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -135,4 +135,23 @@ test("a failure offers what it needs", () => {
   state = runView(state, { event: "node.failed", run: "other", step: "b", node: "x.z", kind: "node", message: "", retry: false });
   assert.deepEqual(state.cards.a.offer, { action: "install" });
   assert.equal(state.cards.b.phase, "skipped", "another run's events change nothing");
+});
+
+test("every viewer is for a port type that exists", () => {
+  const types = Object.keys(JSON.parse(readFileSync(path.join(REPO_ROOT, "contracts", "port-types.json"), "utf8")).types);
+  const folder = path.join(REPO_ROOT, "app", "renderer", "viewers");
+  const modules = readdirSync(folder).filter((name) => name.endsWith(".js")).sort();
+  assert.ok(modules.length >= 4, `the viewers were found (${modules.join(", ")})`);
+  /** @type {string[]} */
+  const named = [];
+  for (const name of modules) {
+    // Read, not imported: a viewer draws with the DOM and three.js, which these tests do not load.
+    const source = readFileSync(path.join(folder, name), "utf8");
+    const type = /^export const TYPE = "([^"]+)";$/m.exec(source)?.[1];
+    assert.ok(type !== undefined, `${name} says which type it shows (export const TYPE = "...")`);
+    assert.ok(types.includes(type), `${name} shows ${type}, which contracts/port-types.json does not declare`);
+    named.push(type);
+  }
+  assert.equal(new Set(named).size, named.length, "one viewer a type");
+  for (const type of ["Image", "Depth", "PointMap", "Camera"]) assert.ok(named.includes(type), `a viewer for ${type}`);
 });

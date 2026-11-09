@@ -15,7 +15,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 4. **What a run shows.** `app/renderer/run-view.js`: a card's state from events typed from
   `Page`, and the offer each failure gets; "a failure offers what it needs", read against
   architecture.md's table. (AC3; requirements 4 and 5)
-- [ ] 5. **Viewers by port type.** `app/renderer/viewers/` (Image, Depth, PointMap with
+- [x] 5. **Viewers by port type.** `app/renderer/viewers/` (Image, Depth, PointMap with
   `POINT_BUDGET`, Camera) and the fallback for any other type; three.js and `@types/three` pinned;
   "every viewer is for a port type that exists". (AC7; requirement 6)
 - [ ] 6. **One bundle.** esbuild pinned; `npm run page:build` writes `dist/renderer/` (ignored);

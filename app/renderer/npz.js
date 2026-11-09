@@ -177,3 +177,12 @@ export async function readNpz(buffer) {
   }
   return out;
 }
+
+/**
+ * A bool array's bytes, 1 where true; null for an array of another dtype, or none.
+ * @param {NpyArray | undefined} array
+ * @returns {Uint8Array | null}
+ */
+export function flags(array) {
+  return array !== undefined && array.dtype === "|b1" ? /** @type {Uint8Array} */ (array.data) : null;
+}

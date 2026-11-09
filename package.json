@@ -32,9 +32,11 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
+    "@types/three": "0.187.0",
     "electron": "45.2.3",
     "eslint": "10.14.0",
     "globals": "17.14.0",
+    "three": "0.187.0",
     "typescript": "7.0.2"
   }
 }
