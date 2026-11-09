@@ -1,20 +1,16 @@
-// The two functions the preload exposes on window (app/preload/preload.cjs).
+// The two functions the preload exposes on window (app/preload/preload.cjs), typed from the
+// contract (app/protocol.d.ts, generated from contracts/protocol.json): the page's view of it.
+import type { Page } from "../protocol.js";
+
 export {};
 
 declare global {
   /** A failure as the page receives it: a kind and reason oneframe/errors.py declares. */
-  interface OneframeFailure {
-    kind: string;
-    reason?: string;
-    message: string;
-    next?: string;
-    retry: boolean;
-    problems?: unknown[];
-  }
+  type OneframeFailure = Page.Failure;
   interface OneframeApi {
-    /** Rejects with a OneframeFailure. */
-    request(method: string, params?: Record<string, unknown>): Promise<any>;
-    onEvent(callback: (event: any) => void): () => void;
+    /** Resolves with the method's answer; rejects with a OneframeFailure. */
+    request<M extends Page.MethodName>(method: M, params?: Page.Params<M>): Promise<Page.Answer<M>>;
+    onEvent(callback: (event: Page.Event) => void): () => void;
   }
   interface Window {
     oneframe: OneframeApi;

@@ -1,6 +1,15 @@
 {
   "_comment": "The kinds of data that flow between nodes. A port is a type plus facets; an edge is legal when the producer's facets satisfy every facet the consumer names. Facets are what make two outputs that look alike (a depth map is a depth map) actually interchangeable -- or not: disparity never flows silently into a metric port. Every value also carries its source image id, so outputs from the same photo can be aligned. Engine and app both read this file; nothing retypes it.",
   "version": 1,
+  "carriers": {
+    "_comment": "How each carrier is stored, and the media type the app serves a value of it with (spec 016); a folder is not served.",
+    "png": { "mime": "image/png" },
+    "npz": { "mime": "application/octet-stream" },
+    "json": { "mime": "application/json" },
+    "glb": { "mime": "model/gltf-binary" },
+    "ply": { "mime": "application/octet-stream" },
+    "folder": {}
+  },
   "types": {
     "Image": {
       "doc": "A photo or a rendered or synthesised picture. sRGB, 8-bit.",

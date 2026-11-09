@@ -30,6 +30,7 @@ from typing import Any
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware
 from oneframe.cache import Cache
 from oneframe.graph import Graph, GraphError, GraphNode
+from oneframe.inputs import import_paths
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory.estimate import Target, evaluate
@@ -479,6 +480,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{args.graph} has no step called {args.node!r}.", file=sys.stderr)
                 return 2
             node = graph.nodes[args.node].node
+            try:
+                import_paths(graph, registry, Layout(data))  # a bench graph names its photo by path
+            except FileNotFoundError as exc:
+                print(f"{args.graph}: {exc}", file=sys.stderr)
+                return 2
         if node not in registry.nodes:
             print(f"No node called {node!r}.", file=sys.stderr)
             return 2
