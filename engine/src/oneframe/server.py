@@ -8,6 +8,12 @@ that takes time (a graph run) answers at once with a run id, and its progress ar
 `{"event": "node.done", ...}`, with no id. There is no polling and no local network port: the only
 way in is this process's own stdin, which only the app holds.
 
+Requests are answered in order by one worker thread, so no two of them run at once, as the methods
+were written to. Only the stops (`run.stop`, `runtimes.stop`, `models.stop`) and the reads that
+answer at once (`engine.hello`, `values.locate`) are answered by the loop that reads stdin, so a
+slow request never holds them up; a stop first takes each request of its kind still waiting off the
+queue and answers it `{"stopped": true}`, so it is never begun. Replies carry their request's id.
+
 Only one graph runs at a time: they share one GPU, and a second run would only fight the first for
 memory. A run asked for while another is going is refused with the running one's id.
 
@@ -31,6 +37,7 @@ import threading
 import time
 import traceback
 import uuid
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -47,12 +54,21 @@ from oneframe.models.catalog import listing, remove_node, remove_unpinned
 from oneframe.models.jobs import Jobs
 from oneframe.models.runs import in_use
 from oneframe.node import Emit
+from oneframe.reading import is_sha256
 from oneframe.registry import Registry, discover
 from oneframe.runtimes.manager import InstallRefused, Runtimes, find_uv
 from oneframe.scheduler import for_root
 from oneframe.scratch import Scratch
 
 LOGGER = logging.getLogger("oneframe.server")
+# Answered by the loop that reads requests, never behind another one: reads that answer at once.
+AT_ONCE = frozenset({"engine.hello", "values.locate"})
+# Each stop, answered at once too, and the requests of its kind it takes off the queue first.
+STOPS: dict[str, frozenset[str]] = {
+    "run.stop": frozenset({"graph.run"}),
+    "runtimes.stop": frozenset({"runtimes.install"}),
+    "models.stop": frozenset({"models.download", "models.verify"}),
+}
 
 
 def _bad_params(message: str) -> Failure:
@@ -133,6 +149,7 @@ class Engine:
             "graphs.save": self.graphs_save,
             "graphs.remove": self.graphs_remove,
             "inputs.import": self.inputs_import,
+            "values.locate": self.values_locate,
             "run.stop": self.run_stop,
             "runtimes.list": self.runtimes_list,
             "runtimes.plan": self.runtimes_plan,
@@ -248,6 +265,18 @@ class Engine:
             raise _bad_params(f"No file at {source}.")
         ident, name = inputs.import_file(self.layout, source)
         return {"id": ident, "name": name}
+
+    def values_locate(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{key, port}`: the file of a value a run committed to the cache, its type and carrier,
+        for the app's value protocol; anything no committed entry has is refused. Only the main
+        process calls it: it answers a path, so it is not on the page's list."""
+        key, port = _required(params, "key"), _required(params, "port")
+        outputs = self.cache.get(key) if is_sha256(key) else None
+        value = outputs.get(port) if outputs is not None and isinstance(port, str) else None
+        if value is None:
+            raise _bad_params(f"No value {port!r} was committed under the key {key!r}.")
+        found = ports.types().get(value.type)
+        return {"path": str(value.path), "type": value.type, "carrier": found.carrier if found else None}
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
         graph = Graph.from_json(_required(params, "graph"))
@@ -412,6 +441,63 @@ class Engine:
             return {"id": req_id, "error": failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)}
 
 
+class Requests:
+    """The requests the app sends, as the engine answers them: in order, by one worker thread, but
+    for those AT_ONCE and the STOPS, which the caller's thread answers as they come."""
+
+    def __init__(self, engine: Engine, say: Emit):
+        self.engine = engine
+        self.say = say
+        self._queue: deque[dict[str, Any]] = deque()
+        self._changed = threading.Condition()
+        self._closed = False
+        self._worker = threading.Thread(target=self._work, name="requests", daemon=True)
+        self._worker.start()
+
+    def take(self, message: dict[str, Any]) -> None:
+        """One request: answered now if it is a stop or a read AT_ONCE, else queued."""
+        method = str(message.get("method"))
+        if method not in AT_ONCE and method not in STOPS:
+            with self._changed:
+                self._queue.append(message)
+                self._changed.notify_all()
+            return
+        self._stop_queued(STOPS.get(method, frozenset()))
+        reply = self.engine.handle(message)
+        if reply is not None:
+            self.say(reply)
+
+    def _stop_queued(self, methods: frozenset[str] | None) -> None:
+        """Each queued request of these methods (None: of any) answered as stopped, never begun."""
+        with self._changed:
+            gone = [m for m in self._queue if methods is None or m.get("method") in methods]
+            for message in gone:
+                self._queue.remove(message)
+        for message in gone:
+            self.say({"id": message.get("id"), "result": {"stopped": True}})
+
+    def _work(self) -> None:
+        while True:
+            with self._changed:
+                while not self._queue and not self._closed:
+                    self._changed.wait()
+                if not self._queue:
+                    return
+                message = self._queue.popleft()
+            reply = self.engine.handle(message)
+            if reply is not None:
+                self.say(reply)
+
+    def close(self, timeout: float = 30) -> None:
+        """No more requests: each still queued is answered as stopped, and the one being answered
+        is waited for, up to `timeout` seconds."""
+        self._stop_queued(None)
+        with self._changed:
+            self._closed = True
+            self._changed.notify_all()
+        self._worker.join(timeout)
+
+
 def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) -> int:
     """The engine as the app starts it. `transfer`: options for each download, as Engine takes
     them, which only a test passes (fixtures/serve.py, to trust its CA)."""
@@ -490,6 +576,7 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
         say(engine_crash(exc, event="engine.failed"))
         return 1
     say({"event": "engine.ready", **engine.hello({})})
+    requests = Requests(engine, say)
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:
         line = line.strip()
@@ -498,12 +585,13 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
         try:
             message = json.loads(line)
         except ValueError:
-            say({"event": "engine.warning", "message": "A request was not JSON."})
+            message = None
+        if not isinstance(message, dict):
+            say({"event": "engine.warning", "message": "A request was not a JSON object."})
             continue
-        reply = engine.handle(message)
-        if reply is not None:
-            say(reply)
-    engine.shutdown()  # stdin closed: the app is quitting
+        requests.take(message)
+    requests.close()  # stdin closed: the app is quitting
+    engine.shutdown()
     return 0
 
 
