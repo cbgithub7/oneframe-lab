@@ -13,7 +13,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   three stops itself, and hands every other request to one worker, in order; a stop first answers
   each queued request of its kind as stopped. AC7, AC8.
 - [x] 4. **`values.locate {key, port}`**, the file of a committed value, and nothing else. AC5.
-- [ ] 5. **The door.** `APP_METHODS` (`photo.pick`) answered in the main process through
+- [x] 5. **The door.** `APP_METHODS` (`photo.pick`) answered in the main process through
   `engine:request`; `forPage` on every answer and every event: a local path in a value's `path`, a
   manifest's `folder` or the hello's `data` removed, and the root, the repo and the home folder
   written `<data>`, `<repo>` and `~` everywhere else. AC3, AC4.

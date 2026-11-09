@@ -1,17 +1,19 @@
 // @ts-check
 // Electron's main process: one window, one engine, and a single narrow door between them.
 //
-// The renderer is sandboxed and isolated, and can do exactly two things: ask the engine one of the
-// methods listed in ENGINE_METHODS (methods.js), and listen to the engine's events. It cannot read
-// files, start processes or open windows. The method and the shape of its arguments are checked
-// in door.js; the engine checks their values. Every answer is a value, a failure included.
+// The renderer is sandboxed and isolated, and can do exactly two things: ask one of the methods
+// listed in ENGINE_METHODS or APP_METHODS (methods.js), and listen to the engine's events. It cannot
+// read files, start processes or open windows. The method and the shape of its arguments are
+// checked in door.js; the engine checks their values. Every answer is a value, a failure included,
+// and no answer or event names a path on this machine (door.js's forPage).
 
-import { app, BrowserWindow, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { PAGE_PARTITION, boot } from "./boot.js";
-import { answer } from "./door.js";
+import { answer, forPage } from "./door.js";
 import { EngineClient, EngineError } from "./engine.js";
 import { appFailure } from "./failures.js";
 import { RotatingLog } from "./log.js";
@@ -31,6 +33,10 @@ else app.enableSandbox();
 const { root: data, first } = boot(app);
 if (!first) app.quit();
 const log = new RotatingLog(path.join(layout(data).logs, "app.log"));
+/** The folders no answer or event the page receives may name (door.js). */
+const PLACES = Object.freeze({ data, repo: REPO_ROOT, home: homedir() });
+/** The photos the open dialog offers: what the image source reads. */
+const IMAGES = ["jpg", "jpeg", "png", "webp", "tif", "tiff", "bmp"];
 /** @type {EngineClient | null} */
 let engine = null;
 /** @type {BrowserWindow | null} */
@@ -48,7 +54,18 @@ let down = null;
 
 /** @param {Record<string, unknown>} payload */
 function send(payload) {
-  if (win && !win.isDestroyed()) win.webContents.send("engine:event", payload);
+  if (win && !win.isDestroyed()) win.webContents.send("engine:event", forPage(payload, PLACES));
+}
+
+/** The system's open dialog, for photo.pick: the file chosen, or null. */
+async function pickPhoto() {
+  if (!win || win.isDestroyed()) return null;
+  const chosen = await dialog.showOpenDialog(win, {
+    title: "Pick a photo",
+    properties: ["openFile"],
+    filters: [{ name: "Images", extensions: IMAGES }],
+  });
+  return chosen.canceled ? null : (chosen.filePaths[0] ?? null);
 }
 
 async function startEngine() {
@@ -128,7 +145,7 @@ app.on("web-contents-created", (_event, contents) => {
 
 // Answered with a value, a failure included, so its kind, reason and next reach the page (door.js).
 ipcMain.handle("engine:request", (event, method, params) =>
-  answer(engine, event.senderFrame?.url, RENDERER_URL, method, params, down));
+  answer(engine, event.senderFrame?.url, RENDERER_URL, method, params, down, { pick: pickPhoto, places: PLACES }));
 
 app.whenReady().then(() => {
   // app.quit() above does not stop this file: a second launch on the same root opens no window and
