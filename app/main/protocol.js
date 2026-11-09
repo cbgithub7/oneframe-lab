@@ -84,8 +84,21 @@ export function loadContract(file = CONTRACT_FILE) {
   return parseContract(JSON.parse(readFileSync(file, "utf8")));
 }
 
-/** The contract, read once when the app starts. */
-export const CONTRACT = loadContract();
+/** Why the contract could not be read when the app started, or null. */
+export let CONTRACT_PROBLEM = /** @type {string | null} */ (null);
+
+/**
+ * The contract, read once when the app starts. One that cannot be read declares nothing, so every
+ * message is logged as undeclared and still goes, its local paths taken out (`loose`).
+ */
+export const CONTRACT = (() => {
+  try {
+    return loadContract();
+  } catch (error) {
+    CONTRACT_PROBLEM = `${CONTRACT_FILE} cannot be read: ${String(error)}`;
+    return parseContract({});
+  }
+})();
 
 /** @param {unknown} value */
 function kindName(value) {
@@ -208,11 +221,11 @@ export function problems(message, { method, page = false, contract = CONTRACT } 
 
 /** @param {Contract} contract @param {Kind} kind @param {unknown} value @returns {unknown} */
 function stripValue(contract, kind, value) {
-  if (Array.isArray(value)) return kind.of ? value.map((item) => stripValue(contract, /** @type {Kind} */ (kind.of), item)) : value;
+  if (Array.isArray(value)) return value.map((item) => (kind.of ? stripValue(contract, kind.of, item) : loose(item)));
   if (!isObject(value)) return value;
   const shape = kind.names.map((name) => contract.shapes.get(name)).find(Boolean);
   if (shape) return stripFields(contract, shape, value);
-  if (!kind.of) return value;
+  if (!kind.of) return loose(value);
   const of = kind.of;
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, stripValue(contract, of, item)]));
 }
@@ -224,15 +237,31 @@ function stripFields(contract, record, value) {
   for (const [key, item] of Object.entries(value)) {
     const field = record.fields.get(key);
     if (field && !field.page) continue;
-    out[key] = field ? stripValue(contract, field.type, item) : item;
+    out[key] = field ? stripValue(contract, field.type, item) : loose(item);
   }
   return out;
 }
 
+/** @param {string} text */
+const isLocalPath = (text) => path.win32.isAbsolute(text) || path.posix.isAbsolute(text);
+
+/**
+ * What the contract leaves free-form (a value's meta) or does not declare, without a field that
+ * holds a local path, whatever its name: nothing says such a field may reach the page.
+ * @param {unknown} value @returns {unknown}
+ */
+function loose(value) {
+  if (Array.isArray(value)) return value.map(loose);
+  if (!isObject(value)) return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([, item]) => typeof item !== "string" || !isLocalPath(item))
+    .map(([key, item]) => [key, loose(item)]));
+}
+
 /**
  * `message` without the fields the contract marks "page": false, wherever its declaration puts
- * them: an event (no `method`), or the door's answer to `method`. What it does not declare is
- * left as it is, for the door to scrub.
+ * them: an event (no `method`), or the door's answer to `method`. In what it leaves free-form or
+ * does not declare, a field that holds a local path goes; the rest is left for the door to scrub.
  * @param {unknown} message
  * @param {{ method?: string, contract?: Contract }} [how]
  * @returns {unknown}
@@ -241,24 +270,28 @@ export function stripped(message, { method, contract = CONTRACT } = {}) {
   if (!isObject(message)) return message;
   if (method === undefined) {
     const record = contract.events.get(String(message.event));
-    return record ? stripFields(contract, record, message) : message;
+    return record ? stripFields(contract, record, message) : loose(message);
   }
   if (message.ok === false) return { ...message, error: stripValue(contract, FAILURE, message.error) };
   const declared = contract.methods.get(method);
   const record = declared ? answerRecord(contract, declared, message.result) : null;
-  if (!record || !isObject(message.result)) return message;
-  return { ...message, result: stripFields(contract, record, message.result) };
+  if (!isObject(message.result)) return message;
+  return { ...message, result: record ? stripFields(contract, record, message.result) : loose(message.result) };
 }
 
 /** The names a problem was logged for: once each, for as long as the app runs. */
 const LOGGED = new Set();
 
 /**
- * Log the problems of a message the door passed on, the first time its event or method has one.
- * @param {string} name @param {string[]} found @param {(line: string) => void} log
+ * Log the problems of a message the door passed on, the first time its event or method has one;
+ * once it has, they are not looked for again.
+ * @param {string} name @param {() => string[]} find @param {(line: string) => void} log
  */
-export function logOnce(name, found, log) {
-  if (found.length === 0 || LOGGED.has(name)) return;
+export function logOnce(name, find, log) {
+  if (LOGGED.has(name)) return;
+  const found = find();
+  if (found.length === 0) return;
   LOGGED.add(name);
-  log(`not as contracts/protocol.json declares it (sent all the same): ${found.join("; ")}`);
+  const why = CONTRACT_PROBLEM ? ` (${CONTRACT_PROBLEM})` : "";
+  log(`not as contracts/protocol.json declares it, sent all the same${why}: ${found.join("; ")}`);
 }

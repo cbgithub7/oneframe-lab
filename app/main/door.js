@@ -79,16 +79,17 @@ function rulesFor(places) {
  * `payload` as the page may see it: an event, or the door's answer to `method`, without the fields
  * the contract marks "page": false, and with no data root, repo or home folder in any string or
  * key. What the contract does not declare is logged with `log`, once per event or method name.
+ * The result is the page's view (app/protocol.d.ts's Page): a door's answer stays one.
  * @template T
  * @param {T} payload
  * @param {Places} places
  * @param {{ method?: string, log?: (line: string) => void }} [how]
- * @returns {T}
+ * @returns {T extends Answer ? Answer : unknown}
  */
 export function forPage(payload, places, { method, log } = {}) {
   if (log) {
     const name = method ?? String(/** @type {{ event?: unknown }} */ (payload)?.event);
-    logOnce(name, problems(payload, { method }), log);
+    logOnce(name, () => problems(payload, { method }), log);
   }
   const rules = rulesFor(places);
   /** @param {string} text */
@@ -103,7 +104,7 @@ export function forPage(payload, places, { method, log } = {}) {
     for (const [key, item] of Object.entries(value)) out[scrub(key)] = walk(item);
     return out;
   };
-  return /** @type {T} */ (walk(stripped(payload, { method })));
+  return /** @type {T extends Answer ? Answer : unknown} */ (walk(stripped(payload, { method })));
 }
 
 /**

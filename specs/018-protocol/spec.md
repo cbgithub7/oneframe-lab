@@ -98,8 +98,8 @@ its sender).
 ## Tests
 
 - Added: `test_an_undeclared_event_is_a_problem`, `test_architecture_names_every_declared_event`,
-  `test_queued_methods_are_those_the_server_queues`, `test_the_contract_says_its_problems_at_once`
-  (`test_protocol.py`, new); in `protocol.test.js` (new), "the page's types are the contract's"; in
+  `test_queued_methods_are_those_the_server_queues`, `test_the_contract_says_its_problems_at_once`,
+  `test_a_contract_that_cannot_be_read_stops_no_message` (`test_protocol.py`, new); in `protocol.test.js` (new), "the page's types are the contract's"; in
   `door.test.js`, "what reaches the page is declared"; in `engine.test.js`, "every method is
   declared".
 - Removed: none
@@ -144,6 +144,10 @@ Ubuntu. No hardware step.
   (`engine_process`), as the in-process check does.
 - Two server tests that held a method of their own hold `nodes.forget` instead: an undeclared
   method is a problem.
+- Where the contract leaves a field free-form (`meta`) or declares nothing, the door drops a field
+  that holds a local path, whatever its name: 016's rule, kept where no declaration can say.
+- A contract that cannot be read stops no message: the engine keeps why, and the app logs each
+  message as undeclared.
 - A `{"stopped": true}` is handled where the app reads an answer: `photo.pick` answers null, and
   the page's node list stays as it was.
 

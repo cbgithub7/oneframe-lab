@@ -211,14 +211,14 @@ def protocol_kept() -> Iterator[None]:
 PROTOCOL_LOGGED = f" {protocol.LOGGER.name}: "
 
 
-def protocol_logged(logs: set[Path]) -> None:
-    """Each engine process's protocol problems, from its log, fail the test as the in-process
-    ones do: every engine said what it found once it had ended."""
+def protocol_logged(logs: dict[Path, int]) -> None:
+    """Each engine process's protocol problems, from its log after where it began (another may
+    have written the file before), fail the test as the in-process ones do."""
     found = [
         line.strip()
-        for log in sorted(logs)
+        for log, start in sorted(logs.items())
         if log.is_file()
-        for line in log.read_text(encoding="utf-8", errors="replace").splitlines()
+        for line in log.read_bytes()[start:].decode("utf-8", errors="replace").splitlines()
         if PROTOCOL_LOGGED in line
     ]
     assert not found, "an engine process broke contracts/protocol.json:\n" + "\n".join(found)
@@ -487,13 +487,14 @@ def engine_process(tmp_path: Path) -> Iterator[StartEngine]:
     its standard error in `log` (by default tmp_path / "engine.log"); each is killed at teardown,
     pass or fail, if it is still running. Once all have ended, a protocol problem any of them logged
     fails the test (spec 018)."""
-    logs: set[Path] = set()
+    logs: dict[Path, int] = {}  # each log, and its size before this test's first engine wrote to it
     with contextlib.ExitStack() as ending:
         ending.callback(protocol_logged, logs)  # last: after every engine is killed
 
         def start(argv: list[str], log: Path | None = None, **kw: Any) -> EngineProcess:
-            started = EngineProcess(argv, log or tmp_path / "engine.log", **kw)
-            logs.add(started.log)
+            path = log or tmp_path / "engine.log"
+            logs.setdefault(path, path.stat().st_size if path.is_file() else 0)
+            started = EngineProcess(argv, path, **kw)
             ending.callback(started.kill)
             return started
 

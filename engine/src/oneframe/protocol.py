@@ -250,8 +250,15 @@ def _value(c: Contract, kind: Type, value: Any, name: str, where: str, out: list
 
 
 def _fields(
-    c: Contract, record: Record, value: dict[str, Any], name: str, where: str, out: list[str]
+    c: Contract,
+    record: Record,
+    value: dict[str, Any],
+    name: str,
+    where: str,
+    out: list[str],
+    beside: str | None = None,
 ) -> None:
+    """`beside`: a key that is not a field (an event's own `event`)."""
     for key, spec in record.fields.items():
         path = f"{where}.{key}" if where else key
         if key not in value:
@@ -263,7 +270,7 @@ def _fields(
         out += [
             f"{name}: undeclared field {f'{where}.{k}' if where else k}"
             for k in value
-            if k not in record.fields
+            if k not in record.fields and k != beside
         ]
 
 
@@ -288,16 +295,28 @@ def _note(name: str, found: list[str]) -> None:
         LOGGER.warning("protocol: %s (sent all the same)", "; ".join(found))
 
 
+def _contract() -> Contract | None:
+    """The contract, or None, the problem kept, when it cannot be read: a check never stops a
+    message, even then."""
+    try:
+        return contract()
+    except ProtocolError as exc:
+        _note("contracts/protocol.json", [str(exc)])
+        return None
+
+
 def check_event(message: dict[str, Any]) -> dict[str, Any]:
     """`message`, as it is, after checking it against its event's declaration."""
     name = message.get("event")
-    c = contract()
+    c = _contract()
+    if c is None:
+        return message
     record = c.events.get(name) if isinstance(name, str) else None
     if record is None:
         _note(str(name), [f"{name!r} is not a declared event"])
         return message
     found: list[str] = []
-    _fields(c, record, {k: v for k, v in message.items() if k != "event"}, str(name), "", found)
+    _fields(c, record, message, str(name), "", found, beside="event")
     _note(str(name), found)
     return message
 
@@ -309,9 +328,14 @@ def event(name: str, /, **fields: Any) -> dict[str, Any]:
 
 def check_answer(method: str, result: Any, *, stopped: bool = False) -> None:
     """Check the result the engine answers `method` with; with `stopped`, that the method may be
-    answered `{"stopped": true}` because it waits its turn."""
-    c = contract()
+    answered `{"stopped": true}` because it waits its turn. A method the engine does not have is
+    answered stopped as rightly as it is refused (check_error), so only a declared one is held."""
+    c = _contract()
+    if c is None:
+        return
     declared = c.methods.get(method)
+    if declared is None and stopped:
+        return
     if declared is None:
         _note(method, [f"{method!r} is not a declared method"])
         return
@@ -331,7 +355,9 @@ def check_answer(method: str, result: Any, *, stopped: bool = False) -> None:
 
 def check_error(method: str, error: Any) -> None:
     """Check an error reply's failure, whether or not `method` exists."""
-    c = contract()
+    c = _contract()
+    if c is None:
+        return
     found: list[str] = []
     _value(c, Type(("failure",)), error, method, "error", found)
     _note(method, found)

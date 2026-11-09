@@ -119,3 +119,20 @@ def test_architecture_names_every_declared_event() -> None:
     named = prose & set(c.methods)
     assert named, "the section's prose names methods"
     assert not named & set(listed), "a method is in the list of events"
+
+
+def test_a_contract_that_cannot_be_read_stops_no_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The check never stops a message: with no contract to read, each still goes, and why is
+    kept; a queued request of a method the engine does not have may be answered stopped."""
+
+    def unreadable(_path: object = None) -> protocol.Contract:
+        raise ProtocolError("contracts/protocol.json", ["cannot read: gone"])
+
+    monkeypatch.setattr(protocol, "contract", unreadable)
+    assert protocol.event("run.stopped", **RUN_STOPPED) == {"event": "run.stopped", **RUN_STOPPED}
+    protocol.check_answer("graph.run", {"run": "abc"})
+    assert protocol.problems() == ["contracts/protocol.json: cannot read: gone"]
+    protocol.clear()
+    monkeypatch.undo()
+    protocol.check_answer("no.such", None, stopped=True)
+    assert protocol.problems() == []

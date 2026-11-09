@@ -51,7 +51,8 @@ test("an engine that refuses to start says why, and the start fails with its rea
   const events = /** @type {any[]} */ ([]);
   client.on("event", (e) => events.push(e));
   await assert.rejects(client.start(), (/** @type {any} */ error) =>
-    error instanceof EngineError && error.reason === "newer_layout" && /newer version/.test(error.message));
+    error instanceof EngineError && error.reason === "newer_layout" && /newer version/.test(error.message) &&
+    !("event" in error.failure)); // the failure, not the event that said it
   assert.equal(events[0].event, "engine.failed"); // the page sees it too
 });
 

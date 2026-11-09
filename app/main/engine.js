@@ -49,8 +49,10 @@ export class EngineError extends Error {
     this.problems = detail.problems ?? [];
     this.kind = detail.kind ?? "engine";
     this.reason = detail.reason;
+    // An engine.failed event may be the detail: the failure is its fields, without `event`.
+    const { event: _event, ...fields } = /** @type {Partial<Failure> & { event?: unknown }} */ (detail);
     /** @type {Failure} */
-    this.failure = { ...detail, kind: this.kind, message, retry: detail.retry ?? false };
+    this.failure = { ...fields, kind: this.kind, message, retry: detail.retry ?? false };
   }
 }
 

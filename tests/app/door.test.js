@@ -121,6 +121,13 @@ test("forPage drops local paths and names the root, the repo and the home folder
   const done = forPage({ event: "run.done", run: "r", outputs: { d: { depth: {
     ...value, path: "C:\\Users\\Ana\\AppData\\Local\\OneframeLab-dev\\cache\\objects\\ab\\x.npz" } } } }, places);
   assert.deepEqual(done, { event: "run.done", run: "r", outputs: { d: { depth: value } } });
+  // Where the contract leaves a field free-form (a value's meta) or declares nothing, a field that
+  // holds a local path goes, whatever its name.
+  const made = forPage({ event: "run.done", run: "r", outputs: { d: { depth: { ...value,
+    meta: { source: "E:\\photos\\beach.jpg", width: 4, name: "beach.jpg" } } } } }, places);
+  assert.deepEqual(made, { event: "run.done", run: "r", outputs: { d: { depth: { ...value, meta: { width: 4, name: "beach.jpg" } } } } });
+  assert.deepEqual(forPage({ event: "run.paused", run: "r", where: "/srv/photos/beach.jpg", step: "s" }, places),
+    { event: "run.paused", run: "r", step: "s" });
   // Every other string has the root, the repo and the home folder by name.
   const failed = forPage({ ok: false, error: { kind: "engine", message: "Boom.", retry: false,
     detail: "File \"C:\\Users\\Ana\\AppData\\Local\\OneframeLab-dev\\x.py\", and C:/Users/Ana/notes.txt, not C:\\Users\\Anabel",
