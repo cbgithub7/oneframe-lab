@@ -12,7 +12,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 3. **The npz reader.** `app/renderer/npz.js` (stored and deflated, zip64 as numpy writes
   it); fixtures written by numpy under `tests/app/fixtures/npz/`; "the npz reader reads what numpy
   writes". (AC2)
-- [ ] 4. **What a run shows.** `app/renderer/run-view.js`: a card's state from events typed from
+- [x] 4. **What a run shows.** `app/renderer/run-view.js`: a card's state from events typed from
   `Page`, and the offer each failure gets; "a failure offers what it needs", read against
   architecture.md's table. (AC3; requirements 4 and 5)
 - [ ] 5. **Viewers by port type.** `app/renderer/viewers/` (Image, Depth, PointMap with

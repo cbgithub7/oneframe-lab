@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { formModel, readControl } from "../../app/renderer/form.js";
 import { feeds, isSet, openGraph, resetParam, setParam } from "../../app/renderer/graph-model.js";
 import { readNpz } from "../../app/renderer/npz.js";
+import { KINDS, offerFor, runView, starting } from "../../app/renderer/run-view.js";
+import { REPO_ROOT } from "../../app/main/paths.js";
 
 /** @typedef {import("../../app/protocol.js").Page.Manifest} Manifest */
 
@@ -94,4 +96,43 @@ test("the npz reader reads what numpy writes", async () => {
     assert.deepEqual([...v.data], [...valid], name);
   }
   await assert.rejects(readNpz(new ArrayBuffer(64)), /Not an npz numpy wrote/);
+});
+
+test("a failure offers what it needs", () => {
+  // Every row of architecture.md's table of failures: its kind, reason and retry.
+  const doc = readFileSync(path.join(REPO_ROOT, "docs", "architecture.md"), "utf8");
+  const table = doc.slice(doc.indexOf("## Failures"), doc.indexOf("## What comes next"));
+  const rows = [...table.matchAll(/^\| `([a-z_]+)` \| (?:`([a-z_]+)`)? *\| (yes|no) \|/gm)]
+    .map(([, kind, reason, retry]) => ({ kind, reason, retry: retry === "yes" }));
+  assert.ok(rows.length > 60, `the table's rows were found (${rows.length})`);
+  assert.deepEqual([...KINDS].sort(), [...new Set(rows.map((r) => r.kind))].sort(), "the page knows every kind, and no other");
+
+  /** Requirement 5, row by row. @param {{ kind: string, reason?: string, retry: boolean }} row */
+  const wanted = ({ kind, reason, retry }) => {
+    const key = `${kind}/${reason ?? ""}`;
+    if (key === "runtime/not_installed" || key === "runtime/out_of_date") return { action: "install" };
+    if (key === "files/not_downloaded" || key === "files/incomplete") return { action: "download" };
+    if (key === "runtime/installing") return { action: "wait", for: "runtime" };
+    if (key === "files/downloading") return { action: "wait", for: "files" };
+    return retry ? { action: "retry" } : null;
+  };
+  for (const row of rows) assert.deepEqual(offerFor(row), wanted(row), `${row.kind}/${row.reason ?? ""}`);
+  const offered = new Set(rows.map((r) => offerFor(r)?.action ?? "none"));
+  assert.deepEqual([...offered].sort(), ["download", "install", "none", "retry", "wait"]);
+
+  for (const retry of [true, false]) {
+    assert.equal(offerFor({ kind: "no_such_kind", retry }), null, "a kind the page does not know gets none");
+    assert.equal(offerFor({ kind: "no_such_kind", reason: "not_installed", retry }), null);
+  }
+
+  // A card carries its failure's offer, from the run's events.
+  let state = runView(starting(), { event: "run.start", run: "r1", order: ["a", "b"], notes: [] });
+  state = runView(state, {
+    event: "node.failed", run: "r1", step: "a", node: "x.y", kind: "runtime", reason: "not_installed",
+    message: "It is not installed.", retry: false,
+  });
+  state = runView(state, { event: "node.skipped", run: "r1", step: "b", node: "x.z", waited_on: "a" });
+  state = runView(state, { event: "node.failed", run: "other", step: "b", node: "x.z", kind: "node", message: "", retry: false });
+  assert.deepEqual(state.cards.a.offer, { action: "install" });
+  assert.equal(state.cards.b.phase, "skipped", "another run's events change nothing");
 });
