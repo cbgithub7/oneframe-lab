@@ -35,7 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from oneframe import BUILTIN_GRAPHS_DIR, BUILTIN_NODES_DIR, __version__, graphs, hardware, ports
+from oneframe import BUILTIN_GRAPHS_DIR, BUILTIN_NODES_DIR, __version__, graphs, hardware, inputs, ports
 from oneframe.cache import Cache
 from oneframe.errors import Failure, failure
 from oneframe.graph import Graph, Step, fits, plan, step_params
@@ -132,6 +132,7 @@ class Engine:
             "graphs.get": self.graphs_get,
             "graphs.save": self.graphs_save,
             "graphs.remove": self.graphs_remove,
+            "inputs.import": self.inputs_import,
             "run.stop": self.run_stop,
             "runtimes.list": self.runtimes_list,
             "runtimes.plan": self.runtimes_plan,
@@ -238,6 +239,15 @@ class Engine:
         graphs.remove(self.layout.graphs, name)
         now = self._graphs().graphs.get(str(name))
         return {"name": name, "removed": True, "now": now.summary() if now is not None else None}
+
+    def inputs_import(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{path}`: copy a file into the root's inputs/, by its content; its id and its name. Only
+        the main process calls it, with the file the person picked: it is not on the page's list."""
+        source = Path(str(_required(params, "path")))
+        if not source.is_absolute() or not source.is_file():
+            raise _bad_params(f"No file at {source}.")
+        ident, name = inputs.import_file(self.layout, source)
+        return {"id": ident, "name": name}
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
         graph = Graph.from_json(_required(params, "graph"))

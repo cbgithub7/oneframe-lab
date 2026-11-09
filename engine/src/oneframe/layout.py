@@ -250,6 +250,11 @@ class Layout:
         return self.root / "logs" / "locks"
 
     @property
+    def inputs(self) -> Path:
+        """`<sha256><suffix>` per file a graph reads, the photos the person picked (inputs.py)."""
+        return self.root / "inputs"
+
+    @property
     def graphs(self) -> Path:
         """`<name>.json` per graph the person saved: their own work, which only they remove."""
         return self.root / "graphs"
