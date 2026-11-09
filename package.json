@@ -12,7 +12,7 @@
   "scripts": {
     "start": "electron .",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.page.json && tsc -p tsconfig.preload.json",
     "test": "node --test \"tests/app/**/*.test.js\"",
     "check": "npm run lint && npm run protocol:types && npm run typecheck && npm test && npm run docs:check",
     "engine:sync": "uv sync --project engine --frozen",

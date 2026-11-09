@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOP = ["app", "engine", "nodes", "contracts", "scripts", "docs", "specs", "tests", "runtimes", ".claude", ".github"];
 const ROOT_FILES = new Set(["package.json", "package-lock.json", "versions.json", "AGENTS.md", "CLAUDE.md", "README.md",
-  "tsconfig.json", "ruff.toml", "pyrightconfig.json", "eslint.config.js", ".node-version"]);
+  "tsconfig.json", "tsconfig.base.json", "tsconfig.page.json", "tsconfig.preload.json", "ruff.toml", "pyrightconfig.json", "eslint.config.js", ".node-version"]);
 
 /** @param {string} dir @returns {string[]} */
 function markdownFiles(dir) {

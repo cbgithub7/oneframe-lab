@@ -2,6 +2,8 @@
 // The first page: engine status and the node catalogue, both read from the engine. Nothing here
 // names a node; the list is whatever the engine found in its node folders.
 
+export {}; // a module, so its names are its own
+
 const api = window.oneframe;
 const status = /** @type {HTMLElement} */ (document.getElementById("engine-status"));
 const nodesEl = /** @type {HTMLElement} */ (document.getElementById("nodes"));
