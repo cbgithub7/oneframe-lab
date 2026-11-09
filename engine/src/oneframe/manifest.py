@@ -19,7 +19,7 @@ from oneframe.memory.model import PRECISION_PARAM, MemoryModel
 from oneframe.memory.model import parse as parse_memory
 from oneframe.models.schema import FileSpec
 from oneframe.models.schema import parse as parse_files
-from oneframe.reading import ProblemsError, check_id, number, optional_text, read_object, text
+from oneframe.reading import ProblemsError, check_id, is_sha256, number, optional_text, read_object, text
 
 CATEGORIES = (
     "source",  # brings something in: a photo, clicks, text
@@ -137,8 +137,9 @@ def check_param(key: str, param: Param, value: Any) -> str | None:
         return f"{key} should be one of {', '.join(param.choices)}"
     if kind in ("string", "file") and not isinstance(value, str):
         return f"{key} should be text"
-    if kind == "file" and isinstance(value, str) and value and not Path(value).is_file():
-        return f"{key}: no file at {value}"
+    if kind == "file" and isinstance(value, str) and not is_sha256(value):
+        # Never looked up: a page could otherwise ask whether any path exists (spec 016).
+        return f"{key} should name an imported file by its id, not a path"
     return None
 
 

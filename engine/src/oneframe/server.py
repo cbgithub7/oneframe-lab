@@ -6,10 +6,21 @@ Requests are `{"id": 1, "method": "nodes.list", "params": {}}` and are answered 
 `{"id": 1, "result": ...}` or `{"id": 1, "error": {"message": ..., "problems": [...]}}`. Anything
 that takes time (a graph run) answers at once with a run id, and its progress arrives as events,
 `{"event": "node.done", ...}`, with no id. There is no polling and no local network port: the only
-way in is this process's own stdin, which only the app holds.
+way in is this process's own stdin, which only the app holds. contracts/protocol.json declares every
+method and event, and each answer and error is checked against it (protocol.py).
+
+Requests are answered in order by one worker thread, so no two of them run at once, as the methods
+were written to. Only the stops (`run.stop`, `runtimes.stop`, `models.stop`) and the reads that
+answer at once (`engine.hello`, `values.locate`) are answered by the loop that reads stdin, so a
+slow request never holds them up; a stop first takes each request of its kind still waiting off the
+queue and answers it `{"stopped": true}`, so it is never begun. Replies carry their request's id.
 
 Only one graph runs at a time: they share one GPU, and a second run would only fight the first for
 memory. A run asked for while another is going is refused with the running one's id.
+
+Graphs are kept as files (graphs.py): the shipped ones in the folders `--graphs` names, the
+person's under the data root. `graph.fits` answers what a port could connect to, by the rule
+`plan()` follows.
 
 Runtimes (the environments heavy nodes run in) are listed, planned, installed and removed here too.
 An install answers at once and reports itself as runtime.* events; one runs at a time, and a
@@ -27,14 +38,24 @@ import threading
 import time
 import traceback
 import uuid
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from oneframe import BUILTIN_NODES_DIR, __version__, hardware, ports
+from oneframe import (
+    BUILTIN_GRAPHS_DIR,
+    BUILTIN_NODES_DIR,
+    __version__,
+    graphs,
+    hardware,
+    inputs,
+    ports,
+    protocol,
+)
 from oneframe.cache import Cache
 from oneframe.errors import Failure, failure
-from oneframe.graph import Graph, Step, plan, step_params
+from oneframe.graph import Graph, Step, fits, plan, step_params
 from oneframe.journal import engine_crash
 from oneframe.layout import Layout, RootRefused, claim_root, open_root
 from oneframe.memory.learned import LearnedStore
@@ -43,12 +64,21 @@ from oneframe.models.catalog import listing, remove_node, remove_unpinned
 from oneframe.models.jobs import Jobs
 from oneframe.models.runs import in_use
 from oneframe.node import Emit
+from oneframe.reading import is_sha256
 from oneframe.registry import Registry, discover
 from oneframe.runtimes.manager import InstallRefused, Runtimes, find_uv
 from oneframe.scheduler import for_root
 from oneframe.scratch import Scratch
 
 LOGGER = logging.getLogger("oneframe.server")
+# Answered by the loop that reads requests, never behind another one: reads that answer at once.
+AT_ONCE = frozenset({"engine.hello", "values.locate"})
+# Each stop, answered at once too, and the requests of its kind it takes off the queue first.
+STOPS: dict[str, frozenset[str]] = {
+    "run.stop": frozenset({"graph.run"}),
+    "runtimes.stop": frozenset({"runtimes.install"}),
+    "models.stop": frozenset({"models.download", "models.verify"}),
+}
 
 
 def _bad_params(message: str) -> Failure:
@@ -76,9 +106,11 @@ class Engine:
         scratch: Scratch | None = None,
         warnings: list[str] | None = None,
         transfer: dict[str, Any] | None = None,
+        graph_roots: list[Path] | None = None,
     ):
         """`warnings`: the root's, when the caller has already claimed it (layout.open_root).
-        `transfer`: options for each download (a test's TLS context, policy or proxy)."""
+        `transfer`: options for each download (a test's TLS context, policy or proxy).
+        `graph_roots`: the folders of graphs that ship (default: the repo's graphs/)."""
         self.data = data
         self.layout = Layout(data)
         # Before anything is written under the root: a newer layout stops the engine here.
@@ -86,6 +118,7 @@ class Engine:
         # This process's own folder under cache/tmp/; the start sweeps only dead processes' folders.
         self.scratch = scratch or Scratch.claim(self.layout)
         self.node_roots = node_roots
+        self.graph_roots = graph_roots if graph_roots is not None else [BUILTIN_GRAPHS_DIR]
         self.say = say
         self.registry: Registry = discover(node_roots)
         self.cache = Cache(self.layout.objects, self.scratch.folder / "runs")
@@ -119,7 +152,14 @@ class Engine:
             "nodes.forget": self.nodes_forget,
             "ports.list": self.ports_list,
             "graph.validate": self.graph_validate,
+            "graph.fits": self.graph_fits,
             "graph.run": self.graph_run,
+            "graphs.list": self.graphs_list,
+            "graphs.get": self.graphs_get,
+            "graphs.save": self.graphs_save,
+            "graphs.remove": self.graphs_remove,
+            "inputs.import": self.inputs_import,
+            "values.locate": self.values_locate,
             "run.stop": self.run_stop,
             "runtimes.list": self.runtimes_list,
             "runtimes.plan": self.runtimes_plan,
@@ -168,7 +208,7 @@ class Engine:
             raise _bad_params(f"No node called {node!r} is installed.")
         manifest = self.registry.get(node)
         given = dict(params.get("params") or {})
-        values, problems = step_params(manifest, given)
+        values, problems = step_params(manifest, given, self.layout.inputs)
         if problems:
             raise _bad_params("; ".join(problems))
         sizes = dict(params.get("inputs") or {})
@@ -193,12 +233,65 @@ class Engine:
         }
 
     def graph_validate(self, params: dict[str, Any]) -> dict[str, Any]:
-        the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry)
-        return {"order": the_plan.order, "notes": the_plan.notes}
+        the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry, self.layout.inputs)
+        return {"order": the_plan.order, "notes": the_plan.notes, "depends": the_plan.depends}
+
+    def graph_fits(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{graph, port}`: what `port` (`step.port`) could connect to, in the graph and by adding a
+        node, each with how (graph.fits)."""
+        graph = Graph.from_json(_required(params, "graph"))
+        return fits(graph, str(_required(params, "port")), self.registry)
+
+    def _graphs(self) -> graphs.Listing:
+        return graphs.discover(self.graph_roots, self.layout.graphs)
+
+    def graphs_list(self, _params: dict[str, Any]) -> dict[str, Any]:
+        """Every graph that ships and every one the person saved, by name, and each broken file."""
+        return self._graphs().to_json()
+
+    def graphs_get(self, params: dict[str, Any]) -> dict[str, Any]:
+        found = self._graphs().get(str(_required(params, "name")))
+        return {**found.summary(), "graph": found.graph.to_json()}
+
+    def graphs_save(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{name, graph}`: the person's graph, written under the data root; a shipped one of that
+        name is left as it is, and shadowed."""
+        graphs.save(self.layout.graphs, _required(params, "name"), _required(params, "graph"))
+        return self._graphs().get(str(params["name"])).summary()
+
+    def graphs_remove(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{name}`: the person's own graph, deleted because they asked for it by name. A shipped
+        one of that name is then the one listed (`now`)."""
+        name = _required(params, "name")
+        graphs.remove(self.layout.graphs, name)
+        now = self._graphs().graphs.get(str(name))
+        return {"name": name, "removed": True, "now": now.summary() if now is not None else None}
+
+    def inputs_import(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{path}`: copy a file into the root's inputs/, by its content; its id and its name. Only
+        the main process calls it, with the file the person picked: it is not on the page's list."""
+        source = Path(str(_required(params, "path")))
+        if not source.is_absolute() or not source.is_file():
+            raise _bad_params(f"No file at {source}.")
+        ident, name = inputs.import_file(self.layout, source)
+        return {"id": ident, "name": name}
+
+    def values_locate(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{key, port}`: the file of a value a run committed to the cache, its type and carrier,
+        for the app's value protocol; anything no committed entry has is refused. Only the main
+        process calls it: it answers a path, so it is not on the page's list."""
+        key, port = _required(params, "key"), _required(params, "port")
+        outputs = self.cache.get(key) if is_sha256(key) else None
+        value = outputs.get(port) if outputs is not None and isinstance(port, str) else None
+        if value is None:
+            raise _bad_params(f"No value {port!r} was committed under the key {key!r}.")
+        found = ports.types().get(value.type)
+        return {"path": str(value.path), "type": value.type, "carrier": found.carrier if found else None}
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
         graph = Graph.from_json(_required(params, "graph"))
-        the_plan = plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
+        # A bad graph is refused now, with its problems, not as an event.
+        the_plan = plan(graph, self.registry, self.layout.inputs)
         used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
         run_id = uuid.uuid4().hex[:12]
         stop = threading.Event()
@@ -340,22 +433,87 @@ class Engine:
         self.scratch.release()
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        """The reply to one request, its result or its error checked against the contract."""
         req_id = message.get("id")
-        method = message.get("method")
-        fn = self.methods.get(str(method))
+        method = str(message.get("method"))
+        fn = self.methods.get(method)
         if fn is None:
-            return {
-                "id": req_id,
-                "error": failure("request", f"Unknown method {method!r}.", "unknown_method"),
-            }
-        try:
-            return {"id": req_id, "result": fn(dict(message.get("params") or {}))}
-        except Failure as exc:  # a refusal with a declared kind and reason, for a person
-            return {"id": req_id, "error": exc.to_json()}
-        except Exception as exc:
-            LOGGER.exception("%s failed", method)
-            trace = traceback.format_exc()[-4000:]
-            return {"id": req_id, "error": failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)}
+            error = failure("request", f"Unknown method {message.get('method')!r}.", "unknown_method")
+        else:
+            try:
+                result = fn(dict(message.get("params") or {}))
+            except Failure as exc:  # a refusal with a declared kind and reason, for a person
+                error = exc.to_json()
+            except Exception as exc:
+                LOGGER.exception("%s failed", method)
+                trace = traceback.format_exc()[-4000:]
+                error = failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)
+            else:
+                protocol.check_answer(method, result)
+                return {"id": req_id, "result": result}
+        protocol.check_error(method, error)
+        return {"id": req_id, "error": error}
+
+
+class Requests:
+    """The requests the app sends, as the engine answers them: in order, by one worker thread, but
+    for those AT_ONCE and the STOPS, which the caller's thread answers as they come."""
+
+    def __init__(self, engine: Engine, say: Emit):
+        self.engine = engine
+        self.say = say
+        self._queue: deque[dict[str, Any]] = deque()
+        self._changed = threading.Condition()
+        self._closed = False
+        self._worker = threading.Thread(target=self._work, name="requests", daemon=True)
+        self._worker.start()
+
+    def take(self, message: dict[str, Any]) -> None:
+        """One request: answered now if it is a stop or a read AT_ONCE, else queued."""
+        method = str(message.get("method"))
+        if method not in AT_ONCE and method not in STOPS:
+            with self._changed:
+                self._queue.append(message)
+                self._changed.notify_all()
+            return
+        self._stop_queued(STOPS.get(method, frozenset()))
+        reply = self.engine.handle(message)
+        if reply is not None:
+            self.say(reply)
+
+    def _stop_queued(self, methods: frozenset[str] | None) -> None:
+        """Each queued request of these methods (None: of any) answered as stopped, never begun."""
+        with self._changed:
+            gone = [m for m in self._queue if methods is None or m.get("method") in methods]
+            for message in gone:
+                self._queue.remove(message)
+        for message in gone:
+            protocol.check_answer(str(message.get("method")), None, stopped=True)
+            self.say({"id": message.get("id"), "result": {"stopped": True}})
+
+    def _work(self) -> None:
+        while True:
+            with self._changed:
+                while not self._queue and not self._closed:
+                    self._changed.wait()
+                if not self._queue:
+                    return
+                message = self._queue.popleft()
+            try:
+                reply = self.engine.handle(message)
+                if reply is not None:
+                    self.say(reply)
+            except Exception:  # a reply that cannot be said: logged, and the next request answered
+                LOGGER.exception("answering %s failed", message.get("method"))
+
+    def close(self, timeout: float = 30) -> None:
+        """No more requests: each still queued is answered as stopped, and the one being answered
+        is waited for, up to `timeout` seconds."""
+        self._stop_queued(None)
+        with self._changed:
+            self._closed = True
+            self._changed.notify_all()
+        self._worker.join(timeout)
 
 
 def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) -> int:
@@ -369,6 +527,13 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
         action="append",
         default=None,
         help="a folder of nodes; repeat for more (default: the built-in nodes)",
+    )
+    parser.add_argument(
+        "--graphs",
+        type=Path,
+        action="append",
+        default=None,
+        help="a folder of graphs that ship; repeat for more (default: the repo's graphs/)",
     )
     parser.add_argument(
         "--runtimes",
@@ -419,15 +584,17 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
             scratch=scratch,
             warnings=warnings,
             transfer=transfer,
+            graph_roots=args.graphs,
         )
     except RootRefused as exc:
-        say({"event": "engine.failed", **exc.to_json()})
+        say(protocol.event("engine.failed", **exc.to_json()))
         return 2
     except Exception as exc:  # a root that cannot be written, a lock that cannot be taken: say why
         LOGGER.exception("the engine could not start")
-        say(engine_crash(exc, event="engine.failed"))
+        say(protocol.event("engine.failed", **engine_crash(exc)))
         return 1
-    say({"event": "engine.ready", **engine.hello({})})
+    say(protocol.event("engine.ready", **engine.hello({})))
+    requests = Requests(engine, say)
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:
         line = line.strip()
@@ -436,12 +603,13 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
         try:
             message = json.loads(line)
         except ValueError:
-            say({"event": "engine.warning", "message": "A request was not JSON."})
+            message = None
+        if not isinstance(message, dict):
+            say(protocol.event("engine.warning", message="A request was not a JSON object."))
             continue
-        reply = engine.handle(message)
-        if reply is not None:
-            say(reply)
-    engine.shutdown()  # stdin closed: the app is quitting
+        requests.take(message)
+    requests.close()  # stdin closed: the app is quitting
+    engine.shutdown()
     return 0
 
 

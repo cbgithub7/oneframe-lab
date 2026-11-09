@@ -3,10 +3,7 @@
 // kind and reason is one oneframe/errors.py declares, and docs/architecture.md lists; a test holds
 // APP_FAILURES to that table.
 
-/**
- * @typedef {{ kind: string, reason?: string, message: string, next?: string, retry: boolean,
- *   problems?: unknown[], detail?: string }} Failure
- */
+/** @typedef {import("../protocol.js").Wire.Failure} Failure the contract's (contracts/protocol.json) */
 
 /** The failures the app itself reports, each as errors.py declares it. */
 export const APP_FAILURES = Object.freeze({

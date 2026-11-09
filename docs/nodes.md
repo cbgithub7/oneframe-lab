@@ -47,6 +47,9 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
   (made from generated views). An output without one inherits the weakest trust of its inputs.
 - **Params** with `"affects": "speed"` do not change the result, so they are not part of the
   cache key. Every other parameter is.
+- **A `file` param** holds an import's id, the sha256 of a file the person picked, which the app
+  copied into the data root's `inputs/`; never a path. The node is given that file's path in
+  `ctx.params`, so it reads a file, and it is keyed by the file's content.
 - **run.where** is `engine` for light nodes that ship with the app, and `runtime` for anything
   that imports a model library; `runtime` names the environment it runs in, a folder in
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
@@ -130,6 +133,13 @@ with what it returned; without it, `run(ctx)` alone. `load`'s context has everyt
 the run's inputs, paths and outputs: what it returns may depend on the fitted settings
 (`ctx.params`, `ctx.device`, `ctx.precision`), never on the photo or another node's output. Its
 seconds count with the run's.
+
+**What the page hears from a node.** `ctx.stage(name, message)` sends `stage`, with `stage` and
+`message`; `ctx.progress(done, total, what)` sends `progress`, with the stage it is in, `done`,
+`total` (or null) and `what`, and a tqdm bar in a runtime sends the same, at most four times a
+second. The engine passes each on with the node's `step` and the `run`, checked against
+`contracts/protocol.json` as it goes ([spec 018](../specs/018-protocol/spec.md)): a field the
+contract does not declare is logged, never refused, so a node says nothing else through them.
 
 Every output in the manifest must be declared with `ctx.output` before `run` returns. A node writes
 only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`: the run

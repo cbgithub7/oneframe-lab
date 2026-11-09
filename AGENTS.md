@@ -66,9 +66,11 @@ the [README](README.md#commands).
   not malicious code. Held by `test_the_network_is_closed_during_a_run` and
   `test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token`.
 - **One door into the page.** The page is sandboxed and isolated, and reaches the engine only
-  through `engine:request` with a method from `ENGINE_METHODS` (`app/main/methods.js`); progress is
-  pushed as events, and nothing polls. Held by "the door refuses what the page may not ask, as
-  values".
+  through `engine:request` with a method from `ENGINE_METHODS` or the app's own `APP_METHODS`
+  (`app/main/methods.js`), and reads values only through `oneframe-value://`, which serves nothing
+  but a committed value by its key. No path reaches it; progress is pushed as events, and nothing
+  polls. Held by "the door refuses what the page may not ask, as values" and "nothing the page
+  receives holds a path".
 - **The page is safe to load.** Its content security policy allows only the app's own files: no
   remote code, style, font or frame, no inline script. It never navigates away, and it reads
   nothing by path. Held by review until the page's tests hold it.
