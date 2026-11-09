@@ -102,7 +102,7 @@ def test_saving_keeps_shipped_graphs_and_newer_formats(tmp_path: Path) -> None:
     assert (refused.value.kind, refused.value.reason) == ("graph", "newer_format")
     assert newer.read_bytes() == kept
 
-    for bad in ("CON", "nul", "../out", "a/b", "", 3):
+    for bad in ("CON", "nul", "../out", "a/b", "", 3, "a" * 101):
         with pytest.raises(Failure) as named:
             graphs.save(saved, bad, _graph("Bad"))
         assert (named.value.kind, named.value.reason) == ("request", "bad_params"), bad

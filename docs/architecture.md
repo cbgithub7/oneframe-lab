@@ -23,7 +23,8 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Port types | `contracts/port-types.json`, `oneframe/ports.py` | The data kinds, their facets, and the rule for connecting them |
 | Manifests | `oneframe/manifest.py`, `oneframe/reading.py` | Read and check `node.json` part by part; every problem reported at once, a field of the wrong type among them, never a crash. `reading.py`, standard library only, is the one way a definition is read: a manifest, its memory model and a runtime's (the text field, the id rule, the version compare, a JSON object from a file, `ProblemsError`, `discover`) |
 | Registry | `oneframe/registry.py` | Find nodes by looking in folders, through the `discover` runtimes use too; a broken node never hides the others, and is listed as a problem |
-| Graph | `oneframe/graph.py` | Recipes (graphs as JSON); `plan()` checks them, inserts converters, orders them |
+| Graph | `oneframe/graph.py` | Recipes (graphs as JSON, with the page's own `page` fields kept as they are); `plan()` checks them, inserts converters, orders them; `fits()` answers what a port could connect to; both follow one rule for an edge, `connect()` |
+| Graphs | `oneframe/graphs.py`, `graphs/` | Graphs kept as files, `<name>.json`: the shipped ones in the folders `--graphs` names (the repo's `graphs/`), the person's in the data root's `graphs/`, which shadow a shipped one of their name; found by looking, a broken file listed as a problem |
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params, input keys, the node's code and its runtime's build; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; asks the `Executors` it is given where each attempt runs; checks every value at every port; carries trust; one retry after `oom` |
 | Memory | `oneframe/memory/` | A node's memory model, which a manifest reads alone of the five (`model.py`); the person's settings and the margins (`settings.py`); the estimate (`estimate.py`); the fit, pure (`fit.py`); what each machine learns (`learned.py`) |
@@ -118,6 +119,23 @@ precision, changes, needs, budgets and any warning: `slow`, `tried_anyway`, `unk
 `progress` / `ceiling` / `node.step_oom` from the node, then `node.done` (peaks, `made_with`, the
 fit) | `node.oom` and, once, another `node.fit` and `node.start` | `node.failed` (with the fits) →
 `run.done` | `run.failed` | `run.stopped`. An engine node without a memory model gets no `node.fit`.
+
+A failure stops only what depends on it. A step whose inputs come from a failed or skipped step
+gets `node.skipped` (with `waited_on`, that step) and never starts; a value that does not fit its
+input skips that step too, naming the `edge`. The run goes on with every other step, then ends
+`run.failed` with the first failure, its step or edge, and `failed` and `skipped`, the steps of
+each. A Stop still ends the whole run.
+
+Graphs are files the engine finds, as it finds nodes: `graphs.list` (each graph's name, source,
+`shipped` or `saved`, and title, and every broken file), `graphs.get {name}`,
+`graphs.save {name, graph}` and `graphs.remove {name}`. A save writes the person's copy under the
+data root, so a shipped graph is never changed and its name then opens the saved one; a remove
+deletes only a saved graph, which the person asked for by name, and brings the shipped one back.
+`graph.fits {graph, port}` answers, for a port of a node in the graph, each opposite port of the
+graph's other nodes (`graph`) and of every installed node (`add`): `direct`, `via` a converter
+(the one `plan()` inserts), `depends` (an output that leaves open a facet the input names; the
+value is checked when it arrives), or `no`, with its reason: `mismatch`, `taken` (the input is
+fed) or `cycle`. None of these is on the page's method list yet (spec 016).
 
 `nodes.fit` answers the fit a node would get now, and `nodes.forget` clears what this machine
 learned about a node. Neither is on the page's method list yet.

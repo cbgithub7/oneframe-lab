@@ -206,7 +206,7 @@ class Engine:
 
     def graph_validate(self, params: dict[str, Any]) -> dict[str, Any]:
         the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry)
-        return {"order": the_plan.order, "notes": the_plan.notes}
+        return {"order": the_plan.order, "notes": the_plan.notes, "depends": the_plan.depends}
 
     def graph_fits(self, params: dict[str, Any]) -> dict[str, Any]:
         """`{graph, port}`: what `port` (`step.port`) could connect to, in the graph and by adding a

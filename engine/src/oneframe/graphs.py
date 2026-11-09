@@ -24,6 +24,7 @@ from oneframe.files import NewerFormat, write_json
 from oneframe.graph import Graph, GraphError
 
 SHIPPED, SAVED = "shipped", "saved"
+NAME_MAX = 100  # characters: a file name every system takes, well inside Windows' path limit
 
 
 @dataclass(frozen=True)
@@ -60,11 +61,13 @@ class Listing:
 
 
 def name_problems(name: Any) -> list[str]:
-    """Why `name` cannot name a graph's file, or nothing: it is an id (`reading.check_id`), and not
-    a name Windows keeps for a device."""
+    """Why `name` cannot name a graph's file, or nothing: it is an id (`reading.check_id`) of at
+    most NAME_MAX characters, and not a name Windows keeps for a device."""
     if not isinstance(name, str) or not name:
         return ["a graph's name should be non-empty text"]
     problems: list[str] = []
+    if len(name) > NAME_MAX:
+        problems.append(f"a graph's name should be at most {NAME_MAX} characters")
     reading.check_id(name, problems)
     if reading.device_name(name):
         problems.append(f"{name!r} is a name Windows keeps for a device")

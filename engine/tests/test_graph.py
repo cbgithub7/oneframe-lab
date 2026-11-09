@@ -131,6 +131,8 @@ def test_recipe_round_trips_and_rejects_other_versions() -> None:
     assert Graph.from_json(data).to_json() == data
     with pytest.raises(GraphError, match="version 2"):
         Graph.from_json(dict(data, version=2))
+    with pytest.raises(GraphError, match="version True"):
+        Graph.from_json(dict(data, version=True))
 
 
 def test_page_fields_survive_a_round_trip() -> None:
@@ -231,7 +233,7 @@ FITS_GRAPH = {
 }
 
 
-def _planned(data: dict[str, Any], src: str, dst: str, registry: Registry) -> dict[str, str]:
+def _planned(data: dict[str, Any], src: str, dst: str, registry: Registry) -> dict[str, Any]:
     """What plan() makes of the graph with the edge src -> dst added: how fits() would say it."""
     graph = Graph.from_json(dict(data, edges=[*data["edges"], {"from": src, "to": dst}]))
     step, _, port = dst.partition(".")
@@ -246,8 +248,8 @@ def _planned(data: dict[str, Any], src: str, dst: str, registry: Registry) -> di
         assert mine, f"{src} -> {dst}: a problem that is not the edge's: {_messages(exc)}"
         return {
             "how": "no",
-            "cycle": str(any("cycle" in m for m in mine)),
-            "taken": str(any("two edges feed" in m for m in mine)),
+            "cycle": any("cycle" in m for m in mine),
+            "taken": any("two edges feed" in m for m in mine),
         }
     inserted = [s.manifest.id for s in made.steps if s.id.startswith(f"{step}~{port}~")]
     if inserted:
@@ -255,13 +257,13 @@ def _planned(data: dict[str, Any], src: str, dst: str, registry: Registry) -> di
     return {"how": "depends" if {"from": src, "to": dst} in made.depends else "direct"}
 
 
-def _agrees(answer: dict[str, Any], planned: dict[str, str], edge: str) -> None:
+def _agrees(answer: dict[str, Any], planned: dict[str, Any], edge: str) -> None:
     assert answer["how"] == planned["how"], f"{edge}: fits says {answer}, plan {planned}"
     if answer["how"] == "via":
         assert answer["converter"] == planned["converter"], edge
     if answer["how"] == "no":
-        assert (answer["reason"] == "taken") == (planned["taken"] == "True"), f"{edge}: {answer}"
-        if planned["cycle"] == "True":
+        assert (answer["reason"] == "taken") == planned["taken"], f"{edge}: {answer}"
+        if planned["cycle"]:
             assert answer["reason"] == "cycle", f"{edge}: {answer}"
 
 

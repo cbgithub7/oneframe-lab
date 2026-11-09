@@ -94,23 +94,25 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path, engine_process: Sta
         client.close()
 
 
-def test_a_graph_round_trips_over_the_protocol(tmp_path: Path, engine_process: StartEngine) -> None:
+@pytest.mark.usefixtures("basic_nodes")
+def test_a_graph_round_trips_over_the_protocol(
+    tmp_path: Path, node_root: Path, engine_process: StartEngine
+) -> None:
     shipped = tmp_path / "shipped"
     shipped.mkdir()
     data = tmp_path / "data"
-    client = engine_process(
-        [sys.executable, "-m", "oneframe.server", "--data", str(data), "--graphs", str(shipped)]
-    )
+    argv = [sys.executable, "-m", "oneframe.server", "--data", str(data), "--nodes", str(node_root)]
+    client = engine_process([*argv, "--graphs", str(shipped)])
     client.event("engine.ready")
     graph = {
         "version": 1,
         "title": "Mine",
         "nodes": {
-            "p": {"node": "source.image", "params": {}, "page": {"at": [10, 20]}},
-            "d": {"node": "convert.depth_to_points", "params": {}},
+            "p": {"node": "test.image", "params": {}, "page": {"at": [10, 20]}},
+            "d": {"node": "test.const_depth", "params": {}},
         },
         "edges": [],
-        "page": {"shown": [{"step": "d", "port": "points"}]},
+        "page": {"shown": [{"step": "d", "port": "depth"}]},
     }
     try:
         assert client.call("graphs.list")["result"] == {"graphs": [], "problems": {}}
@@ -120,9 +122,9 @@ def test_a_graph_round_trips_over_the_protocol(tmp_path: Path, engine_process: S
         listed = client.call("graphs.list")["result"]["graphs"]
         assert listed == [{"name": "mine", "source": "saved", "title": "Mine"}]
         assert client.call("graphs.get", {"name": "mine"})["result"]["graph"] == graph
-        # What fits here answers over the same protocol: the photo's image feeds no input of points.
+        # What fits here answers over the same protocol: the image feeds the depth node's input.
         fitted = client.call("graph.fits", {"graph": graph, "port": "p.image"})["result"]
-        assert {a["how"] for a in fitted["graph"]} == {"no"}
+        assert [(a["step"], a["port"], a["how"]) for a in fitted["graph"]] == [("d", "image", "direct")]
         removed = client.call("graphs.remove", {"name": "mine"})["result"]
         assert removed == {"name": "mine", "removed": True, "now": None}
         assert client.call("graphs.list")["result"]["graphs"] == []

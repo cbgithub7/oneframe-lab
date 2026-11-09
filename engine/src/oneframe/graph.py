@@ -133,7 +133,7 @@ class Graph:
         if not isinstance(data, dict):
             raise GraphError([{"node": "", "port": "", "message": "a graph should be a JSON object"}])
         version = data.get("version", RECIPE_VERSION)
-        if version != RECIPE_VERSION:
+        if isinstance(version, bool) or version != RECIPE_VERSION:
             raise GraphError([{"message": f"recipe version {version} is not {RECIPE_VERSION}"}])
         problems: list[dict[str, str]] = []
         title = data.get("title", "")
@@ -335,11 +335,13 @@ def plan(graph: Graph, registry: Registry) -> Plan:
     return Plan(steps=[steps[sid] for sid in order], notes=notes, depends=depends)
 
 
-def _reaches(graph: Graph, start: str) -> set[str]:
-    """Every node a path of edges leads to from `start`, `start` included."""
+def _reaches(graph: Graph, start: str, backwards: bool = False) -> set[str]:
+    """Every node a path of edges leads to from `start` (`backwards`: leads from to `start`),
+    `start` included."""
     after: dict[str, set[str]] = {}
     for edge in graph.edges:
-        after.setdefault(edge.src, set()).add(edge.dst)
+        src, dst = (edge.dst, edge.src) if backwards else (edge.src, edge.dst)
+        after.setdefault(src, set()).add(dst)
     seen, todo = {start}, [start]
     while todo:
         for nxt in after.get(todo.pop(), ()):
@@ -362,12 +364,10 @@ def fits(graph: Graph, port: str, registry: Registry) -> dict[str, Any]:
     converters = registry.converters()
     fed = {(e.dst, e.dst_port): f"{e.src}.{e.src_port}" for e in graph.edges}
     downstream = _reaches(graph, key)  # an edge into `key` from any of these closes a cycle
-    upstream = {k for k in graph.nodes if key in _reaches(graph, k)}  # and one out of `key` into these
+    upstream = _reaches(graph, key, backwards=True)  # and one out of `key` into any of these
     found: dict[str, list[dict[str, Any]]] = {"graph": [], "add": []}
 
-    def answer(
-        place: dict[str, Any], node: Manifest, other: str, side: str, step: str | None
-    ) -> dict[str, Any]:
+    def answer(node: Manifest, other: str, side: str, step: str | None) -> dict[str, Any]:
         if side == "input":  # `port` is the output, `other` an input
             taken = fed.get((step, other)) if step is not None else None
             out_spec, in_spec, cycle = manifest.outputs[name], node.inputs[other], step in upstream
@@ -380,14 +380,14 @@ def fits(graph: Graph, port: str, registry: Registry) -> dict[str, Any]:
             how = Connection("no", reason="cycle", message="the edge would close a cycle")
         else:
             how = connect(out_spec, in_spec, converters)
+        place = {"step": step} if step is not None else {}
         return {**place, "node": node.id, "port": other, "side": side, **how.to_json()}
 
     def each(node: Manifest, step: str | None, into: list[dict[str, Any]]) -> None:
-        place = {"step": step} if step is not None else {}
         if name in manifest.outputs:
-            into += [answer(place, node, other, "input", step) for other in node.inputs]
+            into += [answer(node, other, "input", step) for other in node.inputs]
         if name in manifest.inputs:
-            into += [answer(place, node, other, "output", step) for other in node.outputs]
+            into += [answer(node, other, "output", step) for other in node.outputs]
 
     for other_key, other in graph.nodes.items():
         installed = registry.nodes.get(other.node)
