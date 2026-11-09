@@ -1,11 +1,13 @@
 """The protocol, declared (spec 018): `contracts/protocol.json` names every event and method, the
-engine checks what it says against it."""
+engine checks what it says against it, and architecture.md's list of events says the same."""
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
-from oneframe import protocol
+from oneframe import REPO_ROOT, protocol
 from oneframe.protocol import ProtocolError, parse
 from oneframe.server import AT_ONCE, STOPS
 
@@ -94,3 +96,26 @@ def test_the_contract_says_its_problems_at_once() -> None:
         "events.c.d: by should list who sends it: app, engine",
         "methods.e.f.answer: should be an object with `fields`",
     ]
+
+
+def _events_section() -> str:
+    text = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    start = text.index("\n## Events\n")
+    end = text.index("\n## ", start + 1)
+    return text[start:end]
+
+
+def test_architecture_names_every_declared_event() -> None:
+    """AC3: the list that closes architecture.md's Events section names exactly the contract's
+    events, both ways; the methods its prose names are not in it."""
+    section = _events_section()
+    last = section.strip().split("\n\n")[-1]
+    assert last.startswith("**Every event"), "the Events section ends with the list of every event"
+    listed = re.findall(r"`([a-z_]+(?:\.[a-z_]+)*)`", last.partition(":")[2])
+    assert len(listed) == len(set(listed)), "an event is listed twice"
+    c = protocol.contract()
+    assert set(listed) == set(c.events), "architecture.md's list and contracts/protocol.json differ"
+    prose = set(re.findall(r"`([a-z_]+\.[a-z_]+)", section.removesuffix(last)))
+    named = prose & set(c.methods)
+    assert named, "the section's prose names methods"
+    assert not named & set(listed), "a method is in the list of events"

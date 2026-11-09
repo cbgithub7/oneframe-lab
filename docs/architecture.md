@@ -190,6 +190,13 @@ install again, removing the run's runtime or a file it read) is answered, not re
 by `run` or `job`; a next install's never do, since an install lets go and sends under its claim
 lock.
 
+**Every event,** with its fields in `contracts/protocol.json`: `engine.ready`, `engine.failed`,
+`engine.warning`, `engine.exit`, `run.start`, `run.done`, `run.failed`, `run.stopped`,
+`node.cached`, `node.fit`, `node.start`, `stage`, `progress`, `ceiling`, `node.step_oom`,
+`node.done`, `node.oom`, `node.failed`, `node.skipped`, `runtime.start`, `runtime.step`,
+`runtime.log`, `runtime.progress`, `runtime.done`, `runtime.failed`, `runtime.stopped`,
+`model.start`, `model.file`, `model.progress`, `model.done`, `model.failed`, `model.stopped`.
+
 ## Failures
 
 Every failure the engine reports (`node.failed`, `run.failed`, `runtime.failed`, `engine.failed`,
