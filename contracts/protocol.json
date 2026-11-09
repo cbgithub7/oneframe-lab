@@ -1,0 +1,887 @@
+{
+  "_comment": "The engine's protocol with the app and the page, declared once (spec 018): every method the engine or the app answers (its params and the fields of its answer) and every event the engine or the app sends to the page (its fields). The engine checks each event it makes and each answer it gives against this file (oneframe/protocol.py), the door strips what never reaches the page by it (app/main/door.js), and the page's types are generated from it (app/protocol.d.ts, by scripts/protocol-types.js). A record is {with, open, fields}: `with` names shapes whose fields it has too ({shape, optional} when they may all be absent), `open` lets it hold fields of its own beside those declared (a manifest as its author wrote it), and each field is {type, of, optional, null, page}. A type is string, integer, number, boolean, object, array, a shape's name, or a list of these for either; `of` is the type of each item of an array or each value of an object, as a name or as {type, of, null}; an object without `of` is free-form. `optional`: the field may be absent; `null`: it may be null; `page: false`: it never reaches the page. An event says who sends it (`by`: the engine, or the app's main.js); a method who answers it, whether its answer may be null, and `queued` when it waits its turn behind other requests, so a stop or the engine's close may answer it {stopped: true} instead (oneframe/server.py's Requests). Params are declared for the page's types; the engine checks their values itself.",
+  "format": 1,
+  "shapes": {
+    "failure": {
+      "doc": "A failure as the engine or the app reports it: a kind and reason oneframe/errors.py declares, and what to do.",
+      "fields": {
+        "kind": { "type": "string" },
+        "reason": { "type": "string", "optional": true },
+        "message": { "type": "string" },
+        "next": { "type": "string", "optional": true },
+        "retry": { "type": "boolean" },
+        "detail": { "type": "string", "optional": true, "doc": "an engine bug's or a node's trace" },
+        "problems": { "type": "array", "of": "problem", "optional": true, "doc": "a graph's, each against its node and port" },
+        "files": { "type": "array", "optional": true, "doc": "the files a run lacks (kind files), or a remove would have touched (kind store)" },
+        "bytes_left": { "type": "integer", "optional": true },
+        "present_checkpoint": { "type": "string", "optional": true },
+        "hosts": { "type": "array", "of": "string", "optional": true, "doc": "the hosts a download's last attempt asked" },
+        "kept": { "type": "integer", "optional": true, "doc": "the bytes a failed download's partial still holds" }
+      }
+    },
+    "problem": {
+      "doc": "One problem of a graph, against its node and port.",
+      "fields": {
+        "node": { "type": "string" },
+        "port": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "edge": {
+      "doc": "An edge of a graph, by its ports (step.port).",
+      "fields": {
+        "from": { "type": "string" },
+        "to": { "type": "string" }
+      }
+    },
+    "value": {
+      "doc": "A value a run made, read by its key through the value protocol (app/main/values.js).",
+      "fields": {
+        "type": { "type": "string" },
+        "path": { "type": "string", "page": false },
+        "facets": { "type": "object", "of": "string" },
+        "meta": { "type": "object" },
+        "trust": { "type": "string", "null": true },
+        "key": { "type": "string" }
+      }
+    },
+    "fit": {
+      "doc": "Where a node runs, at which values, and why (oneframe/memory/fit.py).",
+      "fields": {
+        "outcome": { "type": "string" },
+        "device": { "type": "string", "null": true },
+        "kind": { "type": "string", "null": true },
+        "precision": { "type": "string", "null": true },
+        "values": { "type": "object" },
+        "changes": { "type": "array", "of": "change" },
+        "upgrades": { "type": "array", "of": "integer" },
+        "skipped": { "type": "array", "of": "object" },
+        "reduced": { "type": "boolean" },
+        "estimate": { "type": "string" },
+        "needs": { "type": "object", "null": true },
+        "devices": { "type": "object", "of": "object" },
+        "warning": { "type": "object", "null": true },
+        "message": { "type": "string" },
+        "notes": { "type": "array", "of": "string" }
+      }
+    },
+    "change": {
+      "doc": "A change the fit made: its index in the node's memory model, and why.",
+      "fields": {
+        "change": { "type": "integer" },
+        "why": { "type": "string" }
+      }
+    },
+    "settings": {
+      "doc": "The person's control over the fit (oneframe/memory/settings.py).",
+      "fields": {
+        "margin_mb": { "type": "object", "of": { "type": "number", "null": true } },
+        "never_reduce_quality": { "type": "boolean" },
+        "fit": { "type": "string" },
+        "notes": { "type": "array", "of": "string", "optional": true }
+      }
+    },
+    "hello": {
+      "doc": "What the engine is: its version, its Python, its data root, its warnings, how many nodes it found and its methods.",
+      "fields": {
+        "engine": { "type": "string" },
+        "python": { "type": "string" },
+        "data": { "type": "string", "page": false },
+        "warnings": { "type": "array", "of": "string" },
+        "nodes": { "type": "integer" },
+        "methods": { "type": "array", "of": "string" }
+      }
+    },
+    "manifest": {
+      "doc": "A node's manifest as its author wrote it, where it came from, and the params the engine added (oneframe/manifest.py).",
+      "open": true,
+      "fields": {
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "summary": { "type": "string", "optional": true },
+        "inputs": { "type": "object", "optional": true },
+        "outputs": { "type": "object", "optional": true },
+        "params": { "type": "object", "optional": true },
+        "run": { "type": "object", "optional": true },
+        "devices": { "type": "array", "of": "string", "optional": true },
+        "memory": { "type": "object", "optional": true },
+        "files": { "type": "array", "of": "object", "optional": true },
+        "licence": { "type": "object", "optional": true },
+        "links": { "type": "object", "optional": true },
+        "folder": { "type": "string", "page": false }
+      }
+    },
+    "port_type": {
+      "doc": "A kind of data, from contracts/port-types.json.",
+      "fields": {
+        "doc": { "type": "string" },
+        "carrier": { "type": "string" },
+        "facets": { "type": "object", "of": { "type": "array", "of": "string" } }
+      }
+    },
+    "graph_summary": {
+      "doc": "A graph kept as a file: its name, whether it ships or the person saved it, its title, and whether it shadows a shipped one.",
+      "fields": {
+        "name": { "type": "string" },
+        "source": { "type": "string" },
+        "title": { "type": "string" },
+        "shadows": { "type": "string", "optional": true }
+      }
+    },
+    "connection": {
+      "doc": "A port a graph's port could connect to, and how (oneframe/graph.py's fits).",
+      "fields": {
+        "step": { "type": "string", "optional": true, "doc": "the node's key in the graph; absent for a node to add" },
+        "node": { "type": "string" },
+        "port": { "type": "string" },
+        "side": { "type": "string" },
+        "how": { "type": "string" },
+        "converter": { "type": "string", "optional": true },
+        "reason": { "type": "string", "optional": true },
+        "message": { "type": "string", "optional": true }
+      }
+    },
+    "runtime": {
+      "doc": "A runtime, its state on this machine, and the build this machine runs.",
+      "fields": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "python": { "type": "string" },
+        "status": { "type": "string" },
+        "build": { "type": "string", "null": true },
+        "size_bytes": { "type": "integer", "null": true },
+        "on_disk": { "type": "array", "of": "string" },
+        "installed": { "type": "object", "of": "object" },
+        "plan": { "type": "plan" }
+      }
+    },
+    "plan": {
+      "doc": "The build a runtime would install on this machine, or why none can.",
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string", "null": true },
+        "why": { "type": "string" },
+        "blocked": { "type": "string", "null": true },
+        "considered": { "type": "array", "of": "object" },
+        "notes": { "type": "array", "of": "string" }
+      }
+    },
+    "file_outcome": {
+      "doc": "One file of a model job, and how it ended.",
+      "fields": {
+        "name": { "type": "string", "null": true },
+        "sha256": { "type": "string" },
+        "size": { "type": "integer" },
+        "outcome": { "type": "string" },
+        "failure": { "type": "failure", "optional": true }
+      }
+    },
+    "stopped": {
+      "doc": "The answer to a queued request that a stop, or the engine's close, took off the queue before it began.",
+      "fields": {
+        "stopped": { "type": "boolean" }
+      }
+    }
+  },
+  "events": {
+    "engine.ready": {
+      "doc": "The engine started; what it is.",
+      "by": ["engine"],
+      "with": ["hello"],
+      "fields": {}
+    },
+    "engine.failed": {
+      "doc": "The engine cannot start, or the app could not start it.",
+      "by": ["engine", "app"],
+      "with": ["failure"],
+      "fields": {}
+    },
+    "engine.warning": {
+      "doc": "Something the engine was sent that it could not read.",
+      "by": ["engine"],
+      "fields": {
+        "message": { "type": "string" }
+      }
+    },
+    "engine.exit": {
+      "doc": "The engine stopped after it had started.",
+      "by": ["app"],
+      "fields": {
+        "code": { "type": "integer", "null": true }
+      }
+    },
+    "run.start": {
+      "doc": "A run began: its steps in order, and the converters the plan inserted.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "order": { "type": "array", "of": "string" },
+        "notes": { "type": "array", "of": "string" }
+      }
+    },
+    "run.done": {
+      "doc": "A run ended with every step done: each step's values, by port.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "outputs": { "type": "object", "of": { "type": "object", "of": "value" } }
+      }
+    },
+    "run.failed": {
+      "doc": "A run ended with a failure: the first one, its step or edge, and the steps that failed and were skipped; or an engine bug.",
+      "by": ["engine"],
+      "with": ["failure"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string", "optional": true },
+        "edge": { "type": "edge", "optional": true },
+        "failed": { "type": "array", "of": "string", "optional": true },
+        "skipped": { "type": "array", "of": "string", "optional": true }
+      }
+    },
+    "run.stopped": {
+      "doc": "A run was stopped, at this step.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" }
+      }
+    },
+    "node.cached": {
+      "doc": "A step's result came from the cache: at its own values, or, with its fit, a reduced one the fit allows.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "node": { "type": "string" },
+        "key": { "type": "string" },
+        "fit": { "type": "fit", "optional": true },
+        "outputs": { "type": "object", "of": "value" }
+      }
+    },
+    "node.fit": {
+      "doc": "A step was fitted to the memory this machine has free, before an attempt.",
+      "by": ["engine"],
+      "with": ["fit"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "node": { "type": "string" },
+        "attempt": { "type": "integer" },
+        "settings": { "type": "settings" }
+      }
+    },
+    "node.start": {
+      "doc": "An attempt at a step began.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "node": { "type": "string" },
+        "where": { "type": "string" },
+        "key": { "type": "string" },
+        "attempt": { "type": "integer" }
+      }
+    },
+    "stage": {
+      "doc": "A node said what it is doing (ctx.stage), passed on by the scheduler with its step.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "stage": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "progress": {
+      "doc": "A node's progress in its stage (ctx.progress, or a tqdm bar in a runtime), passed on with its step.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "stage": { "type": "string" },
+        "done": { "type": "number", "null": true },
+        "total": { "type": "number", "null": true },
+        "what": { "type": "string" }
+      }
+    },
+    "ceiling": {
+      "doc": "The cap a runtime node's process put on torch's allocator on the card, or why there is none.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "applied": { "type": "boolean" },
+        "budget_mb": { "type": "number", "null": true },
+        "why": { "type": "string", "optional": true },
+        "free_mb": { "type": "number", "optional": true },
+        "reserve_mb": { "type": "number", "optional": true },
+        "outside_torch_mb": { "type": "number", "optional": true },
+        "vram_cap_mb": { "type": "number", "optional": true },
+        "vram_total_mb": { "type": "number", "optional": true }
+      }
+    },
+    "node.step_oom": {
+      "doc": "A way of a node's step ran out of memory, and the node moved on to its next way (ctx.fallbacks).",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "stage": { "type": "string" },
+        "way": { "type": "string" },
+        "next": { "type": "string" },
+        "peak_reserved_mb": { "type": "number", "null": true },
+        "message": { "type": "string" }
+      }
+    },
+    "node.done": {
+      "doc": "An attempt finished: its time, its peaks, how it was made, its fit and its values.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "node": { "type": "string" },
+        "key": { "type": "string" },
+        "attempt": { "type": "integer" },
+        "seconds": { "type": "number" },
+        "peak_vram_mb": { "type": "number", "null": true },
+        "peak_reserved_mb": { "type": "number", "null": true },
+        "peak_ram_mb": { "type": "number", "null": true },
+        "made_with": { "type": "object" },
+        "fit": { "type": "fit", "optional": true },
+        "outputs": { "type": "object", "of": "value" }
+      }
+    },
+    "node.oom": {
+      "doc": "An attempt ran out of memory: before the one retry, or the failure.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "attempt": { "type": "integer" },
+        "peak_reserved_mb": { "type": "number", "null": true },
+        "peak_ram_mb": { "type": "number", "null": true },
+        "message": { "type": "string" }
+      }
+    },
+    "node.failed": {
+      "doc": "A step failed: its failure, each fit and each failed attempt's peaks.",
+      "by": ["engine"],
+      "with": ["failure"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "node": { "type": "string" },
+        "fits": { "type": "array", "of": "fit", "optional": true },
+        "peaks": { "type": "array", "of": "object", "optional": true }
+      }
+    },
+    "node.skipped": {
+      "doc": "A step never started: a step it needs failed or was skipped (waited_on), or a value did not fit its input (edge, with the failure).",
+      "by": ["engine"],
+      "with": [{ "shape": "failure", "optional": true }],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "node": { "type": "string" },
+        "waited_on": { "type": "string", "optional": true },
+        "edge": { "type": "edge", "optional": true }
+      }
+    },
+    "runtime.start": {
+      "doc": "An install began.",
+      "by": ["engine"],
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string" }
+      }
+    },
+    "runtime.step": {
+      "doc": "An install's step began.",
+      "by": ["engine"],
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string" },
+        "step": { "type": "string" },
+        "index": { "type": "integer" },
+        "total": { "type": "integer" },
+        "message": { "type": "string" }
+      }
+    },
+    "runtime.log": {
+      "doc": "A line uv wrote during an install.",
+      "by": ["engine"],
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string" },
+        "line": { "type": "string" }
+      }
+    },
+    "runtime.progress": {
+      "doc": "A runtime's source download, in bytes.",
+      "by": ["engine"],
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string" },
+        "step": { "type": "string" },
+        "what": { "type": "string" },
+        "done": { "type": "integer" },
+        "total": { "type": "integer", "null": true }
+      }
+    },
+    "runtime.done": {
+      "doc": "An install finished.",
+      "by": ["engine"],
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string" },
+        "python": { "type": "string" },
+        "size_bytes": { "type": "integer" },
+        "seconds": { "type": "number" }
+      }
+    },
+    "runtime.failed": {
+      "doc": "An install failed, or the engine did while installing.",
+      "by": ["engine"],
+      "with": ["failure"],
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string" }
+      }
+    },
+    "runtime.stopped": {
+      "doc": "An install was stopped; installing again picks up where it was.",
+      "by": ["engine"],
+      "fields": {
+        "runtime": { "type": "string" },
+        "build": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "model.start": {
+      "doc": "A model job began: a download or a verify, and its files.",
+      "by": ["engine"],
+      "fields": {
+        "job": { "type": "string" },
+        "what": { "type": "string" },
+        "node": { "type": "string", "null": true },
+        "files": { "type": "array", "of": "file_outcome" },
+        "bytes": { "type": "integer" }
+      }
+    },
+    "model.file": {
+      "doc": "A file of a model job reached a phase: checking, downloading, retrying, verifying, placing, or failed (with its failure).",
+      "by": ["engine"],
+      "with": [{ "shape": "failure", "optional": true }],
+      "fields": {
+        "job": { "type": "string" },
+        "what": { "type": "string", "optional": true },
+        "node": { "type": "string", "null": true, "optional": true },
+        "file": { "type": "string", "null": true },
+        "sha256": { "type": "string" },
+        "phase": { "type": "string" },
+        "bytes": { "type": "integer", "optional": true },
+        "from": { "type": "integer", "optional": true },
+        "total": { "type": "integer", "null": true, "optional": true },
+        "attempt": { "type": "integer", "optional": true },
+        "wait_s": { "type": "number", "optional": true },
+        "why": { "type": "string", "optional": true }
+      }
+    },
+    "model.progress": {
+      "doc": "A file of a model job, in bytes, throttled.",
+      "by": ["engine"],
+      "fields": {
+        "job": { "type": "string" },
+        "file": { "type": "string", "null": true },
+        "sha256": { "type": "string" },
+        "bytes": { "type": "integer" },
+        "total": { "type": "integer", "null": true }
+      }
+    },
+    "model.done": {
+      "doc": "A model job finished: every file's outcome, and for a verify the files it dropped.",
+      "by": ["engine"],
+      "fields": {
+        "job": { "type": "string" },
+        "what": { "type": "string" },
+        "node": { "type": "string", "null": true },
+        "files": { "type": "array", "of": "file_outcome" },
+        "dropped": { "type": "array", "of": "string", "optional": true }
+      }
+    },
+    "model.failed": {
+      "doc": "A model job ended with a failure: the first failed file's, or an engine bug.",
+      "by": ["engine"],
+      "with": ["failure"],
+      "fields": {
+        "job": { "type": "string" },
+        "what": { "type": "string", "optional": true },
+        "node": { "type": "string", "null": true, "optional": true },
+        "files": { "type": "array", "of": "file_outcome" }
+      }
+    },
+    "model.stopped": {
+      "doc": "A model job was stopped; a download resumes where it stopped.",
+      "by": ["engine"],
+      "fields": {
+        "job": { "type": "string" },
+        "what": { "type": "string" },
+        "node": { "type": "string", "null": true },
+        "files": { "type": "array", "of": "file_outcome" },
+        "message": { "type": "string" }
+      }
+    }
+  },
+  "methods": {
+    "engine.hello": {
+      "doc": "What the engine is.",
+      "by": "engine",
+      "params": { "fields": {} },
+      "answer": { "with": ["hello"], "fields": {} }
+    },
+    "nodes.list": {
+      "doc": "Every node the engine found, and the problems of those it could not read, by file.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": {} },
+      "answer": {
+        "fields": {
+          "nodes": { "type": "array", "of": "manifest" },
+          "problems": { "type": "object", "of": { "type": "array", "of": "string" } }
+        }
+      }
+    },
+    "nodes.reload": {
+      "doc": "Look for nodes again; what nodes.list answers.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": {} },
+      "answer": {
+        "fields": {
+          "nodes": { "type": "array", "of": "manifest" },
+          "problems": { "type": "object", "of": { "type": "array", "of": "string" } }
+        }
+      }
+    },
+    "nodes.fit": {
+      "doc": "The fit a node would get on this machine now, at these params and for inputs of this meta.",
+      "by": "engine",
+      "queued": true,
+      "params": {
+        "fields": {
+          "node": { "type": "string" },
+          "params": { "type": "object", "optional": true },
+          "inputs": { "type": "object", "of": "object", "optional": true }
+        }
+      },
+      "answer": {
+        "with": ["fit"],
+        "fields": {
+          "node": { "type": "string" },
+          "settings": { "type": "settings" }
+        }
+      }
+    },
+    "nodes.forget": {
+      "doc": "Clear what this machine learned about a node; how many entries went.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "node": { "type": "string" } } },
+      "answer": {
+        "fields": {
+          "node": { "type": "string", "null": true },
+          "dropped": { "type": "integer" }
+        }
+      }
+    },
+    "ports.list": {
+      "doc": "The port types, by name.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": {} },
+      "answer": { "fields": { "types": { "type": "object", "of": "port_type" } } }
+    },
+    "graph.validate": {
+      "doc": "A graph's plan: its steps in order, the converters inserted, and the edges checked only once their value arrives.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "graph": { "type": "object" } } },
+      "answer": {
+        "fields": {
+          "order": { "type": "array", "of": "string" },
+          "notes": { "type": "array", "of": "string" },
+          "depends": { "type": "array", "of": "edge" }
+        }
+      }
+    },
+    "graph.fits": {
+      "doc": "What a port of a graph's node could connect to, in the graph and by adding a node.",
+      "by": "engine",
+      "queued": true,
+      "params": {
+        "fields": {
+          "graph": { "type": "object" },
+          "port": { "type": "string" }
+        }
+      },
+      "answer": {
+        "fields": {
+          "port": { "type": "string" },
+          "graph": { "type": "array", "of": "connection" },
+          "add": { "type": "array", "of": "connection" }
+        }
+      }
+    },
+    "graph.run": {
+      "doc": "Run a graph; its id at once, and its progress as run and node events.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "graph": { "type": "object" } } },
+      "answer": { "fields": { "run": { "type": "string" } } }
+    },
+    "graphs.list": {
+      "doc": "Every graph that ships and every one the person saved, and each broken file.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": {} },
+      "answer": {
+        "fields": {
+          "graphs": { "type": "array", "of": "graph_summary" },
+          "problems": { "type": "object", "of": { "type": "array", "of": "string" } }
+        }
+      }
+    },
+    "graphs.get": {
+      "doc": "A graph by name.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "name": { "type": "string" } } },
+      "answer": { "with": ["graph_summary"], "fields": { "graph": { "type": "object" } } }
+    },
+    "graphs.save": {
+      "doc": "Save the person's graph by name, under the data root.",
+      "by": "engine",
+      "queued": true,
+      "params": {
+        "fields": {
+          "name": { "type": "string" },
+          "graph": { "type": "object" }
+        }
+      },
+      "answer": { "with": ["graph_summary"], "fields": {} }
+    },
+    "graphs.remove": {
+      "doc": "Delete the person's own graph by name; the shipped one of that name, if any, is then the one listed.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "name": { "type": "string" } } },
+      "answer": {
+        "fields": {
+          "name": { "type": "string" },
+          "removed": { "type": "boolean" },
+          "now": { "type": "graph_summary", "null": true }
+        }
+      }
+    },
+    "inputs.import": {
+      "doc": "Copy a file into the data root's inputs, by its content; its id and its name. Only the main process asks it.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "path": { "type": "string", "page": false } } },
+      "answer": {
+        "fields": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "values.locate": {
+      "doc": "The file of a value a run committed, for the value protocol. Only the main process asks it.",
+      "by": "engine",
+      "params": {
+        "fields": {
+          "key": { "type": "string" },
+          "port": { "type": "string" }
+        }
+      },
+      "answer": {
+        "fields": {
+          "path": { "type": "string", "page": false },
+          "type": { "type": "string" },
+          "carrier": { "type": "string", "null": true }
+        }
+      }
+    },
+    "run.stop": {
+      "doc": "Stop the running graph (this one, when it names a run).",
+      "by": "engine",
+      "params": { "fields": { "run": { "type": "string", "optional": true } } },
+      "answer": {
+        "fields": {
+          "stopping": { "type": "boolean" },
+          "run": { "type": "string", "optional": true }
+        }
+      }
+    },
+    "runtimes.list": {
+      "doc": "Every runtime, its state and plan on this machine, the problems of those that cannot be read, and the machine.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": {} },
+      "answer": {
+        "fields": {
+          "runtimes": { "type": "array", "of": "runtime" },
+          "problems": { "type": "object", "of": { "type": "array", "of": "string" } },
+          "profile": { "type": "object" }
+        }
+      }
+    },
+    "runtimes.plan": {
+      "doc": "The build each runtime, or this one, would install on this machine.",
+      "by": "engine",
+      "queued": true,
+      "params": {
+        "fields": {
+          "runtime": { "type": "string", "optional": true },
+          "refresh": { "type": "boolean", "optional": true }
+        }
+      },
+      "answer": {
+        "fields": {
+          "plans": { "type": "array", "of": "plan" },
+          "profile": { "type": "object" }
+        }
+      }
+    },
+    "runtimes.install": {
+      "doc": "Install a runtime; the build at once, and its progress as runtime events, or already when it is installed.",
+      "by": "engine",
+      "queued": true,
+      "params": {
+        "fields": {
+          "runtime": { "type": "string" },
+          "build": { "type": "string", "optional": true }
+        }
+      },
+      "answer": {
+        "fields": {
+          "runtime": { "type": "string" },
+          "build": { "type": "string", "optional": true },
+          "already": { "type": "boolean", "optional": true }
+        }
+      }
+    },
+    "runtimes.stop": {
+      "doc": "Stop a runtime's install.",
+      "by": "engine",
+      "params": { "fields": { "runtime": { "type": "string" } } },
+      "answer": { "fields": { "stopping": { "type": "boolean" } } }
+    },
+    "runtimes.remove": {
+      "doc": "Delete a runtime's folder under the data root.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "runtime": { "type": "string" } } },
+      "answer": {
+        "fields": {
+          "runtime": { "type": "string" },
+          "removed": { "type": "string", "null": true }
+        }
+      }
+    },
+    "models.download": {
+      "doc": "Fetch a node's files, those of these checkpoints or all; the job at once, and its progress as model events.",
+      "by": "engine",
+      "queued": true,
+      "params": {
+        "fields": {
+          "node": { "type": "string" },
+          "checkpoints": { "type": ["array", "string"], "of": "string", "optional": true, "doc": "a list of checkpoints, or \"all\"" }
+        }
+      },
+      "answer": {
+        "fields": {
+          "job": { "type": "string" },
+          "files": { "type": "array", "of": "file_outcome" }
+        }
+      }
+    },
+    "models.verify": {
+      "doc": "Hash again what the store holds of a node, or all of it; the job at once.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": { "node": { "type": "string", "optional": true } } },
+      "answer": {
+        "fields": {
+          "job": { "type": "string" },
+          "files": { "type": "array", "of": "file_outcome" }
+        }
+      }
+    },
+    "models.stop": {
+      "doc": "Stop the model job (this one, when it names a job).",
+      "by": "engine",
+      "params": { "fields": { "job": { "type": "string", "optional": true } } },
+      "answer": {
+        "fields": {
+          "stopping": { "type": "boolean" },
+          "job": { "type": "string", "optional": true }
+        }
+      }
+    },
+    "models.list": {
+      "doc": "What the store holds for each node, and what no node pins, without the network.",
+      "by": "engine",
+      "queued": true,
+      "params": { "fields": {} },
+      "answer": {
+        "fields": {
+          "store": { "type": "string" },
+          "free_bytes": { "type": "integer" },
+          "nodes": { "type": "array", "of": "object" },
+          "unpinned": { "type": "object" },
+          "problems": { "type": "object", "of": { "type": "array", "of": "string" } }
+        }
+      }
+    },
+    "models.remove": {
+      "doc": "Delete a node's files, or a checkpoint's, or exactly the unpinned files models.list showed.",
+      "by": "engine",
+      "queued": true,
+      "params": {
+        "fields": {
+          "node": { "type": "string", "optional": true },
+          "checkpoint": { "type": "string", "optional": true },
+          "unpinned": { "type": "array", "of": "string", "optional": true }
+        }
+      },
+      "answer": {
+        "fields": {
+          "node": { "type": "string", "optional": true },
+          "checkpoint": { "type": "string", "null": true, "optional": true },
+          "kept": { "type": "array", "of": "object", "optional": true },
+          "unpinned": { "type": "array", "of": "string", "optional": true },
+          "removed": { "type": "array", "of": "object" },
+          "failed": { "type": "array", "of": "object" },
+          "freed": { "type": "integer" }
+        }
+      }
+    },
+    "photo.pick": {
+      "doc": "The system's open dialog, then the engine's import of the photo chosen: its id and name, or null when none was chosen.",
+      "by": "app",
+      "null": true,
+      "params": { "fields": {} },
+      "answer": {
+        "fields": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      }
+    }
+  }
+}

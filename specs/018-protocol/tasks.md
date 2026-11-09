@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-- [ ] 1. **The contract and its reader.** `contracts/protocol.json` (`"format": 1`): `methods`,
+- [x] 1. **The contract and its reader.** `contracts/protocol.json` (`"format": 1`): `methods`,
   `events` and `shapes`, declaring what the code sends today, read from the code, not from
   architecture.md's prose. `oneframe/protocol.py`: `event`, `check_answer`, `problems`, read
   once with `reading.read_object`, loading no library. AC1.
