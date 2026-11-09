@@ -1,6 +1,7 @@
 """Run a plan: each step in order, from the cache when it can be, checked when it cannot.
 
-Events, in order, for the app (all carry `run`):
+Events, in order, for the app (all carry `run`; contracts/protocol.json declares their fields, and
+protocol.py checks each as it is sent, a node's own as they are passed on):
 
     run.start      order, notes
     node.cached    step, outputs                  (the result at the step's own values)

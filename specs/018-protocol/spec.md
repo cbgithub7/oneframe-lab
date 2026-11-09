@@ -97,7 +97,8 @@ its sender).
 
 ## Tests
 
-- Added: `test_an_undeclared_event_is_a_problem`, `test_architecture_names_every_declared_event`
+- Added: `test_an_undeclared_event_is_a_problem`, `test_architecture_names_every_declared_event`,
+  `test_queued_methods_are_those_the_server_queues`, `test_the_contract_says_its_problems_at_once`
   (`test_protocol.py`, new); in `protocol.test.js` (new), "the page's types are the contract's"; in
   `door.test.js`, "what reaches the page is declared"; in `engine.test.js`, "every method is
   declared".
@@ -126,6 +127,25 @@ Ubuntu. No hardware step.
 - What never reaches the app stays undeclared: a runtime child's messages to the engine (`pid`,
   `done`, `error`), the journal's records, and the command-line tools' output (`models:pin`'s
   `pin.*`).
+- Beside the spec's types, `null` and a list of types for either: a peak may be unmeasured, and
+  `models.download`'s `checkpoints` is a list or `"all"`, as the code sends them today.
+- A record's `with` carries a shape's fields, all optional where it says so (a failure's fields at
+  the top of `node.failed`, `node.skipped`); `open` lets a manifest keep fields its author added.
+- `queued` marks each method a stop or the close may answer `{"stopped": true}`, declared once
+  as a shape; a test holds the marks to the server's `AT_ONCE` and `STOPS`.
+- Error replies are checked as failures, since the page reads them; params are declared for the
+  types only, since each method checks its own and refuses `bad_params`.
+- A tuple counts as an array in the engine's check, since json writes it so (`ports.list`'s facets).
+- `app/protocol.d.ts` has two namespaces: `Wire`, every field, for the main process; `Page`,
+  without the fields marked `"page": false`.
+- A second reader of the contract, `app/main/protocol.js`: the door checks and strips in the main
+  process, where the engine's is not, as `paths.js` mirrors `layout.py`.
+- An engine a test starts as a process fails that test with the problems it logged
+  (`engine_process`), as the in-process check does.
+- Two server tests that held a method of their own hold `nodes.forget` instead: an undeclared
+  method is a problem.
+- A `{"stopped": true}` is handled where the app reads an answer: `photo.pick` answers null, and
+  the page's node list stays as it was.
 
 ## Out of scope
 

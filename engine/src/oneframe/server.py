@@ -6,7 +6,8 @@ Requests are `{"id": 1, "method": "nodes.list", "params": {}}` and are answered 
 `{"id": 1, "result": ...}` or `{"id": 1, "error": {"message": ..., "problems": [...]}}`. Anything
 that takes time (a graph run) answers at once with a run id, and its progress arrives as events,
 `{"event": "node.done", ...}`, with no id. There is no polling and no local network port: the only
-way in is this process's own stdin, which only the app holds.
+way in is this process's own stdin, which only the app holds. contracts/protocol.json declares every
+method and event, and each answer and error is checked against it (protocol.py).
 
 Requests are answered in order by one worker thread, so no two of them run at once, as the methods
 were written to. Only the stops (`run.stop`, `runtimes.stop`, `models.stop`) and the reads that
