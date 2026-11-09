@@ -1,6 +1,6 @@
 # 018: The protocol, declared
 
-Status: approved (2026-11-08)
+Status: done ([PR #67](https://github.com/cbgithub7/oneframe-lab/pull/67))
 Owner approval: 2026-11-08, with 015, 016 and 017 as one decision; no open questions
 
 The fourth of five specs for step 3, first light: [005](../005-first-models/spec.md) (the model

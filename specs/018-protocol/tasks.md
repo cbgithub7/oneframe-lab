@@ -23,6 +23,6 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   logs a message the contract does not declare, once per name. AC5.
 - [x] 6. **Every method declared.** `engine.test.js`: each of `ENGINE_METHODS`, `APP_METHODS` and
   the engine's own table (its hello's `methods`), with its params and its answer. AC6.
-- [ ] 7. **Docs and the end.** architecture.md (the contract is the declaration), nodes.md (a node's
+- [x] 7. **Docs and the end.** architecture.md (the contract is the declaration), nodes.md (a node's
   `stage` and `progress` fields), the commands list (`protocol-types.js`), `/code-review`, and the
   spec marked done in the PR.
