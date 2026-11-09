@@ -52,20 +52,55 @@ npm run engine:sync
 npm start
 ```
 
-Checks, the same ones CI runs on Windows and Linux:
+## Commands
 
-```
-npm run check          # eslint, tsc (TypeScript 7, JSDoc types), node --test, the docs check
-npm run engine:check   # ruff, ruff format, pyright, pytest
-npm run versions       # every pin against its latest release
-```
+The checks are the ones CI runs on Windows and Linux.
 
-A hardware claim needs numbers: `npm run bench:runtime -- <id>` installs a runtime on this machine
-and writes a report of what it did.
+- `npm run check`: eslint, the page's types against the contract, tsc (JSDoc types,
+  `// @ts-check` in every JS file), node tests, and the docs check (every link in the docs leads
+  somewhere, every repo path they name exists outside specs and the dated reviews in
+  `docs/reviews/`, and no spec being worked on is over 200 lines, or over the length the owner
+  allowed it)
+- `node scripts/protocol-types.js [--write]`: `app/protocol.d.ts`, the page's types, held to what
+  `contracts/protocol.json` gives, naming the lines that differ; `--write` writes it again, so a
+  change to the contract commits the file (spec 018)
+- `npm run engine:check`: ruff, ruff format, pyright, `runtime:check`, pytest
+- `npm run runtime:check [-- --every-runtime]`: each runtime's code, and its nodes', held to a
+  `ruff.toml` for its runtime's Python, and checked by pyright with that runtime's interpreter
+  where it is installed; with `--every-runtime`, one not installed is a failure (spec 005)
+- `npm run versions`: version policy
+- `npm run bench:runtime -- <id>`: install a runtime on this machine and write a report of what it
+  did (the numbers a hardware claim needs)
+- `npm run bench:fit -- <node> [--set k=v ...]...`: run a node at each group of settings and report
+  its estimates beside the peaks measured, the device's and the system's; with `--graph <file>`,
+  `<node>` is a step of that graph, fed its real inputs
+- `npm run bench:fit-check`: spec 002's hardware check on this machine's card, run from
+  `engine/tests/fit_check.py` with the test node beside it
+- `npm run models:pin -- [--nodes <folder>] <node>`: resolve a node's file sources to commits, fetch
+  each file through the model store, and write its size, sha256, format and `gated` into the manifest
+- `npm run models:download -- [--nodes <folder>] <node> [--checkpoint c | --all]`: fetch a node's
+  files into the store, as `models.download` does; Ctrl+C stops it and the next run resumes. Both
+  model tools wait up to 10 s for a store another process still holds (on Windows, npm gives the
+  prompt back before a stopped tool has ended)
+- `npm run diagnose`: one file in the data root's `reports/` to hand over when something failed:
+  versions, machine, runtimes, settings, what was learned, the latest journals and logs, with the
+  user's name taken out of every path and hub tokens scrubbed
+- `node scripts/test-guard.js [--write]`: no test or case removed, skipped, emptied or renamed
+  without a line in a spec the branch changed. It compares the engine's collected IDs with
+  `engine/tests/collected.txt` at the merge base, and fails when the list in the checkout differs
+  from the collection; `--write` rewrites it, so a change that adds or renames a test commits the
+  list
+- `node scripts/tool.js engine/tests/models/run_on_cpu.py`: CI's `models (cpu)` check, once every
+  runtime and every node's files are in: each node that runs in a runtime, fed the 512 px photo,
+  ends `done` on the processor with every valid depth between 0 and 1,000 m (spec 005)
+- The tools that open a data root (`bench:runtime`, `bench:fit`, `bench:fit-check`, `diagnose`,
+  `models:*`, `runtime:check`, `run_on_cpu.py`) start through `scripts/tool.js`, which keeps uv's
+  temporary files under that root
+- `npm start`: the app (needs `npm run engine:sync` once)
 
 ## Documents
 
-- [AGENTS.md](AGENTS.md): the rules and the way work is done, for people and agents
+- [AGENTS.md](AGENTS.md): the rules and the way work is done, for people and agents, each with what holds it
 - [specs/README.md](specs/README.md): how a change goes from spec to merged PR
 - [docs/handoff.md](docs/handoff.md): what it is, what is done, what comes next and what is in the way
 - [docs/roadmap.md](docs/roadmap.md): what is decided or found but parked
