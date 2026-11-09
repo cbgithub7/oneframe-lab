@@ -39,6 +39,7 @@ from typing import Any
 from oneframe import __version__, hardware
 from oneframe.bench_fit import (
     TOLERANCE_MB,
+    card_of,
     fresh_cache,
     heading,
     make_scheduler,
@@ -95,10 +96,6 @@ def cap_refusal(message: str | None) -> dict[str, float] | None:
 
 
 # -- the check -----------------------------------------------------------------------------------
-
-
-def _card_device(profile: dict[str, Any], target: Target) -> dict[str, Any] | None:
-    return next((g for g in profile.get("gpus") or [] if g.get("index") == target.card), None)
 
 
 @dataclass(frozen=True)
@@ -222,8 +219,8 @@ def check(manager: Runtimes, cache_root: Path, tmp: Path) -> dict[str, Any]:
         return record
     target = manager.device_target(plan.runtime)
     profile = manager.profile(refresh=True)
-    record["profile"] = {k: v for k, v in profile.items() if k != "raw"}
-    card = _card_device(profile, target)
+    record["profile"] = manager.profile_summary()
+    card = card_of(profile, target)
     if card is None:
         record["why"] = (
             f"The {plan.runtime} runtime's build here has no card, so there is nothing on a card to measure."
@@ -240,7 +237,7 @@ def check(manager: Runtimes, cache_root: Path, tmp: Path) -> dict[str, Any]:
     record["context"] = _probe_context(manager, plan, int(card["index"]))
 
     _say("2/4 three settings")
-    fresh = _card_device(hardware.profile(manager.data), target) or card
+    fresh = card_of(hardware.profile(manager.data), target) or card
     margin = margin_for(Settings(), "cuda", fresh.get("vram_total_mb"))
     budget = (fresh.get("vram_free_mb") or 0) - margin
     record["settings"] = []
@@ -300,7 +297,7 @@ def _bench_holder(
 ) -> dict[str, Any]:
     """Hold memory so the budget leaves room only for the node after its first change, then run it
     at its defaults and record the fit it was given, and whether that showed the change."""
-    card = _card_device(hardware.profile(manager.data), target)
+    card = card_of(hardware.profile(manager.data), target)
     if card is None or card.get("vram_free_mb") is None:
         return {"why": "The card's free memory could not be read."}
     manifest = scheduler.registry.get(plan.node)
@@ -314,7 +311,7 @@ def _bench_holder(
             "why": f"The card has too little free memory to hold any back ({card['vram_free_mb']} MB free)."
         }
     with _holding(manager, plan, hold, tmp), fresh_cache(scheduler, 100):
-        free = (_card_device(hardware.profile(manager.data), target) or {}).get("vram_free_mb")
+        free = (card_of(hardware.profile(manager.data), target) or {}).get("vram_free_mb")
         row = measure(scheduler, plan.node, {}, "defaults, with memory held")
     first = (row.get("fits") or [{}])[0]
     row["held_mb"] = round(hold)
@@ -335,13 +332,13 @@ def _bench_overrun(manager: Runtimes, scheduler: Scheduler, plan: Ac8, target: T
     model = manifest.memory
     assert model is not None
     defaults = _defaults(manifest)
-    card = _card_device(hardware.profile(manager.data), target)
+    card = card_of(hardware.profile(manager.data), target)
     if card is None or card.get("vram_free_mb") is None:
         return {"why": "The card's free memory could not be read."}
 
     # The overrun: a budget of the estimate (plus the tolerance), and more than that on attempt 1.
     need = _need(model, defaults, card) or 0.0
-    free = float((_card_device(hardware.profile(manager.data), target) or card)["vram_free_mb"] or 0)
+    free = float((card_of(hardware.profile(manager.data), target) or card)["vram_free_mb"] or 0)
     margin_mb = max(free - (need + TOLERANCE_MB), 0.0)
     scheduler.settings = lambda: Settings(margin_mb={"cuda": margin_mb, "cpu": None})
     out["budget_mb"] = round(free - margin_mb)
@@ -385,16 +382,9 @@ def render(record: dict[str, Any]) -> str:
     head = heading(record)
     if record.get("why"):
         return "\n".join([*head, f"Not measured: {record['why']}", ""])
-    card = record.get("card") or {}
     context = record.get("context") or {}
     out = [
-        *head,
-        "## Machine",
-        "",
-        f"- Card {card.get('index')}: {card.get('name')}, compute capability {card.get('capability')}, "
-        f"{megabytes(card.get('vram_total_mb'))} total",
-        f"- Driver: {(record.get('profile') or {}).get('driver')}",
-        "",
+        *head,  # the machine and its card among them
         "## 1. The CUDA context",
         "",
         f"- Card used before CUDA started: {megabytes(context.get('used_before_mb'))}",
