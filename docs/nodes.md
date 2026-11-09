@@ -47,6 +47,9 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
   (made from generated views). An output without one inherits the weakest trust of its inputs.
 - **Params** with `"affects": "speed"` do not change the result, so they are not part of the
   cache key. Every other parameter is.
+- **A `file` param** holds an import's id, the sha256 of a file the person picked, which the app
+  copied into the data root's `inputs/`; never a path. The node is given that file's path in
+  `ctx.params`, so it reads a file, and it is keyed by the file's content.
 - **run.where** is `engine` for light nodes that ship with the app, and `runtime` for anything
   that imports a model library; `runtime` names the environment it runs in, a folder in
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the

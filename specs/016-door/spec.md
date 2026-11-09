@@ -128,6 +128,12 @@ Requirement 6 is held by `engine.test.js`'s check that every method the page may
 - One worker thread, not a pool: the methods were written to run one at a time; only the stops
   and the reads that answer at once need to pass them.
 - Paths scrubbed by the door, not the engine: the journal and the tools keep them.
+- A request a stop takes off the queue is answered `{"stopped": true}`, not a failure: Stop is not
+  a failure (errors.py).
+- The import's id is resolved when the graph is planned: the step holds the file's path, so cache
+  keys, still the file's content, are unchanged, and a source's `meta.source` is the import's name.
+- `forPage` drops a `path`, `folder` or `data` field only when it holds an absolute path: a file's
+  path in its repository (a manifest's `files`) is no path on this machine, and stays.
 - The protocol contract, which the review of 2026-11-04 put into this spec, is 018's: this one
   holds eight criteria, the most a spec may. 018 lands next, and `forPage` then strips the fields
   the contract marks instead of its own list.

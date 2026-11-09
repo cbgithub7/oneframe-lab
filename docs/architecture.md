@@ -41,11 +41,12 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Scratch | `oneframe/scratch.py` | Each process's locked folder under `cache/tmp/`; a start removes only dead processes' folders |
 | Journal | `oneframe/journal.py` | Every event of a run, an install or a model job, kept in a journal; journals and step logs pruned when one opens; one helper ends each after its place is free |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
-| Server | `oneframe/server.py` | The engine's NDJSON protocol |
+| Server | `oneframe/server.py` | The engine's NDJSON protocol: one worker answers requests in order, and the loop that reads them answers the stops and the quick reads at once |
+| Imports | `oneframe/inputs.py` | The files a graph reads, copied into the data root's `inputs/` by their sha256, which is their id: a `file` param holds the id, never a path |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py`, `engine/tests/fit_check.py` | The reports a hardware claim needs: a runtime's install, a node's memory on a card, and spec 002's check on a card, which lives with its test node |
 | Tool launcher | `scripts/tool.js` | Starts each command-line tool that opens a data root, with uv's temporary files under that root |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
-| Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js` | Electron's folders under the root, the window, the engine process, and the one IPC door, which answers with values |
+| Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js`, `app/main/values.js` | Electron's folders under the root, the window, the engine process; the one IPC door, which answers with values, the app's own methods among them, and keeps every path from the page; the value protocol |
 
 ## Why it is shaped this way
 
@@ -106,8 +107,25 @@ lock what they work on, and the operating system releases a lock when its holder
 a moment after).
 
 **One door into the page.** The page is sandboxed, has no Node, and can call only the engine
-methods `ENGINE_METHODS` lists. A compromised page can ask the engine to run a graph; it cannot
-read a file or start a process.
+methods `ENGINE_METHODS` lists and the app's own, `APP_METHODS` (`photo.pick`), through
+`engine:request`; it reads a run's values through the read-only `oneframe-value://<key>/<port>`,
+which serves nothing but a committed value. A compromised page can ask the engine to run a graph;
+it cannot read a file, start a process, or learn a path: the door drops a local path from every
+answer and event (a value's `path`, a manifest's `folder`, the hello's `data`), and writes the data
+root, the repo and the home folder `<data>`, `<repo>` and `~` everywhere else.
+
+**A photo comes in by its content.** `photo.pick` shows the system's open dialog in the main
+process, which has the engine copy the file chosen into the root's `inputs/` (`inputs.import`,
+named by its sha256) and answers the page that id and the file's name. A `file` param holds an
+import's id, from any caller; anything else, a path included, is a problem of that param, and the
+path is never looked at. The step is given the import's file, so a node reads a file as before. A
+command-line tool given a path imports it first (`bench:fit --graph`, CI's model check).
+
+**Requests off the input loop.** The engine answers requests in order on one worker thread, as its
+methods were written to run. The loop that reads them answers `engine.hello`, `values.locate` and
+the three stops (`run.stop`, `runtimes.stop`, `models.stop`) itself, so a slow request never holds
+a stop up; a stop first takes each queued request of its kind off the queue and answers it
+`{"stopped": true}`, never begun.
 
 ## Events
 
@@ -135,10 +153,12 @@ deletes only a saved graph, which the person asked for by name, and brings the s
 graph's other nodes (`graph`) and of every installed node (`add`): `direct`, `via` a converter
 (the one `plan()` inserts), `depends` (an output that leaves open a facet the input names; the
 value is checked when it arrives), or `no`, with its reason: `mismatch`, `taken` (the input is
-fed) or `cycle`. None of these is on the page's method list yet (spec 016).
+fed) or `cycle`.
 
 `nodes.fit` answers the fit a node would get now, and `nodes.forget` clears what this machine
-learned about a node. Neither is on the page's method list yet.
+learned about a node; the page may ask the first. `values.locate {key, port}` answers the file of
+a value a run committed under that entry key, for the main process's value protocol; `inputs.import
+{path}` imports a file, for `photo.pick`. Neither of these two is on the page's list.
 
 A runtime install answers `runtimes.install` at once with the build it will install; then:
 
@@ -159,7 +179,7 @@ ends a job within 2 s and keeps its partial; one job runs at a time across proce
 what no node pins, without the network; `models.remove {node, checkpoint?}` or
 `{unpinned: [...]}` deletes only that, keeping a file another node pins, and is refused while the
 registry has problems, a folder of nodes is missing, a job runs, or a running graph may read the
-file. None of these is on the page's method list yet.
+file. The page may ask `models.download` and `models.stop`; the rest are not on its list yet.
 
 **An ending is sent after its place is free** (`journal.end_when_free`, spec 010). A run lets go of
 its list of the files it reads and of the engine's run slot, an install of its slot and its
