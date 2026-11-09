@@ -2,12 +2,18 @@
 // The page's models (spec 017), checked without a browser: each is a plain module under
 // app/renderer/ that uses neither Node nor the DOM, so these tests import it as it is.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { formModel, readControl } from "../../app/renderer/form.js";
 import { feeds, isSet, openGraph, resetParam, setParam } from "../../app/renderer/graph-model.js";
+import { readNpz } from "../../app/renderer/npz.js";
 
 /** @typedef {import("../../app/protocol.js").Page.Manifest} Manifest */
+
+const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 /** A test manifest with one param of each type the engine knows. @type {Manifest} */
 const EVERY_PARAM = {
@@ -67,4 +73,25 @@ test("a settings form is drawn from a manifest", () => {
   graph = resetParam(graph, "step", "count");
   assert.deepEqual(graph.nodes.step.params, {}, "reset removes the value from the graph");
   assert.equal(formModel(EVERY_PARAM, graph, "step")[0].set, false);
+});
+
+test("the npz reader reads what numpy writes", async () => {
+  // The arrays tests/app/fixtures/npz/README.md says numpy was given.
+  const points = Float32Array.from({ length: 36 }, (_, i) => i / 4 - 2);
+  const valid = Uint8Array.from({ length: 12 }, (_, i) => (i % 3 !== 0 ? 1 : 0));
+  for (const name of ["stored.npz", "deflated.npz"]) {
+    const bytes = readFileSync(path.join(FIXTURES, "npz", name));
+    const arrays = await readNpz(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    assert.deepEqual([...arrays.keys()].sort(), ["points", "valid"], name);
+    const p = /** @type {import("../../app/renderer/npz.js").NpyArray} */ (arrays.get("points"));
+    const v = /** @type {import("../../app/renderer/npz.js").NpyArray} */ (arrays.get("valid"));
+    assert.equal(p.dtype, "<f4", name);
+    assert.deepEqual(p.shape, [3, 4, 3], name);
+    assert.ok(p.data instanceof Float32Array, name);
+    assert.deepEqual([...p.data], [...points], name);
+    assert.equal(v.dtype, "|b1", name);
+    assert.deepEqual(v.shape, [3, 4], name);
+    assert.deepEqual([...v.data], [...valid], name);
+  }
+  await assert.rejects(readNpz(new ArrayBuffer(64)), /Not an npz numpy wrote/);
 });

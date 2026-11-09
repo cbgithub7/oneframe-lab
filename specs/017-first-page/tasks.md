@@ -9,7 +9,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   reset, nodes and edges added and removed, what feeds an input, shown panes in `page`) and
   `form.js` (a control per param type); `tests/app/page.test.js` with "a settings form is drawn
   from a manifest". (AC1; requirements 1 to 3)
-- [ ] 3. **The npz reader.** `app/renderer/npz.js` (stored and deflated, zip64 as numpy writes
+- [x] 3. **The npz reader.** `app/renderer/npz.js` (stored and deflated, zip64 as numpy writes
   it); fixtures written by numpy under `tests/app/fixtures/npz/`; "the npz reader reads what numpy
   writes". (AC2)
 - [ ] 4. **What a run shows.** `app/renderer/run-view.js`: a card's state from events typed from
