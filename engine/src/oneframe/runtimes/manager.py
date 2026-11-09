@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
-from oneframe import RUNTIMES_DIR, hardware
+from oneframe import RUNTIMES_DIR, hardware, protocol
 from oneframe.errors import Failure, Stopped
 from oneframe.files import FileLock, lock_file
 from oneframe.journal import end_when_free, engine_crash
@@ -393,7 +393,7 @@ class Runtimes:
         base = {"runtime": runtime.id, "build": build}
 
         def work(kept: Emit) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-            kept({**base, "event": "runtime.start"})
+            kept(protocol.event("runtime.start", **base))
             try:
                 done = runtime_install.install(
                     runtime,
@@ -408,10 +408,10 @@ class Runtimes:
                 )
             except Stopped:
                 message = "Install stopped. Installing again picks up where it was."
-                return None, {**base, "event": "runtime.stopped", "message": message}
+                return None, protocol.event("runtime.stopped", **base, message=message)
             except runtime_install.InstallFailed as exc:
-                return None, {**base, "event": "runtime.failed", **exc.to_json(detail=exc.detail)}
-            return done, {**base, "event": "runtime.done", **done}
+                return None, protocol.event("runtime.failed", **base, **exc.to_json(detail=exc.detail))
+            return done, protocol.event("runtime.done", **{**base, **done})
 
         def release() -> None:
             self._busy = None
@@ -420,7 +420,7 @@ class Runtimes:
                 held.release()
 
         def crashed(exc: BaseException) -> dict[str, Any]:
-            return engine_crash(exc, **base, event="runtime.failed")
+            return protocol.event("runtime.failed", **engine_crash(exc, **base))
 
         journals = Layout(self.data).journals
         return end_when_free(

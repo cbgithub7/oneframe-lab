@@ -270,16 +270,19 @@ def test_values_are_located_only_when_committed(
         assert (refused["kind"], refused["reason"]) == ("request", "bad_params"), params
 
 
+HELD = "nodes.forget"  # a queued method, whose answer the contract declares (spec 018)
+
+
 def _held(engine: Engine) -> tuple[threading.Event, threading.Event]:
-    """A test method that holds the worker until it is let go: (started, let go)."""
+    """HELD made to hold the worker until it is let go: (started, let go)."""
     started, let_go = threading.Event(), threading.Event()
 
     def hold(_params: dict[str, Any]) -> dict[str, Any]:
         started.set()
         assert let_go.wait(30), "the test never let the held request go"
-        return {"held": True}
+        return {"node": None, "dropped": 0}
 
-    engine.methods["test.hold"] = hold
+    engine.methods[HELD] = hold
     return started, let_go
 
 
@@ -289,7 +292,7 @@ def test_a_stop_is_answered_while_a_request_works(tmp_path: Path, make_engine: M
     started, let_go = _held(engine)
     requests = Requests(engine, replies.append)
     try:
-        requests.take({"id": 1, "method": "test.hold"})
+        requests.take({"id": 1, "method": HELD})
         assert started.wait(10), "the held request never began"
         requests.take({"id": 2, "method": "run.stop"})
         requests.take({"id": 3, "method": "engine.hello"})
@@ -309,7 +312,7 @@ def test_a_stop_cancels_a_queued_run(tmp_path: Path, node_root: Path, make_engin
     started, let_go = _held(engine)
     requests = Requests(engine, replies.append)
     try:
-        requests.take({"id": 1, "method": "test.hold"})
+        requests.take({"id": 1, "method": HELD})
         assert started.wait(10), "the held request never began"
         requests.take({"id": 2, "method": "graph.run", "params": {"graph": DEPTH_RUN}})
         requests.take({"id": 3, "method": "nodes.list"})  # not a run: it stays queued

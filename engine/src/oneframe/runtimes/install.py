@@ -38,7 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from oneframe import archives, processes
+from oneframe import archives, processes, protocol
 from oneframe.environment import uv_environment
 from oneframe.errors import Failure, Stopped
 from oneframe.files import format_of, free_bytes, remove_tree, replace, sha256_file, write_json
@@ -224,18 +224,18 @@ class _Install:
         if self.stop.is_set():
             raise Stopped()
         self.emit(
-            {
+            protocol.event(
+                "runtime.step",
                 **self.base,
-                "event": "runtime.step",
-                "step": name,
-                "index": STEPS.index(name) + 1,
-                "total": len(STEPS),
-                "message": message,
-            }
+                step=name,
+                index=STEPS.index(name) + 1,
+                total=len(STEPS),
+                message=message,
+            )
         )
 
     def log(self, line: str) -> None:
-        self.emit({**self.base, "event": "runtime.log", "line": line})
+        self.emit(protocol.event("runtime.log", **self.base, line=line))
 
     def run(self, argv: list[str], what: str, environment: dict[str, str]) -> None:
         code, tail = run_step(argv, environment, self.log, self.stop)
@@ -301,14 +301,9 @@ class _Install:
 
             def progress(done: int, total: int | None, name: str = source.name) -> None:
                 self.emit(
-                    {
-                        **self.base,
-                        "event": "runtime.progress",
-                        "step": "sources",
-                        "what": name,
-                        "done": done,
-                        "total": total,
-                    }
+                    protocol.event(
+                        "runtime.progress", **self.base, step="sources", what=name, done=done, total=total
+                    )
                 )
 
             archive = fetch_source(source, downloads, self.stop, progress, self.log, self.transfer)

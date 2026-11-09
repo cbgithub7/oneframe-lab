@@ -6,7 +6,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `events` and `shapes`, declaring what the code sends today, read from the code, not from
   architecture.md's prose. `oneframe/protocol.py`: `event`, `check_answer`, `problems`, read
   once with `reading.read_object`, loading no library. AC1.
-- [ ] 2. **Every event and answer checked.** Each module in the engine's process builds its events
+- [x] 2. **Every event and answer checked.** Each module in the engine's process builds its events
   with `protocol.event` (about 44 names in 52 literals, and the `event=` keyword uses); the
   scheduler checks the child's `stage`, `progress` and `ceiling` as it passes them on;
   `Engine.handle` checks each answer, and `Requests` the `{"stopped": true}` it gives a queued

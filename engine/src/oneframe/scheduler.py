@@ -54,7 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from oneframe import ports
+from oneframe import ports, protocol
 from oneframe.cache import Cache, code_digest
 from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import Executor, Executors, NodeError, OneProcessPerRun, Stopped
@@ -112,6 +112,18 @@ class _RunState:
     stop: threading.Event
     runtime_parts: dict[str, dict[str, str] | None] = field(default_factory=dict)
     code_keys: dict[Path, str] = field(default_factory=dict)
+
+    def event(self, name: str, fields: dict[str, Any]) -> None:
+        """Say the event `name`, with the run's id, checked (protocol.py)."""
+        self.say(protocol.event(name, **{**fields, "run": self.id}))
+
+    def ending(self, name: str, fields: dict[str, Any]) -> dict[str, Any]:
+        """The run's ending, with its id, checked; the run sends it once its place is free."""
+        return protocol.event(name, **{**fields, "run": self.id})
+
+    def passed_on(self, event: dict[str, Any]) -> None:
+        """An event a node said, with the run's id, checked here: a runtime's Python cannot."""
+        self.say(protocol.check_event(dict(event, run=self.id)))
 
 
 @dataclass
@@ -204,7 +216,7 @@ class Scheduler:
         stop = stop if stop is not None else threading.Event()
 
         def crashed(exc: BaseException) -> dict[str, Any]:
-            return engine_crash(exc, event="run.failed", run=run_id)
+            return protocol.event("run.failed", **engine_crash(exc, run=run_id))
 
         work = lambda kept: self._run(graph, kept, stop, run_id)  # noqa: E731
         return end_when_free(emit, self.journal_dir, f"run-{run_id}", work, release, crashed)
@@ -212,18 +224,14 @@ class Scheduler:
     def _run(
         self, graph: Graph, emit: Emit, stop: threading.Event, run_id: str
     ) -> tuple[RunResult, dict[str, Any]]:
-        def say(event: dict[str, Any]) -> None:
-            emit(dict(event, run=run_id))
-
-        run = _RunState(run_id, say, stop)
+        run = _RunState(run_id, emit, stop)
         the_plan: Plan = plan(graph, self.registry, self.imports)
-        say({"event": "run.start", "order": the_plan.order, "notes": the_plan.notes})
+        run.event("run.start", {"order": the_plan.order, "notes": the_plan.notes})
         # Every file the graph's nodes could read, at any checkpoint, is listed for the whole run,
         # so a remove in any process leaves them alone until it ends.
         files = sorted({spec.sha256 for step in the_plan.steps for spec in step.manifest.files})
         with reading(self.tmp_root, files):
-            result, ending = self._steps(the_plan, run)
-        return result, dict(ending, run=run_id)
+            return self._steps(the_plan, run)
 
     def _steps(self, the_plan: Plan, run: _RunState) -> tuple[RunResult, dict[str, Any]]:
         """Each step in order; the run's result, and its ending, which the run sends. A failure
@@ -233,30 +241,23 @@ class Scheduler:
         for step in the_plan.steps:
             if run.stop.is_set():
                 result.status = "stopped"
-                return result, {"event": "run.stopped", "step": step.id}
+                return result, run.ending("run.stopped", {"step": step.id})
             lost = set(result.failed) | set(result.skipped)
             waited_on = next((src for src, _ in step.inputs.values() if src in lost), None)
             if waited_on is not None:
                 result.skipped.append(step.id)
-                run.say(
-                    {
-                        "event": "node.skipped",
-                        "step": step.id,
-                        "node": step.manifest.id,
-                        "waited_on": waited_on,
-                    }
-                )
+                run.event("node.skipped", {"step": step.id, "node": step.manifest.id, "waited_on": waited_on})
                 continue
             state = _StepState(step)
             try:
                 outputs, record = self._step(run, state, result.outputs)
             except Stopped:
                 result.status = "stopped"
-                return result, {"event": "run.stopped", "step": step.id}
+                return result, run.ending("run.stopped", {"step": step.id})
             except EdgeMismatch as exc:  # no node's fault: reported against the edge, not the step
                 error = exc.to_json(edge=exc.edge)
                 result.skipped.append(step.id)
-                run.say(dict(error, event="node.skipped", step=step.id, node=step.manifest.id))
+                run.event("node.skipped", {**error, "step": step.id, "node": step.manifest.id})
                 result.error = result.error or error
                 ending = ending or error
                 continue
@@ -267,7 +268,7 @@ class Scheduler:
                 if state.peaks:
                     error["peaks"] = state.peaks
                 result.failed.append(step.id)
-                run.say(dict(error, event="node.failed"))
+                run.event("node.failed", error)
                 result.error = result.error or error
                 ending = ending or exc.to_json(step=step.id)
                 continue
@@ -275,16 +276,13 @@ class Scheduler:
             result.records[step.id] = record
         if ending is not None:
             result.status = "failed"
-            return result, {
-                "event": "run.failed",
-                **ending,
-                "failed": list(result.failed),
-                "skipped": list(result.skipped),
-            }
+            return result, run.ending(
+                "run.failed", {**ending, "failed": list(result.failed), "skipped": list(result.skipped)}
+            )
         outputs_json = {
             sid: {p: v.to_json() for p, v in outs.items()} for sid, outs in result.outputs.items()
         }
-        return result, {"event": "run.done", "outputs": outputs_json}
+        return result, run.ending("run.done", {"outputs": outputs_json})
 
     def _gather(self, step: Step, done: dict[str, dict[str, Value]]) -> dict[str, Value]:
         inputs: dict[str, Value] = {}
@@ -306,14 +304,14 @@ class Scheduler:
         key = self._key(run, manifest, step.params, state.inputs)
         cached = self.cache.get(key)
         if cached is not None:
-            run.say(
+            run.event(
+                "node.cached",
                 {
-                    "event": "node.cached",
                     "step": step.id,
                     "node": manifest.id,
                     "key": key,
                     "outputs": {p: v.to_json() for p, v in cached.items()},
-                }
+                },
             )
             return cached, {"cached": True, "key": key}
 
@@ -389,15 +387,15 @@ class Scheduler:
         assert state.context is not None
         found, settings = self._fit_now(step, state.context, after)
         state.fits.append(found)
-        run.say(
+        run.event(
+            "node.fit",
             {
-                "event": "node.fit",
                 "step": step.id,
                 "node": step.manifest.id,
                 "attempt": attempt,
                 **found.to_json(),
                 "settings": settings.to_json(),
-            }
+            },
         )
         if found.outcome == "memory":
             if after is not None:  # the retry found nothing smaller: the attempt's oom stands
@@ -425,29 +423,29 @@ class Scheduler:
             key = self._key(run, step.manifest, values, state.inputs)
             cached = self.cache.get(key)
             if cached is not None:
-                run.say(
+                run.event(
+                    "node.cached",
                     {
-                        "event": "node.cached",
                         "step": step.id,
                         "node": step.manifest.id,
                         "key": key,
                         "fit": found.to_json(),
                         "outputs": {p: v.to_json() for p, v in cached.items()},
-                    }
+                    },
                 )
                 return cached, {"cached": True, "key": key}
         return None
 
     def _said_oom(self, run: _RunState, step: Step, attempt: int, exc: NodeError) -> None:
-        run.say(
+        run.event(
+            "node.oom",
             {
-                "event": "node.oom",
                 "step": step.id,
                 "attempt": attempt,
                 "peak_reserved_mb": exc.peaks.get("peak_reserved_mb"),
                 "peak_ram_mb": exc.peaks.get("peak_ram_mb"),
                 "message": str(exc),
-            }
+            },
         )
 
     def _attempt(
@@ -462,15 +460,15 @@ class Scheduler:
         key = self._key(run, manifest, values, state.inputs)
         executor = self.executors.executor(manifest, device)  # the runtime check, then the files check
         files = check_files(self.store, manifest, values)
-        run.say(
+        run.event(
+            "node.start",
             {
-                "event": "node.start",
                 "step": step.id,
                 "node": manifest.id,
                 "where": manifest.run.where,
                 "key": key,
                 "attempt": attempt,
-            }
+            },
         )
         work = self.cache.begin(key)
         try:
@@ -541,7 +539,7 @@ class Scheduler:
         def forward(event: dict[str, Any]) -> None:
             if event.get("event") == "step_oom":
                 event = dict(event, event="node.step_oom")
-            run.say(dict(event, step=step_id))
+            run.passed_on(dict(event, step=step_id))
 
         try:
             return executor.execute(job, forward, run.stop)
@@ -593,9 +591,9 @@ class Scheduler:
         outputs: dict[str, Value],
         record: dict[str, Any],
     ) -> None:
-        run.say(
+        run.event(
+            "node.done",
             {
-                "event": "node.done",
                 "step": job.step,
                 "node": job.node,
                 "key": record["key"],
@@ -607,7 +605,7 @@ class Scheduler:
                 "made_with": record["made_with"],
                 **({"fit": found.to_json()} if found is not None else {}),
                 "outputs": {p: v.to_json() for p, v in outputs.items()},
-            }
+            },
         )
 
     def _learn(
