@@ -6,7 +6,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `inputs/` as `<sha256><suffix>`, once, and `find` gives an import's file by its id; `inputs` in
   `layout.py`, `paths.js` and `contracts/layout.json`; `inputs.import {path}`, for the main
   process. AC1.
-- [ ] 2. **A `file` param names an import.** `check_param` refuses anything but an import's id,
+- [x] 2. **A `file` param names an import.** `check_param` refuses anything but an import's id,
   without touching a path; `plan()` and `nodes.fit` resolve the id under `inputs/`, so the node
   still reads a file; `bench:fit --graph` and CI's model check import the photos they name. AC2.
 - [ ] 3. **Requests off the input loop.** The loop answers `engine.hello`, `values.locate` and the

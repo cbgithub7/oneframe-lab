@@ -76,9 +76,11 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path, engine_process: Sta
         assert bad["error"]["problems"][0]["node"] == "x"
 
         photo = _photo(tmp_path / "p.jpg")
+        imported = client.call("inputs.import", {"path": str(photo)})["result"]
+        assert imported["name"] == "p.jpg"
         graph = {
             "version": 1,
-            "nodes": {"p": {"node": "source.image", "params": {"path": str(photo)}}},
+            "nodes": {"p": {"node": "source.image", "params": {"path": imported["id"]}}},
             "edges": [],
         }
         run = client.call("graph.run", {"graph": graph})["result"]["run"]
@@ -87,8 +89,9 @@ def test_the_server_answers_and_runs_a_graph(tmp_path: Path, engine_process: Sta
         image = done["outputs"]["p"]["image"]
         assert image["facets"] == {"alpha": "none"} and image["trust"] == "measured"
         assert image["meta"]["focal_px_exif"] == round(26 / 36 * 8, 2)
-        # The photo's name travels with the result; its folders, and so the person's user name, do not.
-        assert image["meta"]["source"] == "p.jpg"
+        # The import's name travels with the result; the photo's folders, and so the person's user
+        # name, do not.
+        assert image["meta"]["source"] == f"{imported['id']}.jpg"
         assert str(tmp_path) not in json.dumps(image["meta"])
     finally:
         client.close()

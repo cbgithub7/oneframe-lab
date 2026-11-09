@@ -181,7 +181,7 @@ class Engine:
             raise _bad_params(f"No node called {node!r} is installed.")
         manifest = self.registry.get(node)
         given = dict(params.get("params") or {})
-        values, problems = step_params(manifest, given)
+        values, problems = step_params(manifest, given, self.layout.inputs)
         if problems:
             raise _bad_params("; ".join(problems))
         sizes = dict(params.get("inputs") or {})
@@ -206,7 +206,7 @@ class Engine:
         }
 
     def graph_validate(self, params: dict[str, Any]) -> dict[str, Any]:
-        the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry)
+        the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry, self.layout.inputs)
         return {"order": the_plan.order, "notes": the_plan.notes, "depends": the_plan.depends}
 
     def graph_fits(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -251,7 +251,8 @@ class Engine:
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
         graph = Graph.from_json(_required(params, "graph"))
-        the_plan = plan(graph, self.registry)  # refuse a bad graph now, with its problems, not as an event
+        # A bad graph is refused now, with its problems, not as an event.
+        the_plan = plan(graph, self.registry, self.layout.inputs)
         used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
         run_id = uuid.uuid4().hex[:12]
         stop = threading.Event()

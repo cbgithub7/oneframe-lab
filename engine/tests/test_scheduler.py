@@ -14,6 +14,8 @@ from fixtures import fit_node, machines
 from oneframe.cache import Cache
 from oneframe.executors import Executor, OneProcessPerRun
 from oneframe.graph import Graph
+from oneframe.inputs import import_file
+from oneframe.layout import Layout
 from oneframe.manifest import Manifest
 from oneframe.memory.estimate import Learned, Target
 from oneframe.memory.learned import LearnedStore, StoreKey
@@ -99,13 +101,19 @@ def test_a_file_param_is_keyed_by_content_not_name(
     )
     src = tmp_path / "in.txt"
     src.write_text("a", encoding="utf-8")
-    g = _graph({"r": {"node": "test.reads", "params": {"path": str(src)}}}, [])
+    layout = Layout(tmp_path)  # where scheduler_for finds imports
+    reads = lambda ident: _graph({"r": {"node": "test.reads", "params": {"path": ident}}}, [])  # noqa: E731
     sched = scheduler_for()
-    sched.run(g, events.append)
+    sched.run(reads(import_file(layout, src)[0]), events.append)
     src.write_text("b", encoding="utf-8")
     events.clear()
-    sched.run(g, events.append)
+    sched.run(reads(import_file(layout, src)[0]), events.append)
     assert "node.start" in events.kinds(), "a changed file must not be served from the cache"
+    copy = tmp_path / "another name.txt"
+    copy.write_text("b", encoding="utf-8")
+    events.clear()
+    sched.run(reads(import_file(layout, copy)[0]), events.append)
+    assert events.kinds() == ["run.start", "node.cached", "run.done"], "the same bytes, by another name"
 
 
 @pytest.mark.parametrize(

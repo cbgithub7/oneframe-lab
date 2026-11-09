@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 import pytest
 from conftest import MakeNode
 
 from oneframe.graph import Graph, GraphError, fits, plan
+from oneframe.inputs import find, import_file
+from oneframe.layout import Layout
 from oneframe.registry import Registry
+from oneframe.scheduler import Scheduler
 
 
 def _graph(nodes: Mapping[str, Mapping[str, object]], edges: list[tuple[str, str]]) -> Graph:
@@ -303,3 +308,54 @@ def test_what_fits_agrees_with_plan(make_node: MakeNode, registry_for: Callable[
     assert seen >= {"direct:", "via:", "depends:", "no:mismatch", "no:taken", "no:cycle"}, seen
     with pytest.raises(GraphError, match="no port"):
         fits(graph, "s.nope", registry)
+
+
+def test_a_file_param_names_an_import(
+    make_node: MakeNode,
+    registry_for: Callable[[], Registry],
+    scheduler_for: Callable[..., Scheduler],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `file` param holds an import's id: the step is given that import's file. A path, or an id
+    nothing was imported as, is a problem of that param, and the path is never looked at."""
+    make_node(
+        {
+            "id": "test.reads",
+            "version": "1",
+            "title": "R",
+            "category": "test",
+            "outputs": {"text": "Text"},
+            "params": {"path": {"type": "file"}},
+        },
+        "from pathlib import Path\n"
+        "def run(ctx):\n"
+        "    p = ctx.path('t.json')\n"
+        "    p.write_text(Path(ctx.params['path']).read_text(encoding='utf-8'), encoding='utf-8')\n"
+        "    ctx.output('text', p)\n",
+    )
+    layout = Layout(tmp_path)
+    picked = tmp_path / "Pictures" / "picked.txt"
+    picked.parent.mkdir()
+    picked.write_text('{"read": "the import"}', encoding="utf-8")
+    ident, _name = import_file(layout, picked)
+    reads = lambda value: _graph({"r": {"node": "test.reads", "params": {"path": value}}}, [])  # noqa: E731
+
+    [step] = plan(reads(ident), registry_for(), layout.inputs).steps
+    assert step.params["path"] == str(find(layout.inputs, ident))
+    result = scheduler_for().run(reads(ident), lambda _event: None)
+    assert result.status == "done", result.error
+    assert result.outputs["r"]["text"].path.read_text(encoding="utf-8") == '{"read": "the import"}'
+
+    real_stat = os.stat
+
+    def guarded(path: Any, *args: Any, **kw: Any) -> Any:
+        assert "Pictures" not in str(path), f"the path in the param was looked at: {path}"
+        return real_stat(path, *args, **kw)
+
+    monkeypatch.setattr(os, "stat", guarded)
+    for value, needle in ((str(picked), "not a path"), ("0" * 64, "no imported file")):
+        with pytest.raises(GraphError) as refused:
+            plan(reads(value), registry_for(), layout.inputs)
+        [problem] = refused.value.problems
+        assert (problem["node"], needle in problem["message"]) == ("r", True), problem

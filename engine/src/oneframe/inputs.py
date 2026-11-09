@@ -15,22 +15,22 @@ import contextlib
 import re
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from oneframe.files import replace, sha256_file, temporary_for
 from oneframe.layout import Layout
+from oneframe.reading import is_sha256
 
-ID = re.compile(r"^[0-9a-f]{64}$")
+if TYPE_CHECKING:
+    from oneframe.graph import Graph
+    from oneframe.registry import Registry
+
 _SUFFIX = re.compile(r"^\.[a-z0-9]{1,10}$")
 
 
-def is_id(value: object) -> bool:
-    """Whether `value` has the form of an import's id: a sha256, in lower-case hex."""
-    return isinstance(value, str) and bool(ID.match(value))
-
-
 def find(folder: Path, ident: str) -> Path | None:
-    """The file of the import `ident` in `folder` (the layout's `inputs`), or None."""
-    if not is_id(ident) or not folder.is_dir():
+    """The file of the import `ident` (a sha256) in `folder`, the layout's `inputs`, or None."""
+    if not is_sha256(ident) or not folder.is_dir():
         return None
     for path in sorted(folder.glob(f"{ident}*")):
         if path.is_file() and (path.name == ident or path.name.startswith(f"{ident}.")):
@@ -55,3 +55,15 @@ def import_file(layout: Layout, source: Path) -> tuple[str, str]:
         with contextlib.suppress(OSError):
             temporary.unlink(missing_ok=True)
     return ident, source.name
+
+
+def import_paths(graph: Graph, registry: Registry, layout: Layout) -> None:
+    """Each `file` param of `graph` that names a path imported, and named by its id instead, as the
+    page's dialog does: how a command-line tool reads a graph that names its photo by path. A
+    relative path is the working folder's. Raises FileNotFoundError for a path with no file."""
+    for gnode in graph.nodes.values():
+        manifest = registry.nodes.get(gnode.node)
+        for name, param in manifest.params.items() if manifest is not None else ():
+            value = gnode.params.get(name)
+            if param.type == "file" and isinstance(value, str) and not is_sha256(value):
+                gnode.params[name] = import_file(layout, Path(value).resolve())[0]
