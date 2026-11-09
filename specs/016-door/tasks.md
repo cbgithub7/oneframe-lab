@@ -17,7 +17,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `engine:request`; `forPage` on every answer and every event: a local path in a value's `path`, a
   manifest's `folder` or the hello's `data` removed, and the root, the repo and the home folder
   written `<data>`, `<repo>` and `~` everywhere else. AC3, AC4.
-- [ ] 6. **The value protocol.** `oneframe-value://<key>/<port>` on the page's partition, served by
+- [x] 6. **The value protocol.** `oneframe-value://<key>/<port>` on the page's partition, served by
   `app/main/values.js` from what `values.locate` answers, under `cache/objects` only, with the
   `mime` `port-types.json` gives its carrier; the CSP allows it. AC6.
 - [ ] 7. **The page's list, the docs and the end.** `ENGINE_METHODS` gains `nodes.fit`,

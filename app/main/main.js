@@ -7,7 +7,8 @@
 // checked in door.js; the engine checks their values. Every answer is a value, a failure included,
 // and no answer or event names a path on this machine (door.js's forPage).
 
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,6 +19,7 @@ import { EngineClient, EngineError } from "./engine.js";
 import { appFailure } from "./failures.js";
 import { RotatingLog } from "./log.js";
 import { REPO_ROOT, engineCommand, findUv, layout } from "./paths.js";
+import { VALUE_SCHEME, carrierMimes, valueHandler } from "./values.js";
 
 const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");
 const RENDERER_URL = pathToFileURL(RENDERER).href;
@@ -27,6 +29,12 @@ const EXTERNAL_HOSTS = new Set(["github.com"]);
 // OS-level sandbox cannot start. It never applies otherwise; the page stays isolated either way.
 if (process.env.ONEFRAME_NO_SANDBOX === "1") app.commandLine.appendSwitch("no-sandbox");
 else app.enableSandbox();
+
+// The page reads a run's values by key through this scheme (values.js), which must be known
+// before the app is ready. It serves nothing but a committed value.
+protocol.registerSchemesAsPrivileged([
+  { scheme: VALUE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
 
 // Electron's folders under the data root first (the dev root in a checkout, the app's own root once
 // packaged; ONEFRAME_DATA overrides either), then the single-instance lock, which is one per root.
@@ -158,6 +166,14 @@ app.whenReady().then(() => {
     each.setSpellCheckerLanguages([]);
     each.setSpellCheckerEnabled(false);
   }
+  const contract = JSON.parse(readFileSync(path.join(REPO_ROOT, "contracts", "port-types.json"), "utf8"));
+  session.fromPartition(PAGE_PARTITION).protocol.handle(VALUE_SCHEME, valueHandler({
+    locate: (key, port) => (engine && engine.ready
+      ? engine.request("values.locate", { key, port })
+      : Promise.reject(new Error("The engine is not running."))),
+    objects: layout(data).objects,
+    mimes: carrierMimes(contract),
+  }));
   createWindow();
   startEngine();
 });
