@@ -24,6 +24,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from oneframe.reading import device_name
+
 if TYPE_CHECKING:
     from oneframe.manifest import Param
 
@@ -35,8 +37,6 @@ _NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
-# Names Windows keeps for devices, with any extension: CON, NUL.txt, COM1, LPT9.bin, ...
-_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$", re.IGNORECASE)
 _REFUSED_CHARS = set('<>"|?*')
 _DRIVE = re.compile(r"^[A-Za-z]:")
 
@@ -85,7 +85,7 @@ def unsafe_path(path: str) -> str | None:
             return "steps out of its folder with '..'"
         if part[-1] in ". ":
             return f"has {part!r}, which ends with a dot or a space, which Windows drops"
-        if _RESERVED.match(part):
+        if device_name(part):
             return f"has {part!r}, a name Windows keeps for a device"
         if any(ord(c) < 32 or c in _REFUSED_CHARS for c in part):
             return f"has {part!r}, with a character Windows refuses"

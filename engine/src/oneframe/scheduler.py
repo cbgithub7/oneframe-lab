@@ -12,10 +12,17 @@ Events, in order, for the app (all carry `run`):
     node.done      step, seconds, peaks, made_with, fit, outputs
     node.oom       step, attempt, peaks, message  (before the one retry, or the failure)
     node.failed    step, node, kind, reason, message, next, retry, detail, fits, peaks
+    node.skipped   step, node, waited_on          (a step it needs failed or was skipped)
+                   step, node, edge, kind, message, retry   (a value did not fit its input)
     run.done | run.failed | run.stopped
 
 A failure carries a declared kind and reason (errors.py). A value whose facets do not fit the port
 it reaches is no node's fault: there is no node.failed, and run.failed names the edge.
+
+A failure stops only what depends on it: every step whose inputs come from a failed or skipped
+step is skipped and never starts, and the run goes on with the rest. It then ends run.failed with
+the first failure's kind, reason and message, its step (or edge), and `failed` and `skipped`, the
+steps of each in order. A Stop still ends the whole run.
 
 Before a node's model loads, the engine fits it to the memory this machine has free (`oneframe.memory`):
 the device, the precision and the settings the person left alone, never a checkpoint that is not
@@ -125,7 +132,9 @@ class RunResult:
     status: str  # done | failed | stopped
     outputs: dict[str, dict[str, Value]] = field(default_factory=dict)
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
-    error: dict[str, Any] | None = None
+    error: dict[str, Any] | None = None  # the first failure, as node.failed (or run.failed) said it
+    failed: list[str] = field(default_factory=list)  # the steps that failed, in order
+    skipped: list[str] = field(default_factory=list)  # the steps that did not run because of one
 
 
 def _weakest(trusts: list[str | None]) -> str | None:
@@ -215,12 +224,27 @@ class Scheduler:
         return result, dict(ending, run=run_id)
 
     def _steps(self, the_plan: Plan, run: _RunState) -> tuple[RunResult, dict[str, Any]]:
-        """Each step in order; the run's result, and its ending, which the run sends."""
+        """Each step in order; the run's result, and its ending, which the run sends. A failure
+        stops only the steps that need what it would have made."""
         result = RunResult(run=run.id, status="done")
+        ending: dict[str, Any] | None = None  # the first failure, as run.failed carries it
         for step in the_plan.steps:
             if run.stop.is_set():
                 result.status = "stopped"
                 return result, {"event": "run.stopped", "step": step.id}
+            lost = set(result.failed) | set(result.skipped)
+            waited_on = next((src for src, _ in step.inputs.values() if src in lost), None)
+            if waited_on is not None:
+                result.skipped.append(step.id)
+                run.say(
+                    {
+                        "event": "node.skipped",
+                        "step": step.id,
+                        "node": step.manifest.id,
+                        "waited_on": waited_on,
+                    }
+                )
+                continue
             state = _StepState(step)
             try:
                 outputs, record = self._step(run, state, result.outputs)
@@ -228,21 +252,33 @@ class Scheduler:
                 result.status = "stopped"
                 return result, {"event": "run.stopped", "step": step.id}
             except EdgeMismatch as exc:  # no node's fault: reported against the edge, not the step
-                result.status = "failed"
-                result.error = exc.to_json(edge=exc.edge)
-                return result, dict(result.error, event="run.failed")
+                error = exc.to_json(edge=exc.edge)
+                result.skipped.append(step.id)
+                run.say(dict(error, event="node.skipped", step=step.id, node=step.manifest.id))
+                result.error = result.error or error
+                ending = ending or error
+                continue
             except (NodeError, RuntimeMissing, ContractError, FilesMissing) as exc:
                 error = exc.to_json(step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""))
                 if state.fits:
                     error["fits"] = [f.to_json() for f in state.fits]
                 if state.peaks:
                     error["peaks"] = state.peaks
-                result.status = "failed"
-                result.error = error
+                result.failed.append(step.id)
                 run.say(dict(error, event="node.failed"))
-                return result, {"event": "run.failed", **exc.to_json(step=step.id)}
+                result.error = result.error or error
+                ending = ending or exc.to_json(step=step.id)
+                continue
             result.outputs[step.id] = outputs
             result.records[step.id] = record
+        if ending is not None:
+            result.status = "failed"
+            return result, {
+                "event": "run.failed",
+                **ending,
+                "failed": list(result.failed),
+                "skipped": list(result.skipped),
+            }
         outputs_json = {
             sid: {p: v.to_json() for p, v in outs.items()} for sid, outs in result.outputs.items()
         }

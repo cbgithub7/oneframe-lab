@@ -120,6 +120,7 @@ export function layout(root) {
     step_logs: path.join(root, "logs", "steps"),
     crashes: path.join(root, "logs", "crashes"),
     locks: path.join(root, "logs", "locks"),
+    graphs: path.join(root, "graphs"),
     reports: path.join(root, "reports"),
   });
 }

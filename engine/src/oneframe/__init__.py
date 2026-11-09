@@ -23,4 +23,5 @@ ENGINE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(os.environ.get("ONEFRAME_ROOT") or ENGINE_DIR.parents[2])
 CONTRACTS_DIR = REPO_ROOT / "contracts"
 BUILTIN_NODES_DIR = REPO_ROOT / "nodes"
+BUILTIN_GRAPHS_DIR = REPO_ROOT / "graphs"  # the graphs that ship, starting points saved as data
 RUNTIMES_DIR = REPO_ROOT / "runtimes"

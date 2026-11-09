@@ -1,6 +1,6 @@
 # 015: Graphs as data, and what fits here
 
-Status: approved (2026-11-08)
+Status: done ([PR #65](https://github.com/cbgithub7/oneframe-lab/pull/65))
 Owner approval: 2026-11-08, with 016, 018 and 017 as one decision; every open question answered as recommended (2026-11-04)
 
 The second of five specs for step 3, first light, which is too large for one: [005](../005-first-models/spec.md)
@@ -135,6 +135,8 @@ Every criterion is a test in `npm run engine:check`, in CI on Windows and Ubuntu
 - One `connect` for `plan()` and `fits()`, under "one way to do each thing".
 - `depends` for an open facet, until manifests can say which setting decides it (roadmap).
 - A saved graph holds no path: a `file` param holds what 016's import gives, a content hash.
+- A shipped graph leaves its photo unset, for the person to pick; AC6 gives each `file` param it
+  leaves empty a test file before planning, and holds that none is set.
 
 ## Out of scope
 
