@@ -18,7 +18,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 5. **Viewers by port type.** `app/renderer/viewers/` (Image, Depth, PointMap with
   `POINT_BUDGET`, Camera) and the fallback for any other type; three.js and `@types/three` pinned;
   "every viewer is for a port type that exists". (AC7; requirement 6)
-- [ ] 6. **One bundle.** esbuild pinned; `npm run page:build` writes `dist/renderer/` (ignored);
+- [x] 6. **One bundle.** esbuild pinned; `npm run page:build` writes `dist/renderer/` (ignored);
   `main.js` loads the page from there; `npm start` builds first. (Design: one bundle)
 - [ ] 7. **The page.** `app/renderer/main.js` and `index.html`: graphs opened and saved, cards with
   their forms and wiring, the catalogue filtered by `graph.fits`, Run and Stop, offers that install

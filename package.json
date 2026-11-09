@@ -10,7 +10,8 @@
     "node": ">=24.22.1"
   },
   "scripts": {
-    "start": "electron .",
+    "start": "npm run page:build && electron .",
+    "page:build": "node scripts/page-build.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.page.json && tsc -p tsconfig.preload.json",
     "test": "node --test \"tests/app/**/*.test.js\"",
@@ -34,9 +35,14 @@
     "@types/node": "24.19.2",
     "@types/three": "0.187.0",
     "electron": "45.2.3",
+    "esbuild": "0.28.2",
     "eslint": "10.14.0",
     "globals": "17.14.0",
     "three": "0.187.0",
     "typescript": "7.0.2"
+  },
+  "allowScripts": {
+    "electron": true,
+    "esbuild": false
   }
 }
