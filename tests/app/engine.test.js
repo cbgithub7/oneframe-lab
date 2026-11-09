@@ -9,8 +9,9 @@ import { fileURLToPath } from "node:url";
 
 import { EngineClient, EngineError, LineSplitter } from "../../app/main/engine.js";
 import { RotatingLog } from "../../app/main/log.js";
-import { ENGINE_METHODS } from "../../app/main/methods.js";
+import { APP_METHODS, ENGINE_METHODS } from "../../app/main/methods.js";
 import { dataRoot, engineCommand, findUv } from "../../app/main/paths.js";
+import { CONTRACT_FILE } from "../../app/main/protocol.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fake = () => new EngineClient({ command: process.execPath, args: [path.join(here, "fixtures", "fake-engine.js")],
@@ -138,3 +139,33 @@ test("the real engine starts from its lock file and lists the built-in nodes", {
       rmSync(data, { recursive: true, force: true });
     }
   });
+
+test("every method is declared", { skip: !synced && "uv not found" }, async () => {
+  // Spec 018, AC6: each method the page may ask, the app answers, and the engine has is declared
+  // in contracts/protocol.json, answered by whom it is, with its params and its answer; and the
+  // contract declares no method nobody answers.
+  const declared = JSON.parse(readFileSync(CONTRACT_FILE, "utf8")).methods;
+  const data = mkdtempSync(path.join(tmpdir(), "oneframe-data-"));
+  const client = new EngineClient({ ...engineCommand(/** @type {string} */ (uv), data), requestTimeoutMs: 120_000 });
+  const table = await client.start().then((ready) => ready.methods).finally(async () => {
+    await client.stop();
+    rmSync(data, { recursive: true, force: true });
+  });
+  assert.ok(table.includes("engine.hello"), "the engine said its methods");
+  for (const [where, names, by] of /** @type {Array<[string, Iterable<string>, string]>} */ ([
+    ["ENGINE_METHODS", ENGINE_METHODS, "engine"],
+    ["APP_METHODS", APP_METHODS, "app"],
+    ["the engine's table", table, "engine"],
+  ])) {
+    for (const name of names) {
+      const method = declared[name];
+      assert.ok(method, `${name}, in ${where}, is not declared`);
+      assert.equal(method.by, by, `${name} is answered by the ${by}`);
+      for (const part of ["params", "answer"]) {
+        assert.equal(typeof method[part]?.fields, "object", `${name} declares its ${part}`);
+      }
+    }
+  }
+  const answered = new Set([...table, ...APP_METHODS]);
+  assert.deepEqual(Object.keys(declared).filter((name) => !answered.has(name)), [], "declared, but nobody answers it");
+});

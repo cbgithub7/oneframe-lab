@@ -21,7 +21,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 5. **The door strips by the contract.** `forPage` removes the fields marked `"page": false`
   instead of its `PATH_FIELDS`, keeps its scrubbing of the root, the repo and the home folder, and
   logs a message the contract does not declare, once per name. AC5.
-- [ ] 6. **Every method declared.** `engine.test.js`: each of `ENGINE_METHODS`, `APP_METHODS` and
+- [x] 6. **Every method declared.** `engine.test.js`: each of `ENGINE_METHODS`, `APP_METHODS` and
   the engine's own table (its hello's `methods`), with its params and its answer. AC6.
 - [ ] 7. **Docs and the end.** architecture.md (the contract is the declaration), nodes.md (a node's
   `stage` and `progress` fields), the commands list (`protocol-types.js`), `/code-review`, and the
