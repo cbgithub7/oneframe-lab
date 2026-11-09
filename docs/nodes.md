@@ -134,6 +134,13 @@ the run's inputs, paths and outputs: what it returns may depend on the fitted se
 (`ctx.params`, `ctx.device`, `ctx.precision`), never on the photo or another node's output. Its
 seconds count with the run's.
 
+**What the page hears from a node.** `ctx.stage(name, message)` sends `stage`, with `stage` and
+`message`; `ctx.progress(done, total, what)` sends `progress`, with the stage it is in, `done`,
+`total` (or null) and `what`, and a tqdm bar in a runtime sends the same, at most four times a
+second. The engine passes each on with the node's `step` and the `run`, checked against
+`contracts/protocol.json` as it goes ([spec 018](../specs/018-protocol/spec.md)): a field the
+contract does not declare is logged, never refused, so a node says nothing else through them.
+
 Every output in the manifest must be declared with `ctx.output` before `run` returns. A node writes
 only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`: the run
 fails with kind `node`, and the person reads the message as written, whatever words it uses. Called

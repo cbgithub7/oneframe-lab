@@ -99,10 +99,14 @@ changing anything structural, and [docs/nodes.md](docs/nodes.md) before adding a
 
 ## Commands
 
-- `npm run check`: eslint, tsc (JSDoc types, `// @ts-check` in every JS file), node tests, and
-  the docs check (every link in the docs leads somewhere, every repo path they name exists outside
-  specs and the dated reviews in `docs/reviews/`, and no spec being worked on is over 200 lines,
-  or over the length the owner allowed it)
+- `npm run check`: eslint, the page's types against the contract, tsc (JSDoc types,
+  `// @ts-check` in every JS file), node tests, and the docs check (every link in the docs leads
+  somewhere, every repo path they name exists outside specs and the dated reviews in
+  `docs/reviews/`, and no spec being worked on is over 200 lines, or over the length the owner
+  allowed it)
+- `node scripts/protocol-types.js [--write]`: `app/protocol.d.ts`, the page's types, held to what
+  `contracts/protocol.json` gives, naming the lines that differ; `--write` writes it again, so a
+  change to the contract commits the file (spec 018)
 - `npm run engine:check`: ruff, ruff format, pyright, `runtime:check`, pytest
 - `npm run runtime:check [-- --every-runtime]`: each runtime's code, and its nodes', held to a
   `ruff.toml` for its runtime's Python, and checked by pyright with that runtime's interpreter

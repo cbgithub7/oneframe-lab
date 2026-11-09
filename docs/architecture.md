@@ -42,6 +42,7 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Journal | `oneframe/journal.py` | Every event of a run, an install or a model job, kept in a journal; journals and step logs pruned when one opens; one helper ends each after its place is free |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
 | Server | `oneframe/server.py` | The engine's NDJSON protocol: one worker answers requests in order, and the loop that reads them answers the stops and the quick reads at once |
+| Protocol | `contracts/protocol.json`, `oneframe/protocol.py`, `app/main/protocol.js`, `app/protocol.d.ts` | Every method and every event, declared once ([spec 018](../specs/018-protocol/spec.md)): the engine builds each event and checks each answer against it, a problem logged and kept, never refused; the door strips by it what never reaches the page; the page's types are generated from it (`scripts/protocol-types.js`) |
 | Imports | `oneframe/inputs.py` | The files a graph reads, copied into the data root's `inputs/` by their sha256, which is their id: a `file` param holds the id, never a path |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py`, `engine/tests/fit_check.py` | The reports a hardware claim needs: a runtime's install, a node's memory on a card, and spec 002's check on a card, which lives with its test node |
 | Tool launcher | `scripts/tool.js` | Starts each command-line tool that opens a data root, with uv's temporary files under that root |
@@ -129,6 +130,12 @@ a stop up; a stop first takes each queued request of its kind off the queue and 
 
 ## Events
 
+What the engine and the app say to the page is declared in `contracts/protocol.json`: every method,
+its params and its answer, and every event, its fields and who sends it. That file is the
+declaration and this section its reading; the list that ends it names every event, and a test holds
+the two equal. A field marked `"page": false` (a value's `path`, a manifest's `folder`, the hello's
+`data`) never reaches the page.
+
 A run answers `graph.run` at once with a run id; everything after is pushed:
 
 `run.start` → per node: `node.cached` (the result at its own values), or `node.fit` (the device,
@@ -189,6 +196,13 @@ install again, removing the run's runtime or a file it read) is answered, not re
 `in_use`. A next run's or job's first events may then come before the last one's ending, told apart
 by `run` or `job`; a next install's never do, since an install lets go and sends under its claim
 lock.
+
+**Every event,** with its fields in `contracts/protocol.json`: `engine.ready`, `engine.failed`,
+`engine.warning`, `engine.exit`, `run.start`, `run.done`, `run.failed`, `run.stopped`,
+`node.cached`, `node.fit`, `node.start`, `stage`, `progress`, `ceiling`, `node.step_oom`,
+`node.done`, `node.oom`, `node.failed`, `node.skipped`, `runtime.start`, `runtime.step`,
+`runtime.log`, `runtime.progress`, `runtime.done`, `runtime.failed`, `runtime.stopped`,
+`model.start`, `model.file`, `model.progress`, `model.done`, `model.failed`, `model.stopped`.
 
 ## Failures
 

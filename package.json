@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test \"tests/app/**/*.test.js\"",
-    "check": "npm run lint && npm run typecheck && npm test && npm run docs:check",
+    "check": "npm run lint && npm run protocol:types && npm run typecheck && npm test && npm run docs:check",
     "engine:sync": "uv sync --project engine --frozen",
     "engine:check": "uv run --project engine --frozen ruff check && uv run --project engine --frozen ruff format --check && uv run --project engine --frozen pyright && npm run runtime:check && uv run --project engine --frozen pytest engine",
     "runtime:check": "node scripts/tool.js oneframe.runtime_check",
@@ -26,6 +26,7 @@
     "models:pin": "node scripts/tool.js oneframe.models.tools pin",
     "versions": "node scripts/check-versions.js",
     "docs:check": "node scripts/check-docs.js",
+    "protocol:types": "node scripts/protocol-types.js",
     "test:guard": "node scripts/test-guard.js"
   },
   "devDependencies": {

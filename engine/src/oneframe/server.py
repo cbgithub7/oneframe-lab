@@ -6,7 +6,8 @@ Requests are `{"id": 1, "method": "nodes.list", "params": {}}` and are answered 
 `{"id": 1, "result": ...}` or `{"id": 1, "error": {"message": ..., "problems": [...]}}`. Anything
 that takes time (a graph run) answers at once with a run id, and its progress arrives as events,
 `{"event": "node.done", ...}`, with no id. There is no polling and no local network port: the only
-way in is this process's own stdin, which only the app holds.
+way in is this process's own stdin, which only the app holds. contracts/protocol.json declares every
+method and event, and each answer and error is checked against it (protocol.py).
 
 Requests are answered in order by one worker thread, so no two of them run at once, as the methods
 were written to. Only the stops (`run.stop`, `runtimes.stop`, `models.stop`) and the reads that
@@ -42,7 +43,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from oneframe import BUILTIN_GRAPHS_DIR, BUILTIN_NODES_DIR, __version__, graphs, hardware, inputs, ports
+from oneframe import (
+    BUILTIN_GRAPHS_DIR,
+    BUILTIN_NODES_DIR,
+    __version__,
+    graphs,
+    hardware,
+    inputs,
+    ports,
+    protocol,
+)
 from oneframe.cache import Cache
 from oneframe.errors import Failure, failure
 from oneframe.graph import Graph, Step, fits, plan, step_params
@@ -423,22 +433,26 @@ class Engine:
         self.scratch.release()
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
+        """The reply to one request, its result or its error checked against the contract."""
         req_id = message.get("id")
-        method = message.get("method")
-        fn = self.methods.get(str(method))
+        method = str(message.get("method"))
+        fn = self.methods.get(method)
         if fn is None:
-            return {
-                "id": req_id,
-                "error": failure("request", f"Unknown method {method!r}.", "unknown_method"),
-            }
-        try:
-            return {"id": req_id, "result": fn(dict(message.get("params") or {}))}
-        except Failure as exc:  # a refusal with a declared kind and reason, for a person
-            return {"id": req_id, "error": exc.to_json()}
-        except Exception as exc:
-            LOGGER.exception("%s failed", method)
-            trace = traceback.format_exc()[-4000:]
-            return {"id": req_id, "error": failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)}
+            error = failure("request", f"Unknown method {message.get('method')!r}.", "unknown_method")
+        else:
+            try:
+                result = fn(dict(message.get("params") or {}))
+            except Failure as exc:  # a refusal with a declared kind and reason, for a person
+                error = exc.to_json()
+            except Exception as exc:
+                LOGGER.exception("%s failed", method)
+                trace = traceback.format_exc()[-4000:]
+                error = failure("engine", f"{type(exc).__name__}: {exc}", detail=trace)
+            else:
+                protocol.check_answer(method, result)
+                return {"id": req_id, "result": result}
+        protocol.check_error(method, error)
+        return {"id": req_id, "error": error}
 
 
 class Requests:
@@ -474,6 +488,7 @@ class Requests:
             for message in gone:
                 self._queue.remove(message)
         for message in gone:
+            protocol.check_answer(str(message.get("method")), None, stopped=True)
             self.say({"id": message.get("id"), "result": {"stopped": True}})
 
     def _work(self) -> None:
@@ -572,13 +587,13 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
             graph_roots=args.graphs,
         )
     except RootRefused as exc:
-        say({"event": "engine.failed", **exc.to_json()})
+        say(protocol.event("engine.failed", **exc.to_json()))
         return 2
     except Exception as exc:  # a root that cannot be written, a lock that cannot be taken: say why
         LOGGER.exception("the engine could not start")
-        say(engine_crash(exc, event="engine.failed"))
+        say(protocol.event("engine.failed", **engine_crash(exc)))
         return 1
-    say({"event": "engine.ready", **engine.hello({})})
+    say(protocol.event("engine.ready", **engine.hello({})))
     requests = Requests(engine, say)
     stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
     for line in stdin:
@@ -590,7 +605,7 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
         except ValueError:
             message = None
         if not isinstance(message, dict):
-            say({"event": "engine.warning", "message": "A request was not a JSON object."})
+            say(protocol.event("engine.warning", message="A request was not a JSON object."))
             continue
         requests.take(message)
     requests.close()  # stdin closed: the app is quitting
