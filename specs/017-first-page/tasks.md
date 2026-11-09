@@ -5,7 +5,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 1. **Types per environment.** `tsconfig.json` splits into the page's (`app/renderer/`, DOM, no
   Node), the preload's (no DOM) and the rest's (Node, no DOM), all run by `npm run typecheck`;
   ESLint refuses `node:` and `electron` imports under `app/renderer/`. (Design: types)
-- [ ] 2. **The graph and its settings.** `app/renderer/graph-model.js` (open graph, params set and
+- [x] 2. **The graph and its settings.** `app/renderer/graph-model.js` (open graph, params set and
   reset, nodes and edges added and removed, what feeds an input, shown panes in `page`) and
   `form.js` (a control per param type); `tests/app/page.test.js` with "a settings form is drawn
   from a manifest". (AC1; requirements 1 to 3)
