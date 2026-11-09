@@ -26,7 +26,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   per the page rules. (Requirements 1 to 6)
 - [ ] 8. **The page names nothing.** `test_the_page_names_nothing` in `test_rules.py`; the
   collected list written. (AC6; requirement 7)
-- [ ] 9. **Folders of the person's own.** `engineCommand` passes `ONEFRAME_NODES` and
+- [x] 9. **Folders of the person's own.** `engineCommand` passes `ONEFRAME_NODES` and
   `ONEFRAME_GRAPHS` as `--nodes` and `--graphs` after the repo's. (Design)
 - [ ] 10. **The e2e test.** `@playwright/test` pinned; test nodes, a test graph and a photo under
   `tests/app/fixtures/`; `tests/e2e/first-page.test.js` with "the first page runs a graph and shows
