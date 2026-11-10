@@ -242,6 +242,38 @@ DEPTH_RUN = {
 }
 
 
+# The engine as the app starts it, but for a dump of every thread's stack into its log should it
+# hang: the dump names where, and then ends it, so the wait below fails with the dump.
+HANG_DUMP_S = 40
+DUMPING_ENGINE = (
+    f"import faulthandler, sys; faulthandler.dump_traceback_later({HANG_DUMP_S}, exit=True); "
+    "from oneframe.server import main; sys.exit(main())"
+)
+
+
+@pytest.mark.usefixtures("basic_nodes")
+def test_an_engine_node_that_imports_numpy_runs_through_the_server(
+    tmp_path: Path, node_root: Path, engine_process: StartEngine
+) -> None:
+    """A node that runs in the engine's process imports numpy on the worker while the loop blocks
+    reading stdin, as in the app. On Windows a run of such a node through the app never ended
+    (spec 017's e2e test); this is that run without Electron."""
+    argv = [sys.executable, "-c", DUMPING_ENGINE, "--data", str(tmp_path / "data"), "--nodes", str(node_root)]
+    client = engine_process(argv)
+    try:
+        client.event("engine.ready")
+        run = client.call("graph.run", {"graph": DEPTH_RUN})["result"]["run"]
+        try:
+            ended = client.event("run.done", "run.failed", seconds=HANG_DUMP_S + 20, run=run)
+        except AssertionError as failed:
+            tail = client.log.read_text(encoding="utf-8", errors="replace")[-6000:]
+            raise AssertionError(f"{failed}\nThe engine's log ends:\n{tail}") from None
+        assert ended["event"] == "run.done", ended
+        assert ended["outputs"]["d"]["depth"]["type"] == "Depth"
+    finally:
+        client.close()
+
+
 @pytest.mark.usefixtures("basic_nodes")
 def test_values_are_located_only_when_committed(
     tmp_path: Path, node_root: Path, make_engine: MakeEngine, events: Events

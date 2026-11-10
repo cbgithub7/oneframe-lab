@@ -132,7 +132,8 @@ above); a flaky e2e test on a slow runner (its waits are on events, with deadlin
   reader reads what numpy writes", "a failure offers what it needs", "every viewer is for a port
   type that exists"; in `tests/e2e/first-page.test.js` (new), "the first page runs a graph and
   shows two results", "Stop ends a run and the page says so"; `test_the_page_names_nothing`
-  (`test_rules.py`).
+  (`test_rules.py`); `test_an_engine_node_that_imports_numpy_runs_through_the_server`
+  (`test_server_and_nodes.py`), a run the e2e test found hanging on Windows.
 - Removed: none
 - Renamed: none
 
