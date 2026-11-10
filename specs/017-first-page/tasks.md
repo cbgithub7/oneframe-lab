@@ -24,7 +24,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   their forms and wiring, the catalogue filtered by `graph.fits`, Run and Stop, offers that install
   and download with progress, panes side by side with linked cameras; keyboard, names and contrast
   per the page rules. (Requirements 1 to 6)
-- [ ] 8. **The page names nothing.** `test_the_page_names_nothing` in `test_rules.py`; the
+- [x] 8. **The page names nothing.** `test_the_page_names_nothing` in `test_rules.py`; the
   collected list written. (AC6; requirement 7)
 - [x] 9. **Folders of the person's own.** `engineCommand` passes `ONEFRAME_NODES` and
   `ONEFRAME_GRAPHS` as `--nodes` and `--graphs` after the repo's. (Design)
