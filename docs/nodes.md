@@ -318,6 +318,15 @@ does not change this setting for you: it has no documented interface.
 | GaussianSplat | `.ply` | Inria layout, raw (log scale, logit opacity, wxyz rotation) |
 | ViewSet | folder | `views.json` plus images |
 
+## Folders of your own
+
+To try a node without adding it to `nodes/`, keep it in a folder of your own (one folder per node,
+as here) and start the app with that folder in `ONEFRAME_NODES`; graphs of your own go in a folder
+named by `ONEFRAME_GRAPHS`. Each is a list, as `PATH` is (`;` between folders on Windows, `:`
+elsewhere), of absolute folders; a relative one is ignored. The app passes them to the engine as
+`--nodes` and `--graphs`, after the repo's own (`engineCommand` in `app/main/paths.js`), and the
+page lists them with the rest. The e2e test gives its test nodes and graphs this way.
+
 ## Testing a node
 
 Put a test beside the engine tests that runs the node through the scheduler with tiny inputs. For

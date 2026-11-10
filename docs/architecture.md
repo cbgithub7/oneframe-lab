@@ -71,6 +71,7 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Tool launcher | `scripts/tool.js` | Starts each command-line tool that opens a data root, with uv's temporary files under that root |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
 | Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js`, `app/main/values.js` | Electron's folders under the root, the window, the engine process; the one IPC door, which answers with values, the app's own methods among them, and keeps every path from the page; the value protocol |
+| Page | `app/renderer/`, `scripts/page-build.js` | The page ([spec 017](../specs/017-first-page/spec.md)): `main.js` draws it from plain modules the node tests import without a browser: the open graph and its edits (`graph-model.js`), a control per param type (`form.js`), a card's state from events and each failure's offer (`run-view.js`), numpy's `.npz` (`npz.js`), and a viewer per port type (`viewer.js`, `viewers/`); bundled with three.js into `dist/renderer/` |
 
 ## Why it is shaped this way
 
@@ -137,6 +138,21 @@ which serves nothing but a committed value. A compromised page can ask the engin
 it cannot read a file, start a process, or learn a path: the door drops a local path from every
 answer and event (a value's `path`, a manifest's `folder`, the hello's `data`), and writes the data
 root, the repo and the home folder `<data>`, `<repo>` and `~` everywhere else.
+
+**The page learns everything.** It names no node, graph, model or runtime
+(`test_the_page_names_nothing`): the catalogue is `nodes.list`, a card's settings its manifest's
+params, its wiring `graph.fits`, its state the run's events, typed from `app/protocol.d.ts`'s
+`Page`. A failure's kind and reason choose its offer: Install for a runtime not installed or out of
+date, Download for files not downloaded or incomplete, a wait for the job already mending it, Run
+again for one that may succeed later. A viewer is chosen by the value's type, one module a type in
+`app/renderer/viewers/`, and reads the value by its key; a point viewer draws at most
+`POINT_BUDGET` points (a million) at a whole stride, and its camera is linked to the other point
+panes'. The panes shown are the graph's `page.panes`, and the names of the photos picked
+`page.files`, so a saved graph opens as it was left. The page is one bundle, `page.js`, built by
+esbuild with three.js, so it needs no import map and its policy stays `script-src 'self'`; it is a
+`file://` page, so the value scheme is CORS-enabled and only the page's partition has it. Three
+type configs keep each environment to its own globals (`tsconfig.page.json` has the DOM and no
+Node), and ESLint refuses `node:` and `electron` imports in the page.
 
 **A photo comes in by its content.** `photo.pick` shows the system's open dialog in the main
 process, which has the engine copy the file chosen into the root's `inputs/` (`inputs.import`,

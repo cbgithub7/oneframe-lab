@@ -32,7 +32,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `tests/app/fixtures/`; `tests/e2e/first-page.test.js` with "the first page runs a graph and shows
   two results" and "Stop ends a run and the page says so"; `npm run e2e`; CI runs it on Windows and
   Ubuntu. (AC4, AC5)
-- [ ] 11. **Docs and the shipped graph.** README's commands, architecture.md (the page's modules,
+- [x] 11. **Docs and the shipped graph.** README's commands, architecture.md (the page's modules,
   the bundle, the viewers), nodes.md (folders of one's own); the shipped graph's `page` fields as
   the page writes them.
 - [ ] 12. **Close.** `/code-review` (high) and its fixes; the spec's status done with the PR; the
