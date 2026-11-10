@@ -152,6 +152,7 @@ async function openNamed(name) {
   state.run = idle();
   state.waits = {};
   state.problems = {};
+  clearPanes();
   edit(openGraph(got.graph));
   ui.pick.value = got.name;
   say(ui.runStatus, "", "");
@@ -161,7 +162,9 @@ function newGraph() {
   state.name = "untitled";
   ui.name.value = state.name;
   state.run = idle();
+  state.waits = {};
   state.problems = {};
+  clearPanes();
   edit(emptyGraph("Untitled"));
   listGraphs().catch(() => {});
 }
@@ -189,6 +192,7 @@ async function save() {
 async function run() {
   if (!state.graph) return;
   state.run = starting();
+  state.waits = {};
   state.problems = {};
   say(ui.runStatus, "running", "Starting the run…");
   render();
@@ -449,7 +453,7 @@ function fitText(card) {
 function renderStatus(step) {
   const card = state.run.cards[step];
   const problems = state.problems[step] ?? [];
-  const job = state.waits[step] ? state.jobs[state.waits[step]] : undefined;
+  const job = jobFor(step, card);
   const children = [];
   if (card) {
     let line = PHASES[card.phase] ?? card.phase;
@@ -474,6 +478,21 @@ function renderStatus(step) {
   const offer = offerNow(step, card, job);
   if (offer) children.push(offer);
   return children;
+}
+
+/**
+ * The install or download a card follows: the one its offer started, or, for a wait, the job
+ * mending what it failed on (its runtime's install, or the latest download of its node's files).
+ * @param {string} step @param {Card | undefined} card
+ * @returns {Job | undefined}
+ */
+function jobFor(step, card) {
+  if (state.waits[step]) return state.jobs[state.waits[step]];
+  if (card?.offer?.action !== "wait") return undefined;
+  const manifest = manifestOf(step);
+  if (!manifest) return undefined;
+  if (card.offer.for === "runtime") return state.jobs[`runtime:${String(manifest.run?.runtime ?? "")}`];
+  return Object.values(state.jobs).filter((job) => job.kind === "files" && job.node === manifest.id).at(-1);
 }
 
 /** The button a card offers now, if any. @param {string} step @param {Card | undefined} card @param {Job | undefined} job */
@@ -521,6 +540,13 @@ function renderCards() {
 const drawn = new Map();
 /** The point panes' cameras, linked. @type {Set<Linked>} */
 const link = new Set();
+
+/** Every pane's drawing let go, for a graph opened anew: a pane of the same step and port in it is not this one. */
+function clearPanes() {
+  for (const shown of drawn.values()) shown.dispose?.();
+  drawn.clear();
+  ui.panes.replaceChildren();
+}
 
 function renderPanes() {
   const graph = state.graph;
@@ -583,7 +609,10 @@ function renderPanes() {
     }
     return element;
   });
-  ui.panes.replaceChildren(...elements);
+  // Put back only when the panes changed: moving an element blurs it, and a point pane is
+  // turned from the keyboard while its run's events arrive.
+  const now = [...ui.panes.children];
+  if (now.length !== elements.length || now.some((child, i) => child !== elements[i])) ui.panes.replaceChildren(...elements);
 }
 
 function renderBar() {

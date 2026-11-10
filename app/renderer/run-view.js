@@ -149,6 +149,7 @@ export function runView(state, event) {
     case "run.stopped":
       for (const [step, row] of Object.entries(cards)) {
         if (step === event.step || row.phase === "running" || row.phase === "fitting") card(step, { phase: "stopped" });
+        else if (row.phase === "waiting") card(step, { phase: "skipped", note: "Not run: the run was stopped." });
       }
       return { ...state, cards, ended: "stopped" };
     default:
@@ -159,7 +160,8 @@ export function runView(state, event) {
 
 /**
  * @typedef {{ kind: "runtime" | "files", id: string, state: "running" | "done" | "failed" | "stopped",
- *   text: string, done: number | null, total: number | null, failure?: Failure }} Job
+ *   text: string, done: number | null, total: number | null, failure?: Failure, node?: string | null,
+ *   bytes?: Record<string, number> }} Job a download's `bytes` are each file's so far, by sha256
  */
 
 /** @param {number} bytes */
@@ -194,11 +196,18 @@ export function jobView(jobs, event) {
     case "runtime.stopped":
       return set(`runtime:${event.runtime}`, { kind: "runtime", id: event.runtime, state: "stopped", text: event.message });
     case "model.start":
-      return set(`files:${event.job}`, { kind: "files", id: event.job, state: "running", text: `Downloading ${mb(event.bytes)}`, done: 0, total: event.bytes });
+      return set(`files:${event.job}`, {
+        kind: "files", id: event.job, node: event.node, state: "running", text: `Downloading ${mb(event.bytes)}`,
+        done: 0, total: event.bytes, bytes: {},
+      });
     case "model.progress": {
       const job = jobs[`files:${event.job}`];
       if (!job) return jobs;
-      return set(`files:${event.job}`, { kind: "files", id: event.job, text: `${event.file ?? "a file"}: ${mb(event.bytes)}${event.total ? ` of ${mb(event.total)}` : ""}` });
+      const bytes = { ...job.bytes, [event.sha256]: event.bytes };
+      return set(`files:${event.job}`, {
+        kind: "files", id: event.job, bytes, done: Object.values(bytes).reduce((a, b) => a + b, 0),
+        text: `${event.file ?? "a file"}: ${mb(event.bytes)}${event.total ? ` of ${mb(event.total)}` : ""}`,
+      });
     }
     case "model.done":
       return set(`files:${event.job}`, { kind: "files", id: event.job, state: "done", text: "Downloaded" });

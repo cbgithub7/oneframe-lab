@@ -122,15 +122,15 @@ async function inflate(bytes) {
 }
 
 /**
- * One .npy file: its header's dtype and shape, and its data as a typed array.
- * @param {ArrayBuffer} buffer @param {string} name
+ * One .npy file: its header's dtype and shape, and its data as a typed array over the same bytes,
+ * copied only when its offset is not aligned for its dtype (numpy aligns it).
+ * @param {Uint8Array<ArrayBuffer>} bytes @param {string} name
  * @returns {NpyArray}
  */
-export function readNpy(buffer, name = "array") {
-  const bytes = new Uint8Array(buffer);
+export function readNpy(bytes, name = "array") {
   const magic = [0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59]; // \x93NUMPY
   if (bytes.length < 10 || magic.some((b, i) => bytes[i] !== b)) throw bad(`${name} is not an .npy`);
-  const view = new DataView(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const major = bytes[6];
   const headerLength = major === 1 ? view.getUint16(8, true) : view.getUint32(8, true);
   const headerStart = major === 1 ? 10 : 12;
@@ -145,19 +145,17 @@ export function readNpy(buffer, name = "array") {
   if (!dtype) throw bad(`${name} is of dtype ${descr}, which the page does not read`);
   const shape = shapeText.split(",").map((s) => s.trim()).filter(Boolean).map(Number);
   const count = shape.reduce((a, b) => a * b, 1);
-  let start = headerStart + headerLength;
-  if (buffer.byteLength - start < count * dtype.bytes) throw bad(`${name} is shorter than its shape`);
-  let data = buffer;
-  if (start % dtype.bytes !== 0) {
-    // A typed array needs its offset aligned; numpy aligns to 64 bytes, but a copy is cheap insurance.
-    data = buffer.slice(start, start + count * dtype.bytes);
-    start = 0;
-  }
-  return { dtype: descr, shape, data: dtype.make(data, start, count) };
+  const start = headerStart + headerLength;
+  const length = count * dtype.bytes;
+  if (bytes.byteLength - start < length) throw bad(`${name} is shorter than its shape`);
+  const offset = bytes.byteOffset + start;
+  if (offset % dtype.bytes === 0) return { dtype: descr, shape, data: dtype.make(bytes.buffer, offset, count) };
+  return { dtype: descr, shape, data: dtype.make(bytes.buffer.slice(offset, offset + length), 0, count) };
 }
 
 /**
- * Every array of an .npz, by its name (the entry's name without `.npy`).
+ * Every array of an .npz, by its name (the entry's name without `.npy`). A stored entry's arrays
+ * are views of `buffer`, never copies, so a large point map is held once.
  * @param {ArrayBuffer} buffer
  * @returns {Promise<Map<string, NpyArray>>}
  */
@@ -168,8 +166,8 @@ export async function readNpz(buffer) {
   for (const entry of entries(view)) {
     const raw = new Uint8Array(buffer, entry.start, entry.size);
     let file;
-    if (entry.method === 0) file = buffer.slice(entry.start, entry.start + entry.size);
-    else if (entry.method === 8) file = await inflate(raw);
+    if (entry.method === 0) file = raw;
+    else if (entry.method === 8) file = new Uint8Array(await inflate(raw));
     else throw bad(`${entry.name} is compressed by method ${entry.method}`);
     if (file.byteLength !== entry.plain) throw bad(`${entry.name} is not the size its entry says`);
     const name = entry.name.replace(/\.npy$/, "");

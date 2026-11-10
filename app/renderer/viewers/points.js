@@ -158,6 +158,8 @@ export async function show({ host, url, link }) {
       geometry.dispose();
       material.dispose();
       renderer.dispose();
+      // Chromium keeps a few WebGL contexts at most; a pane's goes with it, not when collected.
+      renderer.forceContextLoss();
     },
   };
 }

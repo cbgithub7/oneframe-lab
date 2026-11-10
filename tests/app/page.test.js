@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { formModel, readControl } from "../../app/renderer/form.js";
 import { feeds, isSet, openGraph, resetParam, setParam } from "../../app/renderer/graph-model.js";
 import { readNpz } from "../../app/renderer/npz.js";
-import { KINDS, offerFor, runView, starting } from "../../app/renderer/run-view.js";
+import { KINDS, jobView, offerFor, runView, starting } from "../../app/renderer/run-view.js";
 import { REPO_ROOT } from "../../app/main/paths.js";
 
 /** @typedef {import("../../app/protocol.js").Page.Manifest} Manifest */
@@ -135,6 +135,14 @@ test("a failure offers what it needs", () => {
   state = runView(state, { event: "node.failed", run: "other", step: "b", node: "x.z", kind: "node", message: "", retry: false });
   assert.deepEqual(state.cards.a.offer, { action: "install" });
   assert.equal(state.cards.b.phase, "skipped", "another run's events change nothing");
+
+  // A download's progress is every file's bytes so far, of the job's total.
+  /** @type {Record<string, import("../../app/renderer/run-view.js").Job>} */
+  let jobs = jobView({}, { event: "model.start", job: "j", what: "download", node: "x.y", files: [], bytes: 300 });
+  jobs = jobView(jobs, { event: "model.progress", job: "j", file: "a", sha256: "1", bytes: 100, total: 100 });
+  jobs = jobView(jobs, { event: "model.progress", job: "j", file: "b", sha256: "2", bytes: 50, total: 200 });
+  jobs = jobView(jobs, { event: "model.progress", job: "j", file: "b", sha256: "2", bytes: 120, total: 200 });
+  assert.deepEqual([jobs["files:j"].done, jobs["files:j"].total, jobs["files:j"].node], [220, 300, "x.y"]);
 });
 
 test("every viewer is for a port type that exists", () => {
