@@ -174,6 +174,8 @@ AC8, in a local session on the owner's PC, on `main` once this is merged, with a
   esbuild's (its binary is an optional dependency).
 - `page.files` keeps each picked photo's name by its id, so a graph opened again names it.
 - The page's failure kinds are AC3's test's, read from architecture.md's table, so they stay one.
+- The engine reads requests from a copy of stdin, fd 0 reading nothing: on Windows, numpy's start on
+  the worker waited on the loop's read of fd 0, so an engine node that imports it never ended.
 - Steps still waiting at a Stop show "not run", as skipped; CI lets Ubuntu's sandbox start
   (AppArmor's user-namespace limit off) rather than run Electron without it.
 - One million points a pane: enough to read a scene's shape in a pane a few hundred pixels wide. A

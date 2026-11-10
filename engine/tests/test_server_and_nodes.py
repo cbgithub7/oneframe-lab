@@ -256,8 +256,9 @@ def test_an_engine_node_that_imports_numpy_runs_through_the_server(
     tmp_path: Path, node_root: Path, engine_process: StartEngine
 ) -> None:
     """A node that runs in the engine's process imports numpy on the worker while the loop blocks
-    reading stdin, as in the app. On Windows a run of such a node through the app never ended
-    (spec 017's e2e test); this is that run without Electron."""
+    reading the requests, as in the app. On Windows numpy's start asked about fd 0 and waited for
+    that read, so the run never ended (spec 017's e2e test found it), until the requests came on a
+    copy of stdin and fd 0 read nothing."""
     argv = [sys.executable, "-c", DUMPING_ENGINE, "--data", str(tmp_path / "data"), "--nodes", str(node_root)]
     client = engine_process(argv)
     try:
