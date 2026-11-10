@@ -20,7 +20,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   "every viewer is for a port type that exists". (AC7; requirement 6)
 - [x] 6. **One bundle.** esbuild pinned; `npm run page:build` writes `dist/renderer/` (ignored);
   `main.js` loads the page from there; `npm start` builds first. (Design: one bundle)
-- [ ] 7. **The page.** `app/renderer/main.js` and `index.html`: graphs opened and saved, cards with
+- [x] 7. **The page.** `app/renderer/main.js` and `index.html`: graphs opened and saved, cards with
   their forms and wiring, the catalogue filtered by `graph.fits`, Run and Stop, offers that install
   and download with progress, panes side by side with linked cameras; keyboard, names and contrast
   per the page rules. (Requirements 1 to 6)

@@ -66,7 +66,10 @@ export function valueHandler({ locate, objects, mimes }) {
       const mime = found.carrier === null ? undefined : mimes[found.carrier];
       if (mime === undefined || !inside(objects, found.path)) return notFound();
       const body = /** @type {ReadableStream} */ (Readable.toWeb(createReadStream(found.path)));
-      return new Response(body, { status: 200, headers: { "content-type": mime } });
+      // The page is a file:// page, so its fetch of this scheme is cross-origin and needs this to
+      // read the body; the scheme is handled only on the page's own partition, which no other
+      // page or frame shares (main.js, and the CSP's default-src 'none').
+      return new Response(body, { status: 200, headers: { "content-type": mime, "access-control-allow-origin": "*" } });
     } catch {
       return notFound(); // refused by the engine, or no such file: nothing to say to the page
     }

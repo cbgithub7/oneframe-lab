@@ -34,7 +34,8 @@ else app.enableSandbox();
 // The page reads a run's values by key through this scheme (values.js), which must be known
 // before the app is ready. It serves nothing but a committed value.
 protocol.registerSchemesAsPrivileged([
-  { scheme: VALUE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  // corsEnabled: the page is a file:// page, so its fetch of a value is cross-origin (values.js).
+  { scheme: VALUE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
 
 // Electron's folders under the data root first (the dev root in a checkout, the app's own root once
