@@ -35,6 +35,6 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 11. **Docs and the shipped graph.** README's commands, architecture.md (the page's modules,
   the bundle, the viewers), nodes.md (folders of one's own); the shipped graph's `page` fields as
   the page writes them.
-- [ ] 12. **Close.** `/code-review` (high) and its fixes; the spec's status done with the PR; the
+- [x] 12. **Close.** `/code-review` (high) and its fixes; the spec's status done with the PR; the
   handoff's step-3 row, State table and AC8 under "Waiting on a local session"; the PR, AC8 pending
   hardware.
