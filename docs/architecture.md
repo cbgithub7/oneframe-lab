@@ -64,13 +64,14 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Scratch | `oneframe/scratch.py` | Each process's locked folder under `cache/tmp/`; a start removes only dead processes' folders |
 | Journal | `oneframe/journal.py` | Every event of a run, an install or a model job, kept in a journal; journals and step logs pruned when one opens; one helper ends each after its place is free |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
-| Server | `oneframe/server.py` | The engine's NDJSON protocol: one worker answers requests in order, and the loop that reads them answers the stops and the quick reads at once |
+| Server | `oneframe/server.py` | The engine's NDJSON protocol: one worker answers requests in order, and the loop that reads them answers the stops and the quick reads at once; requests and events go on copies of stdin and stdout, so fd 0 reads nothing and fd 1 is stderr, and nothing a node runs in the engine's process can touch them, or wait on the loop's read as numpy's start did on Windows |
 | Protocol | `contracts/protocol.json`, `oneframe/protocol.py`, `app/main/protocol.js`, `app/protocol.d.ts` | Every method and every event, declared once ([spec 018](../specs/018-protocol/spec.md)): the engine builds each event and checks each answer against it, a problem logged and kept, never refused; the door strips by it what never reaches the page; the page's types are generated from it (`scripts/protocol-types.js`) |
 | Imports | `oneframe/inputs.py` | The files a graph reads, copied into the data root's `inputs/` by their sha256, which is their id: a `file` param holds the id, never a path |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py`, `engine/tests/fit_check.py` | The reports a hardware claim needs: a runtime's install, a node's memory on a card, and spec 002's check on a card, which lives with its test node |
 | Tool launcher | `scripts/tool.js` | Starts each command-line tool that opens a data root, with uv's temporary files under that root |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
 | Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js`, `app/main/values.js` | Electron's folders under the root, the window, the engine process; the one IPC door, which answers with values, the app's own methods among them, and keeps every path from the page; the value protocol |
+| Page | `app/renderer/`, `scripts/page-build.js` | The page ([spec 017](../specs/017-first-page/spec.md)): `main.js` draws it from plain modules the node tests import without a browser: the open graph and its edits (`graph-model.js`), a control per param type (`form.js`), a card's state from events and each failure's offer (`run-view.js`), numpy's `.npz` (`npz.js`), and a viewer per port type (`viewer.js`, `viewers/`); bundled with three.js into `dist/renderer/` |
 
 ## Why it is shaped this way
 
@@ -137,6 +138,21 @@ which serves nothing but a committed value. A compromised page can ask the engin
 it cannot read a file, start a process, or learn a path: the door drops a local path from every
 answer and event (a value's `path`, a manifest's `folder`, the hello's `data`), and writes the data
 root, the repo and the home folder `<data>`, `<repo>` and `~` everywhere else.
+
+**The page learns everything.** It names no node, graph, model or runtime
+(`test_the_page_names_nothing`): the catalogue is `nodes.list`, a card's settings its manifest's
+params, its wiring `graph.fits`, its state the run's events, typed from `app/protocol.d.ts`'s
+`Page`. A failure's kind and reason choose its offer: Install for a runtime not installed or out of
+date, Download for files not downloaded or incomplete, a wait for the job already mending it, Run
+again for one that may succeed later. A viewer is chosen by the value's type, one module a type in
+`app/renderer/viewers/`, and reads the value by its key; a point viewer draws at most
+`POINT_BUDGET` points (a million) at a whole stride, and its camera is linked to the other point
+panes'. The panes shown are the graph's `page.panes`, and the names of the photos picked
+`page.files`, so a saved graph opens as it was left. The page is one bundle, `page.js`, built by
+esbuild with three.js, so it needs no import map and its policy stays `script-src 'self'`; it is a
+`file://` page, so the value scheme is CORS-enabled and only the page's partition has it. Three
+type configs keep each environment to its own globals (`tsconfig.page.json` has the DOM and no
+Node), and ESLint refuses `node:` and `electron` imports in the page.
 
 **A photo comes in by its content.** `photo.pick` shows the system's open dialog in the main
 process, which has the engine copy the file chosen into the root's `inputs/` (`inputs.import`,

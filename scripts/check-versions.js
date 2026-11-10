@@ -43,7 +43,11 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-/** @param {string} url */
+/**
+ * A registry's JSON, read as it comes (Node's fetch types it unknown).
+ * @param {string} url
+ * @returns {Promise<any>}
+ */
 async function json(url) {
   const res = await fetch(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);

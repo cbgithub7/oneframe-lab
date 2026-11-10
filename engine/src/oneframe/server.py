@@ -558,6 +558,14 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
     sys.stdout.flush()
     os.dup2(2, 1)
     sys.stdout = sys.stderr
+    # Requests come on a copy of stdin too, and fd 0 reads nothing. On Windows, a library a node
+    # loads on the worker may ask about fd 0 as it starts (numpy's OpenBLAS starts a C runtime of
+    # its own), and that waits for the loop's read below, which waits for the app: the run never
+    # ended (spec 017). A node in this process cannot read the requests either.
+    requests_in = os.fdopen(os.dup(0), encoding="utf-8", errors="replace")
+    empty = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(empty, 0)
+    os.close(empty)
     logging.basicConfig(
         level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
@@ -595,8 +603,7 @@ def main(argv: list[str] | None = None, transfer: dict[str, Any] | None = None) 
         return 1
     say(protocol.event("engine.ready", **engine.hello({})))
     requests = Requests(engine, say)
-    stdin = open(sys.stdin.fileno(), encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
-    for line in stdin:
+    for line in requests_in:
         line = line.strip()
         if not line:
             continue

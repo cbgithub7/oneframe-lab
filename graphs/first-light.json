@@ -51,6 +51,7 @@
         "step": "moge",
         "port": "points"
       }
-    ]
+    ],
+    "files": {}
   }
 }

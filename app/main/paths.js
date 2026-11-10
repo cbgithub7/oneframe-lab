@@ -170,6 +170,27 @@ export function temporaryEnv(folder) {
 }
 
 /**
+ * The person's own folders of nodes and of graphs, from ONEFRAME_NODES and ONEFRAME_GRAPHS (lists,
+ * as PATH is), as the engine's --nodes and --graphs, each after the repo's own folder: how a person
+ * tries a node of their own, and how the e2e test gives its fixtures. A folder that is not absolute
+ * is ignored, as dataRoot ignores one.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} platform
+ * @returns {string[]}
+ */
+export function folderArgs(env, platform) {
+  const separator = platform === "win32" ? ";" : ":";
+  /** @type {string[]} */
+  const args = [];
+  for (const [variable, flag, own] of [["ONEFRAME_NODES", "--nodes", "nodes"], ["ONEFRAME_GRAPHS", "--graphs", "graphs"]]) {
+    const folders = (env[variable] ?? "").split(separator).map((f) => absolute(f, platform)).filter((f) => f !== null);
+    if (folders.length === 0) continue;
+    for (const folder of [path.join(REPO_ROOT, own), ...folders]) args.push(flag, folder);
+  }
+  return args;
+}
+
+/**
  * The command that starts the engine in development: uv runs it from the locked project, so the
  * interpreter and every package are exactly what engine/uv.lock says. It makes the app's temporary
  * folder, which uv uses until the engine takes a folder of its own.
@@ -197,7 +218,7 @@ export function engineCommand(uv, data, packaged = false) {
   return {
     command: uv,
     args: ["run", "--project", path.join(REPO_ROOT, "engine"), "--frozen", "python", "-m", "oneframe.server",
-      "--data", data, ...(packaged ? ["--packaged"] : [])],
+      "--data", data, ...folderArgs(process.env, process.platform), ...(packaged ? ["--packaged"] : [])],
     cwd: REPO_ROOT,
     env,
   };

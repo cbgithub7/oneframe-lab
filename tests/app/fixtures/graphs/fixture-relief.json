@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "title": "Test: a relief, seen two ways",
+  "nodes": {
+    "photo": { "node": "source.image", "params": {}, "label": "Photo" },
+    "relief": { "node": "depth.fixture_relief", "params": {}, "label": "Relief" }
+  },
+  "edges": [{ "from": "photo.image", "to": "relief.image" }],
+  "page": {
+    "panes": [
+      { "step": "relief", "port": "points" },
+      { "step": "relief", "port": "depth" }
+    ]
+  }
+}

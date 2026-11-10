@@ -8,7 +8,7 @@
 // and no answer or event names a path on this machine (door.js's forPage).
 
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,7 +21,8 @@ import { RotatingLog } from "./log.js";
 import { REPO_ROOT, engineCommand, findUv, layout } from "./paths.js";
 import { VALUE_SCHEME, carrierMimes, valueHandler } from "./values.js";
 
-const RENDERER = path.join(REPO_ROOT, "app", "renderer", "index.html");
+// The page as npm run page:build bundles it (scripts/page-build.js), never app/renderer/ itself.
+const RENDERER = path.join(REPO_ROOT, "dist", "renderer", "index.html");
 const RENDERER_URL = pathToFileURL(RENDERER).href;
 const EXTERNAL_HOSTS = new Set(["github.com"]);
 
@@ -33,7 +34,8 @@ else app.enableSandbox();
 // The page reads a run's values by key through this scheme (values.js), which must be known
 // before the app is ready. It serves nothing but a committed value.
 protocol.registerSchemesAsPrivileged([
-  { scheme: VALUE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  // corsEnabled: the page is a file:// page, so its fetch of a value is cross-origin (values.js).
+  { scheme: VALUE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
 
 // Electron's folders under the data root first (the dev root in a checkout, the app's own root once
@@ -136,6 +138,11 @@ function createWindow() {
     },
   });
   win.removeMenu();
+  if (!existsSync(RENDERER)) {
+    dialog.showErrorBox("The page is not built", "Run npm run page:build, or start the app with npm start, which builds it.");
+    app.quit();
+    return;
+  }
   win.loadFile(RENDERER);
   win.on("closed", () => {
     win = null;

@@ -9,21 +9,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Oneframe Lab</title>
     <link rel="stylesheet" href="styles.css" />
-    <script type="module" src="main.js"></script>
+    <script type="module" src="page.js"></script>
   </head>
   <body>
     <header class="bar">
       <h1>Oneframe Lab</h1>
-      <span id="engine-status" class="status" data-state="starting">Starting the engine…</span>
+      <span id="engine-status" class="status" role="status" data-state="starting">Starting the engine…</span>
+      <form id="graph-bar" class="graph-bar" aria-label="Open, save and run">
+        <label for="graph-pick">Graph</label>
+        <select id="graph-pick" disabled></select>
+        <button type="button" id="graph-new" disabled>New</button>
+        <label for="graph-name">Name</label>
+        <input id="graph-name" type="text" size="16" spellcheck="false" autocomplete="off" disabled />
+        <button type="submit" id="graph-save" disabled>Save</button>
+        <button type="button" id="run" class="primary" disabled>Run</button>
+        <button type="button" id="stop" disabled>Stop</button>
+      </form>
     </header>
+    <p id="run-status" class="run-status" role="status" aria-live="polite"></p>
     <main class="layout">
-      <section class="panel" aria-labelledby="nodes-title">
+      <section class="panel catalogue" aria-labelledby="nodes-title">
         <h2 id="nodes-title">Nodes</h2>
+        <div id="catalogue-filter"></div>
         <div id="nodes"></div>
         <div id="node-problems"></div>
       </section>
-      <section class="panel stage" aria-label="Workspace">
-        <p class="empty">The workspace arrives with the first recipes. For now this page shows what the engine can run.</p>
+      <section class="panel cards" aria-labelledby="graph-title">
+        <h2 id="graph-title">Graph</h2>
+        <div id="cards"><p class="empty">Open a graph, or press New.</p></div>
+      </section>
+      <section class="panel panes" aria-labelledby="panes-title">
+        <h2 id="panes-title">Results</h2>
+        <div id="panes"><p class="empty">Tick Show on an output to see it here.</p></div>
       </section>
     </main>
   </body>

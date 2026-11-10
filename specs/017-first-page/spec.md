@@ -1,6 +1,6 @@
 # 017: The first page: a graph to change, and two results side by side
 
-Status: approved (2026-11-08)
+Status: done ([PR #69](https://github.com/cbgithub7/oneframe-lab/pull/69)); AC8 waits on a local session
 Owner approval: 2026-11-08, with 015, 016 and 018 as one decision; every open question answered as recommended (2026-11-04), and esbuild now rather than at step 7 (Decisions taken)
 
 The last of five specs for step 3, first light: [005](../005-first-models/spec.md) (the model
@@ -110,25 +110,21 @@ of 3. A pane keeps only its drawn points (at most 12 MB of positions); the `.npz
 side by side, one per shown output. A pane's place, and which outputs are shown, are `page` fields
 of the graph (015), so a saved graph opens as it was left.
 
-**Folders of the person's own.** `app/main/paths.js`'s `engineCommand` passes each folder in
-`ONEFRAME_NODES` and `ONEFRAME_GRAPHS` (lists, as `PATH` is) to the engine as `--nodes` and
-`--graphs`, after the repo's: how a person tries a node of their own, and how the e2e test gives
-its fixtures.
+**Folders of the person's own.** `engineCommand` (`app/main/paths.js`) passes each folder in
+`ONEFRAME_NODES` and `ONEFRAME_GRAPHS` (lists, as `PATH` is) as `--nodes` and `--graphs`, after the
+repo's: how a person tries a node of their own, and how the e2e test gives its fixtures.
 
 **`tests/e2e/`** (new) uses Playwright's Electron support (`@playwright/test`, a new dev
 dependency at its latest release), run by a new `npm run e2e`. It replaces `dialog.showOpenDialog`
 from the test, in the main process. CI runs it after the app checks, under `xvfb-run` on Ubuntu;
 `ONEFRAME_NO_SANDBOX=1` only where the runner runs as root.
 
-**Docs:** the commands list (`npm run e2e`, `npm run page:build`), architecture.md (the page's
-modules, the bundle, the viewers), nodes.md (folders of the person's own).
+**Docs:** the commands, architecture.md (modules, bundle, viewers), nodes.md (folders of one's own).
+The shipped graph (`graphs/first-light.json`) shows both point clouds, its `page` fields as this
+page writes them.
 
-**The shipped graph** (015's `graphs/first-light.json`) shows both nodes' point clouds; its `page`
-fields are written by this page and committed once.
-
-Risks: a built page, so a stale `dist/renderer/` could run (`npm start` builds it each time);
-point maps of millions of points (the budget above); the e2e test is flaky on a slow runner (its
-waits are on events, with deadlines that name what they waited for, as spec 014 requires).
+Risks: a stale `dist/renderer/` (`npm start` builds it each time); millions of points (the budget
+above); a flaky e2e test on a slow runner (its waits are on events, with deadlines, as spec 014 asks).
 
 ## Tests
 
@@ -136,22 +132,22 @@ waits are on events, with deadlines that name what they waited for, as spec 014 
   reader reads what numpy writes", "a failure offers what it needs", "every viewer is for a port
   type that exists"; in `tests/e2e/first-page.test.js` (new), "the first page runs a graph and
   shows two results", "Stop ends a run and the page says so"; `test_the_page_names_nothing`
-  (`test_rules.py`).
+  (`test_rules.py`); `test_an_engine_node_that_imports_numpy_runs_through_the_server`
+  (`test_server_and_nodes.py`), a run the e2e test found hanging on Windows.
 - Removed: none
 - Renamed: none
 
 ## Verification
 
-AC1 to AC3 and AC7 are node tests in `npm run check`; AC6 is in `npm run engine:check`; AC4 and AC5
-run in `npm run e2e`, which starts Electron and so is not part of `npm run check`. All run in CI on
-Windows and Ubuntu.
+AC1 to AC3 and AC7 are in `npm run check`, AC6 in `npm run engine:check`, AC4 and AC5 in
+`npm run e2e` (it starts Electron, so it is not in `npm run check`); CI runs all on both systems.
 
-AC8, in a local session on the owner's PC, from the branch, with a new empty folder:
+AC8, in a local session on the owner's PC, on `main` once this is merged, with a new empty folder:
 
 1. In a PowerShell window opened from the Start menu, not from Claude desktop, whose package
    redirects new AppData folders and makes runtime installs fail (os error 32, in the handoff):
-   `$env:ONEFRAME_DATA = "<new empty folder>"`, then `npm start`.
-2. Open "first light", pick a photo, press Run; press Install and Download as the page offers;
+   `npm ci`, `npm run engine:sync`, `$env:ONEFRAME_DATA = "<new empty folder>"`, then `npm start`.
+2. Open "Depth Pro and MoGe-3, side by side" (`first-light`), pick a photo, press Run; press Install and Download as the page offers;
    Run again until both panes show their point clouds. With `precision` unset, as the shipped graph
    leaves it, the 1070 gets Depth Pro's fp32 on the processor (its 9.2 GB card estimate does not
    fit 8 GB): about 110 s on the 4000 x 1800 photo, its card showing the fit's choice and any
@@ -163,19 +159,25 @@ AC8, in a local session on the owner's PC, from the branch, with a new empty fol
 ## Decisions taken
 
 - Cards in a column, not a canvas: the canvas is step 7's, and the cards are what it will draw.
-- The page's models are plain modules tested with `node --test`, so most of the page is checked
-  without a browser; Playwright checks only that the pieces meet.
-- The dialog is replaced from the test; the node and graph folders the test gives are a feature a
-  person uses too.
+- The page's models are plain modules under `node --test`; Playwright checks only that they meet.
+- The dialog is replaced from the test; the folders the test gives are a feature a person uses too.
 - Linked cameras across point panes: the point of side by side is to compare one view.
-- esbuild, as the review of 2026-11-04 asks (section 5, item 3), not an import map: an inline map
-  is re-hashed into the CSP at every change, and step 8 bundles anyway. Spark joins the same bundle
-  at step 7. This changes open question 2's note that step 7 decides on a bundler; the owner sees
-  it when approving.
-- Three type configs, as the same review asks (section 2, item 4): a page that imports Node must
-  fail `npm run check`, not pass because one config gives every file both.
-- The bundle in `dist/renderer/`, ignored by git, as `node_modules` is: the build's output, not the
-  app's; nothing the app writes goes there.
+- esbuild, as the review of 2026-11-04 asks (section 5, item 3), not an import map, which the CSP
+  takes only by hash; step 8 bundles anyway and Spark joins at step 7. This changes open question
+  2's note that step 7 decides on a bundler; the owner sees it when approving.
+- Three type configs (the same review, section 2, item 4): a page that imports Node fails the check.
+- The bundle in `dist/renderer/` and Playwright's traces in `dist/e2e/`, ignored by git as
+  `node_modules` is: the build's and the test's output; nothing the app writes goes there.
+- The value scheme is CORS-enabled for any origin: the page is `file://`, so its fetch is
+  cross-origin, and Chromium refused it; only the page's partition has the scheme.
+- npm blocks install scripts: `allowScripts` lets Electron's run (it fetches the binary), denies
+  esbuild's (its binary is an optional dependency).
+- `page.files` keeps each picked photo's name by its id, so a graph opened again names it.
+- The page's failure kinds are AC3's test's, read from architecture.md's table, so they stay one.
+- The engine reads requests from a copy of stdin, fd 0 reading nothing: on Windows, numpy's start on
+  the worker waited on the loop's read of fd 0, so an engine node that imports it never ended.
+- Steps still waiting at a Stop show "not run", as skipped; CI lets Ubuntu's sandbox start
+  (AppArmor's user-namespace limit off) rather than run Electron without it.
 - One million points a pane: enough to read a scene's shape in a pane a few hundred pixels wide. A
   whole stride keeps the grid, so two panes of one photo draw the same pixels.
 

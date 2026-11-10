@@ -1,0 +1,11 @@
+{
+  "//": "The page: the DOM and no Node, so page code that imports Node fails here.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["app/renderer/**/*.js", "app/types/**/*.d.ts", "app/protocol.d.ts"]
+}

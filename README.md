@@ -21,24 +21,24 @@ person presses Download.
 
 The engine (node manifests, typed ports, graph planning, a content-addressed cache, and a scheduler
 that runs nodes in-process or in their own runtime), the runtime manager (spec 001), fitting each
-node to the memory a machine has (spec 002), the model store's core (spec 003), checked against
-the real hosts, the Electron shell, and the checks. The clean-up the
-[review of 2026-10-12](docs/reviews/2026-10-12.md) asked for (specs 007 to 014) is done.
-No real model has run yet: the only nodes are a photo source and a depth-to-points
-converter. First light comes next: Depth Pro and MoGe-3 run from the page. Its spec, 005, is still
-to be drafted in [specs/](specs/README.md).
+node to the memory a machine has (spec 002), the model store (spec 003), the first model nodes,
+Depth Pro, MoGe-3 and MoGe-2 (spec 005), graphs as data (spec 015), and the first page (spec 017):
+a graph opened, changed and run, its runtimes installed and its files downloaded from the page's own
+offers, and its results side by side.
 [docs/handoff.md](docs/handoff.md) has the state and what comes next.
 
 ## Layout
 
 | Folder | What |
 | --- | --- |
-| `app/` | Electron: `main/` (process, engine client), `preload/` (the only bridge), `renderer/` (the page) |
+| `app/` | Electron: `main/` (process, engine client), `preload/` (the only bridge), `renderer/` (the page, bundled into `dist/renderer/`) |
 | `engine/` | The Python engine, `oneframe` (Python 3.15, managed by uv) |
 | `nodes/` | Built-in nodes, one folder each |
 | `runtimes/` | The Python environments heavy nodes run in, one folder each |
 | `contracts/` | Data both sides read: port types, and the data root's layout |
 | `scripts/` | The checks (`check-versions.js`, `check-docs.js`, `test-guard.js`) and `tool.js`, which starts the command-line tools |
+| `graphs/` | The graphs that ship, starting points saved as data |
+| `tests/` | The app's node tests (`app/`) and the e2e test (`e2e/`) |
 | `docs/` | Architecture, writing a node, version policy |
 
 ## Running
@@ -96,7 +96,14 @@ The checks are the ones CI runs on Windows and Linux.
 - The tools that open a data root (`bench:runtime`, `bench:fit`, `bench:fit-check`, `diagnose`,
   `models:*`, `runtime:check`, `run_on_cpu.py`) start through `scripts/tool.js`, which keeps uv's
   temporary files under that root
-- `npm start`: the app (needs `npm run engine:sync` once)
+- `npm run page:build`: the page, bundled by esbuild with three.js into `dist/renderer/`
+  (`scripts/page-build.js`), which the app loads; `npm start` and `npm run e2e` run it first
+- `npm run e2e`: the e2e test (`tests/e2e/`, `playwright.config.js`): Playwright starts the app on
+  an empty data root with the test nodes and graphs of `tests/app/fixtures/`, runs a graph and
+  stops one; on Linux it needs a display (`xvfb-run -a npm run e2e`), and in a container that runs
+  as root, `ONEFRAME_NO_SANDBOX=1`. It is not part of `npm run check`; CI runs it on both systems
+- `npm start`: the app (needs `npm run engine:sync` once); `ONEFRAME_NODES` and `ONEFRAME_GRAPHS`
+  add folders of the person's own nodes and graphs ([docs/nodes.md](docs/nodes.md#folders-of-your-own))
 
 ## Documents
 
