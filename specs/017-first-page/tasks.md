@@ -28,7 +28,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   collected list written. (AC6; requirement 7)
 - [x] 9. **Folders of the person's own.** `engineCommand` passes `ONEFRAME_NODES` and
   `ONEFRAME_GRAPHS` as `--nodes` and `--graphs` after the repo's. (Design)
-- [ ] 10. **The e2e test.** `@playwright/test` pinned; test nodes, a test graph and a photo under
+- [x] 10. **The e2e test.** `@playwright/test` pinned; test nodes, a test graph and a photo under
   `tests/app/fixtures/`; `tests/e2e/first-page.test.js` with "the first page runs a graph and shows
   two results" and "Stop ends a run and the page says so"; `npm run e2e`; CI runs it on Windows and
   Ubuntu. (AC4, AC5)

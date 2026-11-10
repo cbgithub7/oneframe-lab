@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.page.json && tsc -p tsconfig.preload.json",
     "test": "node --test \"tests/app/**/*.test.js\"",
+    "e2e": "npm run page:build && playwright test",
     "check": "npm run lint && npm run protocol:types && npm run typecheck && npm test && npm run docs:check",
     "engine:sync": "uv sync --project engine --frozen",
     "engine:check": "uv run --project engine --frozen ruff check && uv run --project engine --frozen ruff format --check && uv run --project engine --frozen pyright && npm run runtime:check && uv run --project engine --frozen pytest engine",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.0",
     "@types/node": "24.19.2",
     "@types/three": "0.187.0",
     "electron": "45.2.3",

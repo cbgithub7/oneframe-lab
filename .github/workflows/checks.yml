@@ -22,8 +22,8 @@ jobs:
   checks:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # A full run takes about 3 minutes on Windows; a hang ends here, not after GitHub's 6 hours.
-    timeout-minutes: 20
+    # A full run takes about 4 minutes on Windows; a hang ends here, not after GitHub's 6 hours.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +48,23 @@ jobs:
         run: npm ci
       - name: App checks (eslint, tsc, node --test, docs)
         run: npm run check
+      # Spec 017, AC4 and AC5: Playwright starts the app on an empty data root, with the test nodes
+      # and graphs of tests/app/fixtures/. Ubuntu's AppArmor refuses Chromium's sandbox the user
+      # namespaces it needs, so it is let have them; the sandbox stays on (no ONEFRAME_NO_SANDBOX,
+      # which is for containers that run as root).
+      - name: Let Chromium's sandbox start
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: The page, end to end (Playwright and Electron)
+        shell: bash
+        run: if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npm run e2e; else npm run e2e; fi
+      - name: The e2e test's traces and screenshots, when it fails
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-${{ matrix.os }}
+          path: dist/e2e
+          if-no-files-found: ignore
       - name: No test removed without a reason in a spec
         run: node scripts/test-guard.js --base origin/${{ github.base_ref || 'main' }}
 

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "title": "Test: a node that waits",
+  "nodes": {
+    "photo": { "node": "source.image", "params": {}, "label": "Photo" },
+    "wait": { "node": "repair.fixture_wait", "params": {}, "label": "Wait" }
+  },
+  "edges": [{ "from": "photo.image", "to": "wait.image" }],
+  "page": { "panes": [{ "step": "wait", "port": "image" }] }
+}
