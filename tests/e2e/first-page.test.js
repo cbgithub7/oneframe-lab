@@ -4,7 +4,7 @@
 // replaced, in the main process, by one that answers the fixture photo. Every wait is on the
 // page's own state, with a deadline, and says what it waited for.
 import { _electron as electron, expect, test } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +37,38 @@ async function start() {
     await app.close();
     rmSync(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   };
-  return { app, page, close };
+  return { app, page, close, data };
+}
+
+/**
+ * What a failed test saw, printed into the test's output (CI keeps it in the job's log): the
+ * status lines, each card's phase and words, each pane's state, and the end of the app's log,
+ * which holds the engine's own lines.
+ * @param {import("@playwright/test").Page} page @param {string} data
+ */
+async function report(page, data) {
+  const quick = { timeout: 2_000 };
+  /** @type {Record<string, unknown>} */
+  let seen;
+  try {
+    seen = {
+      engine: await page.locator("#engine-status").textContent(quick),
+      run: await page.locator("#run-status").textContent(quick),
+      cards: await Promise.all((await page.locator("article.card").all()).map(async (card) => [
+        await card.getAttribute("data-step", quick), await card.getAttribute("data-phase", quick),
+        await card.locator(".run").innerText(quick)])),
+      panes: await Promise.all((await page.locator("section.pane").all()).map(async (pane) => [
+        await pane.getAttribute("data-pane", quick), await pane.getAttribute("data-state", quick),
+        await pane.locator(".caption").textContent(quick)])),
+    };
+  } catch (error) {
+    seen = { unreadable: String(error) };
+  }
+  const log = path.join(data, "logs", "app.log");
+  const tail = existsSync(log) ? readFileSync(log, "utf8").split(/\r?\n/).slice(-80).join("\n") : "(no app.log)";
+  const text = `The page:\n${JSON.stringify(seen, null, 2)}\n\nThe end of app.log:\n${tail}`;
+  console.log(text);
+  await test.info().attach("what the page saw", { body: text, contentType: "text/plain" });
 }
 
 /**
@@ -53,10 +84,11 @@ async function openWithPhoto(page, title) {
 }
 
 test("the first page runs a graph and shows two results", async () => {
-  const { page, close } = await start();
+  const { page, close, data } = await start();
   try {
     await openWithPhoto(page, "Test: a relief, seen two ways");
     await page.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(page.locator('article[data-step="relief"]'), "the relief step ended done").toHaveAttribute("data-phase", "done", { timeout: 60_000 });
     const panes = page.locator("section.pane");
     await expect(panes, "the graph's two panes").toHaveCount(2);
     for (const pane of await panes.all()) {
@@ -67,14 +99,16 @@ test("the first page runs a graph and shows two results", async () => {
       expect(status, `${url} is served`).toBe(200);
     }
     await expect(page.locator('section.pane[data-pane="relief.points"] .caption')).toHaveText(/^drew 3,072 of 3,072 points$/);
-    await expect(page.locator('article[data-step="relief"]'), "the card says it is done").toHaveAttribute("data-phase", "done");
+  } catch (error) {
+    await report(page, data);
+    throw error;
   } finally {
     await close();
   }
 });
 
 test("Stop ends a run and the page says so", async () => {
-  const { page, close } = await start();
+  const { page, close, data } = await start();
   try {
     await openWithPhoto(page, "Test: a node that waits");
     const card = page.locator('article[data-step="wait"]');
@@ -84,6 +118,9 @@ test("Stop ends a run and the page says so", async () => {
     await expect(card, "its card says stopped within 5 s").toHaveAttribute("data-phase", "stopped", { timeout: 5_000 });
     await expect(card.locator(".phase")).toHaveText("Stopped");
     await expect(page.locator("#run-status")).toHaveText("The run was stopped.");
+  } catch (error) {
+    await report(page, data);
+    throw error;
   } finally {
     await close();
   }
