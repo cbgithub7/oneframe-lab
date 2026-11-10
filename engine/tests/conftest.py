@@ -28,8 +28,10 @@ from fixtures.engine_process import EngineProcess
 from fixtures.hosts import TRANSFER, Hosts
 from fixtures.store import sha
 
+from oneframe import protocol
 from oneframe.cache import Cache
 from oneframe.files import is_free
+from oneframe.layout import Layout
 from oneframe.memory.estimate import Target
 from oneframe.processes import GROUP, Child
 from oneframe.registry import Registry, discover
@@ -194,6 +196,34 @@ def held_elsewhere(path: Path, write: tuple[Path, str] | None = None) -> Iterato
         holder.let_go()
 
 
+@pytest.fixture(autouse=True)
+def protocol_kept() -> Iterator[None]:
+    """Every event and answer a test makes is one `contracts/protocol.json` declares (spec 018): a
+    test after which `protocol.problems()` holds a problem fails, naming each, and they are
+    cleared. Not cleared before a test, so a thread that outlived its test is caught by the next."""
+    yield
+    found = protocol.problems()
+    protocol.clear()
+    assert not found, "not as contracts/protocol.json declares it:\n" + "\n".join(found)
+
+
+# What the engine's protocol check logs (oneframe/protocol.py), as an engine process writes it.
+PROTOCOL_LOGGED = f" {protocol.LOGGER.name}: "
+
+
+def protocol_logged(logs: dict[Path, int]) -> None:
+    """Each engine process's protocol problems, from its log after where it began (another may
+    have written the file before), fail the test as the in-process ones do."""
+    found = [
+        line.strip()
+        for log, start in sorted(logs.items())
+        if log.is_file()
+        for line in log.read_bytes()[start:].decode("utf-8", errors="replace").splitlines()
+        if PROTOCOL_LOGGED in line
+    ]
+    assert not found, "an engine process broke contracts/protocol.json:\n" + "\n".join(found)
+
+
 @pytest.fixture
 def stop_after() -> Iterator[Callable[[float], threading.Event]]:
     """A Stop that sets itself `seconds` from now, for a test that would hang if what it checks came
@@ -276,10 +306,12 @@ def host_runtimes() -> HostRuntimes:
 
 @pytest.fixture
 def scheduler_for(tmp_path: Path, node_root: Path, host_runtimes: HostRuntimes) -> Callable[..., Scheduler]:
-    """A scheduler for the test's nodes, its runtimes `host_runtimes` unless the test gives others."""
+    """A scheduler for the test's nodes, its runtimes `host_runtimes` unless the test gives others,
+    and its imports those under Layout(tmp_path)."""
 
     def make(**kw: Any) -> Scheduler:
         kw.setdefault("runtimes", host_runtimes)
+        kw.setdefault("imports", Layout(tmp_path).inputs)  # where import_file(Layout(tmp_path)) puts one
         return Scheduler(
             discover([node_root]), Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp"), **kw
         )
@@ -453,11 +485,16 @@ StartEngine = Callable[..., EngineProcess]
 def engine_process(tmp_path: Path) -> Iterator[StartEngine]:
     """Engines as processes (fixtures/engine_process.py), each started with the command given and
     its standard error in `log` (by default tmp_path / "engine.log"); each is killed at teardown,
-    pass or fail, if it is still running."""
+    pass or fail, if it is still running. Once all have ended, a protocol problem any of them logged
+    fails the test (spec 018)."""
+    logs: dict[Path, int] = {}  # each log, and its size before this test's first engine wrote to it
     with contextlib.ExitStack() as ending:
+        ending.callback(protocol_logged, logs)  # last: after every engine is killed
 
         def start(argv: list[str], log: Path | None = None, **kw: Any) -> EngineProcess:
-            started = EngineProcess(argv, log or tmp_path / "engine.log", **kw)
+            path = log or tmp_path / "engine.log"
+            logs.setdefault(path, path.stat().st_size if path.is_file() else 0)
+            started = EngineProcess(argv, path, **kw)
             ending.callback(started.kill)
             return started
 

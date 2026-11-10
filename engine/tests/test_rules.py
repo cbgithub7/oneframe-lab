@@ -177,3 +177,46 @@ def test_names_outside_v1_are_refused(tmp_path: Path, make_runtime: MakeRuntime,
         "builds.cpu.os should list some of windows, linux",
     ):
         assert refused in problems, problems
+
+
+def _page_ids() -> set[str]:
+    """Every id the page must learn from the engine: the repo's nodes, runtimes and shipped
+    graphs, and the model repositories the nodes read (spec 017, requirement 7)."""
+    ids = {f.stem for f in (REPO / "graphs").glob("*.json")}
+    for file in [*(REPO / "nodes").glob("*/node.json"), *(REPO / "runtimes").glob("*/runtime.json")]:
+        row = json.loads(file.read_text(encoding="utf-8"))
+        ids.add(row["id"])
+        ids.update(f["hf"] for f in row.get("files", []) if "hf" in f)
+    return ids
+
+
+def _page_findings(files: dict[str, str], ids: set[str]) -> list[str]:
+    """Each line of the page's files that holds one of `ids` as a whole name."""
+    found = []
+    for name, text in sorted(files.items()):
+        for number, line in enumerate(text.splitlines(), 1):
+            for each in sorted(ids):
+                if re.search(rf"(?<![\w./-]){re.escape(each)}(?![\w/-])", line):
+                    found.append(f"app/renderer/{name}:{number}: {each!r}")
+    return found
+
+
+def test_the_page_names_nothing() -> None:
+    """The page learns every node, graph, model and runtime from the engine (spec 017, AC6)."""
+    ids = _page_ids()
+    assert {"source.image", "first-light", "torch"} <= ids  # the ids it looks for are found
+    folder = REPO / "app" / "renderer"
+    files = {
+        f.relative_to(folder).as_posix(): f.read_text(encoding="utf-8")
+        for f in folder.rglob("*")
+        if f.is_file() and f.suffix in {".js", ".html", ".css"}
+    }
+    assert "main.js" in files and any(n.startswith("viewers/") for n in files)
+    found = _page_findings(files, ids)
+    assert found == [], "\n".join(found)
+    # It finds an id where it stands as a name, and not inside a longer one.
+    planted = {"x.js": 'open("first-light");\nconst a = "torchvision", b = "my_torch";\nask("depth.moge3").'}
+    assert _page_findings(planted, {"first-light", "torch", "depth.moge3"}) == [
+        "app/renderer/x.js:1: 'first-light'",
+        "app/renderer/x.js:3: 'depth.moge3'",
+    ]

@@ -16,6 +16,29 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
                          JSON job in, NDJSON events out, network closed, its processes ended on Stop
 ```
 
+## Words used here
+
+| Word | Means |
+| --- | --- |
+| node | One step of a graph, a folder with `node.json` and its code: an *engine node* runs in the engine's process, a *runtime node* in a child process in its runtime |
+| manifest | A node's `node.json`: its ports, params, where it runs, the files it reads, its memory model |
+| port, type, facet | A node's input or output; its data kind (`Depth`); and the facets that say what the values mean (`kind=metric`). Two ports connect when the output's facets fit the input's |
+| converter | A `convert` node of one input and one output that the plan inserts between two ports that differ only in facets |
+| trust | What a value rests on: `measured` (seen in the photo), `predicted` (a model's guess) or `synthetic` (made from generated views) |
+| graph, recipe | Which nodes, with which params, connected how: JSON a person builds and saves |
+| plan | A graph checked and put in order, converters inserted |
+| runtime, build | A model family's own Python environment (`runtimes/<id>/`), and one way to install it: `cu130`, `cu126` or `cpu` |
+| stand-in | A small pure-Python package a runtime ships in place of a compiled one it cannot install |
+| fit | The settings, device and precision a node gets before it loads, so it fits the memory this machine has free |
+| budget, margin, cap | The memory a fit allows a node; what it keeps back; the limit torch's allocator is held to |
+| ways | Cheaper ways a node tries one step after running out of memory (`ctx.fallbacks`); `made_with` records the way each step finished |
+| key | A cache entry's name, a hash of all that produced it; a value is `<key>:<port>` |
+| data root, model store | The one folder everything is written under; and the part of it that holds model files, once each by sha256 |
+| journal | The record of every event of a run, an install or a model job, kept before the event is sent |
+| ending | A run's, install's or job's last event (`run.done`, `runtime.failed`, ...), sent after what it held is free |
+| door | `engine:request`, the page's one way to the engine, through `app/main/door.js` |
+| spike, report | A time-boxed question answered by throwaway code; the numbers from a real machine that a hardware claim needs |
+
 ## The parts
 
 | Part | File | Job |
@@ -23,7 +46,8 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Port types | `contracts/port-types.json`, `oneframe/ports.py` | The data kinds, their facets, and the rule for connecting them |
 | Manifests | `oneframe/manifest.py`, `oneframe/reading.py` | Read and check `node.json` part by part; every problem reported at once, a field of the wrong type among them, never a crash. `reading.py`, standard library only, is the one way a definition is read: a manifest, its memory model and a runtime's (the text field, the id rule, the version compare, a JSON object from a file, `ProblemsError`, `discover`) |
 | Registry | `oneframe/registry.py` | Find nodes by looking in folders, through the `discover` runtimes use too; a broken node never hides the others, and is listed as a problem |
-| Graph | `oneframe/graph.py` | Recipes (graphs as JSON); `plan()` checks them, inserts converters, orders them |
+| Graph | `oneframe/graph.py` | Recipes (graphs as JSON, with the page's own `page` fields kept as they are); `plan()` checks them, inserts converters, orders them; `fits()` answers what a port could connect to; both follow one rule for an edge, `connect()` |
+| Graphs | `oneframe/graphs.py`, `graphs/` | Graphs kept as files, `<name>.json`: the shipped ones in the folders `--graphs` names (the repo's `graphs/`), the person's in the data root's `graphs/`, which shadow a shipped one of their name; found by looking, a broken file listed as a problem |
 | Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params, input keys, the node's code and its runtime's build; atomic writes |
 | Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; asks the `Executors` it is given where each attempt runs; checks every value at every port; carries trust; one retry after `oom` |
 | Memory | `oneframe/memory/` | A node's memory model, which a manifest reads alone of the five (`model.py`); the person's settings and the margins (`settings.py`); the estimate (`estimate.py`); the fit, pure (`fit.py`); what each machine learns (`learned.py`) |
@@ -40,11 +64,14 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Scratch | `oneframe/scratch.py` | Each process's locked folder under `cache/tmp/`; a start removes only dead processes' folders |
 | Journal | `oneframe/journal.py` | Every event of a run, an install or a model job, kept in a journal; journals and step logs pruned when one opens; one helper ends each after its place is free |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
-| Server | `oneframe/server.py` | The engine's NDJSON protocol |
+| Server | `oneframe/server.py` | The engine's NDJSON protocol: one worker answers requests in order, and the loop that reads them answers the stops and the quick reads at once; requests and events go on copies of stdin and stdout, so fd 0 reads nothing and fd 1 is stderr, and nothing a node runs in the engine's process can touch them, or wait on the loop's read as numpy's start did on Windows |
+| Protocol | `contracts/protocol.json`, `oneframe/protocol.py`, `app/main/protocol.js`, `app/protocol.d.ts` | Every method and every event, declared once ([spec 018](../specs/018-protocol/spec.md)): the engine builds each event and checks each answer against it, a problem logged and kept, never refused; the door strips by it what never reaches the page; the page's types are generated from it (`scripts/protocol-types.js`) |
+| Imports | `oneframe/inputs.py` | The files a graph reads, copied into the data root's `inputs/` by their sha256, which is their id: a `file` param holds the id, never a path |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py`, `engine/tests/fit_check.py` | The reports a hardware claim needs: a runtime's install, a node's memory on a card, and spec 002's check on a card, which lives with its test node |
 | Tool launcher | `scripts/tool.js` | Starts each command-line tool that opens a data root, with uv's temporary files under that root |
 | Engine client | `app/main/engine.js` | The app's side of the protocol |
-| Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js` | Electron's folders under the root, the window, the engine process, and the one IPC door, which answers with values |
+| Main | `app/main/main.js`, `app/main/boot.js`, `app/main/door.js`, `app/main/values.js` | Electron's folders under the root, the window, the engine process; the one IPC door, which answers with values, the app's own methods among them, and keeps every path from the page; the value protocol |
+| Page | `app/renderer/`, `scripts/page-build.js` | The page ([spec 017](../specs/017-first-page/spec.md)): `main.js` draws it from plain modules the node tests import without a browser: the open graph and its edits (`graph-model.js`), a control per param type (`form.js`), a card's state from events and each failure's offer (`run-view.js`), numpy's `.npz` (`npz.js`), and a viewer per port type (`viewer.js`, `viewers/`); bundled with three.js into `dist/renderer/` |
 
 ## Why it is shaped this way
 
@@ -105,10 +132,48 @@ lock what they work on, and the operating system releases a lock when its holder
 a moment after).
 
 **One door into the page.** The page is sandboxed, has no Node, and can call only the engine
-methods `ENGINE_METHODS` lists. A compromised page can ask the engine to run a graph; it cannot
-read a file or start a process.
+methods `ENGINE_METHODS` lists and the app's own, `APP_METHODS` (`photo.pick`), through
+`engine:request`; it reads a run's values through the read-only `oneframe-value://<key>/<port>`,
+which serves nothing but a committed value. A compromised page can ask the engine to run a graph;
+it cannot read a file, start a process, or learn a path: the door drops a local path from every
+answer and event (a value's `path`, a manifest's `folder`, the hello's `data`), and writes the data
+root, the repo and the home folder `<data>`, `<repo>` and `~` everywhere else.
+
+**The page learns everything.** It names no node, graph, model or runtime
+(`test_the_page_names_nothing`): the catalogue is `nodes.list`, a card's settings its manifest's
+params, its wiring `graph.fits`, its state the run's events, typed from `app/protocol.d.ts`'s
+`Page`. A failure's kind and reason choose its offer: Install for a runtime not installed or out of
+date, Download for files not downloaded or incomplete, a wait for the job already mending it, Run
+again for one that may succeed later. A viewer is chosen by the value's type, one module a type in
+`app/renderer/viewers/`, and reads the value by its key; a point viewer draws at most
+`POINT_BUDGET` points (a million) at a whole stride, and its camera is linked to the other point
+panes'. The panes shown are the graph's `page.panes`, and the names of the photos picked
+`page.files`, so a saved graph opens as it was left. The page is one bundle, `page.js`, built by
+esbuild with three.js, so it needs no import map and its policy stays `script-src 'self'`; it is a
+`file://` page, so the value scheme is CORS-enabled and only the page's partition has it. Three
+type configs keep each environment to its own globals (`tsconfig.page.json` has the DOM and no
+Node), and ESLint refuses `node:` and `electron` imports in the page.
+
+**A photo comes in by its content.** `photo.pick` shows the system's open dialog in the main
+process, which has the engine copy the file chosen into the root's `inputs/` (`inputs.import`,
+named by its sha256) and answers the page that id and the file's name. A `file` param holds an
+import's id, from any caller; anything else, a path included, is a problem of that param, and the
+path is never looked at. The step is given the import's file, so a node reads a file as before. A
+command-line tool given a path imports it first (`bench:fit --graph`, CI's model check).
+
+**Requests off the input loop.** The engine answers requests in order on one worker thread, as its
+methods were written to run. The loop that reads them answers `engine.hello`, `values.locate` and
+the three stops (`run.stop`, `runtimes.stop`, `models.stop`) itself, so a slow request never holds
+a stop up; a stop first takes each queued request of its kind off the queue and answers it
+`{"stopped": true}`, never begun.
 
 ## Events
+
+What the engine and the app say to the page is declared in `contracts/protocol.json`: every method,
+its params and its answer, and every event, its fields and who sends it. That file is the
+declaration and this section its reading; the list that ends it names every event, and a test holds
+the two equal. A field marked `"page": false` (a value's `path`, a manifest's `folder`, the hello's
+`data`) never reaches the page.
 
 A run answers `graph.run` at once with a run id; everything after is pushed:
 
@@ -119,8 +184,27 @@ precision, changes, needs, budgets and any warning: `slow`, `tried_anyway`, `unk
 fit) | `node.oom` and, once, another `node.fit` and `node.start` | `node.failed` (with the fits) →
 `run.done` | `run.failed` | `run.stopped`. An engine node without a memory model gets no `node.fit`.
 
+A failure stops only what depends on it. A step whose inputs come from a failed or skipped step
+gets `node.skipped` (with `waited_on`, that step) and never starts; a value that does not fit its
+input skips that step too, naming the `edge`. The run goes on with every other step, then ends
+`run.failed` with the first failure, its step or edge, and `failed` and `skipped`, the steps of
+each. A Stop still ends the whole run.
+
+Graphs are files the engine finds, as it finds nodes: `graphs.list` (each graph's name, source,
+`shipped` or `saved`, and title, and every broken file), `graphs.get {name}`,
+`graphs.save {name, graph}` and `graphs.remove {name}`. A save writes the person's copy under the
+data root, so a shipped graph is never changed and its name then opens the saved one; a remove
+deletes only a saved graph, which the person asked for by name, and brings the shipped one back.
+`graph.fits {graph, port}` answers, for a port of a node in the graph, each opposite port of the
+graph's other nodes (`graph`) and of every installed node (`add`): `direct`, `via` a converter
+(the one `plan()` inserts), `depends` (an output that leaves open a facet the input names; the
+value is checked when it arrives), or `no`, with its reason: `mismatch`, `taken` (the input is
+fed) or `cycle`.
+
 `nodes.fit` answers the fit a node would get now, and `nodes.forget` clears what this machine
-learned about a node. Neither is on the page's method list yet.
+learned about a node; the page may ask the first. `values.locate {key, port}` answers the file of
+a value a run committed under that entry key, for the main process's value protocol; `inputs.import
+{path}` imports a file, for `photo.pick`. Neither of these two is on the page's list.
 
 A runtime install answers `runtimes.install` at once with the build it will install; then:
 
@@ -141,7 +225,7 @@ ends a job within 2 s and keeps its partial; one job runs at a time across proce
 what no node pins, without the network; `models.remove {node, checkpoint?}` or
 `{unpinned: [...]}` deletes only that, keeping a file another node pins, and is refused while the
 registry has problems, a folder of nodes is missing, a job runs, or a running graph may read the
-file. None of these is on the page's method list yet.
+file. The page may ask `models.download` and `models.stop`; the rest are not on its list yet.
 
 **An ending is sent after its place is free** (`journal.end_when_free`, spec 010). A run lets go of
 its list of the files it reads and of the engine's run slot, an install of its slot and its
@@ -151,6 +235,13 @@ install again, removing the run's runtime or a file it read) is answered, not re
 `in_use`. A next run's or job's first events may then come before the last one's ending, told apart
 by `run` or `job`; a next install's never do, since an install lets go and sends under its claim
 lock.
+
+**Every event,** with its fields in `contracts/protocol.json`: `engine.ready`, `engine.failed`,
+`engine.warning`, `engine.exit`, `run.start`, `run.done`, `run.failed`, `run.stopped`,
+`node.cached`, `node.fit`, `node.start`, `stage`, `progress`, `ceiling`, `node.step_oom`,
+`node.done`, `node.oom`, `node.failed`, `node.skipped`, `runtime.start`, `runtime.step`,
+`runtime.log`, `runtime.progress`, `runtime.done`, `runtime.failed`, `runtime.stopped`,
+`model.start`, `model.file`, `model.progress`, `model.done`, `model.failed`, `model.stopped`.
 
 ## Failures
 
@@ -213,6 +304,7 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `store` | `os_refused` | yes | The system refused to rename or delete a file; it and its record were kept. |
 | `graph` |  | no | The graph cannot run; `problems` says why. |
 | `graph` | `busy` | yes | Another run is going; runs go one at a time. |
+| `graph` | `newer_format` | no | A newer version of the app saved it; it is left as it is. |
 | `root` |  | no | The engine cannot use this data root; nothing under it was changed. |
 | `root` | `newer_layout` | no | A newer version of the app laid it out. |
 | `root` | `unreadable` | no | Its root file cannot be read, or does not say its format. |

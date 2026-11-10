@@ -47,6 +47,9 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
   (made from generated views). An output without one inherits the weakest trust of its inputs.
 - **Params** with `"affects": "speed"` do not change the result, so they are not part of the
   cache key. Every other parameter is.
+- **A `file` param** holds an import's id, the sha256 of a file the person picked, which the app
+  copied into the data root's `inputs/`; never a path. The node is given that file's path in
+  `ctx.params`, so it reads a file, and it is keyed by the file's content.
 - **run.where** is `engine` for light nodes that ship with the app, and `runtime` for anything
   that imports a model library; `runtime` names the environment it runs in, a folder in
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
@@ -130,6 +133,13 @@ with what it returned; without it, `run(ctx)` alone. `load`'s context has everyt
 the run's inputs, paths and outputs: what it returns may depend on the fitted settings
 (`ctx.params`, `ctx.device`, `ctx.precision`), never on the photo or another node's output. Its
 seconds count with the run's.
+
+**What the page hears from a node.** `ctx.stage(name, message)` sends `stage`, with `stage` and
+`message`; `ctx.progress(done, total, what)` sends `progress`, with the stage it is in, `done`,
+`total` (or null) and `what`, and a tqdm bar in a runtime sends the same, at most four times a
+second. The engine passes each on with the node's `step` and the `run`, checked against
+`contracts/protocol.json` as it goes ([spec 018](../specs/018-protocol/spec.md)): a field the
+contract does not declare is logged, never refused, so a node says nothing else through them.
 
 Every output in the manifest must be declared with `ctx.output` before `run` returns. A node writes
 only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`: the run
@@ -269,8 +279,10 @@ npm run bench:fit -- <node> --set resolution=512 --set resolution=1024 --set res
 runs the node once per `--set` group (from an empty cache, with nothing learned) and writes a
 report of each run's estimate, measured peak, ratio, the system memory's estimate and peak,
 seconds and the free memory before, to the data root's `reports/` unless `--out` names a file or
-folder. Measure a model's memory model at several settings this way, and name the report in its
-`source`. The node is required: spec 002's hardware check (AC8) on this machine's card is its own
+folder. In a folder it is `<date>-<card>-<node>-fit.md` (`cpu` for the card when the node has none
+here), numbered when that name is taken, so a report never replaces another; its heading names the
+machine and the card. Measure a model's memory model at several settings this way, and name the
+report in its `source`. The node is required: spec 002's hardware check (AC8) on this machine's card is its own
 command, `npm run bench:fit-check`, which runs `engine/tests/fit_check.py` with the test node beside it.
 
 A node that needs an input is measured inside a graph that gives it one:
@@ -305,6 +317,15 @@ does not change this setting for you: it has no documented interface.
 | Mesh | `.glb` | |
 | GaussianSplat | `.ply` | Inria layout, raw (log scale, logit opacity, wxyz rotation) |
 | ViewSet | folder | `views.json` plus images |
+
+## Folders of your own
+
+To try a node without adding it to `nodes/`, keep it in a folder of your own (one folder per node,
+as here) and start the app with that folder in `ONEFRAME_NODES`; graphs of your own go in a folder
+named by `ONEFRAME_GRAPHS`. Each is a list, as `PATH` is (`;` between folders on Windows, `:`
+elsewhere), of absolute folders; a relative one is ignored. The app passes them to the engine as
+`--nodes` and `--graphs`, after the repo's own (`engineCommand` in `app/main/paths.js`), and the
+page lists them with the rest. The e2e test gives its test nodes and graphs this way.
 
 ## Testing a node
 

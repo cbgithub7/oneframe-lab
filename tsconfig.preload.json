@@ -1,0 +1,9 @@
+{
+  "//": "The preload: CommonJS that requires only Electron's renderer modules. No DOM.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    "types": ["node"]
+  },
+  "include": ["app/preload/**/*.cjs", "app/protocol.d.ts"]
+}

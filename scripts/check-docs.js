@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOP = ["app", "engine", "nodes", "contracts", "scripts", "docs", "specs", "tests", "runtimes", ".claude", ".github"];
 const ROOT_FILES = new Set(["package.json", "package-lock.json", "versions.json", "AGENTS.md", "CLAUDE.md", "README.md",
-  "tsconfig.json", "ruff.toml", "pyrightconfig.json", "eslint.config.js", ".node-version"]);
+  "tsconfig.json", "tsconfig.base.json", "tsconfig.page.json", "tsconfig.preload.json", "playwright.config.js", "ruff.toml", "pyrightconfig.json", "eslint.config.js", ".node-version"]);
 
 /** @param {string} dir @returns {string[]} */
 function markdownFiles(dir) {
@@ -63,7 +63,7 @@ export const SPEC_MAX_LINES = 200;
 
 /**
  * Why a spec is too long, or null: only a spec not yet done or dropped is held to the cap, or to
- * the length the owner allowed it (`Length allowed: N lines`, AGENTS.md rule 1).
+ * the length the owner allowed it (`Length allowed: N lines`, specs/README.md).
  * @param {string} text the spec.md
  * @returns {string | null}
  */

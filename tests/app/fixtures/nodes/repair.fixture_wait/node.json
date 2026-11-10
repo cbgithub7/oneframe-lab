@@ -1,0 +1,19 @@
+{
+  "id": "repair.fixture_wait",
+  "version": "1",
+  "title": "Wait (test)",
+  "category": "repair",
+  "summary": "For the page's e2e test (spec 017): waits, saying how long it has waited, until Stop or its seconds are up, then hands the photo on.",
+  "inputs": {
+    "image": "Image"
+  },
+  "outputs": {
+    "image": "Image"
+  },
+  "params": {
+    "seconds": { "type": "float", "default": 120, "min": 0, "max": 600, "label": "Seconds" }
+  },
+  "run": { "where": "engine", "entry": "node.py:run" },
+  "devices": ["cpu"],
+  "licence": { "code": "MIT" }
+}

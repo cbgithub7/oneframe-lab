@@ -8,11 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import HostRuntimes, MakeNode
+from conftest import AMPERE, NO_GPU, HostRuntimes, MakeNode
 
 from oneframe import bench_fit
 from oneframe.graph import Graph
 from oneframe.registry import discover
+from oneframe.runtimes.manager import Runtimes
 
 SOURCE = "allocated by the node itself"
 
@@ -113,6 +114,54 @@ def test_the_report_is_named_by_date_and_card_in_a_folder(tmp_path: Path) -> Non
     record = {"date": "2026-10-01T12:00:00+00:00", "card": {"name": "NVIDIA GeForce Something 9000"}}
     assert bench_fit.report_path(tmp_path, record) == tmp_path / "2026-10-01-something-9000-fit.md"
     assert bench_fit.report_path(tmp_path / "mine.md", record) == tmp_path / "mine.md"
+
+
+def test_a_report_names_its_card_and_node_and_never_replaces_another(tmp_path: Path) -> None:
+    # Spec 005's AC7 ran each node at three photos in one day: each run's report replaced the last.
+    card = {"index": 0, "name": "NVIDIA GeForce Something 9000", "capability": "8.6", "vram_total_mb": 10737}
+    profile = {"os": "linux", "gpus": [card], "driver": "580.88", "system": {"total_mb": 16384}}
+    record = {
+        "date": "2026-11-07T12:00:00+00:00",
+        "node": "depth.some_model",
+        "profile": profile,
+        "card": card,
+    }
+    first = bench_fit.report_path(tmp_path, record)
+    assert first == tmp_path / "2026-11-07-something-9000-depth-some-model-fit.md"
+    first.write_text("the first run", encoding="utf-8")
+    second = bench_fit.report_path(tmp_path, record)
+    assert second == tmp_path / "2026-11-07-something-9000-depth-some-model-fit-2.md"
+    second.write_text("the second run", encoding="utf-8")
+    assert (
+        bench_fit.report_path(tmp_path, record).name == "2026-11-07-something-9000-depth-some-model-fit-3.md"
+    )
+    assert first.read_text(encoding="utf-8") == "the first run"
+    # A node with no card here is named for the processor, and its heading names the machine's cards.
+    on_cpu = {**record, "card": None}
+    assert bench_fit.report_path(tmp_path, on_cpu).name == "2026-11-07-cpu-depth-some-model-fit.md"
+    assert (
+        "Machine: linux with 16,384 MB of memory; driver 580.88; card 0, NVIDIA GeForce Something 9000 "
+        "(compute 8.6, 10,737 MB), the card this node's build uses." in bench_fit.render(record)
+    )
+    assert "Something 9000 (compute 8.6, 10,737 MB); no card for this node." in bench_fit.render(on_cpu)
+    bare = {**on_cpu, "profile": {"os": "windows", "gpus": [], "nvidia": {"why": "nvidia-smi was not found"}}}
+    assert "Machine: windows; no card for this node (nvidia-smi was not found)." in bench_fit.render(bare)
+    assert "Machine:" not in bench_fit.render({"node": "depth.some_model"})  # a record with no profile
+
+
+def test_the_machine_is_recorded_with_the_card_the_nodes_runtime_uses(
+    tmp_path: Path, make_node: MakeNode, node_root: Path, tiny: Path
+) -> None:
+    make_node({**SMALL_NODE, "id": "test.tiny", "run": {**SMALL_NODE["run"], "runtime": "tiny"}}, CODE)
+    make_node(SMALL_NODE, CODE)  # its runtime, "test", is not defined here
+    registry = discover([node_root])
+    with_card = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: AMPERE)
+    found = bench_fit.machine_of(with_card, registry.get("test.tiny"))
+    assert found["card"] == AMPERE["gpus"][0] and found["profile"]["driver"] == "580.88"
+    assert "raw" not in found["profile"]
+    assert bench_fit.machine_of(with_card, registry.get("test.bench"))["card"] is None
+    without = Runtimes(tmp_path / "data", [tiny.parent], profile=lambda: NO_GPU)
+    assert bench_fit.machine_of(without, registry.get("test.tiny"))["card"] is None
 
 
 # A photo of 64 x 50 px, which a node that needs an image is sized by: 0.01 MB a pixel, so 32 MB.

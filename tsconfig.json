@@ -1,31 +1,17 @@
 {
+  "//": "Everything that runs in Node: the main process, scripts, hooks and tests. No DOM. The page and the preload have their own (tsconfig.page.json, tsconfig.preload.json); npm run typecheck runs all three.",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2024",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "node"
-    ],
-    "allowJs": true,
-    "checkJs": true,
-    "noEmit": true,
-    "strict": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "skipLibCheck": true
+    "lib": ["ES2024"],
+    "types": ["node"]
   },
   "include": [
-    "app/**/*.js",
-    "app/**/*.cjs",
-    "app/**/*.d.ts",
+    "app/main/**/*.js",
+    "app/protocol.d.ts",
     "scripts/**/*.js",
-    "tests/app/**/*.js",
+    "tests/**/*.js",
     "eslint.config.js",
+    "playwright.config.js",
     ".claude/hooks/**/*.js"
   ]
 }

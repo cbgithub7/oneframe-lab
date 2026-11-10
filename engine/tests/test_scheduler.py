@@ -14,6 +14,8 @@ from fixtures import fit_node, machines
 from oneframe.cache import Cache
 from oneframe.executors import Executor, OneProcessPerRun
 from oneframe.graph import Graph
+from oneframe.inputs import import_file
+from oneframe.layout import Layout
 from oneframe.manifest import Manifest
 from oneframe.memory.estimate import Learned, Target
 from oneframe.memory.learned import LearnedStore, StoreKey
@@ -99,13 +101,19 @@ def test_a_file_param_is_keyed_by_content_not_name(
     )
     src = tmp_path / "in.txt"
     src.write_text("a", encoding="utf-8")
-    g = _graph({"r": {"node": "test.reads", "params": {"path": str(src)}}}, [])
+    layout = Layout(tmp_path)  # where scheduler_for finds imports
+    reads = lambda ident: _graph({"r": {"node": "test.reads", "params": {"path": ident}}}, [])  # noqa: E731
     sched = scheduler_for()
-    sched.run(g, events.append)
+    sched.run(reads(import_file(layout, src)[0]), events.append)
     src.write_text("b", encoding="utf-8")
     events.clear()
-    sched.run(g, events.append)
+    sched.run(reads(import_file(layout, src)[0]), events.append)
     assert "node.start" in events.kinds(), "a changed file must not be served from the cache"
+    copy = tmp_path / "another name.txt"
+    copy.write_text("b", encoding="utf-8")
+    events.clear()
+    sched.run(reads(import_file(layout, copy)[0]), events.append)
+    assert events.kinds() == ["run.start", "node.cached", "run.done"], "the same bytes, by another name"
 
 
 @pytest.mark.parametrize(
@@ -175,6 +183,64 @@ def test_failures_are_classified_and_leave_nothing_cached(
     assert events.kinds()[-2:] == ["node.failed", "run.failed"]
     assert not list((tmp_path / "cache" / "objects").glob("*/*")), "a failed run must not leave a cache entry"
     assert not list((tmp_path / "cache" / "tmp").glob("*")), "nor its working folder"
+
+
+@pytest.mark.usefixtures("basic_nodes")
+def test_a_failure_stops_only_what_depends_on_it(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Two branches from one photo: one fails, so the step after it never starts, and the other
+    runs to the end. The run then ends failed, naming the step that failed and the one skipped."""
+    make_node(
+        {
+            "id": "test.fails",
+            "version": "1",
+            "title": "F",
+            "category": "test",
+            "inputs": {"image": "Image"},
+            "outputs": {"depth": "Depth[kind=metric, measure=z]"},
+        },
+        "def run(ctx):\n    raise RuntimeError('this branch fails')\n",
+    )
+    make_node(
+        {
+            "id": "test.after",
+            "version": "1",
+            "title": "A",
+            "category": "test",
+            "inputs": {"depth": "Depth"},
+            "outputs": {"depth": "Depth[kind=metric, measure=z]"},
+        },
+        "def run(ctx):\n    raise AssertionError('never started')\n",
+    )
+    graph = _graph(
+        {
+            "i": {"node": "test.image"},
+            "bad": {"node": "test.fails"},
+            "after": {"node": "test.after"},
+            "d": {"node": "test.const_depth"},
+        },
+        [("i.image", "bad.image"), ("bad.depth", "after.depth"), ("i.image", "d.image")],
+    )
+    result = scheduler_for().run(graph, events.append)
+    assert result.status == "failed"
+    assert (result.failed, result.skipped) == (["bad"], ["after"])
+    assert set(result.outputs) == {"i", "d"}, "the other branch ran to the end"
+    assert [e["step"] for e in events.of("node.start")] == ["i", "bad", "d"]
+    assert [e["step"] for e in events.of("node.done")] == ["i", "d"]
+    [failed] = events.of("node.failed")
+    assert failed["step"] == "bad" and "this branch fails" in failed["message"]
+    [skipped] = events.of("node.skipped")
+    assert skipped == {
+        "event": "node.skipped",
+        "step": "after",
+        "node": "test.after",
+        "waited_on": "bad",
+        "run": result.run,
+    }
+    ending = events[-1]
+    assert ending["event"] == "run.failed" and ending["step"] == "bad"
+    assert (ending["failed"], ending["skipped"]) == (["bad"], ["after"])
 
 
 def test_an_open_facet_is_checked_when_the_value_arrives(

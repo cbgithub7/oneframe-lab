@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "title": "Depth Pro and MoGe-3, side by side",
+  "nodes": {
+    "photo": {
+      "node": "source.image",
+      "params": {},
+      "label": "Photo"
+    },
+    "depth_pro": {
+      "node": "depth.depth_pro",
+      "params": {},
+      "label": "Depth Pro"
+    },
+    "depth_pro_points": {
+      "node": "convert.depth_to_points",
+      "params": {},
+      "label": "Depth Pro's points"
+    },
+    "moge": {
+      "node": "depth.moge3",
+      "params": {},
+      "label": "MoGe-3"
+    }
+  },
+  "edges": [
+    {
+      "from": "photo.image",
+      "to": "depth_pro.image"
+    },
+    {
+      "from": "photo.image",
+      "to": "moge.image"
+    },
+    {
+      "from": "depth_pro.depth",
+      "to": "depth_pro_points.depth"
+    },
+    {
+      "from": "depth_pro.camera",
+      "to": "depth_pro_points.camera"
+    }
+  ],
+  "page": {
+    "panes": [
+      {
+        "step": "depth_pro_points",
+        "port": "points"
+      },
+      {
+        "step": "moge",
+        "port": "points"
+      }
+    ],
+    "files": {}
+  }
+}

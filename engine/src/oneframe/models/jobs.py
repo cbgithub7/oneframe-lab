@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from oneframe import protocol
 from oneframe.errors import Failure, Stopped
 from oneframe.files import FileLock, lock_file, sha256_file
 from oneframe.journal import end_when_free, engine_crash
@@ -216,8 +217,8 @@ class Jobs:
 
     def _run(self, job: Job, held: FileLock) -> None:
         what = f"model-{job.what}-{job.node or 'all'}"
-        crashed: Callable[[BaseException], dict[str, Any]] = lambda exc: engine_crash(  # noqa: E731
-            exc, event="model.failed", job=job.id, files=[f.to_json() for f in job.files]
+        crashed: Callable[[BaseException], dict[str, Any]] = lambda exc: protocol.event(  # noqa: E731
+            "model.failed", **engine_crash(exc, job=job.id, files=[f.to_json() for f in job.files])
         )
         try:
             # Whoever hears the ending may start the next job at once.
@@ -247,12 +248,12 @@ class Jobs:
         """Run the job, sending everything but its ending, which it returns for `_run` to send."""
         base = {"job": job.id, "what": job.what, "node": job.node}
         emit(
-            {
+            protocol.event(
+                "model.start",
                 **base,
-                "event": "model.start",
-                "files": [f.to_json() for f in job.files],
-                "bytes": sum(f.size for f in job.files),
-            }
+                files=[f.to_json() for f in job.files],
+                bytes=sum(f.size for f in job.files),
+            )
         )
         first: dict[str, Any] | None = None
         stopped = False
@@ -283,14 +284,16 @@ class Jobs:
                 )
                 first = first or outcome.failure
                 emit(
-                    {
-                        **base,
-                        "event": "model.file",
-                        "file": outcome.name,
-                        "sha256": outcome.sha256,
-                        "phase": "failed",
-                        **outcome.failure,
-                    }
+                    protocol.event(
+                        "model.file",
+                        **{
+                            **base,
+                            "file": outcome.name,
+                            "sha256": outcome.sha256,
+                            "phase": "failed",
+                            **outcome.failure,
+                        },
+                    )
                 )
         files = [f.to_json() for f in job.files]
         if stopped:
@@ -298,29 +301,22 @@ class Jobs:
                 if outcome.outcome == "waiting":
                     outcome.outcome = "stopped"
             files = [f.to_json() for f in job.files]
-            return {
-                **base,
-                "event": "model.stopped",
-                "files": files,
-                "message": "Stopped; a download resumes where it stopped.",
-            }
+            return protocol.event(
+                "model.stopped", **base, files=files, message="Stopped; a download resumes where it stopped."
+            )
         if first is not None:
-            return {**base, "event": "model.failed", **first, "files": files}
-        done: dict[str, Any] = {**base, "event": "model.done", "files": files}
+            return protocol.event("model.failed", **{**base, **first, "files": files})
         if job.what == "verify":
-            done["dropped"] = [f.sha256 for f in job.files if f.outcome == "dropped"]
-        return done
+            dropped = [f.sha256 for f in job.files if f.outcome == "dropped"]
+            return protocol.event("model.done", **base, files=files, dropped=dropped)
+        return protocol.event("model.done", **base, files=files)
 
     def _phase(self, job: Job, outcome: Outcome, emit: Emit, phase: str, **detail: Any) -> None:
         emit(
-            {
-                "job": job.id,
-                "event": "model.file",
-                "file": outcome.name,
-                "sha256": outcome.sha256,
-                "phase": phase,
-                **detail,
-            }
+            protocol.event(
+                "model.file",
+                **{"job": job.id, "file": outcome.name, "sha256": outcome.sha256, "phase": phase, **detail},
+            )
         )
 
     def _progress(self, job: Job, outcome: Outcome, emit: Emit) -> Callable[[int, int | None], None]:
@@ -332,14 +328,14 @@ class Jobs:
                 return
             last[0] = now
             emit(
-                {
-                    "job": job.id,
-                    "event": "model.progress",
-                    "file": outcome.name,
-                    "sha256": outcome.sha256,
-                    "bytes": have,
-                    "total": total,
-                }
+                protocol.event(
+                    "model.progress",
+                    job=job.id,
+                    file=outcome.name,
+                    sha256=outcome.sha256,
+                    bytes=have,
+                    total=total,
+                )
             )
 
         return progress

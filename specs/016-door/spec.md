@@ -1,10 +1,11 @@
 # 016: Photos and results through the door
 
-Status: draft
-Owner approval: (date, once approved)
+Status: done ([PR #66](https://github.com/cbgithub7/oneframe-lab/pull/66))
+Owner approval: 2026-11-08, with 015, 018 and 017 as one decision; every open question answered as recommended (2026-11-04)
 
-The third of four specs for step 3, first light: [005](../005-first-models/spec.md),
-[015](../015-graphs/spec.md), this one, and [017](../017-first-page/spec.md). From the
+The third of five specs for step 3, first light: [005](../005-first-models/spec.md),
+[015](../015-graphs/spec.md), this one, [018](../018-protocol/spec.md) and
+[017](../017-first-page/spec.md). From the
 [review of 2026-10-12](../../docs/reviews/2026-10-12.md), section 2 ("the page chooses the photo's
 path") and section 5, item 6, and three blockers the [handoff](../../docs/handoff.md) lists for
 first light. It lands after 015, whose methods it opens to the page.
@@ -127,6 +128,15 @@ Requirement 6 is held by `engine.test.js`'s check that every method the page may
 - One worker thread, not a pool: the methods were written to run one at a time; only the stops
   and the reads that answer at once need to pass them.
 - Paths scrubbed by the door, not the engine: the journal and the tools keep them.
+- A request a stop takes off the queue is answered `{"stopped": true}`, not a failure: Stop is not
+  a failure (errors.py).
+- The import's id is resolved when the graph is planned: the step holds the file's path, so cache
+  keys, still the file's content, are unchanged, and a source's `meta.source` is the import's name.
+- `forPage` drops a `path`, `folder` or `data` field only when it holds an absolute path: a file's
+  path in its repository (a manifest's `files`) is no path on this machine, and stays.
+- The protocol contract, which the review of 2026-11-04 put into this spec, is 018's: this one
+  holds eight criteria, the most a spec may. 018 lands next, and `forPage` then strips the fields
+  the contract marks instead of its own list.
 
 ## Out of scope
 
