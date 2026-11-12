@@ -145,7 +145,7 @@ A cloud session cannot run any of it; the PR marks AC5 and AC6 "pending hardware
   (the review of 2026-11-07, recommendation 6).
 - A speed model per precision, and any other growth of the memory model's language: the roadmap.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-12: as recommended)
 
 1. **The form** shown under Design: `larger_of`, a list of parts beside one `source`. A manifest's
    memory model is a format a person's own node also writes. Recommended: as shown.
