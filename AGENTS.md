@@ -51,9 +51,9 @@ the [README](README.md#commands).
   Held by review.
 - **Any machine that can run it,** from no GPU to the largest cards. Hardware decisions come from
   what the machine reports (compute capability, memory, driver), never a card's name, and a test
-  of one covers a range of machines. The owner's GTX 1070 proves mechanisms and tunes nothing. v1
-  is Windows or Linux on x86-64, with an NVIDIA card or the processor. Held by
-  `test_names_outside_v1_are_refused` and the fit's tests.
+  of one covers a range of machines. The owner's GTX 1070 proves mechanisms and measures the
+  models; it chooses nothing. v1 is Windows or Linux on x86-64, with an NVIDIA card or the
+  processor. Held by `test_names_outside_v1_are_refused` and the fit's tests.
 - **Ports are typed, facets included.** Values whose facets differ connect only through a
   converter; disparity never flows into a metric port. Held by
   `test_plan_refuses_type_mismatch_and_cycles` and
@@ -82,11 +82,13 @@ the [README](README.md#commands).
   in the spec that adds it. Held by review until the page's tests hold it.
 - **Versions.** Latest stable, pinned exactly. A runtime pins the newest release its family's code
   and wheels support, backed by a bench report. Every exception is in `versions.json` with its
-  reason and review date ([docs/versions.md](docs/versions.md)). Held by `npm run versions`.
+  reason and review date ([docs/versions.md](docs/versions.md)). Held by `npm run versions`; a
+  runtime's pins by review, until that command reads them.
 - **One data root.** Everything the app, the engine, a runtime child or a tool writes goes under
   the data root or the model store, at a path `oneframe/layout.py` names (`app/main/paths.js`
   mirrors it; `contracts/layout.json` holds the two equal). The only exceptions are its `outside`
-  entries, and a new one is the owner's. Held by `test_ac2_nothing_is_written_outside_the_root`.
+  entries, a dev checkout's own tools and the repo files its tools write among them, and a new one
+  is the owner's. Held by `test_ac2_nothing_is_written_outside_the_root`.
 - **Kept files say their format.** A newer one is never overwritten, and a change of format ships
   with its migration. Held by the tests in `engine/tests/test_formats.py`.
 - **Deletes stay inside the root or the store,** in folders the layout names. They never touch the
