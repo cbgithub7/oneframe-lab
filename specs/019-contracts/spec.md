@@ -156,7 +156,7 @@ hardware step.
 - Evicting the entries a new key orphans: step 6's cache cap.
 - Shapes for the JSON types (`Camera`, `Clicks`): 020.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-12: every one as recommended)
 
 1. **The scene facets** in the table above. A type's facets are a format every node of that type
    writes, hard to change once nodes do. Recommended: as the table, `pose` replaced by `frame`.

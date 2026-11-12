@@ -148,7 +148,7 @@ it, and the PR says so until the job is green. No hardware step.
 - Shapes for `Pose`, `CameraPath`, `Scene`, `Text` and `Metric`: each with its first node.
 - Other authoring nodes (a prompt, a camera): each with the node that reads its type.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-12: every one as recommended)
 
 1. **The two shapes** in the table above. A shape is a format every node of the type reads and
    writes. `Clicks` holds the size of the image the clicks were placed on, so a node can refuse

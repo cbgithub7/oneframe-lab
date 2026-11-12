@@ -156,7 +156,7 @@ ending done, with their peaks and the free system memory before each, in
 - A queue the person can see and reorder, and a Stop on each run: the editor, step 7.
 - More than one card used at once by choice: the fit picks the card today; the slot only follows.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-12: every one as recommended)
 
 1. **Run while a run goes.** Today the second is refused. Recommended: it starts, and each of its
    steps waits its turn for its device, saying what it waits behind. A step for the card still

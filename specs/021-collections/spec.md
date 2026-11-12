@@ -144,7 +144,7 @@ No hardware step: the first real for each is step 4's, with its own report.
 ## Decisions taken
 
 - For each follows from the types, with no field in the graph: the recipe stays version 1, and
-  `connect()` stays the one rule for `plan()` and `fits()`. Open question 1 asks the owner.
+  `connect()` stays the one rule for `plan()` and `fits()` (open question 1).
 - Collections line up by the step that made them, never as a product of two: a product is rarely
   meant, and a graph that wants one can say so with a node.
 - The collections one node gives have one length: a segmenter's masks and boxes then line up
@@ -160,7 +160,7 @@ No hardware step: the first real for each is step 4's, with its own report.
 - Running the items of one step at once: 023 gives each item's run its device's slot in turn.
 - A for each inside a for each, and choosing or reordering items in the page: the editor, step 7.
 
-## Open questions
+## Open questions (answered by the owner, 2026-11-12: every one as recommended)
 
 1. **How a graph says "for each".** The review asked for it "in the recipe". Recommended: it
    follows from the types, as a converter does: an edge from `Mask*` to a `Mask` input runs that
