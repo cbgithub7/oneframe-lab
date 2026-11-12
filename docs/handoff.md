@@ -72,13 +72,6 @@ light; a "graph model 2" spec comes after first light and before step 4. Its rul
 path for model nodes, approval only on substance, `AGENTS.md` trimmed, rules for the page) come as
 one PR for the owner to read.
 
-The [review of 2026-11-07](reviews/2026-11-07.md)'s decisions, taken by the owner on 2026-11-12,
-every one as recommended: the three rule wordings (decision 2: "any machine", "one data root" with
-its new `outside` entries, "versions"); the spec length cap counts all but "Decisions taken"
-(decision 3); the memory model gains a larger-of in its own spec, 024 (decision 4); the stop hook
-runs the engine's fast tier, `npm run engine:check:fast`, and the full checks run before a PR and
-in CI (decision 5). Decision 6, protecting `main`, is still the owner's to set (below).
-
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 2b | Clean-up: the review's sections 3 and 4 ([review](reviews/2026-10-12.md)), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 done ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)); 011 done ([PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44)); 012 done ([PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47)); 013 done ([PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49)); 014 done ([PR #51](https://github.com/cbgithub7/oneframe-lab/pull/51)); the clean-up is done |
@@ -99,12 +92,7 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **The check times on the owner's PC**, on `main` once the fast tier is merged: `npm run check`,
-   `npm run engine:check`, `npm run engine:check:fast` and `node scripts/test-guard.js`, each timed,
-   and `uv run --project engine --frozen pytest engine -m "not real_uv" --durations=30`. There is
-   no pass or fail: the report gives the four times and the 30 slowest tests left in the fast
-   tier, so the next change to it rests on numbers (the review of 2026-11-07 measured 32, 396 and
-   12 s before the tier). Report: `specs/006-foundations/reports/<date>-check-times-local.md`.
+Nothing is waiting.
 
 The last item passed on 2026-11-11 on the GTX 1070: spec 017's AC8, first light from the page.
 From a new data root outside Claude desktop's package, both runtimes were installed and both
@@ -145,8 +133,5 @@ desktop's package. Before it, the owner put spec 005's photo in on 2026-11-04 (i
   local-session skill sends only footprint checks outside the package; whether installs go there
   too, and whether the engine's install should outlast such a refusal, is open.
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"
-  is a convention (decided 2026-11-04 and again 2026-11-12; only the owner can set it). In the
-  repository's Settings, Branches, add a rule for `main`: require a pull request before merging,
-  and require the status checks `ubuntu-latest`, `windows-latest`, `models (cpu), ubuntu-latest`,
-  `models (cpu), windows-latest` and `versions follow the policy`. It comes before Dependabot's
-  minor updates may merge themselves.
+  is a convention. Protecting it, with the CI checks required, comes before Dependabot's minor
+  updates may merge themselves.

@@ -94,9 +94,7 @@ Then do the next action. While working:
 
 Your job ends when the PR is open.
 
-1. Run `npm run check` and `npm run engine:check` in full: the hook runs only the engine's fast
-   tier each turn. Then run `/code-review` on the branch. Fix what it finds, or answer each finding
-   in the PR.
+1. Run `/code-review` on the branch. Fix what it finds, or answer each finding in the PR.
 2. Update the docs in the same change if anything structural moved: `AGENTS.md`,
    `docs/architecture.md`, `docs/handoff.md` (the spec's status), `docs/roadmap.md` (an item
    the spec took on is deleted there), and the spec's `Status:`, set to done with this PR, so no

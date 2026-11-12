@@ -19,7 +19,6 @@
     "check": "npm run lint && npm run protocol:types && npm run typecheck && npm test && npm run docs:check",
     "engine:sync": "uv sync --project engine --frozen",
     "engine:check": "uv run --project engine --frozen ruff check && uv run --project engine --frozen ruff format --check && uv run --project engine --frozen pyright && npm run runtime:check && uv run --project engine --frozen pytest engine",
-    "engine:check:fast": "uv run --project engine --frozen ruff check && uv run --project engine --frozen ruff format --check && uv run --project engine --frozen pyright && npm run runtime:check && uv run --project engine --frozen pytest engine -m \"not real_uv\"",
     "runtime:check": "node scripts/tool.js oneframe.runtime_check",
     "bench:runtime": "node scripts/tool.js oneframe.bench_runtime",
     "bench:fit": "node scripts/tool.js oneframe.bench_fit",

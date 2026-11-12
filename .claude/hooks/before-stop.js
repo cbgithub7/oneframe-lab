@@ -1,7 +1,6 @@
 // @ts-check
-// Stop: before Claude ends a turn in which anything changed, run the project's checks (checks.js:
-// the engine's in its fast tier). A failure sends Claude back to fix it, with the failing output
-// as the reason.
+// Stop: before Claude ends a turn in which anything changed, run the project's checks. A failure
+// sends Claude back to fix it, with the failing output as the reason.
 //
 // Skipped when nothing changed (a question answered, a file read), and when the tree is exactly
 // as it was the last time the checks passed in this session. After three blocked stops in a row
@@ -12,7 +11,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { STOP_CHECKS } from "./checks.js";
 import { envWithPinnedTools } from "./pinned-tools.js";
 import { run as runIn, treeFingerprint } from "./tree.js";
 
@@ -48,8 +46,13 @@ if (!status.trim() && !unpushed) process.exit(0);
 const fingerprint = treeFingerprint(ROOT, ENV);
 if (state.passed === fingerprint) process.exit(0);
 
-for (const [label, command, args] of STOP_CHECKS) {
-  const result = run(command, [...args]);
+const checks = [
+  ["npm run check", "npm", ["run", "--silent", "check"]],
+  ["npm run engine:check", "npm", ["run", "--silent", "engine:check"]],
+  ["test guard", "node", ["scripts/test-guard.js"]],
+];
+for (const [label, command, args] of /** @type {Array<[string, string, string[]]>} */ (checks)) {
+  const result = run(command, args);
   if (result.ok) continue;
   state.blocks = (state.blocks ?? 0) + 1;
   save();

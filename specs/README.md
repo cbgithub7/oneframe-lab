@@ -16,8 +16,6 @@ else.
 One gate: the owner approves the spec once, design included. A spec is a contract, not a log:
 
 - **Length.** Aim for 150 lines. One not yet done is never longer than 200: `npm run check` fails it.
-  The count is of what the owner approves: every line but the "Decisions taken" section, which is
-  written while the work goes on (the owner, 2026-11-12).
   The owner may allow more, case by case, only when a spec cannot be designed well within 200
   lines, or fitting would cut what the design needs. Ask with what does not fit and what was tried,
   how many lines past 200 and in which sections, and what fitting would lose. An approved one says

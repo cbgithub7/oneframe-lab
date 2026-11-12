@@ -102,27 +102,6 @@
       "paths": ["{LOCALAPPDATA}/electron/Cache", "{XDG_CACHE_HOME}/electron", "{HOME}/.cache/electron"]
     },
     {
-      "writer": "dev checkout",
-      "systems": ["windows", "linux"],
-      "what": "uv's own cache, Pythons and tools for the engine's environment in a dev checkout: what npm run engine:sync and engine:check fetch.",
-      "why": "The dev tool installing the engine before any data root is open; everything the app or a tool starts through uv is pointed under the root (environment.uv_folders). A packaged app runs no check.",
-      "paths": ["{LOCALAPPDATA}/uv", "{APPDATA}/uv", "{XDG_CACHE_HOME}/uv", "{HOME}/.cache/uv", "{XDG_DATA_HOME}/uv", "{HOME}/.local/share/uv"]
-    },
-    {
-      "writer": "dev checkout",
-      "systems": ["windows", "linux"],
-      "what": "pyright's own download of its program, made by npm run engine:check and runtime:check.",
-      "why": "The dev tool installing itself, as npm and Electron do; a packaged app runs no check.",
-      "paths": ["{USERPROFILE}/.cache/pyright-python", "{XDG_CACHE_HOME}/pyright-python", "{HOME}/.cache/pyright-python"]
-    },
-    {
-      "writer": "dev checkout",
-      "systems": ["windows", "linux"],
-      "what": "Files of the repo that a tool exists to write: a node's manifest by npm run models:pin (the one it is given, wherever its folder is), the collected tests by scripts/test-guard.js --write, and the test photos by engine/tests/models/photos.py.",
-      "why": "They are sources a person commits, not what a run leaves behind; the tool writes them where the person keeps them.",
-      "paths": ["{checkout}/nodes", "{checkout}/engine/tests/collected.txt", "{checkout}/engine/tests/models"]
-    },
-    {
       "writer": "graphics driver",
       "systems": ["windows"],
       "what": "The graphics driver's shader caches: NVIDIA's and Direct3D's.",
