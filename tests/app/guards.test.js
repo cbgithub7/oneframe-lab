@@ -353,7 +353,7 @@ function fakeProject(checkPasses) {
   git("config", "user.name", "t");
   const exit = (/** @type {boolean} */ ok) => `node -e "process.exit(${ok ? 0 : 1})"`;
   writeFileSync(path.join(dir, "package.json"), JSON.stringify({
-    scripts: { check: exit(checkPasses), "engine:check": exit(true) },
+    scripts: { check: exit(checkPasses), "engine:check:fast": exit(true) },
   }));
   mkdirSync(path.join(dir, "scripts"));
   writeFileSync(path.join(dir, "scripts", "test-guard.js"), "");
