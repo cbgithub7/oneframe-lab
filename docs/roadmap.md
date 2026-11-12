@@ -27,8 +27,8 @@ Generate at its fullest, beyond what steps 3 to 7 plan:
   cannot run;
 - `.spz` and `.obj`: export nodes beside `.glb` and `.ply`, or new port types (not decided);
 - the token part spec 003 leaves for later, before any gated model;
-- sound, in scope since 2026-10-05: an audio port type, nodes that make it, and a player in the
-  page.
+- sound, in scope since 2026-10-05: an audio port type ([spec 019](../specs/019-contracts/spec.md)),
+  nodes that make it, and a player in the page.
 
 ## Memory and speed
 
