@@ -28,8 +28,10 @@ the [README](README.md#commands).
 3. **Spikes answer feasibility** ("does this model run on Windows"): time-boxed, no spec,
    throwaway code, ending in a report the owner reads.
 4. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
-5. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
-   and before a PR; the PR checks the spec's acceptance criteria one by one.
+5. **Verify before claiming.** `npm run check` and the engine's fast tier,
+   `npm run engine:check:fast`, pass before a turn ends; `npm run check` and `npm run engine:check`
+   in full before a PR, and CI runs everything. The PR checks the spec's acceptance criteria one by
+   one.
 6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test or case
    is removed, skipped or emptied only under the spec's "- Removed", with its reason, and renamed
    only under "- Renamed". Held by `node scripts/test-guard.js`, in the hooks and in CI.
@@ -51,9 +53,9 @@ the [README](README.md#commands).
   Held by review.
 - **Any machine that can run it,** from no GPU to the largest cards. Hardware decisions come from
   what the machine reports (compute capability, memory, driver), never a card's name, and a test
-  of one covers a range of machines. The owner's GTX 1070 proves mechanisms and tunes nothing. v1
-  is Windows or Linux on x86-64, with an NVIDIA card or the processor. Held by
-  `test_names_outside_v1_are_refused` and the fit's tests.
+  of one covers a range of machines. The owner's GTX 1070 proves mechanisms and measures the
+  models; it chooses nothing. v1 is Windows or Linux on x86-64, with an NVIDIA card or the
+  processor. Held by `test_names_outside_v1_are_refused` and the fit's tests.
 - **Ports are typed, facets included.** Values whose facets differ connect only through a
   converter; disparity never flows into a metric port. Held by
   `test_plan_refuses_type_mismatch_and_cycles` and
@@ -82,11 +84,13 @@ the [README](README.md#commands).
   in the spec that adds it. Held by review until the page's tests hold it.
 - **Versions.** Latest stable, pinned exactly. A runtime pins the newest release its family's code
   and wheels support, backed by a bench report. Every exception is in `versions.json` with its
-  reason and review date ([docs/versions.md](docs/versions.md)). Held by `npm run versions`.
+  reason and review date ([docs/versions.md](docs/versions.md)). Held by `npm run versions`; a
+  runtime's pins by review, until that command reads them.
 - **One data root.** Everything the app, the engine, a runtime child or a tool writes goes under
   the data root or the model store, at a path `oneframe/layout.py` names (`app/main/paths.js`
   mirrors it; `contracts/layout.json` holds the two equal). The only exceptions are its `outside`
-  entries, and a new one is the owner's. Held by `test_ac2_nothing_is_written_outside_the_root`.
+  entries, a dev checkout's own tools and the repo files its tools write among them, and a new one
+  is the owner's. Held by `test_ac2_nothing_is_written_outside_the_root`.
 - **Kept files say their format.** A newer one is never overwritten, and a change of format ships
   with its migration. Held by the tests in `engine/tests/test_formats.py`.
 - **Deletes stay inside the root or the store,** in folders the layout names. They never touch the

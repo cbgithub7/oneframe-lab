@@ -7,7 +7,9 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { SPEC_MAX_LINES, backtickPaths, checkDocs, linkTargets, literalPrefix, specTooLong } from "../../scripts/check-docs.js";
+import {
+  SPEC_MAX_LINES, backtickPaths, checkDocs, countedLines, linkTargets, literalPrefix, specTooLong,
+} from "../../scripts/check-docs.js";
 import {
   allowances, allowedRemovals, collectPython, guard, isTestFile, jsEntries, problems, removedTests, renamedTests, testNames,
 } from "../../scripts/test-guard.js";
@@ -272,6 +274,17 @@ test("a spec being worked on is held to its length; a finished one is history", 
   assert.equal(specTooLong(spec("dropped", 400)), null);
 });
 
+test("the cap leaves out a spec's Decisions taken, and nothing else", () => {
+  const spec = (/** @type {number} */ body, /** @type {number} */ log, heading = "## Decisions taken") =>
+    ["# 007: Title", "", "Status: approved", ...Array.from({ length: body - 5 }, (_, i) => `line ${i}`), heading,
+      ...Array.from({ length: log }, (_, i) => `- decision ${i}`), "## Out of scope", "Nothing."].join("\n") + "\n";
+  assert.equal(countedLines(spec(SPEC_MAX_LINES, 50)), SPEC_MAX_LINES); // the heading and its 50 lines are not counted
+  assert.equal(specTooLong(spec(SPEC_MAX_LINES, 50)), null);
+  assert.match(String(specTooLong(spec(SPEC_MAX_LINES + 1, 0))), /is 201 lines/); // what follows the log counts again
+  assert.match(String(specTooLong(spec(SPEC_MAX_LINES, 50, "## Decisions"))), /is 251 lines/); // only that section
+  assert.match(String(specTooLong(spec(SPEC_MAX_LINES, 50, "### Decisions taken"))), /is 251 lines/);
+});
+
 test("a spec the owner allowed more lines is held to that length instead", () => {
   const spec = (/** @type {string} */ allowed, /** @type {number} */ lines) =>
     ["# 015: Title", "", "Status: approved", allowed, ...Array.from({ length: lines - 4 }, (_, i) => `line ${i}`)]
@@ -340,7 +353,7 @@ function fakeProject(checkPasses) {
   git("config", "user.name", "t");
   const exit = (/** @type {boolean} */ ok) => `node -e "process.exit(${ok ? 0 : 1})"`;
   writeFileSync(path.join(dir, "package.json"), JSON.stringify({
-    scripts: { check: exit(checkPasses), "engine:check": exit(true) },
+    scripts: { check: exit(checkPasses), "engine:check:fast": exit(true) },
   }));
   mkdirSync(path.join(dir, "scripts"));
   writeFileSync(path.join(dir, "scripts", "test-guard.js"), "");
