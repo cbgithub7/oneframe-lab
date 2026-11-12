@@ -28,8 +28,10 @@ the [README](README.md#commands).
 3. **Spikes answer feasibility** ("does this model run on Windows"): time-boxed, no spec,
    throwaway code, ending in a report the owner reads.
 4. **Small steps.** Work through `tasks.md` in order, ticking each item as it lands.
-5. **Verify before claiming.** `npm run check` and `npm run engine:check` pass before a turn ends
-   and before a PR; the PR checks the spec's acceptance criteria one by one.
+5. **Verify before claiming.** `npm run check` and the engine's fast tier,
+   `npm run engine:check:fast`, pass before a turn ends; `npm run check` and `npm run engine:check`
+   in full before a PR, and CI runs everything. The PR checks the spec's acceptance criteria one by
+   one.
 6. **Tests are not negotiable.** Never delete or weaken a test to make a check pass. A test or case
    is removed, skipped or emptied only under the spec's "- Removed", with its reason, and renamed
    only under "- Renamed". Held by `node scripts/test-guard.js`, in the hooks and in CI.

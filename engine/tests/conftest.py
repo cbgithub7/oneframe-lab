@@ -397,6 +397,18 @@ AMPERE: dict[str, Any] = {
 }
 
 
+REAL_UV = "real_uv"  # the marker of a test that starts the real uv (pyproject.toml)
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Mark every test that starts the real uv, by the fixture that gives it: these install real
+    environments, which takes seconds on Linux and far longer on Windows. The stop hook's fast tier
+    leaves them out; `npm run engine:check` and CI run them all."""
+    for item in items:
+        if "uv_exe" in getattr(item, "fixturenames", ()):
+            item.add_marker(REAL_UV)
+
+
 @pytest.fixture(scope="session")
 def uv_exe() -> str:
     found = os.environ.get("UV") or shutil.which("uv")
