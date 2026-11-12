@@ -72,12 +72,20 @@ light; a "graph model 2" spec comes after first light and before step 4. Its rul
 path for model nodes, approval only on substance, `AGENTS.md` trimmed, rules for the page) come as
 one PR for the owner to read.
 
+The [review of 2026-11-07](reviews/2026-11-07.md)'s decisions, taken by the owner on 2026-11-12,
+every one as recommended: the three rule wordings (decision 2: "any machine", "one data root" with
+its new `outside` entries, "versions"); the spec length cap counts all but "Decisions taken"
+(decision 3); the memory model gains a larger-of in its own spec, 024 (decision 4); the stop hook
+runs the engine's fast tier, `npm run engine:check:fast`, and the full checks run before a PR and
+in CI (decision 5). Decision 6, protecting `main`, is still the owner's to set (below).
+
 | # | Step | Spec | Status |
 | --- | --- | --- | --- |
 | 2b | Clean-up: the review's sections 3 and 4 ([review](reviews/2026-10-12.md)), in eight specs worked in this order: [the test guard](../specs/007-test-guard/spec.md), [processes and Stop](../specs/008-processes/spec.md), [the node API](../specs/009-node-api/spec.md), [the scheduler and its executors](../specs/010-scheduler/spec.md), [files, hashes, downloads and paths](../specs/011-files/spec.md), [modules](../specs/012-modules/spec.md), [nothing hard-coded](../specs/013-hard-coded/spec.md), [tests](../specs/014-tests/spec.md). Nothing a person sees changes except where their open questions say; the node contract changes once (009), before any model node depends on it | 007 to 014 | approved 2026-10-18, every open question as recommended; six changed after `/code-review` (a line under each status) and approved again 2026-10-23; 007 done ([PR #28](https://github.com/cbgithub7/oneframe-lab/pull/28)); 008 done ([PR #35](https://github.com/cbgithub7/oneframe-lab/pull/35)); 009 done ([PR #37](https://github.com/cbgithub7/oneframe-lab/pull/37)); 010 done ([PR #39](https://github.com/cbgithub7/oneframe-lab/pull/39)); 011 done ([PR #44](https://github.com/cbgithub7/oneframe-lab/pull/44)); 012 done ([PR #47](https://github.com/cbgithub7/oneframe-lab/pull/47)); 013 done ([PR #49](https://github.com/cbgithub7/oneframe-lab/pull/49)); 014 done ([PR #51](https://github.com/cbgithub7/oneframe-lab/pull/51)); the clean-up is done |
 | 3 | First light, in the editor's shape: Depth Pro and MoGe-3 (vitl) from the page, which holds a graph the person can change, two variants side by side; nodes listed by the engine, settings from manifests, graphs that ship as data and keep the page's own fields, viewers by port type, results served by key, a photo picked in a main-process dialog; "what fits here" answered by the engine. A local spike first, then five specs, worked in this order: [the first model nodes](../specs/005-first-models/spec.md), [graphs as data](../specs/015-graphs/spec.md), [photos and results through the door](../specs/016-door/spec.md), [the protocol, declared](../specs/018-protocol/spec.md), [the first page](../specs/017-first-page/spec.md) | spike, 005, 015, 016, 018, 017 | drafted and reviewed 2026-11-04, every open question answered as recommended; the [spike](../specs/005-first-models/spike/README.md) passed on the GTX 1070 on 2026-11-03, every setting ([report](../specs/005-first-models/reports/2026-11-03-spike.md)); 005 approved 2026-11-05, every open question answered (the 1070 a bench, never the target; the owner's photo for CI and the bench); its tasks 1 to 10 merged ([PR #60](https://github.com/cbgithub7/oneframe-lab/pull/60)): AC1 to AC5 pass, AC2 and AC3 in CI's `models (cpu)` job with the real weights on Windows and Ubuntu ([run](https://github.com/cbgithub7/oneframe-lab/actions/runs/42309103039)); AC6 and AC7, task 11, passed on the GTX 1070 on 2026-11-06, the figures fitted ([AC7 report](../specs/005-first-models/reports/2026-11-06-ac7.md)): 005 done; 015, 016, 018 and 017 approved 2026-11-08 as one decision, every open question as recommended; 015 done ([PR #65](https://github.com/cbgithub7/oneframe-lab/pull/65)); 016 done ([PR #66](https://github.com/cbgithub7/oneframe-lab/pull/66)); 018 done ([PR #67](https://github.com/cbgithub7/oneframe-lab/pull/67)); 017's AC1 to AC7 pass ([PR #69](https://github.com/cbgithub7/oneframe-lab/pull/69)), and its AC8 passed on the GTX 1070 on 2026-11-11 ([report](../specs/017-first-page/reports/2026-11-11-local.md)) |
 | 6 | Improve-loop spike, after first light: one view synthesiser and one reconstructor, and whether WSL is needed, on a card larger than the 1070, which cannot run the view synthesisers | spike | agreed 2026-10-12; moved after first light 2026-11-04; no rented GPU (the owner, 2026-11-05): waiting on an RTX 5080 the owner may reach later |
 | 3c | Graph model 2, before step 4 ([review of 2026-11-04](reviews/2026-11-04.md), section 5), in five specs worked in this order: [the contracts](../specs/019-contracts/spec.md) (categories and param types in `contracts/`, devices named once, the port contract in the cache key, scene facets and `Audio`, a value's sources), [structured params](../specs/020-structured-params/spec.md), [collections and "for each"](../specs/021-collections/spec.md), [a run up to a node](../specs/022-run-to-a-node/spec.md), [several runs at once](../specs/023-runs-at-once/spec.md) | 019 to 023 | agreed 2026-11-04; drafted and reviewed by an agent 2026-11-12; every open question answered as recommended 2026-11-12 (four in 019, three in 020, two in 021, two in 023); waiting for the owner's approval |
+| 3d | The memory model's larger-of, beside 3c: a formula that is the larger of several parts, and MoGe's working memory fitted again on photos up to 24 MP ([review of 2026-11-07](reviews/2026-11-07.md), decision 4) | [024](../specs/024-larger-of/spec.md) | decided 2026-11-12; drafted 2026-11-12; waiting for the owner's approval and one open question (the form in a manifest); its last task needs a card |
 | 3b | The model store's view per runtime, in the Hugging Face layout, which TripoSR is the first to need | new (003's view part) | not started |
 | 4 | SAM 2.1, and an object generator that needs a compiled extension (TripoSR or Hunyuan3D-2mini) | 005 (second part) | not started |
 | 5 | Keep models loaded: a long-lived worker per runtime, sized by the load times steps 3 and 4 measure | 004 | not started |
@@ -91,7 +99,12 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-Nothing is waiting.
+1. **The check times on the owner's PC**, on `main` once the fast tier is merged: `npm run check`,
+   `npm run engine:check`, `npm run engine:check:fast` and `node scripts/test-guard.js`, each timed,
+   and `uv run --project engine --frozen pytest engine -m "not real_uv" --durations=30`. There is
+   no pass or fail: the report gives the four times and the 30 slowest tests left in the fast
+   tier, so the next change to it rests on numbers (the review of 2026-11-07 measured 32, 396 and
+   12 s before the tier). Report: `specs/006-foundations/reports/<date>-check-times-local.md`.
 
 The last item passed on 2026-11-11 on the GTX 1070: spec 017's AC8, first light from the page.
 From a new data root outside Claude desktop's package, both runtimes were installed and both
@@ -132,5 +145,8 @@ desktop's package. Before it, the owner put spec 005's photo in on 2026-11-04 (i
   local-session skill sends only footprint checks outside the package; whether installs go there
   too, and whether the engine's install should outlast such a refusal, is open.
 - **Waiting on the owner:** `main` has no branch protection, so "only through a PR with green CI"
-  is a convention. Protecting it, with the CI checks required, comes before Dependabot's minor
-  updates may merge themselves.
+  is a convention (decided 2026-11-04 and again 2026-11-12; only the owner can set it). In the
+  repository's Settings, Branches, add a rule for `main`: require a pull request before merging,
+  and require the status checks `ubuntu-latest`, `windows-latest`, `models (cpu), ubuntu-latest`,
+  `models (cpu), windows-latest` and `versions follow the policy`. It comes before Dependabot's
+  minor updates may merge themselves.
