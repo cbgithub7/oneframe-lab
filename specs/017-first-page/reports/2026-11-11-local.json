@@ -1,0 +1,66 @@
+{
+  "spec": "017-first-page",
+  "criterion": "AC8",
+  "outcome": "passed",
+  "date": "2026-11-11",
+  "commit": "d1c278a765591cb025f129bba1af99e8927348be",
+  "machine": {
+    "os": "Windows 10 Pro 10.0.19045.6466",
+    "gpu": "NVIDIA GeForce GTX 1070",
+    "compute_capability": "6.1",
+    "vram_mb": 8192,
+    "driver": "582.66",
+    "ram_gb": 31.9,
+    "free_disk_gb": 84.8,
+    "other_gpu_processes": [
+      "explorer.exe", "SearchApp.exe", "TextInputHost.exe", "ShellExperienceHost.exe",
+      "lghub_system_tray.exe", "brave.exe (2)", "Grok Bot.exe (2)", "claude.exe (2)", "msedge.exe"
+    ],
+    "card_in_use_before_mb": 397
+  },
+  "tools": {
+    "node": "24.22.1",
+    "uv": "0.13.5",
+    "python": "3.15.1 (engine), 3.14.9 (both runtimes)",
+    "powershell": "7.4.19",
+    "git": "2.28.0.windows.1"
+  },
+  "where": "outside Claude desktop's package: a pwsh window that Grok Bot started (explorer.exe > Grok Bot.exe > pwsh.exe > pwsh.exe), data root D:\\OneframeLab-017, new and empty",
+  "commands": [
+    "npm ci",
+    "npm run engine:sync",
+    "$env:ONEFRAME_DATA = 'D:\\OneframeLab-017'",
+    "npm start",
+    "npm run diagnose"
+  ],
+  "page": {
+    "graph": "Depth Pro and MoGe-3, side by side (graphs/first-light.json)",
+    "photo": "engine/tests/models/photo-full.jpg, 4000 x 1800 px",
+    "offers_taken": [
+      "Install depth_pro (runtime/not_installed): cu126, 4,525,569,190 bytes, 173.0 s",
+      "Install moge (runtime/not_installed): cu126, 4,745,600,428 bytes, 81.1 s",
+      "Download depth.depth_pro (files/not_downloaded): 1,904,446,787 bytes, sha256 verified",
+      "Download depth.moge3 (files/not_downloaded): 1,481,333,394 bytes in 28 s, sha256 verified"
+    ],
+    "runs": 5
+  },
+  "results": {
+    "fp32": {
+      "depth_pro": { "device": "cpu", "precision": "fp32", "seconds": 114.57, "peak_vram_mb": null, "peak_ram_mb": 8901.8, "estimate_mb": { "device": 9280, "system": 9280 }, "fit_warning": "slow, 135 s published; alternative cuda at fp16" },
+      "depth_pro_points": { "device": "cpu", "seconds": 5.391, "peak_ram_mb": 308.1 },
+      "moge": { "node": "depth.moge3", "device": "cuda", "precision": "fp32", "resolution_level": 9, "seconds": 22.689, "peak_vram_mb": 2475.8, "peak_reserved_mb": 2887.8, "peak_ram_mb": 3490.4, "estimate_mb": { "device": 3669, "system": 3489 }, "ceiling_mb": 6405 },
+      "panes": "both drawn, 800,400 of 7,200,000 points each",
+      "screenshot": "2026-11-11-local-fp32.png"
+    },
+    "fp16": {
+      "depth_pro": { "device": "cuda", "precision": "fp16", "seconds": 13.175, "peak_vram_mb": 5230.2, "peak_reserved_mb": 6186.6, "peak_ram_mb": 2657.4, "estimate_mb": { "device": 6259, "system": 2657 }, "ceiling_mb": 6394 },
+      "depth_pro_points": { "device": "cpu", "seconds": 2.288, "peak_ram_mb": 295.3 },
+      "moge": "cached",
+      "panes": "both drawn, 800,400 of 7,200,000 points each",
+      "screenshot": "2026-11-11-local-fp16.png"
+    },
+    "fit": "Depth Pro fp32 on the processor (9,280 MB does not fit the card's 6,282 MB budget), fp16 on the card when set; MoGe-3 fp32 on the card at level 9; nothing changed by the fit",
+    "notes": "The PC slept from 14:29:47 to 18:35:37 local time, 10 s into Depth Pro's download; on waking the connection was reset at 541,280,498 bytes, and the download resumed from there and finished. Both system peaks are at their estimates, over by 1.4 MB (MoGe-3) and 0.4 MB (Depth Pro fp16)."
+  },
+  "local_changes": "none"
+}
