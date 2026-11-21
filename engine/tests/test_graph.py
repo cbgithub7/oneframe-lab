@@ -60,6 +60,34 @@ def test_plan_reports_every_problem_with_its_node_and_port(registry_for: Callabl
 
 
 @pytest.mark.usefixtures("basic_nodes")
+def test_a_problem_elsewhere_does_not_refuse_a_run_up_to_a_step(registry_for: Callable[[], Registry]) -> None:
+    """Spec 022, AC2: a node whose input is not connected refuses the whole graph's plan, and not
+    the plan up to a step that does not need it, which holds only that step and what it needs."""
+    g = _graph(
+        {
+            "i": {"node": "test.image"},
+            "a": {"node": "test.const_depth"},
+            "b": {"node": "test.const_depth"},
+            "loose": {"node": "test.const_depth"},
+        },
+        [("i.image", "a.image"), ("i.image", "b.image")],
+    )
+    with pytest.raises(GraphError) as info:
+        plan(g, registry_for())
+    assert "loose.image: input image (Image) is not connected" in _messages(info.value)
+    assert plan(g, registry_for(), upto=["a"]).order == ["i", "a"]
+    assert plan(g, registry_for(), upto=["b", "a"]).order == ["i", "a", "b"]  # in the graph's order
+    with pytest.raises(GraphError) as info:
+        plan(g, registry_for(), upto=["loose"])
+    assert [p["node"] for p in info.value.problems] == ["loose"]
+    with pytest.raises(GraphError) as info:
+        plan(g, registry_for(), upto=["a", "ghost"])
+    assert info.value.problems == [
+        {"node": "ghost", "port": "", "message": "the graph has no step called 'ghost' to run up to"}
+    ]
+
+
+@pytest.mark.usefixtures("basic_nodes")
 def test_plan_refuses_type_mismatch_and_cycles(
     make_node: MakeNode, registry_for: Callable[[], Registry]
 ) -> None:

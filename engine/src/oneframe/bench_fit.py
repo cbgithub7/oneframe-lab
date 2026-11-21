@@ -250,7 +250,7 @@ def bench_in_graph(
         raise BenchGraphError(name or "the graph", [f"no step called {key!r}"])
     upstream = reaches(graph, key, backwards=True)
     before = upstream - {key}  # what the step depends on, without the step
-    planned = plan(graph.part(upstream), scheduler.registry, scheduler.imports)
+    planned = plan(graph, scheduler.registry, scheduler.imports, upto=[key])
     if any(step.id == key and step.each for step in planned.steps):
         # One measure a group: a step run once an item would give as many, at different sizes.
         raise BenchGraphError(

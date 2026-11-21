@@ -6,7 +6,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   gives the nodes in `keys` and the edges between them; `bench_fit.py`'s `upstream_of` and
   `part_of` go, its callers using these, and the sizes of the measured step's inputs read from its
   plan, not the graph's edges. AC4.
-- [ ] 2. **The plan up to steps.** `plan(..., upto=None)`: every name a node of the graph, or a
+- [x] 2. **The plan up to steps.** `plan(..., upto=None)`: every name a node of the graph, or a
   problem naming it; the plan is of the part the names reach backwards, so a problem elsewhere does
   not refuse it. AC2.
 - [ ] 3. **The scheduler, the server and the protocol.** `Scheduler.run(..., upto=)`; `graph.run`

@@ -314,9 +314,15 @@ def step_params(
     return params, problems
 
 
-def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
+def plan(
+    graph: Graph, registry: Registry, imports: Path | None = None, upto: list[str] | None = None
+) -> Plan:
     """The order to run `graph` in, its converters inserted; every problem at once as GraphError.
-    `imports`: the folder a `file` param's import is found in (the layout's `inputs`)."""
+    `imports`: the folder a `file` param's import is found in (the layout's `inputs`). `upto`: the
+    steps a run is for (spec 022), each a node of the graph; only they and what they depend on are
+    planned, so a problem in the rest of the graph does not refuse them."""
+    if upto is not None:
+        graph = graph.part(_upto(graph, upto))
     problems: list[dict[str, str]] = []
     notes: list[str] = []
 
@@ -407,6 +413,21 @@ def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
     if problems:
         raise GraphError(problems)
     return Plan(steps=[steps[sid] for sid in order], notes=notes, depends=depends)
+
+
+def _upto(graph: Graph, upto: list[str]) -> set[str]:
+    """What the steps `upto` reach backwards, themselves included; a name the graph has no node
+    for (a converter the plan inserts among them) refuses the plan, by name."""
+    problems = [
+        {"node": str(name), "port": "", "message": f"the graph has no step called {name!r} to run up to"}
+        for name in upto
+        if not isinstance(name, str) or name not in graph.nodes
+    ]
+    if not upto:
+        problems.append({"node": "", "port": "", "message": "a run up to steps names at least one"})
+    if problems:
+        raise GraphError(problems)
+    return set().union(*(reaches(graph, name, backwards=True) for name in upto))
 
 
 def _quiet(*_args: Any) -> None:
