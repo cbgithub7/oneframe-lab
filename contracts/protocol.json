@@ -140,6 +140,7 @@
         "side": { "type": "string" },
         "how": { "type": "string" },
         "converter": { "type": "string", "optional": true },
+        "each": { "type": "boolean", "optional": true, "doc": "true: the input's step runs once for each item of the output's collection (spec 021)" },
         "reason": { "type": "string", "optional": true },
         "message": { "type": "string", "optional": true }
       }

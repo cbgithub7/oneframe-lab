@@ -20,11 +20,18 @@ A recipe is plain JSON so it can be saved, shared and edited by hand:
 `plan()` checks a graph against the installed nodes and returns the order to run it in. Every
 problem is reported at once, each naming its node and port. Where two ports differ only in facets
 and a converter node bridges them, the converter is inserted and the plan says so.
+
+For each (spec 021) follows from the types, with nothing in the recipe: an edge from a collection
+output (`Mask*`) to a single input of its type runs that step once for each item, and each of its
+outputs is then a collection in the same order. The collections a step is fed item by item must
+come from one step, directly or through steps run for each of them: their origin. A node that
+takes a whole collection and gives another starts a new origin.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -176,6 +183,8 @@ class Step:
     inserted: bool = False
     # The params the graph sets. The fit never changes them (spec 002); the rest are defaults.
     explicit: frozenset[str] = frozenset()
+    # The inputs fed a collection item by item: the step runs once for each item (spec 021).
+    each: tuple[str, ...] = ()
 
 
 @dataclass
@@ -194,33 +203,78 @@ class Plan:
 @dataclass(frozen=True)
 class Connection:
     """How an output can feed an input: `direct`; `via` a converter the plan inserts; `depends`,
-    directly once the value says the facets the output leaves open; or `no`, and why."""
+    directly once the value says the facets the output leaves open; or `no`, and why. `each`: the
+    input's step runs once for each item of the output's collection (spec 021)."""
 
     how: str
     converter: Manifest | None = None
     reason: str = ""  # for `no`: mismatch, taken (the input is fed) or cycle
     message: str = ""
+    each: bool = False
 
-    def to_json(self) -> dict[str, str]:
-        row = {"how": self.how}
+    def to_json(self) -> dict[str, Any]:
+        row: dict[str, Any] = {"how": self.how}
         if self.converter is not None:
             row["converter"] = self.converter.id
+        if self.each:
+            row["each"] = True
         if self.reason:
             row |= {"reason": self.reason, "message": self.message}
         return row
 
 
 def connect(output: PortSpec, accepts: PortSpec, converters: list[Manifest]) -> Connection:
-    """The one rule for an edge, which `plan()` and `fits()` both follow."""
+    """The one rule for an edge, which `plan()` and `fits()` both follow. A collection meets a
+    single input `each`; a single value never feeds a collection input. A converter is fed what
+    the output gives, so on a collection it runs for each item too."""
+    if accepts.many and not output.many:
+        message = f"a single {output.type} cannot feed a collection input, which takes {accepts.type}*"
+        return Connection("no", reason="mismatch", message=message)
+    each = output.many and not accepts.many
     why = ports.mismatch(output, accepts)
     if why is None:
         open_facet = any(key not in output.facets for key in accepts.facets)
-        return Connection("depends" if open_facet else "direct")
+        return Connection("depends" if open_facet else "direct", each=each)
     for converter in converters:
         takes, gives = next(iter(converter.inputs.values())), next(iter(converter.outputs.values()))
+        if takes.many or gives.many:
+            continue  # a converter turns one value into one
         if ports.mismatch(output, takes) is None and ports.mismatch(gives, accepts) is None:
-            return Connection("via", converter)
+            return Connection("via", converter, each=each)
     return Connection("no", reason="mismatch", message=why)
+
+
+Wire = tuple[Edge, PortSpec, PortSpec]  # an edge whose ends exist, and the specs of its two ports
+
+
+class _Collections:
+    """Which steps of a graph run for each, by the one rule, before the plan is made: a step does
+    when a single input of it is fed a collection, and every output of such a step is one."""
+
+    def __init__(self, wires: list[Wire]):
+        self.into: dict[str, list[Wire]] = {}
+        for wire in wires:
+            self.into.setdefault(wire[0].dst, []).append(wire)
+        self.memo: dict[str, bool] = {}
+
+    def runs_each(self, step: str, seen: frozenset[str] = frozenset()) -> bool:
+        if step not in self.memo:
+            if step in seen:
+                return False  # a cycle, which the plan refuses on its own
+            here = seen | {step}
+            self.memo[step] = any(
+                not accepts.many and self.gives(edge.src, output, here)
+                for edge, output, accepts in self.into.get(step, ())
+            )
+        return self.memo[step]
+
+    def gives(self, step: str, output: PortSpec, seen: frozenset[str] = frozenset()) -> bool:
+        """Whether `output` of `step` carries a collection: declared so, or its step runs for each."""
+        return output.many or self.runs_each(step, seen)
+
+    def output(self, step: str, output: PortSpec) -> PortSpec:
+        """`output` as `step` gives it: a collection when its step runs for each."""
+        return replace(output, many=True) if self.gives(step, output) else output
 
 
 def step_params(
@@ -277,26 +331,15 @@ def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
 
     converters = registry.converters()
     depends: list[dict[str, str]] = []
-    for edge in graph.edges:
-        src, dst = steps.get(edge.src), steps.get(edge.dst)
-        if edge.src not in graph.nodes:
-            problem(edge.src, "an edge starts at a node that is not in the graph")
-        if edge.dst not in graph.nodes:
-            problem(edge.dst, "an edge ends at a node that is not in the graph")
-        if src is None or dst is None:
-            continue
-        out_spec = src.manifest.outputs.get(edge.src_port)
-        in_spec = dst.manifest.inputs.get(edge.dst_port)
-        if out_spec is None:
-            problem(edge.src, f"{src.manifest.id} has no output {edge.src_port!r}", edge.src_port)
-            continue
-        if in_spec is None:
-            problem(edge.dst, f"{dst.manifest.id} has no input {edge.dst_port!r}", edge.dst_port)
-            continue
-        if edge.dst_port in dst.inputs:
-            problem(edge.dst, "two edges feed the same input", edge.dst_port)
-            continue
+    wires = _wires(graph, {sid: step.manifest for sid, step in steps.items()}, problem)
+    collections = _Collections(wires)
+    each: dict[str, list[str]] = {}
+    for edge, out_given, in_spec in wires:
+        dst = steps[edge.dst]
+        out_spec = collections.output(edge.src, out_given)
         found = connect(out_spec, in_spec, converters)
+        if found.each:
+            each.setdefault(edge.dst, []).append(edge.dst_port)
         if found.how in ("direct", "depends"):
             dst.inputs[edge.dst_port] = (edge.src, edge.src_port)
             if found.how == "depends":
@@ -315,6 +358,7 @@ def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
             params={k: p.default for k, p in bridge.params.items()},
             inputs={conv_in: (edge.src, edge.src_port)},
             inserted=True,
+            each=(conv_in,) if out_spec.many else (),
         )
         dst.inputs[edge.dst_port] = (conv_id, conv_out)
         notes.append(
@@ -343,10 +387,82 @@ def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
                 deps.discard(sid)
     if remaining:
         problem(sorted(remaining)[0], "the graph has a cycle through " + ", ".join(sorted(remaining)))
+    for sid, fed in each.items():
+        steps[sid].each = tuple(fed)
+    _line_up([steps[sid] for sid in order], problem, notes)
 
     if problems:
         raise GraphError(problems)
     return Plan(steps=[steps[sid] for sid in order], notes=notes, depends=depends)
+
+
+def _quiet(*_args: Any) -> None:
+    """A problem nobody is told of: `fits()` reads the graph's edges as they are."""
+
+
+def _wires(graph: Graph, manifests: dict[str, Manifest], problem: Callable[..., None] = _quiet) -> list[Wire]:
+    """The graph's edges whose two ends exist (`manifests`: each step's, by its key) and whose
+    input no other edge feeds; every other edge is a problem."""
+    wires: list[Wire] = []
+    fed: set[tuple[str, str]] = set()
+    for edge in graph.edges:
+        src, dst = manifests.get(edge.src), manifests.get(edge.dst)
+        if edge.src not in graph.nodes:
+            problem(edge.src, "an edge starts at a node that is not in the graph")
+        if edge.dst not in graph.nodes:
+            problem(edge.dst, "an edge ends at a node that is not in the graph")
+        if src is None or dst is None:
+            continue
+        out_spec = src.outputs.get(edge.src_port)
+        in_spec = dst.inputs.get(edge.dst_port)
+        if out_spec is None:
+            problem(edge.src, f"{src.id} has no output {edge.src_port!r}", edge.src_port)
+            continue
+        if in_spec is None:
+            problem(edge.dst, f"{dst.id} has no input {edge.dst_port!r}", edge.dst_port)
+            continue
+        if (edge.dst, edge.dst_port) in fed:
+            problem(edge.dst, "two edges feed the same input", edge.dst_port)
+            continue
+        fed.add((edge.dst, edge.dst_port))
+        wires.append((edge, out_spec, in_spec))
+    return wires
+
+
+def _line_up(order: list[Step], problem: Callable[..., None], notes: list[str]) -> None:
+    """Each collection's origin, in the plan's order: the step that made it, which the outputs of a
+    step run for each of it keep. The inputs a step is fed item by item must share one, and a step
+    run for each cannot give a collection of its own (a for each inside another)."""
+    origin: dict[str, str] = {}  # a step that gives collections -> the step that made them
+    for step in order:
+        if not step.each:
+            if any(spec.many for spec in step.manifest.outputs.values()):
+                origin[step.id] = step.id
+            continue
+        found: dict[str, str] = {}  # origin -> the first input fed item by item from it
+        for port in step.each:
+            src = step.inputs[port][0]
+            found.setdefault(origin.get(src, src), port)
+        first, *others = found.items()
+        origin[step.id] = first[0]
+        src, src_port = step.inputs[first[1]]
+        if not step.inserted:
+            notes.append(f"{step.id} runs once for each item of {src}.{src_port}.")
+        for made_by, port in others:
+            problem(
+                step.id,
+                f"is fed collections item by item from {first[0]} and from {made_by}, which need not "
+                "line up: only collections one step made do",
+                port,
+            )
+        for name, spec in step.manifest.outputs.items():
+            if spec.many:
+                problem(
+                    step.id,
+                    f"runs for each item of {src}.{src_port} and gives a collection of its own: a for "
+                    "each inside another is not supported",
+                    name,
+                )
 
 
 def _reaches(graph: Graph, start: str, backwards: bool = False) -> set[str]:
@@ -369,13 +485,16 @@ def fits(graph: Graph, port: str, registry: Registry) -> dict[str, Any]:
     """What `port` (`step.port`, an output or an input of a node in the graph) can connect to: each
     opposite port of the graph's other nodes (`graph`) and of every installed node a person could
     add (`add`), each with how, by `connect`. An input already fed is `no` (taken), and an edge
-    that would close a cycle `no` (cycle), as `plan()` would refuse them."""
+    that would close a cycle `no` (cycle), as `plan()` would refuse them. An output of a graph's
+    step run for each is a collection, as `plan()` reads it, so an edge from it may be `each`."""
     key, _, name = port.partition(".")
     gnode = graph.nodes.get(key)
     manifest = registry.nodes.get(gnode.node) if gnode is not None else None
     if manifest is None or (name not in manifest.outputs and name not in manifest.inputs):
         raise GraphError([{"node": key, "port": name, "message": f"{port} is no port of an installed node"}])
     converters = registry.converters()
+    installed = {k: m for k, g in graph.nodes.items() if (m := registry.nodes.get(g.node)) is not None}
+    collections = _Collections(_wires(graph, installed))
     fed = {(e.dst, e.dst_port): f"{e.src}.{e.src_port}" for e in graph.edges}
     downstream = _reaches(graph, key)  # an edge into `key` from any of these closes a cycle
     upstream = _reaches(graph, key, backwards=True)  # and one out of `key` into any of these
@@ -384,10 +503,14 @@ def fits(graph: Graph, port: str, registry: Registry) -> dict[str, Any]:
     def answer(node: Manifest, other: str, side: str, step: str | None) -> dict[str, Any]:
         if side == "input":  # `port` is the output, `other` an input
             taken = fed.get((step, other)) if step is not None else None
-            out_spec, in_spec, cycle = manifest.outputs[name], node.inputs[other], step in upstream
+            out_spec, in_spec = collections.output(key, manifest.outputs[name]), node.inputs[other]
+            cycle = step in upstream
         else:
             taken = fed.get((key, name))
-            out_spec, in_spec, cycle = node.outputs[other], manifest.inputs[name], step in downstream
+            out_spec, in_spec = node.outputs[other], manifest.inputs[name]
+            if step is not None:
+                out_spec = collections.output(step, out_spec)
+            cycle = step in downstream
         if taken is not None:
             how = Connection("no", reason="taken", message=f"the input is fed by {taken}")
         elif cycle:

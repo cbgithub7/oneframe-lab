@@ -5,7 +5,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 1. **A collection port.** `PortSpec.many`, read from a trailing `*` in either form and
   written back by `text()`; `mismatch` compares the item types; the manifest refuses `*` on a type
   carried as a folder; the page's `typeName` keeps it. `test_a_collection_port_is_read_and_written`.
-- [ ] 2. **The plan and what fits.** `connect()` says `each`; `plan()` marks a step run for each,
+- [x] 2. **The plan and what fits.** `connect()` says `each`; `plan()` marks a step run for each,
   gives each collection its origin, refuses what does not line up, and says so in its notes;
   `fits()` answers `each` by the same rule; `connection` gains `each` (`contracts/protocol.json`,
   `app/protocol.d.ts`). AC4, AC7.

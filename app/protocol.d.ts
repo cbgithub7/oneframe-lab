@@ -141,6 +141,8 @@ export declare namespace Wire {
     side: string;
     how: string;
     converter?: string;
+    /** true: the input's step runs once for each item of the output's collection (spec 021) */
+    each?: boolean;
     reason?: string;
     message?: string;
   }
@@ -944,6 +946,8 @@ export declare namespace Page {
     side: string;
     how: string;
     converter?: string;
+    /** true: the input's step runs once for each item of the output's collection (spec 021) */
+    each?: boolean;
     reason?: string;
     message?: string;
   }
