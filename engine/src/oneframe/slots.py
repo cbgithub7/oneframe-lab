@@ -72,14 +72,16 @@ class Slots:
             line.append(place)
         if ahead is None:
             return False
-        queued(ahead)  # said outside the lock: an event is written to the app
-        with self._changed:
-            while line[0] is not place:
-                if stop.is_set():
-                    line.remove(place)
-                    self._changed.notify_all()
-                    raise Stopped()
-                self._changed.wait(POLL_S)
+        try:
+            queued(ahead)  # said outside the lock: an event is written to the app
+            with self._changed:
+                while line[0] is not place:
+                    if stop.is_set():
+                        raise Stopped()
+                    self._changed.wait(POLL_S)
+        except BaseException:  # stopped, or the event could not be said: the line goes on without it
+            self.give(slot, place)
+            raise
         return True
 
     def give(self, slot: Slot, place: Place) -> None:

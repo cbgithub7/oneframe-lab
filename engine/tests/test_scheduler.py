@@ -23,6 +23,7 @@ from conftest import (
 from fixtures import fit_node, machines
 
 from oneframe.cache import Cache
+from oneframe.errors import Stopped
 from oneframe.executors import Executor, OneProcessPerRun
 from oneframe.graph import Graph, plan
 from oneframe.inputs import import_file
@@ -35,6 +36,7 @@ from oneframe.node import Emit
 from oneframe.node.job import Done, Job
 from oneframe.runtimes.manager import NoRuntimes
 from oneframe.scheduler import Scheduler, _meta
+from oneframe.slots import Place, Slot, Slots
 
 
 def _graph(nodes: Mapping[str, Mapping[str, object]], edges: list[tuple[str, str]]) -> Graph:
@@ -1421,3 +1423,60 @@ def test_the_same_work_in_two_runs_is_done_once(
     (cached,) = _said(events, "b", "node.cached")
     assert cached["key"] == _said(events, "a", "node.done")[0]["key"]
     assert not _said(events, "b", "node.start")
+
+
+def test_a_place_whose_wait_ends_leaves_the_line() -> None:
+    """A place that stops while it waits, or whose node.queued cannot be said, leaves the slot's
+    line, so the slot goes to the next place and never to one that is gone (spec 023)."""
+    slots, slot = Slots(), Slot("cpu")
+    first, gone, broken, last = (Place(run, "n", {}) for run in ("first", "gone", "broken", "last"))
+    never = threading.Event()
+    assert slots.take(slot, first, never, lambda _ahead: None) is False
+
+    stopped = threading.Event()
+    stopped.set()
+    with pytest.raises(Stopped):
+        slots.take(slot, gone, stopped, lambda _ahead: None)
+
+    def cannot_say(_ahead: Place) -> None:
+        raise OSError("the app's pipe is gone")
+
+    with pytest.raises(OSError):
+        slots.take(slot, broken, never, cannot_say)
+    behind: list[Place] = []
+    taken = threading.Thread(target=slots.take, args=(slot, last, never, behind.append))
+    taken.start()
+    wait_until(lambda: behind, "the last place to say what it waits behind")
+    assert behind == [first], "neither the stopped place nor the broken one is in the line"
+    slots.give(slot, first)
+    taken.join(10)
+    assert not taken.is_alive(), "the slot went to the last place"
+    slots.give(slot, last)
+
+
+def test_a_step_that_tries_the_processor_first_goes_beside_a_card_run(
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    gates: Gates,
+    stop_after: Callable[[float], threading.Event],
+) -> None:
+    """A step whose node lists the processor before the card takes the processor's slot, as its fit
+    would choose it, so it does not wait for a run that holds the card (spec 023)."""
+    make_node(hold_manifest("test.card_first", "runtime", ("cuda", "cpu")), HOLD_CODE)
+    make_node(hold_manifest("test.cpu_first", "runtime", ("cpu", "cuda")), HOLD_CODE)
+    card = machines.machine([machines.CARD_24GB], 50000, 68719)
+    scheduler = scheduler_for(machine=_with(card), runtimes=HostRuntimes(target=Target(card=0, lock="l")))
+    start = _runs_at_once(scheduler, events, stop_after(60))
+    threads = [start("card", _one_node("test.card_first", gate=gates("card")))]
+    wait_until(lambda: _said(events, "card", "stage"), lambda: f"the card run to hold: {events.kinds()}", 30)
+    threads.append(start("cpu", _one_node("test.cpu_first", gate=gates("cpu"))))
+    wait_until(
+        lambda: _said(events, "cpu", "stage"), lambda: f"the processor run to hold: {events.kinds()}", 30
+    )
+    assert not events.of("node.queued")
+    assert _said(events, "cpu", "node.fit")[0]["device"] == "cpu"
+    gates.open("card")
+    gates.open("cpu")
+    for thread in threads:
+        thread.join(30)

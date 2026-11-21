@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import threading
 from collections import Counter
 from collections.abc import Iterator, Mapping
@@ -29,6 +30,7 @@ from oneframe.manifest import Manifest
 from oneframe.memory.fit import Checkpoints
 from oneframe.models.store import Presence, Store
 
+LOGGER = logging.getLogger(__name__)
 READING = "reading.json"
 READING_FORMAT = 1
 # The reason a node gives when several of its files are missing for different reasons: the one a
@@ -182,20 +184,32 @@ def reading(folder: Path | None, shas: list[str]) -> Iterator[None]:
     with _LISTING:
         listed = _LISTED.setdefault(path, Counter())
         listed.update(read)
-        write_json(path, {"format": READING_FORMAT, "sha256": sorted(listed)})
+        try:
+            write_json(path, {"format": READING_FORMAT, "sha256": sorted(listed)})
+        except BaseException:  # a run that cannot list what it reads does not start, nor stays listed
+            _unlisted(path, listed, read)
+            raise
     try:
         yield
     finally:
         with _LISTING:
-            listed.subtract(read)
-            for sha in [sha for sha, runs in listed.items() if runs <= 0]:
-                del listed[sha]
-            if listed:
-                write_json(path, {"format": READING_FORMAT, "sha256": sorted(listed)})
-            else:
-                del _LISTED[path]
-                with contextlib.suppress(OSError):
-                    path.unlink()
+            _unlisted(path, listed, read)
+
+
+def _unlisted(path: Path, listed: Counter[str], read: set[str]) -> None:
+    """One run's files taken off the process's list, under `_LISTING`: the list written again, or
+    gone with the last run. A list that cannot be written again is logged, never the run's failure."""
+    listed.subtract(read)
+    for sha in [sha for sha, runs in listed.items() if runs <= 0]:
+        del listed[sha]
+    try:
+        if listed:
+            write_json(path, {"format": READING_FORMAT, "sha256": sorted(listed)})
+            return
+        del _LISTED[path]
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        LOGGER.warning("could not write the list of files this process reads, %s: %s", path, exc)
 
 
 def in_use(layout: Layout) -> set[str]:

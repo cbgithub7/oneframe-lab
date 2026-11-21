@@ -10,7 +10,7 @@ import {
   addNode, connect, emptyGraph, feeds, forEngine, isShown, nameFile, openGraph, portsOf, removeEdge,
   removeNode, resetParam, setParam, showItem, showPane, splitRef, typeName,
 } from "./graph-model.js";
-import { going, held, idle, jobView, refused, runView, started, starting } from "./run-view.js";
+import { cleared, going, held, idle, jobView, refused, runView, started, starting } from "./run-view.js";
 import { showValue, valueUrl } from "./viewer.js";
 
 /** @typedef {import("../protocol.js").Page.Manifest} Manifest */
@@ -161,7 +161,7 @@ async function openNamed(name) {
   if (!got) return;
   state.name = got.name;
   ui.name.value = got.name;
-  state.run = idle();
+  state.run = cleared(state.run);
   state.upto = undefined;
   state.waits = {};
   state.problems = {};
@@ -174,7 +174,7 @@ async function openNamed(name) {
 function newGraph() {
   state.name = "untitled";
   ui.name.value = state.name;
-  state.run = idle();
+  state.run = cleared(state.run);
   state.upto = undefined;
   state.waits = {};
   state.problems = {};

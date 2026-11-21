@@ -852,12 +852,18 @@ class Scheduler:
 
 
 def _slot_for(manifest: Manifest, context: _Context) -> Slot:
-    """The slot a step takes before its fit: the engine's for a node that runs there, else its
-    card's when it can use a card on this machine, else the processor's."""
+    """The slot a step takes before its fit: the engine's for a node that runs there (it never
+    sees a card: `_context`), else that of the first of its devices this machine has, in the
+    manifest's order, as the fit tries them: its card's when it can use a card here, else the
+    processor's."""
     if manifest.run.where == "engine":
         return Slot(ENGINE)
-    if context.cards and context.target.card is not None:
-        return Slot(CUDA, context.target.card)
+    card = context.target.card if context.cards else None
+    for device in manifest.devices:
+        if device == CUDA and card is not None:
+            return Slot(CUDA, card)
+        if device == CPU:
+            return Slot(CPU)
     return Slot(CPU)
 
 

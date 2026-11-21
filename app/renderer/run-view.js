@@ -75,6 +75,15 @@ export function idle() {
 }
 
 /**
+ * Another graph opened: no card is kept, but the runs still going are followed to their end, so
+ * Stop still stops them.
+ * @param {RunState} state @returns {RunState}
+ */
+export function cleared(state) {
+  return { ...state, cards: {}, owner: {} };
+}
+
+/**
  * Whether the card's step is held by a run still going.
  * @param {RunState} state @param {string} step
  */
