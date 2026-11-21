@@ -45,6 +45,7 @@ class Param:
     # "output" when changing it changes the result (part of the cache key); "speed" when it only
     # changes how the result is reached (batch size, offloading) and the output stays the same.
     affects: str = "output"
+    of: str | None = None  # a json param's port type, whose shape its value is held to (spec 020)
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,10 @@ def check_param(key: str, param: Param, value: Any) -> str | None:
     if kind == "file" and isinstance(value, str) and not is_sha256(value):
         # Never looked up: a page could otherwise ask whether any path exists (spec 016).
         return f"{key} should name an imported file by its id, not a path"
+    if kind == "json":
+        if param.of is None:
+            return f"{key} names no port type to hold its value to"
+        return "; ".join(ports.check_shape(param.of, value, key)) or None
     return None
 
 
@@ -140,6 +145,9 @@ def _param(name: str, row: Any, problems: list[str], words: Vocabulary | None = 
     affects = row.get("affects", "output")
     if affects not in ("output", "speed"):
         problems.append(f"{where}.affects must be output or speed")
+    of = _json_type(row, kind, where, problems)
+    if kind == "json" and affects == "speed":
+        problems.append(f"{where} is json, which always affects the output")
     listed = row.get("choices")
     if listed is not None and not isinstance(listed, list):
         problems.append(f"{where}.choices should be a list")
@@ -156,7 +164,7 @@ def _param(name: str, row: Any, problems: list[str], words: Vocabulary | None = 
             problems.append(f"{where}.default should be a number")
         elif (lo is not None and default < lo) or (hi is not None and default > hi):
             problems.append(f"{where}.default {default} is outside [{lo}, {hi}]")
-    return Param(
+    param = Param(
         name=name,
         type=kind,
         default=default,
@@ -166,7 +174,37 @@ def _param(name: str, row: Any, problems: list[str], words: Vocabulary | None = 
         maximum=hi,
         choices=choices,
         affects=affects,
+        of=of,
     )
+    if kind == "json" and of is not None and default is not None:
+        why = check_param(f"{where}.default", param, default)
+        if why:
+            problems.append(why)
+    return param
+
+
+def _json_type(row: dict[str, Any], kind: str, where: str, problems: list[str]) -> str | None:
+    """A json param's `of`: a port type carried as JSON, with a shape (spec 020); None, with the
+    problem, otherwise. Only a json param has one."""
+    of = row.get("of")
+    if kind != "json":
+        if of is not None:
+            problems.append(f"{where}.of is only for a json param")
+        return None
+    known = ports.types()
+    if not isinstance(of, str) or not of:
+        problems.append(f"{where} is json and needs `of`, the port type its value is held to")
+        return None
+    if of not in known:
+        problems.append(f"{where}.of {of!r} is no port type")
+        return None
+    if known[of].carrier != "json":
+        problems.append(f"{where}.of {of!r} is not carried as JSON")
+        return None
+    if known[of].shape is None:
+        problems.append(f"{where}.of {of!r} has no shape to hold a value to")
+        return None
+    return of
 
 
 def _bound(row: dict[str, Any], key: str, where: str, problems: list[str]) -> float | None:

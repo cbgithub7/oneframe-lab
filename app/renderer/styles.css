@@ -20,12 +20,13 @@
 body { margin: 0; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
 h1, h2, h3, h4 { margin: 0; }
 
-button, select, input { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; }
+button, select, input, textarea { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; }
 button { padding: 3px 10px; cursor: pointer; }
 button:hover:not(:disabled) { border-color: var(--quiet); }
 button:disabled, select:disabled, input:disabled { opacity: 0.6; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 select, input[type="text"], input[type="number"] { padding: 3px 6px; }
+textarea { padding: 3px 6px; font-family: ui-monospace, monospace; max-width: 100%; }
 input[type="number"] { width: 8em; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 

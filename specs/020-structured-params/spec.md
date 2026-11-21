@@ -141,6 +141,10 @@ it, and the PR says so until the job is green. No hardware step.
   what is made from it takes its trust from the photo and the model.
 - A text area for every `json` param, before any editor of its own: it is the keyboard's way in,
   which the page's rule asks of every control.
+- The page's control lands with the param type, not after it: 019's test holds the page to a
+  control for every param type the contract names.
+- `check_param` names a json value's problems by the param, as `clicks: points[1].y should be
+  number, not string`: records.py's wording, one checker for the protocol and the shapes.
 
 ## Out of scope
 

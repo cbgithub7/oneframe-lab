@@ -80,6 +80,21 @@ def test_a_types_contract_is_in_the_key_of_the_nodes_that_use_it(tmp_path: Path)
     assert key(other, copy) == key(other, None)
 
 
+def test_a_json_param_is_in_the_key_by_its_content(tmp_path: Path) -> None:
+    """Two values that differ only in the order of their keys are one value (spec 020, AC5)."""
+    folder = tmp_path / "clicked"
+    folder.mkdir()
+    (folder / "node.py").write_text("def run(ctx):\n    pass\n", encoding="utf-8")
+    manifest = parse({**NODE, "params": {"clicks": {"type": "json", "of": "Clicks"}}}, folder)
+    cache = Cache(tmp_path / "objects", tmp_path / "tmp")
+    point = {"x": 1, "y": 2, "positive": True}
+    one = {"width": 8, "height": 6, "points": [point], "boxes": []}
+    reordered = {"boxes": [], "points": [{"positive": True, "y": 2, "x": 1}], "height": 6, "width": 8}
+    moved = {**one, "points": [{**point, "x": 3}]}
+    assert cache.key(manifest, {"clicks": one}, {}) == cache.key(manifest, {"clicks": reordered}, {})
+    assert cache.key(manifest, {"clicks": one}, {}) != cache.key(manifest, {"clicks": moved}, {})
+
+
 def test_changing_any_file_in_the_nodes_folder_changes_its_key(tmp_path: Path) -> None:
     manifest = _node(tmp_path)
     cache = Cache(tmp_path / "cache" / "objects", tmp_path / "cache" / "tmp")
