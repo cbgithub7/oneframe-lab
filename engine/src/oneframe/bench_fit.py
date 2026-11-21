@@ -270,7 +270,7 @@ def bench_in_graph(
     once, and the step itself, at every group, never from the cache."""
     if key not in graph.nodes:
         raise BenchGraphError(name or "the graph", [f"no step called {key!r}"])
-    planned = plan(graph, scheduler.registry, scheduler.imports)
+    planned = plan(part_of(graph, upstream_of(graph, key) | {key}), scheduler.registry, scheduler.imports)
     if any(step.id == key and step.each for step in planned.steps):
         # One measure a group: a step run once an item would give as many, at different sizes.
         raise BenchGraphError(

@@ -742,10 +742,13 @@ function onEvent(event) {
   // at most once a frame.
   if (!redrawing) {
     redrawing = true;
-    requestAnimationFrame(() => {
+    const draw = () => {
       redrawing = false;
       renderRun();
-    });
+    };
+    // A hidden window gets no frames: it is drawn on a timer instead, so its live regions speak.
+    if (document.hidden) setTimeout(draw, 16);
+    else requestAnimationFrame(draw);
   }
 }
 

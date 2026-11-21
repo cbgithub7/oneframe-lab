@@ -160,8 +160,9 @@ No hardware step: the first real for each is step 4's, with its own report.
 - `*` is refused on a type carried as a folder, not on `ViewSet` by name: no engine code names a
   type, and a folder is what cannot be taken apart.
 - An item a node made counts, in the key of what it feeds, by its file's content, type, facets,
-  trust and meta but its sources, not by its own key: a producer run again (a fourth mask) gives
-  its first items new keys, and only so does R5 hold (AC3). A single value is keyed as before.
+  trust and meta (a source naming the item itself written `itself`), not by its own key: a producer
+  run again (a fourth mask) gives its first items new keys, and only so does R5 hold (AC3). A
+  single value is keyed as before.
 - `RunResult` keeps a step's single values in `outputs` and its collections in `collections`,
   so the code and tests that read a single value keep their types.
 

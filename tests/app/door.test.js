@@ -201,7 +201,7 @@ function testEngine() {
     "        ctx.check_stop()\n        time.sleep(0.05)\n");
   writeNode(path.join(nodes, "test.items"), { id: "test.items", version: "1", title: "I", category: "evaluate",
     outputs: { texts: "Text*" } },
-  "def run(ctx):\n    for i in range(2):\n        p = ctx.path(f't{i}.json')\n        p.write_text(str(i))\n" +
+  "def run(ctx):\n    for i in range(2):\n        p = ctx.path(f't{i}.json')\n        p.write_text(str(i), encoding='utf-8')\n" +
     "        ctx.output_item('texts', p)\n");
   mkdirSync(path.join(nodes, "broken"));
   writeFileSync(path.join(nodes, "broken", "node.json"), "{ not json");

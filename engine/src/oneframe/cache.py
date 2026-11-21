@@ -15,8 +15,8 @@ start, and a changed node or runtime is never served a result from before the ch
 A collection (spec 021) is a list of values, kept as a list of rows in its entry's
 `outputs.json`. An item a node made is keyed `<entry>:<port>:<index>`, so it is read by its own
 key; in the key of what it feeds it counts by what it is (its file's content, type, facets, trust
-and meta but its sources), so a node run again that gives the same items and one more leaves the
-work on the first ones in the cache.
+and meta, its sources but itself), so a node run again that gives the same items and one more
+leaves the work on the first ones in the cache.
 
 Writes are atomic: a run writes into a private folder and renames it into place, so a crash or a
 Stop never leaves half an output that a later run would trust. The entries live in the layout's
@@ -113,7 +113,12 @@ class Cache:
             return [self._input(item) for item in held]
         if not _ITEM.search(held.key):
             return held.key
-        meta = {k: v for k, v in held.meta.items() if k != "sources"}
+        meta = dict(held.meta)
+        if isinstance(meta.get("sources"), list):  # a source's own items name themselves: by content
+            meta["sources"] = [
+                "itself" if isinstance(row, dict) and row.get("id") == held.key else row
+                for row in meta["sources"]
+            ]
         return {
             "sha256": self._file_key(str(held.path)),
             "type": held.type,

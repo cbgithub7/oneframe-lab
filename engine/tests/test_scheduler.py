@@ -13,7 +13,7 @@ from fixtures import fit_node, machines
 
 from oneframe.cache import Cache
 from oneframe.executors import Executor, OneProcessPerRun
-from oneframe.graph import Graph
+from oneframe.graph import Graph, plan
 from oneframe.inputs import import_file
 from oneframe.layout import Layout
 from oneframe.manifest import Manifest
@@ -23,7 +23,7 @@ from oneframe.memory.settings import Settings
 from oneframe.node import Emit
 from oneframe.node.job import Done, Job
 from oneframe.runtimes.manager import NoRuntimes
-from oneframe.scheduler import Scheduler
+from oneframe.scheduler import Scheduler, _meta
 
 
 def _graph(nodes: Mapping[str, Mapping[str, object]], edges: list[tuple[str, str]]) -> Graph:
@@ -1057,6 +1057,9 @@ def test_a_node_gives_and_takes_a_collection(
     assert done["outputs"]["masks"]["type"] == "Mask"
     assert [item["key"] for item in done["outputs"]["masks"]["items"]] == [v.key for v in masks]
     assert events.of("run.done")[0]["outputs"]["m"]["masks"]["items"][2]["facets"]["marks"] == "sky"
+    # Taken whole, a collection gives the fit one factor, `<input>.count` (spec 021).
+    [take] = [step for step in plan(graph, scheduler_for().registry).steps if step.id == "t"]
+    assert _meta(take, {"masks": masks}) == {"masks": {"count": 3}}
     events.clear()  # from the cache, the collection is the same, in the same order
     again = scheduler_for().run(graph, events.append)
     assert events.kinds() == ["run.start", "node.cached", "node.cached", "run.done"]

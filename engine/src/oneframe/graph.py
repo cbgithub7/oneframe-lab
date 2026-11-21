@@ -336,6 +336,9 @@ def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
     each: dict[str, list[str]] = {}
     for edge, out_given, in_spec in wires:
         dst = steps[edge.dst]
+        if edge.dst_port in dst.inputs:
+            problem(edge.dst, "two edges feed the same input", edge.dst_port)
+            continue
         out_spec = collections.output(edge.src, out_given)
         found = connect(out_spec, in_spec, converters)
         if found.each:
@@ -401,10 +404,9 @@ def _quiet(*_args: Any) -> None:
 
 
 def _wires(graph: Graph, manifests: dict[str, Manifest], problem: Callable[..., None] = _quiet) -> list[Wire]:
-    """The graph's edges whose two ends exist (`manifests`: each step's, by its key) and whose
-    input no other edge feeds; every other edge is a problem."""
+    """The graph's edges whose two ends exist (`manifests`: each step's, by its key); every other
+    edge is a problem. Two edges into one input are the plan's to refuse, once one is accepted."""
     wires: list[Wire] = []
-    fed: set[tuple[str, str]] = set()
     for edge in graph.edges:
         src, dst = manifests.get(edge.src), manifests.get(edge.dst)
         if edge.src not in graph.nodes:
@@ -421,10 +423,6 @@ def _wires(graph: Graph, manifests: dict[str, Manifest], problem: Callable[..., 
         if in_spec is None:
             problem(edge.dst, f"{dst.id} has no input {edge.dst_port!r}", edge.dst_port)
             continue
-        if (edge.dst, edge.dst_port) in fed:
-            problem(edge.dst, "two edges feed the same input", edge.dst_port)
-            continue
-        fed.add((edge.dst, edge.dst_port))
         wires.append((edge, out_spec, in_spec))
     return wires
 
@@ -434,6 +432,7 @@ def _line_up(order: list[Step], problem: Callable[..., None], notes: list[str]) 
     step run for each of it keep. The inputs a step is fed item by item must share one, and a step
     run for each cannot give a collection of its own (a for each inside another)."""
     origin: dict[str, str] = {}  # a step that gives collections -> the step that made them
+    by_id = {step.id: step for step in order}
     for step in order:
         if not step.each:
             if any(spec.many for spec in step.manifest.outputs.values()):
@@ -446,6 +445,8 @@ def _line_up(order: list[Step], problem: Callable[..., None], notes: list[str]) 
         first, *others = found.items()
         origin[step.id] = first[0]
         src, src_port = step.inputs[first[1]]
+        while (before := by_id.get(src)) is not None and before.inserted:  # past a converter
+            src, src_port = next(iter(before.inputs.values()))
         if not step.inserted:
             notes.append(f"{step.id} runs once for each item of {src}.{src_port}.")
         for made_by, port in others:
