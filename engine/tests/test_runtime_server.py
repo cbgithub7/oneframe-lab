@@ -15,12 +15,15 @@ from typing import Any
 
 import pytest
 from conftest import (
+    HOLD_CODE,
     NO_GPU,
     Events,
+    Gates,
     MakeEngine,
     MakeNode,
     StartEngine,
     add_source,
+    hold_manifest,
     upstream_archive,
     wait_until,
 )
@@ -674,3 +677,48 @@ def test_nodes_fit_refuses_what_a_graph_would_refuse(
         }
     )
     assert given is not None and "result" in given, given
+
+
+def test_a_runtime_any_run_uses_is_not_removed(
+    tmp_path: Path, tiny: Path, make_node: MakeNode, node_root: Path, gates: Gates, make_engine: MakeEngine
+) -> None:
+    """Spec 023, AC6: with two runs going, removing the runtime only the second uses is refused
+    in_use, naming that run, and is allowed once it has ended."""
+    make_node(hold_manifest("test.hold"), HOLD_CODE)  # the first run's, in the engine
+    in_tiny = hold_manifest("test.hold_in_tiny", where="runtime")
+    make_node({**in_tiny, "run": {**in_tiny["run"], "runtime": "tiny"}}, HOLD_CODE)
+    events = Events()
+    engine = make_engine(tmp_path / "data", [node_root], events.append, [tiny.parent], profile=lambda: NO_GPU)
+    engine.runtimes.python_for = lambda _r: Path(sys.executable)  # type: ignore[method-assign]
+
+    def started(node: str, gate: str) -> str:
+        graph = {"version": 1, "nodes": {"n": {"node": node, "params": {"gate": gates(gate)}}}, "edges": []}
+        run = engine.handle({"id": 1, "method": "graph.run", "params": {"graph": graph}})
+        assert run is not None and "result" in run, run
+        held = lambda: [e for e in events.of("stage") if e["run"] == run["result"]["run"]]  # noqa: E731
+        wait_until(held, lambda: f"run of {node} to hold: {events.kinds()}", WAIT_S)
+        return run["result"]["run"]
+
+    first = started("test.hold", "first")
+    second = started("test.hold_in_tiny", "second")
+    removing = engine.handle({"id": 2, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
+    assert removing is not None and (removing["error"]["kind"], removing["error"]["reason"]) == (
+        "runtime",
+        "in_use",
+    )
+    assert removing["error"]["message"] == f"Run {second} is using tiny; stop it before removing the runtime."
+    gates.open("second")
+    wait_until(
+        lambda: [e for e in events.of("run.done") if e["run"] == second], "the second run to end", WAIT_S
+    )
+    removed = engine.handle({"id": 3, "method": "runtimes.remove", "params": {"runtime": "tiny"}})
+    assert removed is not None and "result" in removed, removed
+    assert not [
+        e
+        for e in events
+        if e.get("run") == first and e["event"].startswith("run.") and e["event"] != "run.start"
+    ]
+    gates.open("first")
+    wait_until(
+        lambda: [e for e in events.of("run.done") if e["run"] == first], "the first run to end", WAIT_S
+    )

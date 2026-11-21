@@ -13,7 +13,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   path. AC5.
 - [x] 3. **What a process reads.** `models/runs.py`'s `reading()` lists the union of what this
   process's runs read, written under a lock as each starts and ends. AC7.
-- [ ] 4. **The server.** The runs by id, each with its stop and the runtimes it uses; `MAX_RUNS`;
+- [x] 4. **The server.** The runs by id, each with its stop and the runtimes it uses; `MAX_RUNS`;
   `run.stop` stops one run or every run, and takes queued runs off only when it names none, its
   answer listing the runs it stopped; the guards and `shutdown` read every run; `graph`/`busy`
   reads "too many runs are going". AC1, AC4, AC6, `test_runs_beyond_the_bound_are_refused`,

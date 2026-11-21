@@ -755,14 +755,15 @@ export declare namespace Wire {
         carrier: string | null;
       };
     };
-    /** Stop the running graph (this one, when it names a run). */
+    /** Stop the run it names, or, naming none, every run going and every run still queued (spec 023). */
     "run.stop": {
       params: {
         run?: string;
       };
       answer: {
         stopping: boolean;
-        run?: string;
+        /** the runs it stops, when it stops any */
+        runs?: Array<string>;
       };
     };
     /** Every runtime, its state and plan on this machine, the problems of those that cannot be read, and the machine. Queued, so a stop may answer it {stopped: true}. */
@@ -1635,14 +1636,15 @@ export declare namespace Page {
         carrier: string | null;
       };
     };
-    /** Stop the running graph (this one, when it names a run). */
+    /** Stop the run it names, or, naming none, every run going and every run still queued (spec 023). */
     "run.stop": {
       params: {
         run?: string;
       };
       answer: {
         stopping: boolean;
-        run?: string;
+        /** the runs it stops, when it stops any */
+        runs?: Array<string>;
       };
     };
     /** Every runtime, its state and plan on this machine, the problems of those that cannot be read, and the machine. Queued, so a stop may answer it {stopped: true}. */

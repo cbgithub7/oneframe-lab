@@ -323,7 +323,7 @@ from `app/main/failures.js`, held to this table too, and the page receives every
 | `store` | `node_root_missing` | no | A folder of nodes is missing, so what its nodes pin is unknown. |
 | `store` | `os_refused` | yes | The system refused to rename or delete a file; it and its record were kept. |
 | `graph` |  | no | The graph cannot run; `problems` says why. |
-| `graph` | `busy` | yes | Another run is going; runs go one at a time. |
+| `graph` | `busy` | yes | Too many runs are going; stop one, or wait for one to end. |
 | `graph` | `newer_format` | no | A newer version of the app saved it; it is left as it is. |
 | `root` |  | no | The engine cannot use this data root; nothing under it was changed. |
 | `root` | `newer_layout` | no | A newer version of the app laid it out. |

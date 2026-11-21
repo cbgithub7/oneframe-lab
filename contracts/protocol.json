@@ -781,13 +781,13 @@
       }
     },
     "run.stop": {
-      "doc": "Stop the running graph (this one, when it names a run).",
+      "doc": "Stop the run it names, or, naming none, every run going and every run still queued (spec 023).",
       "by": "engine",
       "params": { "fields": { "run": { "type": "string", "optional": true } } },
       "answer": {
         "fields": {
           "stopping": { "type": "boolean" },
-          "run": { "type": "string", "optional": true }
+          "runs": { "type": "array", "of": "string", "optional": true, "doc": "the runs it stops, when it stops any" }
         }
       }
     },

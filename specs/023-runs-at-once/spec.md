@@ -171,3 +171,5 @@ ending done, with their peaks and the free system memory before each, in
   with nothing to wait for, nothing took memory there since the fit (and nvidia-smi is read once).
 - A step that waits for the same work another run is making says `node.queued` without a device,
   behind that run's step, so its card says what it waits for.
+- `run.stop`'s answer lists `runs` only when it stops any, so `{"stopping": false}` is as before.
+- A runtime several runs use is refused naming each of them.
