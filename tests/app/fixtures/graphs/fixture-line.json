@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "title": "Test: three steps in a line",
+  "nodes": {
+    "photo": { "node": "source.image", "params": {}, "label": "Photo" },
+    "hand": { "node": "repair.fixture_wait", "params": { "seconds": 0 }, "label": "Hand on" },
+    "relief": { "node": "depth.fixture_relief", "params": {}, "label": "Relief" }
+  },
+  "edges": [
+    { "from": "photo.image", "to": "hand.image" },
+    { "from": "hand.image", "to": "relief.image" }
+  ]
+}

@@ -15,7 +15,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 4. **The page.** "Run to here: <title>" on every card, asking `graph.run` with that step;
   `run.start` resets only the cards it names, and a card kept from an earlier run says so.
   "a run to a card resets only its cards" (`tests/app/page.test.js`).
-- [ ] 5. **The e2e test.** A fixture graph of three steps in a line, and "Run to here runs up to a
+- [x] 5. **The e2e test.** A fixture graph of three steps in a line, and "Run to here runs up to a
   card". AC5.
 - [ ] 6. **Docs and the end.** architecture.md (Events: `upto`), nodes.md's bench section, the
   handoff; the full checks; `/code-review`; the spec marked done in the PR.
