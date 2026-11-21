@@ -368,6 +368,32 @@ def test_a_value_names_the_sources_it_descends_from(
     assert result.outputs["both"]["text"].meta["sources"] == both
 
 
+def test_a_json_value_is_held_to_its_shape_where_it_is_made(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """A node whose Camera does not fit Camera's shape breaks its contract, naming the field (spec
+    020, AC3)."""
+    make_node(
+        {
+            "id": "test.camera",
+            "version": "1",
+            "title": "Camera",
+            "category": "evaluate",
+            "outputs": {"camera": "Camera[model=pinhole, source=estimated]"},
+        },
+        "import json\n"
+        "def run(ctx):\n"
+        "    p = ctx.path('c.json')\n"
+        "    p.write_text(json.dumps({'fy': 2, 'cx': 2, 'cy': 1, 'width': 4, 'height': 2}))\n"
+        "    ctx.output('camera', p)\n",
+    )
+    result = scheduler_for().run(_graph({"c": {"node": "test.camera"}}, []), events.append)
+    assert result.status == "failed"
+    [failed] = events.of("node.failed")
+    assert failed["kind"] == "contract"
+    assert "test.camera.camera does not fit Camera's shape: camera: no field fx" in failed["message"]
+
+
 def test_stop_ends_the_run_between_and_inside_nodes(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:

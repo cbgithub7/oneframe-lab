@@ -11,7 +11,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   `app/protocol.d.ts`). AC4.
 - [x] 3. **The `json` param.** `json` in `contracts/vocabulary.json`; `Param.of`; the manifest's
   refusals; `check_param` against the shape; a memory model cannot read or set one. AC1, AC2, AC5.
-- [ ] 4. **What a node made, in its own module.** `oneframe/outputs.py` takes the scheduler's
+- [x] 4. **What a node made, in its own module.** `oneframe/outputs.py` takes the scheduler's
   output check and holds a JSON output to its type's shape; the test node's `Camera` gains its
   size. AC3.
 - [ ] 5. **`source.clicks`.** An engine node that gives the clicks its param holds. AC6.

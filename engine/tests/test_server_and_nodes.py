@@ -179,7 +179,8 @@ def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
         "def run(ctx):\n"
         "    d = np.full((2, 4), 2.0, dtype=np.float32); d[0, 0] = 0\n"
         "    p = ctx.path('d.npz'); np.savez(p, depth=d); ctx.output('depth', p)\n"
-        "    c = ctx.path('c.json'); c.write_text(json.dumps({'fx': 2, 'fy': 2, 'cx': 2, 'cy': 1}))\n"
+        "    c = ctx.path('c.json')\n"
+        "    c.write_text(json.dumps({'fx': 2, 'fy': 2, 'cx': 2, 'cy': 1, 'width': 4, 'height': 2}))\n"
         "    ctx.output('camera', c)\n",
         encoding="utf-8",
     )
