@@ -1,6 +1,6 @@
 # 020: Data a person authors: structured params
 
-Status: approved
+Status: done ([PR #75](https://github.com/cbgithub7/oneframe-lab/pull/75))
 Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The second of five specs for step 3c, graph model 2: [019](../019-contracts/spec.md) (the

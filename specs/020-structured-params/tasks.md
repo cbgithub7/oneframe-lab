@@ -17,5 +17,5 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 5. **`source.clicks`.** An engine node that gives the clicks its param holds. AC6.
 - [x] 6. **The page's `json` control.** A text area, read back as an object. AC7. Landed with task 3:
   019's test holds the page to a control for every param type in the contract.
-- [ ] 7. **Docs and the end.** nodes.md, architecture.md; the full checks; `/code-review`; the spec
+- [x] 7. **Docs and the end.** nodes.md, architecture.md; the full checks; `/code-review`; the spec
   marked done in the PR, whose `models (cpu)` job is AC8.
