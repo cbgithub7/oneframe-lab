@@ -75,11 +75,11 @@ from oneframe.models.store import Store
 from oneframe.node import Emit, Value
 from oneframe.node.devices import CUDA
 from oneframe.node.job import Done, Job
+from oneframe.outputs import check as outputs_check
 from oneframe.registry import Registry
 from oneframe.runtimes.manager import NoRuntimes, RuntimeMissing, RuntimeSide
 
 LOGGER = logging.getLogger(__name__)
-TRUST_ORDER = {"measured": 0, "predicted": 1, "synthetic": 2}
 
 
 def no_machine(_cards: bool) -> dict[str, Any]:
@@ -151,11 +151,6 @@ class RunResult:
     error: dict[str, Any] | None = None  # the first failure, as node.failed (or run.failed) said it
     failed: list[str] = field(default_factory=list)  # the steps that failed, in order
     skipped: list[str] = field(default_factory=list)  # the steps that did not run because of one
-
-
-def _weakest(trusts: list[str | None]) -> str | None:
-    known = [t for t in trusts if t in TRUST_ORDER]
-    return max(known, key=lambda t: TRUST_ORDER[t]) if known else None
 
 
 class Scheduler:
@@ -559,7 +554,7 @@ class Scheduler:
         """Check what the node made, say how it was made, and commit it to the cache with its record."""
         step = state.step
         manifest = step.manifest
-        outputs = self._check_outputs(step, state.inputs, finished.outputs, key)
+        outputs = outputs_check(step.manifest, state.inputs, finished.outputs, key)
         made_with = {
             "device": job.device,
             "precision": job.params.get(PRECISION_PARAM),
@@ -655,41 +650,6 @@ class Scheduler:
         except OSError:
             # Learning is a help, never a reason for a run to fail.
             LOGGER.warning("could not record what %s taught this machine", manifest.id, exc_info=True)
-
-    def _check_outputs(
-        self, step: Step, inputs: dict[str, Value], declared: dict[str, Any], key: str
-    ) -> dict[str, Value]:
-        manifest = step.manifest
-        known = ports.types()
-        inherited = _weakest([v.trust for v in inputs.values()])
-        values: dict[str, Value] = {}
-        for port, spec in manifest.outputs.items():
-            row = declared.get(port)
-            if row is None:
-                raise NodeError("contract", f"{manifest.id} finished without its output {port!r}.")
-            path = Path(row["path"])
-            if not path.exists():
-                raise NodeError(
-                    "contract", f"{manifest.id} declared {port!r} at {path}, which does not exist."
-                )
-            facets = {k: v[0] for k, v in spec.facets.items() if len(v) == 1}
-            for k, v in (row.get("facets") or {}).items():
-                fixed = spec.facets.get(k)
-                if fixed is not None and v not in fixed:
-                    raise NodeError("contract", f"{manifest.id}.{port}: {k}={v} contradicts its manifest.")
-                facets[k] = v
-            ptype = known[spec.type]
-            for k, allowed in ptype.facets.items():
-                if k not in facets:
-                    raise NodeError("contract", f"{manifest.id}.{port} did not say its {k}.")
-                if facets[k] not in allowed:
-                    raise NodeError(
-                        "contract", f"{manifest.id}.{port}: {k}={facets[k]} is not a {spec.type} value."
-                    )
-            values[port] = Value(
-                spec.type, path, facets, row.get("meta"), spec.trust or inherited, key=f"{key}:{port}"
-            )
-        return values
 
 
 def _meta(step: Step, inputs: dict[str, Value]) -> Inputs:

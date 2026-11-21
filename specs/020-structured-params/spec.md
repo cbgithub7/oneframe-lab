@@ -1,6 +1,6 @@
 # 020: Data a person authors: structured params
 
-Status: approved
+Status: done ([PR #75](https://github.com/cbgithub7/oneframe-lab/pull/75))
 Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The second of five specs for step 3c, graph model 2: [019](../019-contracts/spec.md) (the
@@ -141,6 +141,10 @@ it, and the PR says so until the job is green. No hardware step.
   what is made from it takes its trust from the photo and the model.
 - A text area for every `json` param, before any editor of its own: it is the keyboard's way in,
   which the page's rule asks of every control.
+- The page's control lands with the param type, not after it: 019's test holds the page to a
+  control for every param type the contract names.
+- `check_param` names a json value's problems by the param, as `clicks: points[1].y should be
+  number, not string`: records.py's wording, one checker for the protocol and the shapes.
 
 ## Out of scope
 

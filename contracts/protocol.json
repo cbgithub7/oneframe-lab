@@ -118,7 +118,8 @@
       "fields": {
         "doc": { "type": "string" },
         "carrier": { "type": "string" },
-        "facets": { "type": "object", "of": { "type": "array", "of": "string" } }
+        "facets": { "type": "object", "of": { "type": "array", "of": "string" } },
+        "shape": { "type": "object", "optional": true, "doc": "A JSON type's shape: a record in this file's grammar (spec 020)." }
       }
     },
     "graph_summary": {

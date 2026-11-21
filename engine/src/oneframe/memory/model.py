@@ -336,6 +336,10 @@ class _Reader:
                 self.problem(f"{where} sets {name!r}, a file; the engine never changes a file")
                 ok = False
                 continue
+            if param.type == "json":
+                self.problem(f"{where} sets {name!r}, data a person authored; the engine never changes it")
+                ok = False
+                continue
             why = self.check(name, param, value)
             if why:
                 self.problem(f"{where}: {why}")

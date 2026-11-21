@@ -371,6 +371,11 @@ function renderForm(step, manifest) {
       input = h("span", { className: "photo" },
         h("button", { id, type: "button", "aria-describedby": `${id}-name ${described}`, onclick: () => pickPhoto(step, control.name, id) }, "Pick a photo"),
         h("span", { className: "name", id: `${id}-name` }, name));
+    } else if (control.control === "json") {
+      input = h("textarea", {
+        id, rows: 6, cols: 40, spellcheck: "false", "aria-describedby": described,
+        onchange: (/** @type {Event & { target: HTMLTextAreaElement }} */ e) => apply(e.target.value),
+      }, control.value === null ? "" : JSON.stringify(control.value, null, 2));
     } else if (control.control === "number" || control.control === "text") {
       input = h("input", {
         id, type: control.control === "number" ? "number" : "text", value: control.value === null ? "" : String(control.value),

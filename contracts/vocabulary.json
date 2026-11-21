@@ -23,6 +23,7 @@
     "bool": { "doc": "True or false." },
     "string": { "doc": "Text." },
     "choice": { "doc": "One of its choices." },
-    "file": { "doc": "A file the person picked, by its import's id (the sha256 of its content), never a path." }
+    "file": { "doc": "A file the person picked, by its import's id (the sha256 of its content), never a path." },
+    "json": { "doc": "A JSON object held to the shape of the port type its `of` names (spec 020): clicks, a camera." }
   }
 }

@@ -268,3 +268,21 @@ def test_the_page_names_nothing() -> None:
         "app/renderer/x.js:1: 'first-light'",
         "app/renderer/x.js:3: 'depth.moge3'",
     ]
+
+
+GRAMMAR = {"Type", "Field", "Record", "read_type", "read_field", "read_record", "check_value", "check_fields"}
+# The names protocol.py gave them before they moved (spec 020).
+FORMER = {"_type", "_field", "_record", "_value", "_fields"}
+
+
+def test_records_are_read_and_checked_once() -> None:
+    """One grammar for records, in records.py: the protocol's and the port types' (spec 020)."""
+
+    def defined(module: str) -> set[str]:
+        tree = ast.parse((ENGINE / module).read_text(encoding="utf-8"))
+        return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef | ast.ClassDef)}
+
+    for module in ("protocol.py", "ports.py"):
+        own = defined(module) & (GRAMMAR | FORMER)
+        assert not own, f"{module} defines {sorted(own)}, which records.py holds"
+    assert defined("records.py") >= GRAMMAR

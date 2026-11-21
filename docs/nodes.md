@@ -50,6 +50,16 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
 - **A `file` param** holds an import's id, the sha256 of a file the person picked, which the app
   copied into the data root's `inputs/`; never a path. The node is given that file's path in
   `ctx.params`, so it reads a file, and it is keyed by the file's content.
+- **A `json` param** holds data a person authors, such as clicks: `{"type": "json", "of":
+  "Clicks"}` names a port type carried as JSON whose contract gives it a `shape`, and its value,
+  its default included, is held to that shape when a graph is planned. The node reads it parsed, in
+  `ctx.params`. It always affects the output, and a memory model neither reads nor sets one.
+  `source.clicks` gives such a value on a port, for a node that takes clicks as an input.
+- **Shapes.** A JSON type's `shape` in `contracts/port-types.json` is a record in
+  `contracts/protocol.json`'s grammar (`oneframe/records.py`), and may name the records under that
+  file's `shapes`. A value a node writes on a port of such a type is held to it too: one that does
+  not fit is the node's `contract` failure, naming the field. `Clicks` and `Camera` have shapes;
+  `Camera`'s is open, so a node may add fields of its own.
 - **run.where** is `engine` for light nodes that ship with the app, and `runtime` for anything
   that imports a model library; `runtime` names the environment it runs in, a folder in
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
@@ -313,7 +323,8 @@ does not change this setting for you: it has no documented interface.
 | Image | `.png` | sRGB |
 | Depth | `.npz` | `depth`: float32 H x W; optional `valid` |
 | PointMap | `.npz` | `points`: float32 H x W x 3; `valid` |
-| Camera | `.json` | `fx`, `fy`, `cx`, `cy`, `width`, `height` (pixels); optional `pose` 4x4 world_from_camera |
+| Camera | `.json` | its shape: `fx`, `fy`, `cx`, `cy` and `width`, `height` (whole pixels); optional `pose` 4x4 world_from_camera |
+| Clicks | `.json` | its shape: `width`, `height` of the image; `points` of `{x, y, positive}`, `boxes` of `{x0, y0, x1, y1}`, in its pixels |
 | Normals, Confidence | `.npz` | `normals` / `confidence` |
 | Mask | `.png` | 0/255, or 8-bit soft |
 | Mesh | `.glb` | glTF's axes; `frame` (object, camera, world) and `scale` (metric, up_to_scale) on the port |

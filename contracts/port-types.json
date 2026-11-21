@@ -11,6 +11,22 @@
     "wav": { "mime": "audio/wav" },
     "folder": {}
   },
+  "shapes": {
+    "_comment": "Records a JSON type's shape names, in contracts/protocol.json's grammar (oneframe/records.py): a field's type is string, integer, number, boolean, object, array, or one of these (spec 020).",
+    "point": {
+      "doc": "A point a person placed on an image, in its pixels: positive keeps what is under it, negative leaves it out.",
+      "fields": { "x": { "type": "number" }, "y": { "type": "number" }, "positive": { "type": "boolean" } }
+    },
+    "box": {
+      "doc": "A box a person drew on an image, in its pixels: its two corners.",
+      "fields": {
+        "x0": { "type": "number" },
+        "y0": { "type": "number" },
+        "x1": { "type": "number" },
+        "y1": { "type": "number" }
+      }
+    }
+  },
   "types": {
     "Image": {
       "doc": "A photo or a rendered or synthesised picture. sRGB, 8-bit.",
@@ -36,11 +52,23 @@
       "facets": { "frame": ["camera", "world"], "scale": ["metric", "up_to_scale"] }
     },
     "Camera": {
-      "doc": "Intrinsics for one image, and optionally a pose (world_from_camera, OpenCV axes).",
+      "doc": "Intrinsics for one image, in its pixels, and optionally a pose: world_from_camera, 4 rows of 4 numbers, OpenCV axes. Open: a node may add fields of its own.",
       "carrier": "json",
       "facets": {
         "model": ["pinhole", "fisheye624", "opencv_fisheye", "mei", "equirect"],
         "source": ["given", "exif", "estimated"]
+      },
+      "shape": {
+        "open": true,
+        "fields": {
+          "fx": { "type": "number" },
+          "fy": { "type": "number" },
+          "cx": { "type": "number" },
+          "cy": { "type": "number" },
+          "width": { "type": "integer" },
+          "height": { "type": "integer" },
+          "pose": { "type": "array", "of": { "type": "array", "of": "number" }, "optional": true }
+        }
       }
     },
     "Normals": {
@@ -83,9 +111,17 @@
       "facets": { "origin": ["captured", "rendered", "synthetic"], "posed": ["yes", "no"] }
     },
     "Clicks": {
-      "doc": "Points and boxes a person placed on an image, in pixels, with positive or negative labels.",
+      "doc": "Points and boxes a person placed on an image, in its pixels; width and height are that image's, so clicks placed on another image can be refused.",
       "carrier": "json",
-      "facets": {}
+      "facets": {},
+      "shape": {
+        "fields": {
+          "width": { "type": "integer" },
+          "height": { "type": "integer" },
+          "points": { "type": "array", "of": "point" },
+          "boxes": { "type": "array", "of": "box" }
+        }
+      }
     },
     "Text": {
       "doc": "A text prompt.",

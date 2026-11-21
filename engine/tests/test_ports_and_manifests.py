@@ -39,6 +39,21 @@ def test_scene_types_say_frame_and_scale() -> None:
         assert "pose" not in known[name].facets, name
 
 
+CAMERA = {"fx": 2.0, "fy": 2.0, "cx": 2.0, "cy": 1.0, "width": 4, "height": 2}
+CLICKS = {"width": 4, "height": 2, "points": [{"x": 1, "y": 1, "positive": True}], "boxes": []}
+
+
+def test_a_closed_shape_refuses_a_field_it_does_not_declare() -> None:
+    """Clicks' shape is closed and Camera's open, where nodes add fields of their own (spec 020,
+    AC4)."""
+    assert ports.check_shape("Clicks", CLICKS, "clicks") == []
+    assert ports.check_shape("Clicks", {**CLICKS, "labels": [1]}, "clicks") == [
+        "clicks: undeclared field labels"
+    ]
+    assert ports.check_shape("Camera", {**CAMERA, "distortion": [0.1]}, "camera") == []
+    assert ports.check_shape("Text", "anything", "text") == []  # a type with no shape holds anything
+
+
 def test_parse_reads_facets_and_alternatives() -> None:
     spec = ports.parse("Depth[kind=metric|scale_invariant, measure=z]")
     assert spec.type == "Depth"
@@ -151,6 +166,7 @@ WRONG: dict[str, tuple[Param, object]] = {
     "string": (Param("p", "string"), 7),
     "choice": (Param("p", "choice", choices=("a", "b")), "c"),
     "file": (Param("p", "file"), "C:/Users/someone/photo.jpg"),
+    "json": (Param("p", "json", of="Clicks"), {"width": "4", "height": 2, "points": [], "boxes": []}),
 }
 
 
@@ -160,6 +176,29 @@ def test_every_param_type_in_the_contract_is_checked() -> None:
         assert kind in WRONG, f"no wrong value is known for the param type {kind}: add one, and its check"
         param, wrong = WRONG[kind]
         assert check_param("p", param, wrong), f"check_param takes {wrong!r} as a {kind}"
+
+
+def test_a_json_param_needs_a_type_with_a_shape(tmp_path: Path) -> None:
+    """A json param names a port type carried as JSON with a shape, and its default fits it (spec
+    020, AC2)."""
+    (tmp_path / "node.py").write_text("def run(ctx): pass\n", encoding="utf-8")
+    good = parse(_manifest(params={"c": {"type": "json", "of": "Clicks", "default": CLICKS}}), tmp_path)
+    assert (good.params["c"].type, good.params["c"].of) == ("json", "Clicks")
+    for row, problem in (
+        ({"type": "json", "of": "Text"}, "params.c.of 'Text' has no shape to hold a value to"),
+        ({"type": "json"}, "params.c is json and needs `of`, the port type its value is held to"),
+        ({"type": "json", "of": "Nope"}, "params.c.of 'Nope' is no port type"),
+        ({"type": "json", "of": "Depth"}, "params.c.of 'Depth' is not carried as JSON"),
+        ({"type": "json", "of": "Clicks", "default": {"width": 1}}, "params.c.default: no field height"),
+        (
+            {"type": "json", "of": "Clicks", "affects": "speed"},
+            "params.c is json, which always affects the output",
+        ),
+        ({"type": "int", "of": "Clicks"}, "params.c.of is only for a json param"),
+    ):
+        with pytest.raises(ManifestError) as info:
+            parse(_manifest(params={"c": row}), tmp_path)
+        assert problem in info.value.problems[0], (row, info.value.problems)
 
 
 def test_manifest_entry_must_exist_and_stay_inside_the_folder(tmp_path: Path) -> None:
