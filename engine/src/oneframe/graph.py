@@ -160,6 +160,16 @@ class Graph:
             raise GraphError(problems)
         return cls(nodes=nodes, edges=edges, title=str(title), page=page)
 
+    def part(self, keys: set[str]) -> Graph:
+        """The graph's nodes in `keys`, and the edges between them: what a run up to some steps
+        plans (`keys`: what they reach backwards, by `reaches`)."""
+        return Graph(
+            nodes={k: n for k, n in self.nodes.items() if k in keys},
+            edges=[e for e in self.edges if e.src in keys and e.dst in keys],
+            title=self.title,
+            page=self.page,
+        )
+
     def to_json(self) -> dict[str, Any]:
         data: dict[str, Any] = {
             "version": RECIPE_VERSION,
@@ -466,9 +476,11 @@ def _line_up(order: list[Step], problem: Callable[..., None], notes: list[str]) 
                 )
 
 
-def _reaches(graph: Graph, start: str, backwards: bool = False) -> set[str]:
+def reaches(graph: Graph, start: str, backwards: bool = False) -> set[str]:
     """Every node a path of edges leads to from `start` (`backwards`: leads from to `start`),
-    `start` included."""
+    `start` included. The one walk of a graph: `fits`, a run up to steps and the bench use it. An
+    edge's end the graph has no node for is reached too, so `part` keeps the edge for the plan to
+    name."""
     after: dict[str, set[str]] = {}
     for edge in graph.edges:
         src, dst = (edge.dst, edge.src) if backwards else (edge.src, edge.dst)
@@ -497,8 +509,8 @@ def fits(graph: Graph, port: str, registry: Registry) -> dict[str, Any]:
     installed = {k: m for k, g in graph.nodes.items() if (m := registry.nodes.get(g.node)) is not None}
     collections = _Collections(_wires(graph, installed))
     fed = {(e.dst, e.dst_port): f"{e.src}.{e.src_port}" for e in graph.edges}
-    downstream = _reaches(graph, key)  # an edge into `key` from any of these closes a cycle
-    upstream = _reaches(graph, key, backwards=True)  # and one out of `key` into any of these
+    downstream = reaches(graph, key)  # an edge into `key` from any of these closes a cycle
+    upstream = reaches(graph, key, backwards=True)  # and one out of `key` into any of these
     found: dict[str, list[dict[str, Any]]] = {"graph": [], "add": []}
 
     def answer(node: Manifest, other: str, side: str, step: str | None) -> dict[str, Any]:

@@ -2,7 +2,7 @@
 
 Each task leaves `npm run check` and `npm run engine:check` green. Tick as they land.
 
-- [ ] 1. **One graph walk.** `_reaches` becomes `reaches(graph, start, backwards)`; `Graph.part(keys)`
+- [x] 1. **One graph walk.** `_reaches` becomes `reaches(graph, start, backwards)`; `Graph.part(keys)`
   gives the nodes in `keys` and the edges between them; `bench_fit.py`'s `upstream_of` and
   `part_of` go, its callers using these, and the sizes of the measured step's inputs read from its
   plan, not the graph's edges. AC4.

@@ -286,3 +286,19 @@ def test_records_are_read_and_checked_once() -> None:
         own = defined(module) & (GRAMMAR | FORMER)
         assert not own, f"{module} defines {sorted(own)}, which records.py holds"
     assert defined("records.py") >= GRAMMAR
+
+
+def test_one_walk_serves_fits_upto_and_the_bench() -> None:
+    """One graph walk, in graph.py (spec 022): `fits`, a run up to steps and `bench:fit --graph` use
+    `reaches` and `Graph.part`, and no function of bench_fit.py reads a graph's edges itself."""
+    tree = ast.parse((ENGINE / "bench_fit.py").read_text(encoding="utf-8"))
+    readers = sorted(
+        function.name
+        for function in ast.walk(tree)
+        if isinstance(function, ast.FunctionDef)
+        and any(isinstance(node, ast.Attribute) and node.attr == "edges" for node in ast.walk(function))
+    )
+    assert not readers, f"bench_fit.py's {readers} read a graph's edges, which graph.py's walk answers"
+    graph = ast.parse((ENGINE / "graph.py").read_text(encoding="utf-8"))
+    defined = {node.name for node in ast.walk(graph) if isinstance(node, ast.FunctionDef)}
+    assert {"reaches", "part"} <= defined, "graph.py's walk is reaches, and Graph.part the part it gives"
