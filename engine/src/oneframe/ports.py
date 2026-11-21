@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import CONTRACTS_DIR
+from oneframe.records import Record, check_fields, kind_of, read_record
 
 
 class PortError(ValueError):
@@ -35,6 +36,9 @@ class PortType:
     doc: str
     carrier: str
     facets: dict[str, tuple[str, ...]]
+    # A JSON type's shape as the contract writes it, a record in protocol.json's grammar (spec 020);
+    # None for a type without one. `check_shape` holds a value to it.
+    shape: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -76,20 +80,86 @@ def types(path: Path | None = None) -> dict[str, PortType]:
             doc=row.get("doc", ""),
             carrier=row.get("carrier", "json"),
             facets={k: tuple(v) for k, v in (row.get("facets") or {}).items()},
+            shape=row.get("shape"),
         )
     return out
+
+
+def _shared(data: dict[str, Any]) -> dict[str, Any]:
+    """The records a shape may name, as the contract writes them (`shapes`, its comment left out)."""
+    return {name: row for name, row in (data.get("shapes") or {}).items() if not name.startswith("_")}
+
+
+@cache
+def _shapes(path: Path | None = None) -> tuple[dict[str, Record], dict[str, Record]]:
+    """The records shapes may name, and each JSON type's shape, read; a contract that holds a
+    problem raises PortError naming every one."""
+    data = _contract(path)
+    raw = _shared(data)
+    problems: list[str] = []
+    shared = {name: read_record(row, raw, f"shapes.{name}", problems) for name, row in raw.items()}
+    own: dict[str, Record] = {}
+    for name, row in data["types"].items():
+        if row.get("shape") is None:
+            continue
+        if row.get("carrier") != "json":
+            problems.append(f"types.{name}: only a type carried as json has a shape")
+        own[name] = read_record(row["shape"], raw, f"types.{name}.shape", problems)
+    if problems:
+        raise PortError(f"contracts/port-types.json: {'; '.join(problems)}")
+    return shared, own
+
+
+def check_shape(type_name: str, value: Any, name: str, path: Path | None = None) -> list[str]:
+    """Every way `value` does not fit `type_name`'s shape, each naming its place under `name` (the
+    param or the port); none for a type without a shape (spec 020)."""
+    shared, own = _shapes(path)
+    record = own.get(type_name)
+    if record is None:
+        return []
+    if not isinstance(value, dict):
+        return [f"{name} should be an object, not {kind_of(value)}"]
+    found: list[str] = []
+    check_fields(shared, record, value, name, "", found)
+    return found
+
+
+def _named(raw: Any, shared: dict[str, Any], into: set[str]) -> None:
+    """The shared records `raw` (a record, a field or a type) names, and those they name, into
+    `into`: a name stands as a field's `type` or `of`, or in a record's `with`."""
+    if isinstance(raw, str):
+        if raw in shared and raw not in into:
+            into.add(raw)
+            _named(shared[raw], shared, into)
+    elif isinstance(raw, list):
+        for inner in raw:
+            _named(inner, shared, into)
+    elif isinstance(raw, dict):
+        for key in ("type", "of", "with", "shape"):
+            _named(raw.get(key), shared, into)
+        fields = raw.get("fields")
+        if isinstance(fields, dict):
+            for row in fields.values():
+                _named(row, shared, into)
 
 
 def contract(names: Iterable[str], path: Path | None = None) -> dict[str, dict[str, Any]]:
     """What the contract says of each type named, but its doc, by name: the part of a node's cache
     key that makes a change to a type it names run it again (spec 019). A name the contract does
     not have is left out; a manifest that names one is refused before any key is made."""
-    rows = _contract(path)["types"]
-    return {
-        name: {k: copy.deepcopy(v) for k, v in rows[name].items() if k != "doc"}
-        for name in sorted(set(names))
-        if name in rows
-    }
+    data = _contract(path)
+    rows, shared = data["types"], _shared(data)
+    out: dict[str, dict[str, Any]] = {}
+    for name in sorted(set(names)):
+        if name not in rows:
+            continue
+        row = {k: copy.deepcopy(v) for k, v in rows[name].items() if k != "doc"}
+        named: set[str] = set()
+        _named(row.get("shape"), shared, named)
+        if named:  # a change to a record its shape names changes the type too (spec 020)
+            row["shapes"] = {key: copy.deepcopy(shared[key]) for key in sorted(named)}
+        out[name] = row
+    return out
 
 
 def parse(spec: str | dict[str, Any], known: dict[str, PortType] | None = None) -> PortSpec:

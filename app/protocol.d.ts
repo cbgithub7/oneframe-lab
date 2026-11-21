@@ -120,6 +120,8 @@ export declare namespace Wire {
     doc: string;
     carrier: string;
     facets: { [key: string]: Array<string> };
+    /** A JSON type's shape: a record in this file's grammar (spec 020). */
+    shape?: { [key: string]: unknown };
   }
 
   /** A graph kept as a file: its name, whether it ships or the person saved it, its title, and whether it shadows a shipped one. */
@@ -921,6 +923,8 @@ export declare namespace Page {
     doc: string;
     carrier: string;
     facets: { [key: string]: Array<string> };
+    /** A JSON type's shape: a record in this file's grammar (spec 020). */
+    shape?: { [key: string]: unknown };
   }
 
   /** A graph kept as a file: its name, whether it ships or the person saved it, its title, and whether it shadows a shipped one. */

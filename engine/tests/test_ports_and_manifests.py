@@ -39,6 +39,21 @@ def test_scene_types_say_frame_and_scale() -> None:
         assert "pose" not in known[name].facets, name
 
 
+CAMERA = {"fx": 2.0, "fy": 2.0, "cx": 2.0, "cy": 1.0, "width": 4, "height": 2}
+CLICKS = {"width": 4, "height": 2, "points": [{"x": 1, "y": 1, "positive": True}], "boxes": []}
+
+
+def test_a_closed_shape_refuses_a_field_it_does_not_declare() -> None:
+    """Clicks' shape is closed and Camera's open, where nodes add fields of their own (spec 020,
+    AC4)."""
+    assert ports.check_shape("Clicks", CLICKS, "clicks") == []
+    assert ports.check_shape("Clicks", {**CLICKS, "labels": [1]}, "clicks") == [
+        "clicks: undeclared field labels"
+    ]
+    assert ports.check_shape("Camera", {**CAMERA, "distortion": [0.1]}, "camera") == []
+    assert ports.check_shape("Text", "anything", "text") == []  # a type with no shape holds anything
+
+
 def test_parse_reads_facets_and_alternatives() -> None:
     spec = ports.parse("Depth[kind=metric|scale_invariant, measure=z]")
     assert spec.type == "Depth"

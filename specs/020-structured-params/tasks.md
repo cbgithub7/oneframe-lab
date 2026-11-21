@@ -5,7 +5,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 1. **One grammar for records.** `oneframe/records.py` holds protocol.py's reader of a record
   and its checker of a value, which `protocol.py` uses; a rules test holds that neither
   `protocol.py` nor `ports.py` defines a reader of its own.
-- [ ] 2. **Shapes on JSON port types.** `contracts/port-types.json`'s `shapes` (a point, a box) and
+- [x] 2. **Shapes on JSON port types.** `contracts/port-types.json`'s `shapes` (a point, a box) and
   the `shape` of `Clicks` and `Camera`; `PortType.shape`, `ports.check_shape`; the key's contract
   part holds the shapes a type names; `ports.list` answers the shape (`contracts/protocol.json`,
   `app/protocol.d.ts`). AC4.

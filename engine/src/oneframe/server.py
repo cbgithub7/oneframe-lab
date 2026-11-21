@@ -228,6 +228,7 @@ class Engine:
         return {
             "types": {
                 name: {"doc": t.doc, "carrier": t.carrier, "facets": t.facets}
+                | ({"shape": t.shape} if t.shape is not None else {})
                 for name, t in ports.types().items()
             }
         }
