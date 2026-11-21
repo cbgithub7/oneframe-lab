@@ -103,6 +103,17 @@ def _required(params: dict[str, Any], name: str) -> Any:
     return params[name]
 
 
+def _upto(params: dict[str, Any]) -> list[str] | None:
+    """`upto`, the steps a run is for (spec 022): a list of names, or None for the whole graph. A
+    name the graph has no step for is the plan's to refuse, as a problem of the graph."""
+    upto = params.get("upto")
+    if upto is None:
+        return None
+    if not isinstance(upto, list) or not all(isinstance(name, str) for name in upto):
+        raise _bad_params("'upto' should be a list of step names.")
+    return upto
+
+
 class Engine:
     def __init__(
         self,
@@ -245,7 +256,9 @@ class Engine:
         }
 
     def graph_validate(self, params: dict[str, Any]) -> dict[str, Any]:
-        the_plan = plan(Graph.from_json(_required(params, "graph")), self.registry, self.layout.inputs)
+        """`{graph, upto?}`: the plan of the graph, or of the part `upto`'s steps need (spec 022)."""
+        graph, upto = Graph.from_json(_required(params, "graph")), _upto(params)
+        the_plan = plan(graph, self.registry, self.layout.inputs, upto)
         return {"order": the_plan.order, "notes": the_plan.notes, "depends": the_plan.depends}
 
     def graph_fits(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -302,9 +315,10 @@ class Engine:
         return {"path": str(value.path), "type": value.type, "carrier": found.carrier if found else None}
 
     def graph_run(self, params: dict[str, Any]) -> dict[str, Any]:
-        graph = Graph.from_json(_required(params, "graph"))
-        # A bad graph is refused now, with its problems, not as an event.
-        the_plan = plan(graph, self.registry, self.layout.inputs)
+        graph, upto = Graph.from_json(_required(params, "graph")), _upto(params)
+        # A bad graph, or one without a step `upto` names, is refused now, with its problems, not as
+        # an event.
+        the_plan = plan(graph, self.registry, self.layout.inputs, upto)
         used = {str(s.manifest.run.runtime) for s in the_plan.steps if s.manifest.run.where == "runtime"}
         run_id = uuid.uuid4().hex[:12]
         stop = threading.Event()
@@ -318,7 +332,7 @@ class Engine:
 
         def work() -> None:
             try:
-                self.scheduler.run(graph, self.say, stop, run_id, release)
+                self.scheduler.run(graph, self.say, stop, run_id, release, upto)
             except Exception:  # a bug, not a node failure: journalled, and said once the slot was free
                 LOGGER.exception("run %s crashed", run_id)
             finally:

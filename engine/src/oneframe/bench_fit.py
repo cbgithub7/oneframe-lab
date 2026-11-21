@@ -260,7 +260,7 @@ def bench_in_graph(
     served: set[str] = set()
     inputs: dict[str, str] = {}
     if before:
-        first = scheduler.run(graph.part(before), lambda event: None)
+        first = scheduler.run(graph, lambda event: None, upto=sorted(before))
         if first.status != "done":
             message = (first.error or {}).get("message") or first.status
             raise BenchGraphError(name or "the graph", [f"what {key!r} depends on did not run: {message}"])

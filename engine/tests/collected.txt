@@ -184,6 +184,7 @@ test_a_root_whose_layout_is_newer_stops_the_engine_with_a_message
 test_a_root_without_a_root_file_gets_one_on_first_start
 test_a_run_is_told_hubs_are_offline_and_gets_no_hub_token
 test_a_run_produces_checked_values_with_trust
+test_a_run_up_to_a_step_runs_only_what_it_needs
 test_a_runs_events_are_in_its_journal_in_order
 test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed
 test_a_runtime_cannot_move_a_runs_caches_out_of_the_data_root
@@ -684,6 +685,7 @@ test_unsafe_paths[a\\b-uses a backslash; paths in a repository use /]
 test_unsafe_paths[lpt\xb9.txt-has 'lpt\xb9.txt', a name Windows keeps for a device]
 test_unsafe_paths[model.pt-None]
 test_unsafe_paths[sub/dir/model.safetensors-None]
+test_upto_names_steps_the_graph_has
 test_uv_and_runs_drop_the_same_names_in_any_case
 test_uv_folders_are_the_layouts_unless_named
 test_uv_never_sees_the_engines_bytecode_prefix

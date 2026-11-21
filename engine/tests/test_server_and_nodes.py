@@ -304,6 +304,28 @@ def test_values_are_located_only_when_committed(
         assert (refused["kind"], refused["reason"]) == ("request", "bad_params"), params
 
 
+@pytest.mark.usefixtures("basic_nodes")
+def test_upto_names_steps_the_graph_has(
+    tmp_path: Path, node_root: Path, make_engine: MakeEngine, events: Events
+) -> None:
+    """Spec 022, AC3: through the server, graph.run and graph.validate up to a step the graph does
+    not have are refused, kind graph, the problem naming the step; a step it has is planned alone
+    with what it needs, and `upto` that is no list of names is the request's fault."""
+    engine = make_engine(tmp_path / "data", [node_root], events.append)
+    graph = {**DEPTH_RUN, "nodes": {**DEPTH_RUN["nodes"], "e": {"node": "test.const_depth"}}}
+    for method in ("graph.validate", "graph.run"):
+        refused = call(engine, method, graph=graph, upto=["d", "ghost"])["error"]
+        assert refused["kind"] == "graph", method
+        assert [p["node"] for p in refused["problems"]] == ["ghost"], method
+        assert "ghost" in refused["problems"][0]["message"], method
+        wrong = call(engine, method, graph=graph, upto="d")["error"]
+        assert (wrong["kind"], wrong["reason"]) == ("request", "bad_params"), method
+    assert not events.of("run.start"), "no run started"
+    planned = call(engine, "graph.validate", graph=graph, upto=["d"])["result"]
+    assert planned["order"] == ["i", "d"]
+    assert call(engine, "graph.validate", graph=graph)["error"]["kind"] == "graph"  # e is not fed
+
+
 def test_an_item_is_located_by_its_key(
     tmp_path: Path, node_root: Path, make_node: MakeNode, make_engine: MakeEngine, events: Events
 ) -> None:

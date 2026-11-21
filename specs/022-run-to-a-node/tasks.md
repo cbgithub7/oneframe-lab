@@ -9,7 +9,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 2. **The plan up to steps.** `plan(..., upto=None)`: every name a node of the graph, or a
   problem naming it; the plan is of the part the names reach backwards, so a problem elsewhere does
   not refuse it. AC2.
-- [ ] 3. **The scheduler, the server and the protocol.** `Scheduler.run(..., upto=)`; `graph.run`
+- [x] 3. **The scheduler, the server and the protocol.** `Scheduler.run(..., upto=)`; `graph.run`
   and `graph.validate` take an optional `upto`, a list of step names (`contracts/protocol.json`,
   `app/protocol.d.ts`); `bench:fit --graph` runs what the step depends on by `upto`. AC1, AC3.
 - [ ] 4. **The page.** "Run to here: <title>" on every card, asking `graph.run` with that step;
