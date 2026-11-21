@@ -43,6 +43,13 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
 - **Ports** use the types in `contracts/port-types.json`. On an output, name each facet with the
   one value the node always produces. Leave a facet out only when it depends on a parameter; the
   node then sets it on the value (`ctx.output(..., facets={...})`) and the engine checks it.
+- **Collections.** A trailing `*` makes a port a collection of its type: `"masks": "Mask[kind=binary]*"`
+  ([spec 021](../specs/021-collections/spec.md)). A node gives one item by item, in order, with
+  `ctx.output_item(port, path, facets, meta)`, each item checked as a single value is, and reads one
+  with `ctx.items(port)`; `ctx.inputs` holds single inputs only. The collections one node gives have
+  one length, so a segmenter's masks and boxes line up. A node needs no `*` to be run for each: an
+  edge from `Mask*` to its `Mask` input runs it once an item. A memory model reads a collection
+  input's size as `<input>.count`. A type carried as a folder (`ViewSet`) cannot be a collection.
 - **trust** is `measured` (observed in the photo), `predicted` (inferred by a model) or `synthetic`
   (made from generated views). An output without one inherits the weakest trust of its inputs.
 - **Params** with `"affects": "speed"` do not change the result, so they are not part of the
@@ -153,7 +160,9 @@ second. The engine passes each on with the node's `step` and the `run`, checked 
 `contracts/protocol.json` as it goes ([spec 018](../specs/018-protocol/spec.md)): a field the
 contract does not declare is logged, never refused, so a node says nothing else through them.
 
-Every output in the manifest must be declared with `ctx.output` before `run` returns. A node writes
+Every single output in the manifest must be declared with `ctx.output` before `run` returns, and a
+collection's items with `ctx.output_item` (none is an empty collection); the other way round, or two
+collections of unequal length, is the node's `contract` failure. A node writes
 only into `ctx.path(...)`. A failure the node understands goes through `ctx.fail(message)`: the run
 fails with kind `node`, and the person reads the message as written, whatever words it uses. Called
 while handling an out-of-memory error, it keeps kind `oom`, so the engine can retry with a smaller

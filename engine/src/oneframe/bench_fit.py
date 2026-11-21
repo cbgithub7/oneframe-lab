@@ -28,15 +28,14 @@ from pathlib import Path
 from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware
-from oneframe.cache import Cache
-from oneframe.graph import Graph, GraphError, GraphNode
+from oneframe.cache import Cache, Held
+from oneframe.graph import Graph, GraphError, GraphNode, plan
 from oneframe.inputs import import_paths
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
 from oneframe.memory.estimate import Target, evaluate
 from oneframe.memory.learned import LearnedStore, StoreKey
 from oneframe.memory.settings import Settings
-from oneframe.node import Value
 from oneframe.node.devices import CPU, CUDA
 from oneframe.reading import ProblemsError, read_object
 from oneframe.registry import Registry, discover
@@ -224,7 +223,7 @@ class _Serving(Cache):
         self.served = served
         self.other = other
 
-    def get(self, key: str) -> dict[str, Value] | None:
+    def get(self, key: str) -> dict[str, Held] | None:
         return self.other.get(key) if key in self.served else super().get(key)
 
 
@@ -250,8 +249,11 @@ def part_of(graph: Graph, keys: set[str]) -> Graph:
     )
 
 
-def size_of(value: Value) -> str:
-    """How big a value is, for the report: an image's pixels, or else its file's bytes."""
+def size_of(value: Held) -> str:
+    """How big a value is, for the report: an image's pixels, or else its file's bytes; a
+    collection's, how many items it has."""
+    if isinstance(value, list):
+        return f"{len(value)} items"
     width, height = value.meta.get("width"), value.meta.get("height")
     if isinstance(width, int) and isinstance(height, int):
         return f"{width} x {height} px"
@@ -268,6 +270,12 @@ def bench_in_graph(
     once, and the step itself, at every group, never from the cache."""
     if key not in graph.nodes:
         raise BenchGraphError(name or "the graph", [f"no step called {key!r}"])
+    planned = plan(part_of(graph, upstream_of(graph, key) | {key}), scheduler.registry, scheduler.imports)
+    if any(step.id == key and step.each for step in planned.steps):
+        # One measure a group: a step run once an item would give as many, at different sizes.
+        raise BenchGraphError(
+            name or "the graph", [f"{key!r} runs for each item, which the bench cannot measure"]
+        )
     before = upstream_of(graph, key)
     node = graph.nodes[key].node
     served: set[str] = set()
@@ -277,9 +285,12 @@ def bench_in_graph(
         if first.status != "done":
             message = (first.error or {}).get("message") or first.status
             raise BenchGraphError(name or "the graph", [f"what {key!r} depends on did not run: {message}"])
-        served = {str(record["key"]) for record in first.records.values() if record.get("key")}
+        records = [one for record in first.records.values() for one in record.get("items", [record])]
+        served = {str(record["key"]) for record in records if record.get("key")}
         inputs = {
-            edge.dst_port: size_of(first.outputs[edge.src][edge.src_port])
+            edge.dst_port: size_of(
+                {**first.outputs.get(edge.src, {}), **first.collections.get(edge.src, {})}[edge.src_port]
+            )
             for edge in graph.edges
             if edge.dst == key
         }

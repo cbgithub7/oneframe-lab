@@ -53,12 +53,12 @@ import logging
 import threading
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from oneframe import ports, protocol
-from oneframe.cache import Cache, code_digest
+from oneframe.cache import Cache, Held, code_digest
 from oneframe.errors import ContractError, EdgeMismatch
 from oneframe.executors import Executor, Executors, NodeError, OneProcessPerRun, Stopped
 from oneframe.graph import Graph, Plan, Step, plan
@@ -76,6 +76,7 @@ from oneframe.node import Emit, Value
 from oneframe.node.devices import CUDA
 from oneframe.node.job import Done, Job
 from oneframe.outputs import check as outputs_check
+from oneframe.outputs import flat
 from oneframe.registry import Registry
 from oneframe.runtimes.manager import NoRuntimes, RuntimeMissing, RuntimeSide
 
@@ -116,10 +117,12 @@ class _RunState:
     stop: threading.Event
     runtime_parts: dict[str, dict[str, str] | None] = field(default_factory=dict)
     code_keys: dict[Path, str] = field(default_factory=dict)
+    # What every step event says beside its own fields: an item's `item` and `of` (spec 021).
+    tag: dict[str, int] = field(default_factory=dict)
 
     def event(self, name: str, fields: dict[str, Any]) -> None:
         """Say the event `name`, with the run's id, checked (protocol.py)."""
-        self.say(protocol.event(name, **{**fields, "run": self.id}))
+        self.say(protocol.event(name, **{**fields, **self.tag, "run": self.id}))
 
     def ending(self, name: str, fields: dict[str, Any]) -> dict[str, Any]:
         """The run's ending, with its id, checked; the run sends it once its place is free."""
@@ -127,7 +130,7 @@ class _RunState:
 
     def passed_on(self, event: dict[str, Any]) -> None:
         """An event a node said, with the run's id, checked here: a runtime's Python cannot."""
-        self.say(protocol.check_event(dict(event, run=self.id)))
+        self.say(protocol.check_event(dict(event, **self.tag, run=self.id)))
 
 
 @dataclass
@@ -136,17 +139,19 @@ class _StepState:
     a memory model), and for node.failed each fit and each failed attempt's peaks."""
 
     step: Step
-    inputs: dict[str, Value] = field(default_factory=dict)
+    inputs: dict[str, Held] = field(default_factory=dict)
     context: _Context | None = None
     fits: list[Fit] = field(default_factory=list)
     peaks: list[dict[str, Any]] = field(default_factory=list)
+    item: dict[str, int] = field(default_factory=dict)  # for a step run for each: `item`, `of`
 
 
 @dataclass
 class RunResult:
     run: str
     status: str  # done | failed | stopped
-    outputs: dict[str, dict[str, Value]] = field(default_factory=dict)
+    outputs: dict[str, dict[str, Value]] = field(default_factory=dict)  # each step's single values
+    collections: dict[str, dict[str, list[Value]]] = field(default_factory=dict)  # and collections
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     error: dict[str, Any] | None = None  # the first failure, as node.failed (or run.failed) said it
     failed: list[str] = field(default_factory=list)  # the steps that failed, in order
@@ -188,7 +193,7 @@ class Scheduler:
         self.imports = imports  # where a file param's import is found (the layout's inputs)
 
     def _key(
-        self, run: _RunState, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Value]
+        self, run: _RunState, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Held]
     ) -> str:
         runtime = None
         if manifest.run.where == "runtime":
@@ -236,6 +241,7 @@ class Scheduler:
         """Each step in order; the run's result, and its ending, which the run sends. A failure
         stops only the steps that need what it would have made."""
         result = RunResult(run=run.id, status="done")
+        done: dict[str, dict[str, Held]] = {}  # every step's values, singles and collections
         ending: dict[str, Any] | None = None  # the first failure, as run.failed carries it
         for step in the_plan.steps:
             if run.stop.is_set():
@@ -249,19 +255,21 @@ class Scheduler:
                 continue
             state = _StepState(step)
             try:
-                outputs, record = self._step(run, state, result.outputs)
+                outputs, record = self._each(run, state, done) if step.each else self._step(run, state, done)
             except Stopped:
                 result.status = "stopped"
                 return result, run.ending("run.stopped", {"step": step.id})
             except EdgeMismatch as exc:  # no node's fault: reported against the edge, not the step
                 error = exc.to_json(edge=exc.edge)
                 result.skipped.append(step.id)
-                run.event("node.skipped", {**error, "step": step.id, "node": step.manifest.id})
+                run.event("node.skipped", {**error, "step": step.id, "node": step.manifest.id, **state.item})
                 result.error = result.error or error
                 ending = ending or error
                 continue
             except (NodeError, RuntimeMissing, ContractError, FilesMissing) as exc:
-                error = exc.to_json(step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""))
+                error = exc.to_json(
+                    step=step.id, node=step.manifest.id, detail=getattr(exc, "detail", ""), **state.item
+                )
                 if state.fits:
                     error["fits"] = [f.to_json() for f in state.fits]
                 if state.peaks:
@@ -271,35 +279,96 @@ class Scheduler:
                 result.error = result.error or error
                 ending = ending or exc.to_json(step=step.id)
                 continue
-            result.outputs[step.id] = outputs
+            done[step.id] = outputs
+            result.outputs[step.id] = {p: v for p, v in outputs.items() if not isinstance(v, list)}
+            if any(isinstance(v, list) for v in outputs.values()):
+                result.collections[step.id] = {p: v for p, v in outputs.items() if isinstance(v, list)}
             result.records[step.id] = record
         if ending is not None:
             result.status = "failed"
             return result, run.ending(
                 "run.failed", {**ending, "failed": list(result.failed), "skipped": list(result.skipped)}
             )
-        outputs_json = {
-            sid: {p: v.to_json() for p, v in outs.items()} for sid, outs in result.outputs.items()
-        }
+        manifests = {step.id: step.manifest for step in the_plan.steps}
+        outputs_json = {sid: as_json(manifests[sid], outs) for sid, outs in done.items()}
         return result, run.ending("run.done", {"outputs": outputs_json})
 
-    def _gather(self, step: Step, done: dict[str, dict[str, Value]]) -> dict[str, Value]:
-        inputs: dict[str, Value] = {}
+    def _gather(
+        self, step: Step, done: dict[str, dict[str, Held]], item: int | None = None
+    ) -> dict[str, Held]:
+        """Each input's value, or collection, held to what the input accepts: a collection's
+        items each, one that does not fit named by its index. For the run of one `item` of a step
+        run for each, each input fed item by item gives that item."""
+        inputs: dict[str, Held] = {}
         for port, (src, src_port) in step.inputs.items():
-            value = done[src][src_port]
-            why = ports.value_mismatch(value.facets, step.manifest.inputs[port])
-            if why:
-                source, target = f"{src}.{src_port}", f"{step.id}.{port}"
-                raise EdgeMismatch(f"{source} -> {target}: {why}", source, target)
-            inputs[port] = value
+            held = done[src][src_port]
+            indexed: list[tuple[int | None, Value]]
+            if item is not None and port in step.each and isinstance(held, list):
+                held = held[item]
+                indexed = [(item, held)]
+            else:
+                indexed = list(enumerate(held)) if isinstance(held, list) else [(None, held)]
+            for index, value in indexed:
+                why = ports.value_mismatch(value.facets, step.manifest.inputs[port])
+                if why:
+                    at = f"[{index}]" if index is not None else ""
+                    source, target = f"{src}.{src_port}", f"{step.id}.{port}"
+                    raise EdgeMismatch(f"{source}{at} -> {target}: {why}", source, target)
+            inputs[port] = held
         return inputs
 
+    def _each(
+        self, run: _RunState, state: _StepState, done: dict[str, dict[str, Held]]
+    ) -> tuple[dict[str, Held], dict[str, Any]]:
+        """A step run for each (spec 021): once an item, in order, each run a single step's, its
+        events carrying `item` and `of`; each output a collection of the runs' values. The first
+        item that fails ends the step, the items done before it kept in the cache. With no items,
+        nothing runs: the step is done, `of` 0, with empty collections."""
+        step = state.step
+        src, src_port = step.inputs[step.each[0]]
+        fed = done[src][src_port]
+        count = len(fed) if isinstance(fed, list) else 1  # a collection, as the plan says
+        outputs: dict[str, Held] = {port: [] for port in step.manifest.outputs}
+        if count == 0:
+            run.event(
+                "node.done",
+                {
+                    "step": step.id,
+                    "node": step.manifest.id,
+                    "of": 0,
+                    "seconds": 0.0,
+                    "peak_vram_mb": None,
+                    "peak_reserved_mb": None,
+                    "peak_ram_mb": None,
+                    "outputs": as_json(step.manifest, outputs),
+                },
+            )
+            return outputs, {"cached": False, "items": []}
+        records: list[dict[str, Any]] = []
+        for index in range(count):
+            if run.stop.is_set():
+                raise Stopped()  # between two items: the next one never starts
+            state.item = {"item": index, "of": count}
+            state.context, state.fits, state.peaks = None, [], []
+            made, record = self._step(replace(run, tag=state.item), state, done, index)
+            for port, value in made.items():
+                held = outputs[port]
+                # the plan refuses a step run for each that gives a collection of its own
+                assert isinstance(held, list) and isinstance(value, Value)
+                held.append(value)
+            records.append(record)
+        return outputs, {"cached": all(r.get("cached") for r in records), "items": records}
+
     def _step(
-        self, run: _RunState, state: _StepState, done: dict[str, dict[str, Value]]
-    ) -> tuple[dict[str, Value], dict[str, Any]]:
+        self,
+        run: _RunState,
+        state: _StepState,
+        done: dict[str, dict[str, Held]],
+        item: int | None = None,
+    ) -> tuple[dict[str, Held], dict[str, Any]]:
         step = state.step
         manifest = step.manifest
-        state.inputs = self._gather(step, done)
+        state.inputs = self._gather(step, done, item)
         key = self._key(run, manifest, step.params, state.inputs)
         cached = self.cache.get(key)
         if cached is not None:
@@ -309,7 +378,7 @@ class Scheduler:
                     "step": step.id,
                     "node": manifest.id,
                     "key": key,
-                    "outputs": {p: v.to_json() for p, v in cached.items()},
+                    "outputs": as_json(manifest, cached),
                 },
             )
             return cached, {"cached": True, "key": key}
@@ -406,7 +475,7 @@ class Scheduler:
 
     def _cached_down(
         self, run: _RunState, state: _StepState, found: Fit
-    ) -> tuple[dict[str, Value], dict[str, Any]] | None:
+    ) -> tuple[dict[str, Held], dict[str, Any]] | None:
         """The best cached result the fit allows: after each change that costs quality, in order,
         up to the fitted values. Changes to settings the graph sets are never among them."""
         step = state.step
@@ -429,7 +498,7 @@ class Scheduler:
                         "node": step.manifest.id,
                         "key": key,
                         "fit": found.to_json(),
-                        "outputs": {p: v.to_json() for p, v in cached.items()},
+                        "outputs": as_json(step.manifest, cached),
                     },
                 )
                 return cached, {"cached": True, "key": key}
@@ -449,7 +518,7 @@ class Scheduler:
 
     def _attempt(
         self, run: _RunState, state: _StepState, found: Fit | None, attempt: int
-    ) -> tuple[dict[str, Value], dict[str, Any]]:
+    ) -> tuple[dict[str, Held], dict[str, Any]]:
         """One attempt at a step, at the fitted values (its own, with no fit): the runtime check, the
         files check, node.start, then the job run, its result kept, and node.done."""
         step = state.step
@@ -480,7 +549,7 @@ class Scheduler:
         self._learn(
             state, found, finished.peaks, ok=True, seconds=finished.seconds, outside=job.outside_torch_mb
         )
-        self._said_done(run, job, found, outputs, record)
+        self._said_done(run, manifest, job, found, outputs, record)
         return outputs, record
 
     def _job(
@@ -517,7 +586,8 @@ class Scheduler:
             load=manifest.run.load,
             run=run.id,
             step=step.id,
-            inputs=dict(state.inputs),
+            inputs={port: held for port, held in state.inputs.items() if not isinstance(held, list)},
+            items={port: held for port, held in state.inputs.items() if isinstance(held, list)},
             params=values,
             device=device,
             files=files,
@@ -550,7 +620,7 @@ class Scheduler:
 
     def _keep(
         self, state: _StepState, job: Job, finished: Done, key: str, found: Fit | None
-    ) -> tuple[dict[str, Value], dict[str, Any]]:
+    ) -> tuple[dict[str, Held], dict[str, Any]]:
         """Check what the node made, say how it was made, and commit it to the cache with its record."""
         step = state.step
         manifest = step.manifest
@@ -562,9 +632,9 @@ class Scheduler:
             "ways": finished.ways,
             "reduced": bool(found is not None and found.reduced),
         }
-        reduced_input = any(_reduced(v) for v in state.inputs.values())
+        reduced_input = any(_reduced(v) for v in flat(state.inputs.values()))
         inherited = _sources(state.inputs)
-        for value in outputs.values():
+        for value in flat(outputs.values()):
             value.meta["made_with"] = made_with  # a node cannot claim a fit it did not get
             # nor its sources: a step fed nothing starts one, every other carries its inputs'
             value.meta["sources"] = inherited if state.inputs else [{"id": value.key, "type": value.type}]
@@ -588,9 +658,10 @@ class Scheduler:
     def _said_done(
         self,
         run: _RunState,
+        manifest: Manifest,
         job: Job,
         found: Fit | None,
-        outputs: dict[str, Value],
+        outputs: dict[str, Held],
         record: dict[str, Any],
     ) -> None:
         run.event(
@@ -606,7 +677,7 @@ class Scheduler:
                 "peak_ram_mb": record["peak_ram_mb"],
                 "made_with": record["made_with"],
                 **({"fit": found.to_json()} if found is not None else {}),
-                "outputs": {p: v.to_json() for p, v in outputs.items()},
+                "outputs": as_json(manifest, outputs),
             },
         )
 
@@ -652,18 +723,31 @@ class Scheduler:
             LOGGER.warning("could not record what %s taught this machine", manifest.id, exc_info=True)
 
 
-def _meta(step: Step, inputs: dict[str, Value]) -> Inputs:
-    """Each input's meta for the fit; None for an optional input that is not connected."""
+def as_json(manifest: Manifest, outputs: dict[str, Held]) -> dict[str, Any]:
+    """A step's values as events carry them: a value, or a collection with its type and items."""
+    out: dict[str, Any] = {}
+    for port, held in outputs.items():
+        if isinstance(held, list):
+            out[port] = {"type": manifest.outputs[port].type, "items": [v.to_json() for v in held]}
+        else:
+            out[port] = held.to_json()
+    return out
+
+
+def _meta(step: Step, inputs: dict[str, Held]) -> Inputs:
+    """Each input's meta for the fit; None for an optional input that is not connected. A
+    collection taken whole says only how many items it has: `<input>.count` (spec 021)."""
     meta: dict[str, dict[str, Any] | None] = {port: None for port in step.manifest.inputs}
-    meta.update({port: value.meta for port, value in inputs.items()})
+    for port, held in inputs.items():
+        meta[port] = {"count": len(held)} if isinstance(held, list) else held.meta
     return meta
 
 
-def _sources(inputs: dict[str, Value]) -> list[dict[str, str]]:
+def _sources(inputs: dict[str, Held]) -> list[dict[str, str]]:
     """The values these inputs descend from that no step made from another (a photo, clicks), each
     once, by its key: the same in every graph that shares its entry (spec 019)."""
     found: dict[str, dict[str, str]] = {}
-    for value in inputs.values():
+    for value in flat(inputs.values()):
         for row in value.meta.get("sources") or ():
             if isinstance(row, dict) and isinstance(row.get("id"), str):
                 found[row["id"]] = {"id": row["id"], "type": str(row.get("type", ""))}

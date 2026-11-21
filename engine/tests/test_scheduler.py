@@ -8,12 +8,12 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import Events, HostRuntimes, MakeNode
+from conftest import MASKS, PER_MASK, TAKE_MASKS, Events, HostRuntimes, MakeNode
 from fixtures import fit_node, machines
 
 from oneframe.cache import Cache
 from oneframe.executors import Executor, OneProcessPerRun
-from oneframe.graph import Graph
+from oneframe.graph import Graph, plan
 from oneframe.inputs import import_file
 from oneframe.layout import Layout
 from oneframe.manifest import Manifest
@@ -23,7 +23,7 @@ from oneframe.memory.settings import Settings
 from oneframe.node import Emit
 from oneframe.node.job import Done, Job
 from oneframe.runtimes.manager import NoRuntimes
-from oneframe.scheduler import Scheduler
+from oneframe.scheduler import Scheduler, _meta
 
 
 def _graph(nodes: Mapping[str, Mapping[str, object]], edges: list[tuple[str, str]]) -> Graph:
@@ -1032,3 +1032,211 @@ def test_an_engine_bug_is_not_blamed_on_the_node(
     with pytest.raises(ValueError, match="a bug in the engine"):
         scheduler_for().run(_graph({"f": {"node": "test.fine"}}, []), events.append)
     assert not events.of("node.failed")
+
+
+def test_a_node_gives_and_takes_a_collection(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """A node declares three items; a node whose input is a collection receives them in order,
+    each with its own facets and a key of its own (spec 021, AC1)."""
+    make_node(MASKS["manifest"], MASKS["code"])
+    make_node(TAKE_MASKS["manifest"], TAKE_MASKS["code"])
+    graph = _graph({"m": {"node": "test.masks"}, "t": {"node": "test.take_masks"}}, [("m.masks", "t.masks")])
+    result = scheduler_for().run(graph, events.append)
+    assert result.status == "done", result.error
+    masks = result.collections["m"]["masks"]
+    entry = next(e["key"] for e in events.of("node.done") if e["step"] == "m")
+    assert [v.key for v in masks] == [f"{entry}:masks:{i}" for i in range(3)]
+    assert [v.facets for v in masks] == [{"kind": "binary", "marks": m} for m in ("object", "valid", "sky")]
+    assert [v.trust for v in masks] == ["predicted"] * 3
+    seen = json.loads(result.outputs["t"]["seen"].path.read_text(encoding="utf-8"))
+    assert [(row["key"], row["facets"], row["bytes"]) for row in seen] == [
+        (v.key, v.facets, i) for i, v in enumerate(masks)
+    ]
+    done = next(e for e in events.of("node.done") if e["step"] == "m")
+    assert done["outputs"]["masks"]["type"] == "Mask"
+    assert [item["key"] for item in done["outputs"]["masks"]["items"]] == [v.key for v in masks]
+    assert events.of("run.done")[0]["outputs"]["m"]["masks"]["items"][2]["facets"]["marks"] == "sky"
+    # Taken whole, a collection gives the fit one factor, `<input>.count` (spec 021).
+    [take] = [step for step in plan(graph, scheduler_for().registry).steps if step.id == "t"]
+    assert _meta(take, {"masks": masks}) == {"masks": {"count": 3}}
+    events.clear()  # from the cache, the collection is the same, in the same order
+    again = scheduler_for().run(graph, events.append)
+    assert events.kinds() == ["run.start", "node.cached", "node.cached", "run.done"]
+    assert [v.key for v in again.collections["m"]["masks"]] == [v.key for v in masks]
+
+
+def _contract_failure(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], code: str, **ports: str
+) -> str:
+    """The message a node with these outputs fails with, by its code."""
+    make_node(
+        {"id": "test.bad", "version": "1", "title": "Bad", "category": "evaluate", "outputs": ports},
+        code,
+    )
+    events = Events()
+    result = scheduler_for().run(_graph({"b": {"node": "test.bad"}}, []), events.append)
+    [failed] = events.of("node.failed")
+    assert (result.status, failed["kind"]) == ("failed", "contract"), failed
+    return str(failed["message"])
+
+
+ITEM = """
+def run(ctx):
+    for i, facets in enumerate(FACETS):
+        p = ctx.path(f"m{i}.png")
+        p.write_bytes(b"x")
+        ctx.output_item("masks", p, facets=facets)
+"""
+
+
+def test_an_item_is_checked_as_a_single_value_is(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
+) -> None:
+    """Each item is held to the manifest and the type, as a value is, and named by its index; a
+    collection port is given item by item, a single one not (spec 021)."""
+    unsaid = "FACETS = [{'kind': 'binary', 'marks': 'sky'}, {'kind': 'binary'}]\n" + ITEM
+    message = _contract_failure(make_node, scheduler_for, unsaid, masks="Mask*")
+    assert "test.bad.masks[1] did not say its marks" in message, message
+    contradicts = "FACETS = [{'kind': 'soft', 'marks': 'sky'}]\n" + ITEM
+    message = _contract_failure(make_node, scheduler_for, contradicts, masks="Mask[kind=binary]*")
+    assert "masks[0]: kind=soft contradicts its manifest" in message, message
+    whole = "def run(ctx):\n    p = ctx.path('m.png')\n    p.write_bytes(b'x')\n    ctx.output('masks', p)\n"
+    message = _contract_failure(make_node, scheduler_for, whole, masks="Mask[kind=binary, marks=sky]*")
+    assert "given with ctx.output" in message, message
+    single = "FACETS = [{}]\n" + ITEM
+    message = _contract_failure(make_node, scheduler_for, single, masks="Mask[kind=binary, marks=sky]")
+    assert "is a single Mask, given with ctx.output_item" in message, message
+
+
+def test_collections_of_one_step_have_one_length(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """The collections one node gives line up item for item; a port with no item is empty."""
+    code = (
+        "def run(ctx):\n"
+        "    for port, n in (('masks', 3), ('boxes', 2)):\n"
+        "        for i in range(n):\n"
+        "            p = ctx.path(f'{port}{i}.png')\n"
+        "            p.write_bytes(b'x')\n"
+        "            ctx.output_item(port, p)\n"
+    )
+    spec = "Mask[kind=binary, marks=object]*"
+    message = _contract_failure(make_node, scheduler_for, code, masks=spec, boxes=spec)
+    assert "collections of different lengths: masks 3, boxes 2" in message, message
+    make_node(
+        {
+            "id": "test.none",
+            "version": "1",
+            "title": "None",
+            "category": "evaluate",
+            "outputs": {"masks": spec},
+        }
+    )
+    result = scheduler_for().run(_graph({"n": {"node": "test.none"}}, []), events.append)
+    assert result.status == "done", result.error
+    assert result.collections["n"]["masks"] == []
+
+
+def _for_each(n: int = 3, fail_at: int = -1) -> Graph:
+    """`n` masks, each run through test.per_mask with one image, and the results taken whole."""
+    return _graph(
+        {
+            "i": {"node": "test.image"},
+            "m": {"node": "test.masks", "params": {"n": n}},
+            "p": {"node": "test.per_mask", "params": {"fail_at": fail_at}},
+            "t": {"node": "test.take_masks"},
+        },
+        [("m.masks", "p.mask"), ("i.image", "p.image"), ("p.mask", "t.masks")],
+    )
+
+
+@pytest.fixture
+def each_nodes(make_node: MakeNode, basic_nodes: None) -> None:
+    for node in (MASKS, PER_MASK, TAKE_MASKS):
+        make_node(node["manifest"], node["code"])
+
+
+def _of(events: Events, kind: str, step: str = "p") -> list[tuple[int | None, int | None]]:
+    """The `item` and `of` of each `kind` event of `step`, in order."""
+    return [(e.get("item"), e.get("of")) for e in events.of(kind) if e["step"] == step]
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_a_single_input_fed_a_collection_runs_for_each(
+    scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Three items and one single value: three runs, each with one item and the value, each run's
+    events carrying `item` and `of`; a node that takes the whole receives the three results in the
+    items' order (spec 021, AC2)."""
+    result = scheduler_for().run(_for_each(), events.append)
+    assert result.status == "done", result.error
+    assert _of(events, "node.start") == [(0, 3), (1, 3), (2, 3)]
+    assert _of(events, "node.done") == [(0, 3), (1, 3), (2, 3)]
+    image = result.outputs["i"]["image"].path.read_bytes()
+    made = result.collections["p"]["mask"]
+    assert [v.path.read_bytes() for v in made] == [bytes([i]) * 16 + image for i in range(3)]
+    assert [v.facets["marks"] for v in made] == ["object", "valid", "sky"]
+    keys = [e["key"] for e in events.of("node.done") if e["step"] == "p"]
+    assert [v.key for v in made] == [f"{key}:mask" for key in keys]  # each its own run's entry
+    seen = json.loads(result.outputs["t"]["seen"].path.read_text(encoding="utf-8"))
+    assert [row["key"] for row in seen] == [v.key for v in made]
+    assert events.of("run.done")[0]["outputs"]["p"]["mask"]["items"][1]["key"] == made[1].key
+    assert all(e.get("item") is None for e in events if e.get("step") in ("i", "m", "t"))
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_for_each_reruns_only_the_items_that_changed(
+    scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """After a run over three items, a run over those three and a fourth starts the step once, for
+    the fourth, and answers the other three from the cache (spec 021, AC3)."""
+    sched = scheduler_for()
+    first = sched.run(_for_each(3), events.append)
+    assert first.status == "done", first.error
+    events.clear()
+    second = sched.run(_for_each(4), events.append)
+    assert second.status == "done", second.error
+    assert _of(events, "node.start", "m") == [(None, None)]  # the source ran again, for its fourth
+    assert _of(events, "node.start") == [(3, 4)]
+    assert _of(events, "node.cached") == [(0, 4), (1, 4), (2, 4)]
+    assert [v.key for v in second.collections["p"]["mask"][:3]] == [
+        v.key for v in first.collections["p"]["mask"]
+    ]
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_a_failed_item_fails_its_step(scheduler_for: Callable[..., Scheduler], events: Events) -> None:
+    """The second of three items fails: the step ends node.failed naming item 1, the third never
+    starts, a dependent step is skipped, and a second run answers the first item from the cache
+    (spec 021, AC5)."""
+    sched = scheduler_for()
+    result = sched.run(_for_each(3, fail_at=1), events.append)
+    assert (result.status, result.failed, result.skipped) == ("failed", ["p"], ["t"])
+    [failed] = events.of("node.failed")
+    assert (failed["step"], failed["item"], failed["of"], failed["kind"]) == ("p", 1, 3, "node")
+    assert failed["message"] == "mask 1 fails"
+    assert _of(events, "node.start") == [(0, 3), (1, 3)]
+    assert [e["waited_on"] for e in events.of("node.skipped")] == ["p"]
+    assert events.of("run.failed")[0]["step"] == "p"
+    events.clear()
+    sched.run(_for_each(3, fail_at=1), events.append)
+    assert _of(events, "node.cached") == [(0, 3)]
+    assert _of(events, "node.start") == [(1, 3)]
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_an_empty_collection_runs_nothing_and_says_so(
+    scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """A for each over no items starts nothing, says node.done with `of` 0, hands a node that takes
+    the whole an empty list, and the run ends done (spec 021, AC6)."""
+    result = scheduler_for().run(_for_each(0), events.append)
+    assert result.status == "done", result.error
+    assert _of(events, "node.start") == []
+    [done] = [e for e in events.of("node.done") if e["step"] == "p"]
+    assert (done["of"], done["outputs"]) == (0, {"mask": {"type": "Mask", "items": []}})
+    assert "item" not in done and "key" not in done
+    assert result.collections["p"]["mask"] == []
+    assert json.loads(result.outputs["t"]["seen"].path.read_text(encoding="utf-8")) == []
+    assert events.kinds()[-1] == "run.done"

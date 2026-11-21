@@ -124,7 +124,11 @@ class LoadContext(Protocol):
 class Context(LoadContext, Protocol):
     """What a node's `run` is handed: its `load` context, and this run's inputs and outputs."""
 
-    inputs: dict[str, Value]  # by input port; an optional port left unconnected is missing
+    inputs: dict[str, Value]  # by single input port; an optional port left unconnected is missing
+
+    def items(self, port: str) -> list[Value]:
+        """A collection input (`Mask*`), its items in order; empty when it is not connected."""
+        ...
 
     def path(self, name: str) -> Path:
         """A path for a file this run writes, inside its own folder."""
@@ -137,5 +141,15 @@ class Context(LoadContext, Protocol):
         facets: dict[str, str] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> None:
-        """Declares an output; every one the manifest lists, before `run` returns."""
+        """Declares an output; every single one the manifest lists, before `run` returns."""
+        ...
+
+    def output_item(
+        self,
+        port: str,
+        path: str | Path,
+        facets: dict[str, str] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        """Declares the next item of a collection output; one with none declared is empty."""
         ...

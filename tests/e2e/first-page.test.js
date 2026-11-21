@@ -125,3 +125,38 @@ test("Stop ends a run and the page says so", async () => {
     await close();
   }
 });
+
+test("a pane shows a collection one item at a time", async () => {
+  // Spec 021, AC8: a node that makes three images; its card says three items, its pane shows the
+  // first, read by that item's own key, and its Next, pressed from the keyboard, shows the second.
+  const { page, close, data } = await start();
+  try {
+    await page.getByRole("combobox", { name: "Graph", exact: true }).selectOption({ label: "Test: three images, one at a time" });
+    const card = page.locator('article[data-step="three"]');
+    await expect(card, "the graph opened").toBeVisible();
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(card, "the step ended done").toHaveAttribute("data-phase", "done", { timeout: 60_000 });
+    await expect(card.locator(".items"), "its card counts its items").toHaveText("3 items");
+    const pane = page.locator('section.pane[data-pane="three.images"]');
+    await expect(pane, "the pane drew its first item").toHaveAttribute("data-state", "drawn", { timeout: 60_000 });
+    await expect(pane.locator("nav.items .item")).toHaveText("Item 1 of 3");
+    await expect(pane.locator(".caption")).toHaveText("1 x 1 px");
+    const first = String(await pane.getAttribute("data-value"));
+    expect(first, "read by the item's own key").toMatch(/^oneframe-value:\/\/[0-9a-f]{64}\/images%3A0$/);
+    expect(await page.evaluate(async (u) => (await fetch(u)).status, first), `${first} is served`).toBe(200);
+
+    const next = pane.getByRole("button", { name: "Next item of Three: images" });
+    await next.focus();
+    await page.keyboard.press("Enter");
+    await expect(pane.locator("nav.items .item"), "Next showed the second").toHaveText("Item 2 of 3");
+    await expect(pane, "the second item drawn").toHaveAttribute("data-value", /\/images%3A1$/, { timeout: 30_000 });
+    await expect(pane.locator(".caption")).toHaveText("2 x 2 px");
+    await expect(next, "Next keeps the keyboard's focus").toBeFocused();
+    await expect(pane.getByRole("button", { name: "Previous item of Three: images" })).toBeEnabled();
+  } catch (error) {
+    await report(page, data);
+    throw error;
+  } finally {
+    await close();
+  }
+});

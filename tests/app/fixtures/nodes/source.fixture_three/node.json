@@ -1,0 +1,13 @@
+{
+  "id": "source.fixture_three",
+  "version": "1",
+  "title": "Three images (test)",
+  "category": "source",
+  "summary": "For the page's e2e test (spec 021): makes three small images, 1, 2 and 3 pixels square, as a collection.",
+  "outputs": {
+    "images": { "type": "Image[alpha=none]*", "trust": "synthetic" }
+  },
+  "run": { "where": "engine", "entry": "node.py:run" },
+  "devices": ["cpu"],
+  "licence": { "code": "MIT" }
+}

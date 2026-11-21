@@ -45,6 +45,13 @@
         "key": { "type": "string" }
       }
     },
+    "collection": {
+      "doc": "A collection a run made (spec 021): its items' type, and the items in order, each a value read by its own key.",
+      "fields": {
+        "type": { "type": "string" },
+        "items": { "type": "array", "of": "value" }
+      }
+    },
     "fit": {
       "doc": "Where a node runs, at which values, and why (oneframe/memory/fit.py).",
       "fields": {
@@ -140,6 +147,7 @@
         "side": { "type": "string" },
         "how": { "type": "string" },
         "converter": { "type": "string", "optional": true },
+        "each": { "type": "boolean", "optional": true, "doc": "true: the input's step runs once for each item of the output's collection (spec 021)" },
         "reason": { "type": "string", "optional": true },
         "message": { "type": "string", "optional": true }
       }
@@ -228,7 +236,7 @@
       "by": ["engine"],
       "fields": {
         "run": { "type": "string" },
-        "outputs": { "type": "object", "of": { "type": "object", "of": "value" } }
+        "outputs": { "type": "object", "of": { "type": "object", "of": { "type": ["value", "collection"] } } }
       }
     },
     "run.failed": {
@@ -257,10 +265,12 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "node": { "type": "string" },
         "key": { "type": "string" },
         "fit": { "type": "fit", "optional": true },
-        "outputs": { "type": "object", "of": "value" }
+        "outputs": { "type": "object", "of": { "type": ["value", "collection"] } }
       }
     },
     "node.fit": {
@@ -270,6 +280,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "node": { "type": "string" },
         "attempt": { "type": "integer" },
         "settings": { "type": "settings" }
@@ -281,6 +293,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "node": { "type": "string" },
         "where": { "type": "string" },
         "key": { "type": "string" },
@@ -293,6 +307,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "stage": { "type": "string" },
         "message": { "type": "string" }
       }
@@ -303,6 +319,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "stage": { "type": "string" },
         "done": { "type": "number", "null": true },
         "total": { "type": "number", "null": true },
@@ -315,6 +333,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "applied": { "type": "boolean" },
         "budget_mb": { "type": "number", "null": true },
         "why": { "type": "string", "optional": true },
@@ -331,6 +351,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "stage": { "type": "string" },
         "way": { "type": "string" },
         "next": { "type": "string" },
@@ -339,21 +361,23 @@
       }
     },
     "node.done": {
-      "doc": "An attempt finished: its time, its peaks, how it was made, its fit and its values.",
+      "doc": "An attempt finished: its time, its peaks, how it was made, its fit and its values. A step run for each over no items says so once, with `of` 0, no `key`, `attempt` or `made_with`, and its empty collections (spec 021).",
       "by": ["engine"],
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "node": { "type": "string" },
-        "key": { "type": "string" },
-        "attempt": { "type": "integer" },
+        "key": { "type": "string", "optional": true },
+        "attempt": { "type": "integer", "optional": true },
         "seconds": { "type": "number" },
         "peak_vram_mb": { "type": "number", "null": true },
         "peak_reserved_mb": { "type": "number", "null": true },
         "peak_ram_mb": { "type": "number", "null": true },
-        "made_with": { "type": "object" },
+        "made_with": { "type": "object", "optional": true },
         "fit": { "type": "fit", "optional": true },
-        "outputs": { "type": "object", "of": "value" }
+        "outputs": { "type": "object", "of": { "type": ["value", "collection"] } }
       }
     },
     "node.oom": {
@@ -362,6 +386,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "attempt": { "type": "integer" },
         "peak_reserved_mb": { "type": "number", "null": true },
         "peak_ram_mb": { "type": "number", "null": true },
@@ -375,6 +401,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "node": { "type": "string" },
         "fits": { "type": "array", "of": "fit", "optional": true },
         "peaks": { "type": "array", "of": "object", "optional": true }
@@ -387,6 +415,8 @@
       "fields": {
         "run": { "type": "string" },
         "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
         "node": { "type": "string" },
         "waited_on": { "type": "string", "optional": true },
         "edge": { "type": "edge", "optional": true }

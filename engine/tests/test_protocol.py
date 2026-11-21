@@ -12,6 +12,7 @@ from oneframe.protocol import ProtocolError, parse
 from oneframe.server import AT_ONCE, STOPS
 
 RUN_STOPPED = {"run": "abc", "step": "s"}
+NO_KEY = {"type": "Text", "path": "t.json", "facets": {}, "meta": {}, "trust": None}  # a value but its key
 
 
 def test_an_undeclared_event_is_a_problem() -> None:
@@ -37,7 +38,8 @@ def test_an_undeclared_event_is_a_problem() -> None:
             "run.stopped: step should be string, not integer",
         ),
         "a field of a nested shape": (
-            protocol.event("run.done", run="abc", outputs={"s": {"text": {"type": "Text"}}}),
+            # a value but its key: a step's output is a value or a collection (spec 021)
+            protocol.event("run.done", run="abc", outputs={"s": {"text": NO_KEY}}),
             "run.done: no field outputs.s.text.key",
         ),
     }

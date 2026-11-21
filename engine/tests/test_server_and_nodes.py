@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import Events, MakeEngine, MakeNode, StartEngine, call, wait_until
+from conftest import MASKS, Events, MakeEngine, MakeNode, StartEngine, call, wait_until
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR, REPO_ROOT
@@ -302,6 +302,25 @@ def test_values_are_located_only_when_committed(
     ):
         refused = call(engine, "values.locate", **params)["error"]
         assert (refused["kind"], refused["reason"]) == ("request", "bad_params"), params
+
+
+def test_an_item_is_located_by_its_key(
+    tmp_path: Path, node_root: Path, make_node: MakeNode, make_engine: MakeEngine, events: Events
+) -> None:
+    """An item a run made is read by its own key, `<entry>:<port>:<index>`, as the page splits it
+    (spec 021): values.locate answers it when the port names it, and nothing past the end."""
+    make_node(MASKS["manifest"], MASKS["code"])
+    engine = make_engine(tmp_path / "data", [node_root], events.append)
+    result = engine.scheduler.run(Graph.from_json({"nodes": {"m": {"node": "test.masks"}}}), events.append)
+    assert result.status == "done", result.error
+    second = result.collections["m"]["masks"][1]
+    entry, _, port = second.key.partition(":")
+    assert port == "masks:1"
+    found = call(engine, "values.locate", key=entry, port=port)["result"]
+    assert found == {"path": str(second.path), "type": "Mask", "carrier": "png"}
+    for wrong in ("masks", "masks:3", "masks:-1", "masks:x", "other:0"):
+        refused = call(engine, "values.locate", key=entry, port=wrong)["error"]
+        assert (refused["kind"], refused["reason"]) == ("request", "bad_params"), wrong
 
 
 def test_audio_is_a_type_the_value_protocol_can_serve(

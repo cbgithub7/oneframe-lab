@@ -23,6 +23,8 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | node | One step of a graph, a folder with `node.json` and its code: an *engine node* runs in the engine's process, a *runtime node* in a child process in its runtime |
 | manifest | A node's `node.json`: its ports, params, where it runs, the files it reads, its memory model |
 | port, type, facet | A node's input or output; its data kind (`Depth`); and the facets that say what the values mean (`kind=metric`). Two ports connect when the output's facets fit the input's |
+| collection | An ordered list of values of one type on a port, written `Mask*`; each item has its own facets, meta, trust and key, `<key>:<port>:<index>` when a node made it; it may be empty ([spec 021](../specs/021-collections/spec.md)) |
+| for each | A step whose single input is fed a collection runs once for each item, and each of its outputs is then a collection in the same order; the collections it is fed item by item come from one step, and an input that takes `Mask*` takes the whole |
 | converter | A `convert` node of one input and one output that the plan inserts between two ports that differ only in facets |
 | trust | What a value rests on: `measured` (seen in the photo), `predicted` (a model's guess) or `synthetic` (made from generated views) |
 | sources | The values a value descends from that no step made from another (a photo, clicks), named by their keys in its `meta.sources`, which the engine writes and no node can set |
@@ -188,6 +190,13 @@ precision, changes, needs, budgets and any warning: `slow`, `tried_anyway`, `unk
 fit) | `node.oom` and, once, another `node.fit` and `node.start` | `node.failed` (with the fits) →
 `run.done` | `run.failed` | `run.stopped`. An engine node without a memory model gets no `node.fit`.
 
+A step run for each ([spec 021](../specs/021-collections/spec.md)) says the same events for each
+item in turn, each carrying `item` (from 0) and `of`; it is done when its last item is, and the
+first item that fails ends it with `node.failed` naming that `item`, the items before it kept in the
+cache. Over no items it starts nothing and says one `node.done` with `of` 0 and its empty
+collections. A value on a port is a `value`; a collection is a `collection`, its `type` and its
+`items`, each a value read by its own key (`values.locate` answers `masks:0`).
+
 A failure stops only what depends on it. A step whose inputs come from a failed or skipped step
 gets `node.skipped` (with `waited_on`, that step) and never starts; a value that does not fit its
 input skips that step too, naming the `edge`. The run goes on with every other step, then ends
@@ -203,7 +212,7 @@ deletes only a saved graph, which the person asked for by name, and brings the s
 graph's other nodes (`graph`) and of every installed node (`add`): `direct`, `via` a converter
 (the one `plan()` inserts), `depends` (an output that leaves open a facet the input names; the
 value is checked when it arrives), or `no`, with its reason: `mismatch`, `taken` (the input is
-fed) or `cycle`.
+fed) or `cycle`; with `each` where the input's step would run for each item of the output.
 
 `nodes.fit` answers the fit a node would get now, and `nodes.forget` clears what this machine
 learned about a node; the page may ask the first. `values.locate {key, port}` answers the file of

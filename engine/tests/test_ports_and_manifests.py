@@ -77,6 +77,25 @@ def test_parse_refuses_bad_specs_with_a_reason(text: str, needle: str) -> None:
         ports.parse(text)
 
 
+def test_a_collection_port_is_read_and_written(tmp_path: Path) -> None:
+    """A trailing `*` makes a port a collection of its type, in either form, and is written back
+    (spec 021); its items connect by the type's rule; a folder of values cannot be one."""
+    spec = ports.parse("Mask[kind=binary]*")
+    assert (spec.type, spec.many, spec.facets) == ("Mask", True, {"kind": ("binary",)})
+    assert spec.text() == "Mask[kind=binary]*"
+    assert ports.parse({"type": "Mesh *", "optional": True}).many
+    assert ports.parse("Image*").text() == "Image*"
+    assert not ports.parse("Image").many
+    assert ports.mismatch(ports.parse("Image*"), ports.parse("Image")) is None
+    assert ports.mismatch(ports.parse("Mask[kind=binary]*"), ports.parse("Mask[kind=soft]*"))
+    with pytest.raises(ports.PortError, match="Cannot read"):
+        ports.parse("Image**")
+    (tmp_path / "node.py").write_text("def run(ctx): pass\n", encoding="utf-8")
+    with pytest.raises(ManifestError, match="cannot be a collection"):
+        parse(_manifest(outputs={"views": "ViewSet*"}), tmp_path)
+    assert parse(_manifest(inputs={"masks": "Mask*"}), tmp_path).inputs["masks"].many
+
+
 def test_object_form_carries_optional_doc_and_trust() -> None:
     spec = ports.parse({"type": "Mask[kind=binary]", "optional": True, "doc": "d", "trust": "measured"})
     assert spec.optional and spec.doc == "d" and spec.trust == "measured"

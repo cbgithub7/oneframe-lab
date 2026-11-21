@@ -257,13 +257,16 @@ def _planned(data: dict[str, Any], src: str, dst: str, registry: Registry) -> di
             "taken": any("two edges feed" in m for m in mine),
         }
     inserted = [s.manifest.id for s in made.steps if s.id.startswith(f"{step}~{port}~")]
+    each = port in next(s for s in made.steps if s.id == step).each  # the step runs for each
     if inserted:
-        return {"how": "via", "converter": inserted[0]}
-    return {"how": "depends" if {"from": src, "to": dst} in made.depends else "direct"}
+        return {"how": "via", "converter": inserted[0], "each": each}
+    return {"how": "depends" if {"from": src, "to": dst} in made.depends else "direct", "each": each}
 
 
 def _agrees(answer: dict[str, Any], planned: dict[str, Any], edge: str) -> None:
     assert answer["how"] == planned["how"], f"{edge}: fits says {answer}, plan {planned}"
+    if answer["how"] != "no":
+        assert answer.get("each", False) == planned["each"], f"{edge}: fits says {answer}, plan {planned}"
     if answer["how"] == "via":
         assert answer["converter"] == planned["converter"], edge
     if answer["how"] == "no":
@@ -272,11 +275,10 @@ def _agrees(answer: dict[str, Any], planned: dict[str, Any], edge: str) -> None:
             assert answer["reason"] == "cycle", f"{edge}: {answer}"
 
 
-def test_what_fits_agrees_with_plan(make_node: MakeNode, registry_for: Callable[[], Registry]) -> None:
-    for row in FITS_NODES:
-        make_node({"version": "1", "title": row["id"], "category": "evaluate", **row})
-    registry = registry_for()
-    graph = Graph.from_json(FITS_GRAPH)
+def _every_pair(graph_data: dict[str, Any], registry: Registry) -> set[str]:
+    """fits() against plan() for every edge from or to a port of the graph, in it and to a node
+    added; each kind of answer seen, as `how:reason`, with `+each` where the step runs for each."""
+    graph = Graph.from_json(graph_data)
     seen: set[str] = set()
 
     def side(answers: list[dict[str, Any]], which: str) -> list[dict[str, Any]]:
@@ -289,25 +291,146 @@ def test_what_fits_agrees_with_plan(make_node: MakeNode, registry_for: Callable[
             answers = fits(graph, f"{key}.{out}", registry)
             for answer in side(answers["graph"], "input"):
                 edge = (f"{key}.{out}", f"{answer['step']}.{answer['port']}")
-                _agrees(answer, _planned(FITS_GRAPH, *edge, registry), " -> ".join(edge))
+                _agrees(answer, _planned(graph_data, *edge, registry), " -> ".join(edge))
                 back = side(fits(graph, edge[1], registry)["graph"], "output")
                 [mirror] = [a for a in back if (a["step"], a["port"]) == (key, out)]
-                assert {k: mirror[k] for k in ("how", "converter", "reason") if k in mirror} == {
-                    k: answer[k] for k in ("how", "converter", "reason") if k in answer
+                assert {k: mirror[k] for k in ("how", "converter", "reason", "each") if k in mirror} == {
+                    k: answer[k] for k in ("how", "converter", "reason", "each") if k in answer
                 }, edge
-                seen.add(answer["how"] + ":" + answer.get("reason", ""))
+                seen.add(
+                    answer["how"] + ":" + answer.get("reason", "") + ("+each" if answer.get("each") else "")
+                )
             for answer in side(answers["add"], "input"):  # a new node of each kind, fed from here
-                data = dict(FITS_GRAPH, nodes={**FITS_GRAPH["nodes"], "new": {"node": answer["node"]}})
+                data = dict(graph_data, nodes={**graph_data["nodes"], "new": {"node": answer["node"]}})
                 edge = (f"{key}.{out}", f"new.{answer['port']}")
                 _agrees(answer, _planned(data, *edge, registry), " -> ".join(edge))
+                seen.add(
+                    answer["how"] + ":" + answer.get("reason", "") + ("+each" if answer.get("each") else "")
+                )
         for into in manifest.inputs:
             for answer in side(fits(graph, f"{key}.{into}", registry)["add"], "output"):  # feeding it
-                data = dict(FITS_GRAPH, nodes={**FITS_GRAPH["nodes"], "new": {"node": answer["node"]}})
+                data = dict(graph_data, nodes={**graph_data["nodes"], "new": {"node": answer["node"]}})
                 edge = (f"new.{answer['port']}", f"{key}.{into}")
                 _agrees(answer, _planned(data, *edge, registry), " -> ".join(edge))
+    return seen
+
+
+def test_what_fits_agrees_with_plan(make_node: MakeNode, registry_for: Callable[[], Registry]) -> None:
+    for row in FITS_NODES:
+        make_node({"version": "1", "title": row["id"], "category": "evaluate", **row})
+    registry = registry_for()
+    graph = Graph.from_json(FITS_GRAPH)
+    seen = _every_pair(FITS_GRAPH, registry)
     assert seen >= {"direct:", "via:", "depends:", "no:mismatch", "no:taken", "no:cycle"}, seen
     with pytest.raises(GraphError, match="no port"):
         fits(graph, "s.nope", registry)
+
+
+# Collections (spec 021): a node that gives them and a single value, one that takes either, item
+# by item or whole, and the converter. Every input is optional, as above.
+EACH_NODES = [
+    {
+        "id": "test.many",
+        "outputs": {
+            "rels": "Depth[kind=affine_invariant_disparity, measure=z]*",
+            "metrics": "Depth[kind=metric, measure=z]*",
+            "one": "Depth[kind=metric, measure=z]",
+        },
+    },
+    {
+        "id": "test.each_sink",
+        "inputs": {
+            "metric": {"type": "Depth[kind=metric]", "optional": True},
+            "all": {"type": "Depth[kind=metric]*", "optional": True},
+        },
+        "outputs": {"depth": "Depth[kind=metric, measure=z]"},
+    },
+    FITS_NODES[2],
+]
+EACH_GRAPH = {
+    "version": 1,
+    "nodes": {
+        k: {"node": n}
+        for k, n in [
+            ("m", "test.many"),
+            ("k", "test.each_sink"),
+            ("k2", "test.each_sink"),
+            ("c", "test.to_metric"),
+        ]
+    },
+    "edges": [{"from": "m.metrics", "to": "k.metric"}],  # k runs for each: its depth is a collection
+}
+
+
+def test_what_fits_says_each(make_node: MakeNode, registry_for: Callable[[], Registry]) -> None:
+    for row in EACH_NODES:
+        make_node({"version": "1", "title": row["id"], "category": "evaluate", **row})
+    registry = registry_for()
+    seen = _every_pair(EACH_GRAPH, registry)
+    assert seen >= {"direct:", "direct:+each", "via:", "via:+each", "no:mismatch", "no:taken"}, seen
+    answers = fits(Graph.from_json(EACH_GRAPH), "k.depth", registry)["graph"]
+    [into_all] = [a for a in answers if (a["step"], a["port"]) == ("k2", "all")]
+    assert (into_all["how"], into_all.get("each")) == ("direct", None)  # a collection taken whole
+    one = fits(Graph.from_json(EACH_GRAPH), "m.one", registry)["graph"]
+    [refused] = [a for a in one if (a["step"], a["port"]) == ("k2", "all")]
+    assert (refused["how"], refused["reason"]) == ("no", "mismatch"), refused
+    assert "single" in refused["message"]
+
+
+def test_plan_refuses_collections_that_do_not_line_up(
+    make_node: MakeNode, registry_for: Callable[[], Registry]
+) -> None:
+    for row in [
+        {"id": "test.masks", "outputs": {"masks": "Mask[kind=binary]*"}},
+        {"id": "test.one_mask", "outputs": {"mask": "Mask[kind=binary]"}},
+        {
+            "id": "test.pair",
+            "inputs": {"mask": "Mask", "other": "Mask"},
+            "outputs": {"mask": "Mask[kind=binary]"},
+        },
+        {"id": "test.whole", "inputs": {"masks": "Mask*"}, "outputs": {"mask": "Mask[kind=binary]"}},
+        {"id": "test.splits", "inputs": {"mask": "Mask"}, "outputs": {"parts": "Mask[kind=binary]*"}},
+    ]:
+        make_node({"version": "1", "title": row["id"], "category": "evaluate", **row})
+    registry = registry_for()
+
+    def refused(nodes: dict[str, str], edges: list[tuple[str, str]]) -> list[tuple[str, str, str]]:
+        with pytest.raises(GraphError) as info:
+            plan(_graph({k: {"node": n} for k, n in nodes.items()}, edges), registry)
+        return [(p["node"], p["port"], p["message"]) for p in info.value.problems]
+
+    # Two steps' collections, fed item by item into one: they need not line up.
+    [(node, port, message)] = refused(
+        {"a": "test.masks", "b": "test.masks", "p": "test.pair"},
+        [("a.masks", "p.mask"), ("b.masks", "p.other")],
+    )
+    assert (node, port) == ("p", "other") and "from a and from b" in message, message
+    # A single value into a collection input.
+    # (and, refused, the input is not connected: the second problem)
+    (node, port, message), _ = refused({"o": "test.one_mask", "w": "test.whole"}, [("o.mask", "w.masks")])
+    assert (node, port) == ("w", "masks") and "single Mask cannot feed a collection" in message, message
+    # A for each over a node that itself gives a collection.
+    [(node, port, message)] = refused({"a": "test.masks", "s": "test.splits"}, [("a.masks", "s.mask")])
+    assert (node, port) == ("s", "parts") and "for each inside another" in message, message
+    # One step's collection, fed directly and through a step run for each of it, lines up.
+    made = plan(
+        _graph(
+            {"a": {"node": "test.masks"}, "e": {"node": "test.pair"}, "p": {"node": "test.pair"}},
+            [("a.masks", "e.mask"), ("a.masks", "e.other"), ("a.masks", "p.mask"), ("e.mask", "p.other")],
+        ),
+        registry,
+    )
+    assert {s.id: s.each for s in made.steps} == {"a": (), "e": ("mask", "other"), "p": ("mask", "other")}
+    assert "p runs once for each item of a.masks." in made.notes
+    # A collection taken whole ends the for each, and starts a new origin.
+    made = plan(
+        _graph(
+            {"a": {"node": "test.masks"}, "e": {"node": "test.pair"}, "w": {"node": "test.whole"}},
+            [("a.masks", "e.mask"), ("a.masks", "e.other"), ("e.mask", "w.masks")],
+        ),
+        registry,
+    )
+    assert next(s for s in made.steps if s.id == "w").each == ()
 
 
 CLICKS = {"width": 8, "height": 6, "points": [{"x": 1, "y": 2, "positive": True}], "boxes": []}

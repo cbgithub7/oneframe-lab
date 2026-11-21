@@ -30,7 +30,9 @@ class NodeContext(Context):
             np.savez(path, depth=depth)
             ctx.output("depth", path, facets={"kind": "metric", "measure": "z"})
 
-    Every output the manifest lists has to be declared with ctx.output before run returns."""
+    Every single output the manifest lists has to be declared with ctx.output before run returns;
+    a collection output (`Mask*`) is declared item by item with ctx.output_item, and a collection
+    input read with ctx.items (spec 021)."""
 
     def __init__(
         self,
@@ -43,6 +45,7 @@ class NodeContext(Context):
     ):
         # Copies: a node that changes a value's meta or trust changes nothing upstream.
         self.inputs: dict[str, Value] = {port: Value.from_json(v.to_json()) for port, v in job.inputs.items()}
+        self._items = {port: [Value.from_json(v.to_json()) for v in held] for port, held in job.items.items()}
         self.params: dict[str, Any] = dict(job.params)
         self._out_dir = job.out_dir
         self.device = job.device or CPU
@@ -52,7 +55,7 @@ class NodeContext(Context):
         self.memory_budget_mb: float | None = job.memory_budget_mb
         # The files this run reads (spec 003), by their name in the manifest: ctx.file(name).
         self._files: dict[str, str] = dict(job.files)
-        self._outputs: dict[str, dict[str, Any]] = {}
+        self._outputs: dict[str, Any] = {}  # by port: a declared value, or a collection's list
         self._say = say
         self._stop = stop if stop is not None else threading.Event()
         self._stage = stage if stage is not None else {"stage": "start"}
@@ -156,6 +159,18 @@ class NodeContext(Context):
         target.parent.mkdir(parents=True, exist_ok=True)
         return target
 
+    def items(self, port: str) -> list[Value]:
+        """A collection input's items, in order (copies, as `inputs` are); [] when not connected."""
+        return list(self._items.get(port, []))
+
+    def _declared(
+        self, path: str | Path, facets: dict[str, str] | None, meta: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        target = Path(path)
+        if not target.is_absolute():
+            target = self._out_dir / target
+        return {"path": str(target), "facets": dict(facets or {}), "meta": dict(meta or {})}
+
     def output(
         self,
         port: str,
@@ -163,10 +178,21 @@ class NodeContext(Context):
         facets: dict[str, str] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> None:
-        target = Path(path)
-        if not target.is_absolute():
-            target = self._out_dir / target
-        self._outputs[port] = {"path": str(target), "facets": dict(facets or {}), "meta": dict(meta or {})}
+        self._outputs[port] = self._declared(path, facets, meta)
+
+    def output_item(
+        self,
+        port: str,
+        path: str | Path,
+        facets: dict[str, str] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        """The next item of a collection output. On a port declared with `output` it starts the
+        list afresh; which a port is, the engine checks against the manifest."""
+        held = self._outputs.get(port)
+        if not isinstance(held, list):
+            held = self._outputs[port] = []
+        held.append(self._declared(path, facets, meta))
 
     def stage(self, name: str, message: str = "") -> None:
         self._stage["stage"] = name

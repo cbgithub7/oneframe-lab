@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "title": "Test: three images, one at a time",
+  "nodes": {
+    "three": { "node": "source.fixture_three", "params": {}, "label": "Three" }
+  },
+  "edges": [],
+  "page": { "panes": [{ "step": "three", "port": "images" }] }
+}

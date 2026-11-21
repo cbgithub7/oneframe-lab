@@ -8,13 +8,18 @@
 /** @typedef {import("../protocol.js").Page.Failure} Failure */
 /** @typedef {import("../protocol.js").Page.Fit} Fit */
 /** @typedef {import("../protocol.js").Page.Value} Value */
+/** @typedef {import("../protocol.js").Page.Collection} Collection */
+/**
+ * A step run for each (spec 021): how many of its items are done, of how many, and whether any ran.
+ * @typedef {{ done: number, of: number, ran: boolean }} Items
+ */
 /**
  * @typedef {"install" | "download" | "wait" | "retry"} Action
  * @typedef {{ action: Action, for?: "runtime" | "files" }} Offer
  * @typedef {"waiting" | "fitting" | "running" | "cached" | "done" | "failed" | "skipped" | "stopped"} Phase
  * @typedef {{ phase: Phase, fit?: Fit, stage?: string, progress?: { done: number | null, total: number | null, what: string },
  *   seconds?: number, peak_vram_mb?: number | null, failure?: Failure, offer?: Offer | null, note?: string,
- *   outputs?: Record<string, Value> }} Card
+ *   outputs?: Record<string, Value | Collection>, items?: Items }} Card
  * @typedef {{ run: string | null, pending: boolean, cards: Record<string, Card>,
  *   ended: "done" | "failed" | "stopped" | null, failure?: Failure }} RunState
  */
@@ -65,6 +70,26 @@ export function starting() {
   return { ...idle(), pending: true };
 }
 
+/**
+ * A step's outputs once one item of a for each is done: each port's collection, that item's value
+ * put at its place.
+ * @param {Record<string, Value | Collection> | undefined} outputs @param {Record<string, Value | Collection>} made
+ * @param {number} item
+ * @returns {Record<string, Value | Collection>}
+ */
+function placed(outputs, made, item) {
+  /** @type {Record<string, Value | Collection>} */
+  const out = { ...outputs };
+  for (const [port, value] of Object.entries(made)) {
+    if ("items" in value) continue; // a step run for each gives one value an item
+    const held = out[port];
+    const items = held && "items" in held ? [...held.items] : [];
+    items[item] = value;
+    out[port] = { type: value.type, items };
+  }
+  return out;
+}
+
 /** @param {Failure} failure @returns {Failure} */
 const failureOf = (failure) => ({
   kind: failure.kind,
@@ -95,6 +120,16 @@ export function runView(state, event) {
   const card = (step, change) => {
     cards[step] = { ...(cards[step] ?? { phase: "waiting" }), ...change };
   };
+  // One item of a step run for each: the card counts it, and is done only at the last.
+  /** @param {{ step: string, item?: number, of?: number, outputs: Record<string, Value | Collection> }} ev @param {boolean} ran @param {Partial<Card>} change */
+  const itemDone = (ev, ran, change) => {
+    const was = cards[ev.step]?.items;
+    const of = ev.of ?? 0;
+    const items = { done: (was?.done ?? 0) + 1, of, ran: (was?.ran ?? false) || ran };
+    const outputs = placed(cards[ev.step]?.outputs, ev.outputs, ev.item ?? 0);
+    const last = items.done >= of;
+    card(ev.step, { ...change, items, outputs, phase: last ? (items.ran ? "done" : "cached") : "running" });
+  };
   switch (event.event) {
     case "node.fit":
       card(event.step, { phase: "fitting", fit: event });
@@ -115,9 +150,19 @@ export function runView(state, event) {
       card(event.step, { note: event.message });
       break;
     case "node.cached":
-      card(event.step, { phase: "cached", outputs: event.outputs, ...(event.fit ? { fit: event.fit } : {}) });
+      if (event.of !== undefined) itemDone(event, false, event.fit ? { fit: event.fit } : {});
+      else card(event.step, { phase: "cached", outputs: event.outputs, ...(event.fit ? { fit: event.fit } : {}) });
       break;
     case "node.done":
+      if (event.of === 0) {
+        card(event.step, { phase: "done", seconds: 0, items: { done: 0, of: 0, ran: false }, outputs: event.outputs });
+        break;
+      }
+      if (event.of !== undefined) {
+        const was = cards[event.step]?.seconds ?? 0;
+        itemDone(event, true, { seconds: was + event.seconds, peak_vram_mb: event.peak_vram_mb, ...(event.fit ? { fit: event.fit } : {}) });
+        break;
+      }
       card(event.step, {
         phase: "done", seconds: event.seconds, peak_vram_mb: event.peak_vram_mb, outputs: event.outputs,
         ...(event.fit ? { fit: event.fit } : {}),
