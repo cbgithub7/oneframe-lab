@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.node import Emit
+from oneframe.node.devices import CUDA
 
 RESERVE_MB = 256  # kept free under the cap: comfy-aimdo's default headroom (spec 002, research.md)
 PEAKS = ("peak_reserved_mb", "peak_vram_mb", "peak_ram_mb")  # what a `done` or `error` event carries
@@ -29,7 +30,7 @@ def cap_allocator(device: str, budget: float | None, outside: float, say: Emit) 
     allocates outside torch. In "tried anyway" and with the fit off the job carries no budget, and
     only the free memory counts. A runtime without torch runs uncapped, and its `ceiling` event
     says so."""
-    if not device.startswith("cuda"):
+    if not device.startswith(CUDA):
         return None
     try:
         import torch  # type: ignore[import-not-found]
@@ -67,7 +68,7 @@ def peak_vram_mb(device: str, reserved: bool = False) -> float | None:
     """Torch's peak on the card, or None when torch was never loaded or the run was on the CPU
     (asking would start a CUDA context on a card the node was not using)."""
     torch = sys.modules.get("torch")
-    if torch is None or not device.startswith("cuda"):
+    if torch is None or not device.startswith(CUDA):
         return None
     try:
         if torch.cuda.is_available():
@@ -149,7 +150,7 @@ def release(device: str) -> None:
     torch keeps freed blocks cached until asked to give them back. Then start the peak again."""
     gc.collect()
     torch = sys.modules.get("torch")
-    if torch is None or not device.startswith("cuda"):
+    if torch is None or not device.startswith(CUDA):
         return
     try:
         if torch.cuda.is_available():

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, NoReturn, TypeVar
 
 from oneframe.node import Context, Emit, LoadContext, NodeFailed, Stopped, Value, usage
+from oneframe.node.devices import CPU, CUDA
 from oneframe.node.failures import is_torch_oom
 from oneframe.node.job import Done, Job
 
@@ -44,7 +45,7 @@ class NodeContext(Context):
         self.inputs: dict[str, Value] = {port: Value.from_json(v.to_json()) for port, v in job.inputs.items()}
         self.params: dict[str, Any] = dict(job.params)
         self._out_dir = job.out_dir
-        self.device = job.device or "cpu"
+        self.device = job.device or CPU
         self.precision = job.precision or "fp32"
         self.attempt = job.attempt  # 2 on the engine's retry after running out
         # The fit's budget on this device in MB, or None when the node was not fitted.
@@ -65,7 +66,7 @@ class NodeContext(Context):
 
         On a card, the cap less what torch holds in live tensors; on the processor, the budget less
         what this process has grown by since it started."""
-        if self.device.startswith("cuda"):
+        if self.device.startswith(CUDA):
             torch = sys.modules.get("torch")
             if torch is None or self._cap_mb is None:
                 return None

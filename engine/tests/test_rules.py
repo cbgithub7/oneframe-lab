@@ -13,6 +13,7 @@ from conftest import MakeRuntime
 
 import oneframe
 from oneframe.manifest import ManifestError, parse
+from oneframe.node.devices import DEVICES
 from oneframe.runtimes.definition import discover
 
 TESTS = Path(__file__).resolve().parent
@@ -64,6 +65,8 @@ def _where(node: ast.AST, parents: dict[int, ast.AST]) -> str:
         return f"a .{parent.func.attr}() argument"
     if isinstance(parent, ast.Subscript) and ast.unparse(parent.value) == "sys.modules":
         return "a sys.modules key"
+    if isinstance(parent, ast.Subscript) and node is parent.slice:
+        return f"a key of {ast.unparse(parent.value)}"
     if isinstance(parent, ast.Dict) and node in parent.values:
         target = parents.get(id(parent))
         if isinstance(target, ast.Assign | ast.AnnAssign):
@@ -117,6 +120,51 @@ def test_no_engine_module_names_a_runtime_a_node_or_the_tests() -> None:
     assert found == [], "\n".join(found)
     # Every exception is still needed, so the list stays true.
     assert used == LIBRARY_NAMES, LIBRARY_NAMES - used
+
+
+# Where the letters of a device stand for something else, in the one form each takes.
+NOT_DEVICES = {
+    ("environment.py", "a value of LIBRARY_CACHES", "cuda"),  # CUDA_CACHE_PATH's folder under the root
+    ("memory/model.py", "a comparison", "cpu"),  # a precision row's field: does it run on the processor
+    ("memory/model.py", "a key of row", "cpu"),
+}
+DEVICES_MODULE = "node/devices.py"
+
+
+def _device_findings(modules: dict[str, str]) -> tuple[list[str], set[tuple[str, str, str]]]:
+    """Each string constant that spells a device outside the devices module, but for NOT_DEVICES;
+    and which of those were found."""
+    found: list[str] = []
+    used: set[tuple[str, str, str]] = set()
+    for module, source in modules.items():
+        if module == DEVICES_MODULE:
+            continue
+        tree = ast.parse(source)
+        docstrings = _docstrings(tree)
+        parents = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value in DEVICES and id(node) not in docstrings:
+                place = (module, _where(node, parents), node.value)
+                if place in NOT_DEVICES:
+                    used.add(place)
+                else:
+                    found.append(f"{module}:{node.lineno}: {place[1]} spells {node.value!r}")
+    return sorted(found), used
+
+
+def test_devices_are_named_once() -> None:
+    """One module names the devices; every other imports them (spec 019, AC4)."""
+    found, used = _device_findings(_engine_modules())
+    assert found == [], "\n".join(found)
+    assert used == NOT_DEVICES, NOT_DEVICES - used  # every exception is still needed
+    assert DEVICES == ("cpu", "cuda")  # v1's: the processor or an NVIDIA card (spec 013)
+
+
+def test_a_device_spelled_in_a_listed_module_is_still_caught() -> None:
+    source = 'LIBRARY_CACHES = {"CUDA_CACHE_PATH": "cuda"}\nif device == "cuda":\n    pass\n'
+    found, used = _device_findings({"environment.py": source})
+    assert found == ["environment.py:2: a comparison spells 'cuda'"]
+    assert used == {("environment.py", "a value of LIBRARY_CACHES", "cuda")}
 
 
 def test_a_listed_module_that_gains_a_runtime_id_is_still_caught() -> None:

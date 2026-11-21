@@ -11,6 +11,7 @@ from typing import Any
 
 from oneframe.files import format_of
 from oneframe.layout import Layout
+from oneframe.node.devices import CPU, CUDA
 from oneframe.reading import number
 
 MARGIN_FLOOR_MB = 1611  # 1.5 GiB, in MB of 10^6 bytes
@@ -24,7 +25,7 @@ FIT_MODES = ("on", "off")
 class Settings:
     """The person's control over the fit, from `<data>/settings.json`'s `memory` object."""
 
-    margin_mb: Mapping[str, float | None] = field(default_factory=lambda: {"cuda": None, "cpu": None})
+    margin_mb: Mapping[str, float | None] = field(default_factory=lambda: {CUDA: None, CPU: None})
     never_reduce_quality: bool = False
     fit: str = "on"
     notes: tuple[str, ...] = ()  # what in the file was not understood, and so left at its default
@@ -65,7 +66,7 @@ def read_settings(data_root: Path | None) -> Settings:
     if not isinstance(row, dict):
         return Settings(notes=(f"{SETTINGS_FILE}: memory should be an object; the defaults are used",))
     notes: list[str] = []
-    margins: dict[str, float | None] = {"cuda": None, "cpu": None}
+    margins: dict[str, float | None] = {CUDA: None, CPU: None}
     for device, value in (row.get("margin_mb") or {}).items():
         if device not in margins:
             notes.append(f"margin_mb.{device}: only cuda and cpu have a margin")

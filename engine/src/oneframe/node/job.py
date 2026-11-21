@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from oneframe.node import Value
+from oneframe.node.devices import CPU
 from oneframe.node.usage import PEAKS
 
 
@@ -31,7 +32,7 @@ class Job:
     step: str = ""
     inputs: dict[str, Value] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
-    device: str = "cpu"
+    device: str = CPU
     files: dict[str, str] = field(default_factory=dict)  # by name in the manifest: the store's path
     attempt: int = 1  # 2 on the engine's retry after running out
     precision: str | None = None

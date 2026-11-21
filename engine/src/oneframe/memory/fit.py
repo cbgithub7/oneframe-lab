@@ -11,6 +11,7 @@ from typing import Any
 from oneframe.memory.estimate import Device, Inputs, Learned, Need, Target, estimate, settings_hash
 from oneframe.memory.model import PRECISION_PARAM, Change, MemoryModel, Precision
 from oneframe.memory.settings import Settings, margin
+from oneframe.node.devices import CPU, CUDA
 
 # -- the machine, as a fit sees it ---------------------------------------------------------------
 
@@ -29,7 +30,7 @@ class Checkpoints:
 def _system_device(machine: Mapping[str, Any], settings: Settings) -> Device:
     system = machine.get("system") or {}
     total = system.get("total_mb")
-    return Device("cpu", "cpu", None, system.get("free_mb"), total, margin(settings, "cpu", total))
+    return Device(CPU, CPU, None, system.get("free_mb"), total, margin(settings, CPU, total))
 
 
 def _card(machine: Mapping[str, Any], target: Target, settings: Settings) -> Device | None:
@@ -41,12 +42,12 @@ def _card(machine: Mapping[str, Any], target: Target, settings: Settings) -> Dev
     capability = gpu.get("capability")
     total = gpu.get("vram_total_mb")
     return Device(
-        "cuda",
+        CUDA,
         f"cuda:{capability or 'unknown'}",
         capability,
         gpu.get("vram_free_mb"),
         total,
-        margin(settings, "cuda", total),
+        margin(settings, CUDA, total),
         target.card,
     )
 
@@ -137,11 +138,11 @@ def _devices_here(
     """The node's devices that this machine has and its runtime can use, in the manifest's order."""
     here: list[Device] = []
     for name in devices:
-        if name == "cuda":
+        if name == CUDA:
             card = _card(machine, target, settings)
             if card is not None:
                 here.append(card)
-        elif name == "cpu":
+        elif name == CPU:
             here.append(_system_device(machine, settings))
     return here
 
@@ -200,7 +201,7 @@ class _Fitter:
         rule = self.model.precisions.get(precision)
         if rule is None:
             return False
-        return rule.cpu if device.type == "cpu" else rule.runs_on_card(device.capability)
+        return rule.cpu if device.type == CPU else rule.runs_on_card(device.capability)
 
     def blocked(self, change: Change, device: Device) -> str | None:
         """Why a change cannot be made on this device, or None."""
@@ -216,7 +217,7 @@ class _Fitter:
         precision = change.set.get(PRECISION_PARAM)
         if precision is not None and not self.runs_on(device, str(precision)):
             self.precision_skipped.setdefault(device.type, set()).add(str(precision))
-            return f"{precision} cannot run on {'the processor' if device.type == 'cpu' else device.kind}"
+            return f"{precision} cannot run on {'the processor' if device.type == CPU else device.kind}"
         return None
 
     def reachable(self, device: Device) -> bool:
@@ -267,7 +268,7 @@ class _Fitter:
         need, device = point.need, point.device
         if need is None or need.device is None or device.budget is None or need.device > device.budget:
             return False
-        if device.type == "cuda" and self.system.budget is not None and need.system is not None:
+        if device.type == CUDA and self.system.budget is not None and need.system is not None:
             return need.system <= self.system.budget
         return True
 
@@ -457,8 +458,8 @@ class _Fitter:
             need = point.need.device
             system = point.need.system
             free = round(device.free or 0)
-            if device.type == "cpu":
-                cannot = sorted(self.precision_skipped.get("cpu", ()))
+            if device.type == CPU:
+                cannot = sorted(self.precision_skipped.get(CPU, ()))
                 note = f", {' and '.join(cannot)} cannot run there" if cannot else ""
                 parts.append(
                     f"Needs {round(need + device.margin)} MB free in system memory for the processor "

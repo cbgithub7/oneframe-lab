@@ -19,11 +19,12 @@ from oneframe.memory.model import PRECISION_PARAM, MemoryModel
 from oneframe.memory.model import parse as parse_memory
 from oneframe.models.schema import FileSpec
 from oneframe.models.schema import parse as parse_files
+from oneframe.node.devices import CPU, DEVICES
 from oneframe.reading import ProblemsError, check_id, is_sha256, number, optional_text, read_object, text
 from oneframe.vocabulary import Vocabulary, vocabulary
 
 WHERE = ("engine", "runtime")
-DEVICES = ("cpu", "cuda")  # v1's: an NVIDIA card or the processor (spec 013)
+
 _PORT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -67,7 +68,7 @@ class Manifest:
     params: dict[str, Param]
     run: Run
     folder: Path
-    devices: tuple[str, ...] = ("cpu",)
+    devices: tuple[str, ...] = (CPU,)
     memory: MemoryModel | None = None
     licence: dict[str, Any] = field(default_factory=dict)
     links: dict[str, str] = field(default_factory=dict)
@@ -304,7 +305,7 @@ def _devices(data: dict[str, Any], problems: list[str]) -> tuple[str, ...] | Non
     for device in rows:
         if device not in DEVICES:
             problems.append(f"devices: unknown device {device!r}")
-    return tuple(rows) or ("cpu",)
+    return tuple(rows) or (CPU,)
 
 
 def _object(data: dict[str, Any], key: str, problems: list[str]) -> dict[str, Any]:

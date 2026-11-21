@@ -37,6 +37,7 @@ from oneframe.memory.estimate import Target, evaluate
 from oneframe.memory.learned import LearnedStore, StoreKey
 from oneframe.memory.settings import Settings
 from oneframe.node import Value
+from oneframe.node.devices import CPU, CUDA
 from oneframe.reading import ProblemsError, read_object
 from oneframe.registry import Registry, discover
 from oneframe.runtimes.manager import RuntimeMissing, Runtimes, RuntimeSide, find_uv
@@ -121,7 +122,7 @@ def measure(
     estimate = needs.get("device")
     measured = None
     if done is not None:
-        if device == "cuda":
+        if device == CUDA:
             reserved = done.get("peak_reserved_mb")
             outside = 0.0
             if reserved is not None:
@@ -418,7 +419,7 @@ def report_path(out: Path, record: dict[str, Any]) -> Path:
     if out.suffix.lower() == ".md":
         return out
     card = (record.get("card") or {}).get("name")
-    where = _slug(str(card)) if card else ("cpu" if record.get("profile") else "")
+    where = _slug(str(card)) if card else (CPU if record.get("profile") else "")
     name = "-".join(part for part in (where, _slug(str(record.get("node") or ""))) if part) or "machine"
     stem = f"{str(record.get('date', ''))[:10]}-{name}-fit"
     path, number = out / f"{stem}.md", 2

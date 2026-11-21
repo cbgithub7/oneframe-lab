@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from oneframe.memory.model import PRECISION_PARAM, Formula, MemoryModel
+from oneframe.node.devices import CPU
 from oneframe.reading import number
 
 # -- the machine and what it learned, as an estimate sees them -----------------------------------
@@ -146,7 +147,7 @@ def estimate(
     correction = learned.corrections.get(device.kind, 1.0)
     working, why = evaluate(model.working, model, values, inputs)
     system, system_why = evaluate(model.system, model, values, inputs)
-    if device.type == "cpu":
+    if device.type == CPU:
         weights = _weights(model, values)
         need = (
             None if working is None or weights is None else max(weights + working * correction, system or 0.0)
@@ -166,7 +167,7 @@ def estimate(
     if need is None:
         peak = learned.peaks.get((device.kind, settings_hash(values, inputs)))
         if peak is not None:
-            return Need(peak, peak if device.type == "cpu" else system, working, "measured", why)
+            return Need(peak, peak if device.type == CPU else system, working, "measured", why)
         return Need(None, system, working, "unknown", why)
     basis = "corrected" if correction != 1.0 else "known"
-    return Need(need, need if device.type == "cpu" else system, working, basis)
+    return Need(need, need if device.type == CPU else system, working, basis)

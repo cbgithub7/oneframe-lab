@@ -5,7 +5,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 1. **The vocabulary contract.** `contracts/vocabulary.json` (categories with their docs, `sound`
   among them and `test` not; the param types); `oneframe/vocabulary.py` reads it; `manifest.py`
   keeps no list of its own; every test manifest of category `test` takes `evaluate`. AC1, AC2, AC3.
-- [ ] 2. **Devices named once.** `oneframe/node/devices.py`; every other module imports its names;
+- [x] 2. **Devices named once.** `oneframe/node/devices.py`; every other module imports its names;
   `manifest.py` loses `DEVICES`; `test_devices_are_named_once`, with the two places where the
   letters mean something else. AC4.
 - [ ] 3. **The port contract in the key.** `ports.contract(names)`; `Cache.key` holds the rows of
