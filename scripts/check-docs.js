@@ -9,7 +9,8 @@
 // records kept as the owner read them), paths written in backticks.
 //
 // A spec is the contract the owner approves once; every line of it spends the owner's attention.
-// One that is not yet done may be at most SPEC_MAX_LINES long (specs/README.md). A finished spec
+// One that is not yet done may be at most SPEC_MAX_LINES long (specs/README.md), not counting its
+// "Decisions taken", the log written while the work goes on, after the approval. A finished spec
 // is history, and is left as it ended.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -61,9 +62,28 @@ export function backtickPaths(text) {
 
 export const SPEC_MAX_LINES = 200;
 
+/** The section of a spec the cap leaves out: its heading, and every line up to the next section. */
+const LOG_SECTION = /^## Decisions taken\s*$/;
+
+/**
+ * The lines of a spec the cap counts: all but its "Decisions taken" section, which is written as
+ * the work goes on, after the owner approved the rest (the review of 2026-11-07, decision 3).
+ * @param {string} text the spec.md
+ */
+export function countedLines(text) {
+  let counted = 0;
+  let inLog = false;
+  for (const line of text.replace(/\n$/, "").split("\n")) {
+    if (/^## /.test(line)) inLog = LOG_SECTION.test(line);
+    if (!inLog) counted += 1;
+  }
+  return counted;
+}
+
 /**
  * Why a spec is too long, or null: only a spec not yet done or dropped is held to the cap, or to
- * the length the owner allowed it (`Length allowed: N lines`, specs/README.md).
+ * the length the owner allowed it (`Length allowed: N lines`, specs/README.md), over the lines
+ * `countedLines` counts.
  * @param {string} text the spec.md
  * @returns {string | null}
  */
@@ -72,7 +92,7 @@ export function specTooLong(text) {
   if (/^(done|dropped)\b/i.test(status)) return null;
   const allowed = /^Length allowed:\s*(\d+) lines\b/m.exec(text);
   const cap = allowed ? Number(allowed[1]) : SPEC_MAX_LINES;
-  const lines = text.replace(/\n$/, "").split("\n").length;
+  const lines = countedLines(text);
   if (lines <= cap) return null;
   return allowed
     ? `is ${lines} lines; the owner allowed it ${cap}`

@@ -3,8 +3,9 @@
 Status: draft
 Owner approval: (date, once approved)
 
-One document: what is built and how. Aim for 150 lines, never more than 200, and at most 8
-acceptance criteria; if the work needs more, split it into specs rather than cut the design.
+One document: what is built and how. Aim for 150 lines, never more than 200 without "Decisions
+taken", and at most 8 acceptance criteria; if the work needs more, split it into specs rather than
+cut the design.
 Mechanisms belong in code and tests, and how the work went in the PR; write here what someone needs
 to judge and check the work.
 

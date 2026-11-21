@@ -7,8 +7,9 @@
 - **Hooks run on their own** (`.claude/settings.json`); do not work around them:
     - after every edit, the edited file is formatted and lint-fixed (ruff for Python, ESLint for
       JavaScript), and remaining lint errors are reported back;
-    - before a turn ends, if anything changed, `npm run check`, `npm run engine:check` and the test
-      guard run, and a failure sends you back to fix it;
+    - before a turn ends, if anything changed, `npm run check`, `npm run engine:check:fast` (all
+      but the tests that start the real uv) and the test guard run, and a failure sends you back
+      to fix it; the full `npm run engine:check` is yours to run before a PR;
     - in web sessions, the start hook installs the pinned Node, uv, engine and npm packages, and
       the other two hooks put those tools first on their PATH (`.claude/hooks/pinned-tools.js`),
       because a hook does not see the PATH the start hook set.
