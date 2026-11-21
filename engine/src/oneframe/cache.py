@@ -1,7 +1,9 @@
 """Every node output, stored by what produced it.
 
 A node's key is a hash of: the node's id and version, its output-affecting parameters (a file
-parameter by the file's content, not its name), the keys of the values it was given, its manifest
+parameter by the file's content, not its name), the keys of the values it was given, what the port
+contract says of each type its ports name (`ports.contract`: a type's facets or carrier changed
+re-runs the nodes that name it, and what follows them), its manifest
 as it was loaded (the bytes it was parsed from: a manifest edited on disk since, a re-pin say,
 counts once it is reloaded), the rest of the code in its folder (every file but bytecode), and for
 a node that runs in a runtime, the build this machine runs and what that build was installed from
@@ -27,6 +29,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from oneframe import ports
 from oneframe.errors import ContractError
 from oneframe.files import is_temporary, replace, sha256_file
 from oneframe.manifest import Manifest
@@ -35,7 +38,8 @@ from oneframe.node import Value
 # 2: the node's code and its runtime joined the key (spec 006). Older entries are never served;
 # they stay on disk until a later spec evicts them. Spec 003 moved node.json from the folder's
 # digest to the manifest's own field, which changes every key without a new version.
-KEY_VERSION = 2
+# 3: the port contract of the types a node's ports name joined the key (spec 019).
+KEY_VERSION = 3
 BYTECODE = (".pyc", ".pyo")
 MANIFEST = "node.json"  # in the key as it was loaded (Manifest.digest), not as it is on disk
 
@@ -75,12 +79,14 @@ def _code_files(folder: Path) -> list[tuple[str, Path]]:
 
 
 class Cache:
-    def __init__(self, objects: Path, work: Path):
+    def __init__(self, objects: Path, work: Path, port_types: Path | None = None):
         """`objects`: where entries are kept (the layout's `cache/objects/`). `work`: where runs
         write before their folder is moved into place, on the same volume (the engine's is its own
-        folder under `cache/tmp/`)."""
+        folder under `cache/tmp/`). `port_types`: the port contract keys are made under (default:
+        contracts/port-types.json; a test gives a copy)."""
         self.objects = Path(objects)
         self.tmp = Path(work)
+        self.port_types = port_types
         self._digests: dict[tuple[str, int, int], str] = {}
 
     def _file_key(self, value: str) -> str:
@@ -113,6 +119,10 @@ class Cache:
             "version": manifest.version,
             "params": affecting,
             "inputs": {port: value.key for port, value in sorted(inputs.items())},
+            "ports": ports.contract(
+                [spec.type for spec in (*manifest.inputs.values(), *manifest.outputs.values())],
+                self.port_types,
+            ),
             "manifest": manifest.digest,
             "code": code if code is not None else code_digest(manifest.folder),
             "runtime": runtime,

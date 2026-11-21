@@ -42,7 +42,9 @@ Values are checked where they cross a port: a node's declared outputs against it
 what the consumer accepts, because an output that leaves a facet open is only known at run time
 (kind `edge`).
 Trust flows with the value: an output that does not state its trust inherits the weakest trust of
-its inputs, so a mesh built from synthetic views never comes out labelled measured.
+its inputs, so a mesh built from synthetic views never comes out labelled measured. So do its
+sources: every output's `meta.sources` names the values it descends from that no step made from
+another (a photo), by their keys, so two values from different photos can be told apart.
 """
 
 from __future__ import annotations
@@ -71,6 +73,7 @@ from oneframe.memory.settings import Settings
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
 from oneframe.node import Emit, Value
+from oneframe.node.devices import CUDA
 from oneframe.node.job import Done, Job
 from oneframe.registry import Registry
 from oneframe.runtimes.manager import NoRuntimes, RuntimeMissing, RuntimeSide
@@ -356,7 +359,7 @@ class Scheduler:
         target = self.runtimes.device_target(str(runtime)) if runtime else Target()
         model_hash = manifest.memory.hash if manifest.memory else ""
         key = StoreKey(manifest.id, manifest.version, model_hash, target.lock or "")
-        cards = runtime is not None and "cuda" in manifest.devices and target.card is not None
+        cards = runtime is not None and CUDA in manifest.devices and target.card is not None
         return _Context(meta, target, key, cards)
 
     def preview(self, step: Step, meta: Inputs) -> tuple[Fit, Settings]:
@@ -510,7 +513,7 @@ class Scheduler:
             # (the card already more than full): the child then caps at the free memory alone.
             precision, budget = values.get(PRECISION_PARAM), found.budget
             uncapped = found.outcome in ("tried_anyway", "off") or budget is None or budget <= 0
-            cap = budget if device == "cuda" and not uncapped else None
+            cap = budget if device == CUDA and not uncapped else None
         return Job(
             node=manifest.id,
             folder=manifest.folder,
@@ -565,8 +568,11 @@ class Scheduler:
             "reduced": bool(found is not None and found.reduced),
         }
         reduced_input = any(_reduced(v) for v in state.inputs.values())
+        inherited = _sources(state.inputs)
         for value in outputs.values():
             value.meta["made_with"] = made_with  # a node cannot claim a fit it did not get
+            # nor its sources: a step fed nothing starts one, every other carries its inputs'
+            value.meta["sources"] = inherited if state.inputs else [{"id": value.key, "type": value.type}]
             if reduced_input:
                 value.meta["reduced_input"] = True
         record = {
@@ -625,7 +631,7 @@ class Scheduler:
         if manifest.run.where != "runtime" or found is None or context is None or found.kind is None:
             return
         model = manifest.memory
-        if found.device == "cuda":
+        if found.device == CUDA:
             reserved = peaks.get("peak_reserved_mb")
             need = None if reserved is None else float(reserved) + outside
             weights = (
@@ -643,7 +649,7 @@ class Scheduler:
                 need_mb=need,
                 working_mb=found.need.working if found.need is not None else None,
                 weights_mb=weights,
-                outside_mb=outside if found.device == "cuda" else 0.0,  # the processor has no outside
+                outside_mb=outside if found.device == CUDA else 0.0,  # the processor has no outside
                 seconds=seconds,
             )
         except OSError:
@@ -693,6 +699,17 @@ def _meta(step: Step, inputs: dict[str, Value]) -> Inputs:
     return meta
 
 
+def _sources(inputs: dict[str, Value]) -> list[dict[str, str]]:
+    """The values these inputs descend from that no step made from another (a photo, clicks), each
+    once, by its key: the same in every graph that shares its entry (spec 019)."""
+    found: dict[str, dict[str, str]] = {}
+    for value in inputs.values():
+        for row in value.meta.get("sources") or ():
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                found[row["id"]] = {"id": row["id"], "type": str(row.get("type", ""))}
+    return [found[ident] for ident in sorted(found)]
+
+
 def _reduced(value: Value) -> bool:
     """A value made at reduced quality, or from one."""
     made_with = value.meta.get("made_with")
@@ -703,7 +720,7 @@ def _described(found: Fit, peaks: dict[str, Any]) -> str:
     """Where an attempt ran and what it used, for the message of a second oom."""
     changes = ", ".join(why.split(";")[0] for _i, why in sorted(found.reasons.items()))
     at = f" with {changes}" if changes else " at its values"
-    peak = peaks.get("peak_reserved_mb") if found.device == "cuda" else peaks.get("peak_ram_mb")
+    peak = peaks.get("peak_reserved_mb") if found.device == CUDA else peaks.get("peak_ram_mb")
     used = f" (peak {round(peak)} MB)" if isinstance(peak, int | float) else ""
     return f"on {found.kind or found.device}{at}{used}"
 

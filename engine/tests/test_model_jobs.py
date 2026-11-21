@@ -37,7 +37,7 @@ def node_with_files(make_node: MakeNode, node_id: str, files: list[dict[str, Any
             "id": node_id,
             "version": "1",
             "title": "Reads files",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": {"checkpoint": {"type": "choice", "choices": ["small", "large"], "default": "small"}},
             "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},

@@ -111,7 +111,7 @@ test("forPage drops local paths and names the root, the repo and the home folder
   const hello = { engine: "0.1.0", python: "3.15.1", warnings: [], nodes: 1, methods: ["engine.hello"] };
   assert.deepEqual(forPage({ event: "engine.ready", ...hello, data: places.data }, places),
     { event: "engine.ready", ...hello });
-  const node = { id: "x", version: "1", title: "X", category: "test", files: [{ path: "weights/model.safetensors" }] };
+  const node = { id: "x", version: "1", title: "X", category: "evaluate", files: [{ path: "weights/model.safetensors" }] };
   const listed = forPage({ ok: true, result: {
     nodes: [{ ...node, folder: "D:\\code\\oneframe-lab\\nodes\\x" }],
     problems: { "d:/code/Oneframe-Lab/nodes/bad/node.json": ["cannot read"] },
@@ -189,13 +189,13 @@ const ASKING = {
 function testEngine() {
   const data = mkdtempSync(path.join(tmpdir(), "oneframe-door-"));
   const nodes = path.join(data, "test-nodes");
-  writeNode(path.join(nodes, "test.source"), { id: "test.source", version: "1", title: "S", category: "test",
+  writeNode(path.join(nodes, "test.source"), { id: "test.source", version: "1", title: "S", category: "evaluate",
     outputs: { text: "Text" } },
   "def run(ctx):\n    p = ctx.path('t.json')\n    p.write_text('1')\n    ctx.output('text', p)\n");
-  writeNode(path.join(nodes, "test.fails"), { id: "test.fails", version: "1", title: "F", category: "test",
+  writeNode(path.join(nodes, "test.fails"), { id: "test.fails", version: "1", title: "F", category: "evaluate",
     inputs: { text: "Text" }, outputs: { text: "Text" } },
   "def run(ctx):\n    raise RuntimeError('this node fails, with a trace through its folder')\n");
-  writeNode(path.join(nodes, "test.waits"), { id: "test.waits", version: "1", title: "W", category: "test",
+  writeNode(path.join(nodes, "test.waits"), { id: "test.waits", version: "1", title: "W", category: "evaluate",
     outputs: { text: "Text" } },
   "import time\n\ndef run(ctx):\n    ctx.stage('waiting', 'until it is stopped')\n    while True:\n" +
     "        ctx.check_stop()\n        time.sleep(0.05)\n");

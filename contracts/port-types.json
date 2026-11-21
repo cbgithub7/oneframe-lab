@@ -1,5 +1,5 @@
 {
-  "_comment": "The kinds of data that flow between nodes. A port is a type plus facets; an edge is legal when the producer's facets satisfy every facet the consumer names. Facets are what make two outputs that look alike (a depth map is a depth map) actually interchangeable -- or not: disparity never flows silently into a metric port. Every value also carries its source image id, so outputs from the same photo can be aligned. Engine and app both read this file; nothing retypes it.",
+  "_comment": "The kinds of data that flow between nodes. A port is a type plus facets; an edge is legal when the producer's facets satisfy every facet the consumer names. Facets are what make two outputs that look alike (a depth map is a depth map) actually interchangeable -- or not: disparity never flows silently into a metric port. Every value also names its sources in meta.sources: the values it descends from that no step made from another (a photo, clicks), by their keys, which the engine writes and no node can set (spec 019), so outputs from the same photo can be told from those of another. Engine and app both read this file; nothing retypes it.",
   "version": 1,
   "carriers": {
     "_comment": "How each carrier is stored, and the media type the app serves a value of it with (spec 016); a folder is not served.",
@@ -8,6 +8,7 @@
     "json": { "mime": "application/json" },
     "glb": { "mime": "model/gltf-binary" },
     "ply": { "mime": "application/octet-stream" },
+    "wav": { "mime": "audio/wav" },
     "folder": {}
   },
   "types": {
@@ -53,24 +54,28 @@
       "facets": { "semantics": ["prob01", "logit", "inv_variance", "unbounded"] }
     },
     "Mesh": {
-      "doc": "A triangle or quad mesh, GLB on disk.",
+      "doc": "A triangle or quad mesh, GLB on disk, in glTF's axes (x right, y up, z toward the viewer): in the camera frame, OpenCV's with y and z negated. frame: the asset's own (object, as a generator gives it), the photo's camera, or the world; scale: metres, or up to scale.",
       "carrier": "glb",
-      "facets": { "pose": ["canonical", "posed"], "appearance": ["textured", "vertex_color", "none"] }
+      "facets": {
+        "frame": ["object", "camera", "world"],
+        "scale": ["metric", "up_to_scale"],
+        "appearance": ["textured", "vertex_color", "none"]
+      }
     },
     "GaussianSplat": {
-      "doc": "3D Gaussians, Inria-layout float32 PLY on disk (raw values: log scales, logit opacity, wxyz rotations).",
+      "doc": "3D Gaussians, Inria-layout float32 PLY on disk (raw values: log scales, logit opacity, wxyz rotations), in OpenCV's axes as a point map's. frame and scale as a Mesh's.",
       "carrier": "ply",
-      "facets": { "pose": ["canonical", "posed"] }
+      "facets": { "frame": ["object", "camera", "world"], "scale": ["metric", "up_to_scale"] }
     },
     "Pose": {
-      "doc": "Rotation, translation and scale placing one asset in a scene frame.",
+      "doc": "Rotation, translation and scale placing one asset in a scene frame, in OpenCV's axes. frame: the frame it places into, the photo's camera or the world.",
       "carrier": "json",
-      "facets": {}
+      "facets": { "frame": ["camera", "world"], "scale": ["metric", "up_to_scale"] }
     },
     "CameraPath": {
-      "doc": "Cameras over time, for rendering and view synthesis.",
+      "doc": "Cameras over time, for rendering and view synthesis, in OpenCV's axes, in its frame.",
       "carrier": "json",
-      "facets": {}
+      "facets": { "frame": ["camera", "world"], "scale": ["metric", "up_to_scale"] }
     },
     "ViewSet": {
       "doc": "Several views of one subject, each with a Camera and provenance (which model made it, with what seed).",
@@ -88,9 +93,14 @@
       "facets": {}
     },
     "Scene": {
-      "doc": "A set of posed assets and a background, from one source photo.",
+      "doc": "A set of posed assets and a background, from one source photo, in its frame.",
       "carrier": "json",
-      "facets": {}
+      "facets": { "frame": ["camera", "world"], "scale": ["metric", "up_to_scale"] }
+    },
+    "Audio": {
+      "doc": "Sound, as PCM in a WAV file: an ambient loop, or an object's own sound. loop: whether its end joins its start without a seam.",
+      "carrier": "wav",
+      "facets": { "channels": ["mono", "stereo"], "loop": ["seamless", "none"] }
     },
     "Metric": {
       "doc": "Numbers an evaluation node measured, with their names and units.",

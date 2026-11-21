@@ -352,7 +352,7 @@ def _tiny_node(make_node: MakeNode) -> Graph:
             "id": "test.in_tiny",
             "version": "1",
             "title": "Runs in the tiny runtime",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
         },

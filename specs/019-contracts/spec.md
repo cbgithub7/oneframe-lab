@@ -1,6 +1,6 @@
 # 019: The contracts, grown before nodes depend on them
 
-Status: approved
+Status: done ([PR #74](https://github.com/cbgithub7/oneframe-lab/pull/74))
 Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The first of five specs for step 3c, graph model 2, which is too large for one: this one,
@@ -127,7 +127,9 @@ Risks: a device spelled in a new module (AC4 fails it); a model node's results o
 - Added: the eight tests the criteria name.
 - Changed: the 56 test manifests of category `test`, in 22 files, take a shipped category (never
   `convert`, which the plan reads): the engine's tests, the hardware check's node
-  (`engine/tests/hardware/test.vram`) and `tests/app/door.test.js`.
+  (`engine/tests/hardware/test.vram`) and `tests/app/door.test.js`;
+  `test_recorded_hashes_keep_their_values[cache_key]` records the key's new value, since this
+  spec changes every key on purpose (its manifest's category, then the key's contract part).
 - Removed: none
 - Renamed: none
 
@@ -147,6 +149,9 @@ hardware step.
   be held to them, and shows a category by its id as it does now.
 - Test nodes take shipped categories rather than a test-only contract: one contract is read.
 - `meta.sources` rather than a field of `Value`: the node API does not change, as for `made_with`.
+- Test nodes take `evaluate`, which nothing in the engine reads, so no test's meaning moves.
+- The recorded cache key gets its new value rather than a frozen manifest: the case exists to
+  show a key changing, and this spec is a change the owner approved.
 
 ## Out of scope
 

@@ -93,7 +93,7 @@ def test_a_file_param_is_keyed_by_content_not_name(
             "id": "test.reads",
             "version": "1",
             "title": "R",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": {"path": {"type": "file"}},
         },
@@ -171,7 +171,7 @@ def test_failures_are_classified_and_leave_nothing_cached(
             "id": "test.bad",
             "version": "1",
             "title": "B",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"depth": "Depth[measure=z]"},
         },
         code,
@@ -196,7 +196,7 @@ def test_a_failure_stops_only_what_depends_on_it(
             "id": "test.fails",
             "version": "1",
             "title": "F",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"image": "Image"},
             "outputs": {"depth": "Depth[kind=metric, measure=z]"},
         },
@@ -207,7 +207,7 @@ def test_a_failure_stops_only_what_depends_on_it(
             "id": "test.after",
             "version": "1",
             "title": "A",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"depth": "Depth"},
             "outputs": {"depth": "Depth[kind=metric, measure=z]"},
         },
@@ -251,7 +251,7 @@ def test_an_open_facet_is_checked_when_the_value_arrives(
             "id": "test.either",
             "version": "1",
             "title": "E",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"depth": "Depth[measure=z]"},
             "params": {
                 "kind": {"type": "choice", "choices": ["metric", "scale_invariant"], "default": "metric"}
@@ -265,7 +265,7 @@ def test_an_open_facet_is_checked_when_the_value_arrives(
             "id": "test.metric_only",
             "version": "1",
             "title": "M",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"depth": "Depth[kind=metric]"},
             "outputs": {"text": "Text"},
         },
@@ -299,7 +299,7 @@ def test_trust_is_inherited_as_the_weakest_input(
                 "id": name,
                 "version": "1",
                 "title": name,
-                "category": "test",
+                "category": "evaluate",
                 "outputs": {"text": {"type": "Text", "trust": trust}},
             },
             "def run(ctx):\n    p = ctx.path('t.json'); p.write_text('1')\n    ctx.output('text', p)\n",
@@ -309,7 +309,7 @@ def test_trust_is_inherited_as_the_weakest_input(
             "id": "test.join",
             "version": "1",
             "title": "J",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"a": "Text", "b": "Text"},
             "outputs": {"text": "Text"},
         },
@@ -325,11 +325,60 @@ def test_trust_is_inherited_as_the_weakest_input(
     assert result.outputs["j"]["text"].trust == "synthetic"
 
 
+def test_a_value_names_the_sources_it_descends_from(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Every output names the values no step made from another that it comes from (spec 019, AC8);
+    a node cannot set them."""
+    writes = (
+        "def run(ctx):\n    p = ctx.path('t.json'); p.write_text('1')\n"
+        "    ctx.output('text', p, meta={'sources': []})\n"
+    )
+    for name, inputs in (
+        ("test.photo", {}),
+        ("test.prompt", {}),  # another node, so another entry: two sources, not one served twice
+        ("test.one", {"a": "Text"}),
+        ("test.two", {"a": "Text", "b": "Text"}),
+    ):
+        make_node(
+            {
+                "id": name,
+                "version": "1",
+                "title": name,
+                "category": "evaluate",
+                "inputs": inputs,
+                "outputs": {"text": "Text"},
+            },
+            writes,
+        )
+    nodes = {
+        "r": {"node": "test.photo"},
+        "s": {"node": "test.prompt"},
+        "one": {"node": "test.one"},
+        "both": {"node": "test.two"},
+    }
+    result = scheduler_for().run(
+        _graph(nodes, [("r.text", "one.a"), ("one.text", "both.a"), ("s.text", "both.b")]), events.append
+    )
+    assert result.status == "done", result.error
+    r, s = result.outputs["r"]["text"], result.outputs["s"]["text"]
+    assert r.meta["sources"] == [{"id": r.key, "type": "Text"}]  # a source names itself
+    assert result.outputs["one"]["text"].meta["sources"] == [{"id": r.key, "type": "Text"}]
+    both = sorted([{"id": r.key, "type": "Text"}, {"id": s.key, "type": "Text"}], key=lambda row: row["id"])
+    assert result.outputs["both"]["text"].meta["sources"] == both
+
+
 def test_stop_ends_the_run_between_and_inside_nodes(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:
     make_node(
-        {"id": "test.slow", "version": "1", "title": "S", "category": "test", "outputs": {"text": "Text"}},
+        {
+            "id": "test.slow",
+            "version": "1",
+            "title": "S",
+            "category": "evaluate",
+            "outputs": {"text": "Text"},
+        },
         "import time\ndef run(ctx):\n    for i in range(200):\n        ctx.check_stop()\n"
         "        ctx.progress(i, 200)\n        time.sleep(0.01)\n",
     )
@@ -389,7 +438,7 @@ def _fit_node(
         "id": node_id,
         "version": "1",
         "title": node_id,
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"text": "Text"},
         "params": fit_node.PARAMS,
         "devices": list(devices),
@@ -510,7 +559,7 @@ def test_ac5_a_result_made_from_a_reduced_one_says_so(
             "id": "test.after",
             "version": "1",
             "title": "After",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"text": "Text"},
             "outputs": {"text": "Text"},
         },
@@ -552,7 +601,7 @@ def test_ac5_precision_and_checkpoint_are_in_the_key_and_the_device_is_not(
             "id": "test.checkpoints",
             "version": "1",
             "title": "Checkpoints",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": {
                 **fit_node.PARAMS,
@@ -754,7 +803,7 @@ def test_the_scheduler_runs_a_node_through_the_executors_it_is_given(
             "id": "test.elsewhere",
             "version": "1",
             "title": "Elsewhere",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "run": {"where": "runtime", "runtime": "test", "entry": "node.py:run"},
         },
@@ -886,7 +935,7 @@ def test_a_processor_run_learns_with_nothing_outside_torch(
             "id": "test.outside",
             "version": "1",
             "title": "Outside",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": fit_node.PARAMS,
             "devices": ["cuda", "cpu"],
@@ -940,7 +989,13 @@ def test_an_engine_bug_is_not_blamed_on_the_node(
     """Only a node that breaks its manifest fails with kind contract. A ValueError from the engine's
     own code goes up as the engine's bug (the server reports run.failed with kind engine)."""
     make_node(
-        {"id": "test.fine", "version": "1", "title": "fine", "category": "test", "outputs": {"text": "Text"}},
+        {
+            "id": "test.fine",
+            "version": "1",
+            "title": "fine",
+            "category": "evaluate",
+            "outputs": {"text": "Text"},
+        },
         "def run(ctx):\n    p = ctx.path('t.json')\n    p.write_text('1')\n    ctx.output('text', p)\n",
     )
 

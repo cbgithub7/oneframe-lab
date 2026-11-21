@@ -25,6 +25,7 @@ from typing import Any
 from oneframe import __version__, scratch
 from oneframe.executors import NodeError, run_probe
 from oneframe.layout import Layout, RootRefused, open_root
+from oneframe.node.devices import CPU, CUDA
 from oneframe.runtimes import install as runtime_install
 from oneframe.runtimes.manager import InstallRefused, RuntimeMissing, Runtimes, find_uv
 
@@ -34,7 +35,7 @@ def _probe(manager: Runtimes, runtime_id: str) -> dict[str, Any]:
     if not runtime.probe:
         return {"ran": False, "why": "The runtime has no probe."}
     build = runtime.build(str(manager.plan_for(runtime).build))
-    device = "cuda" if build is not None and build.vendor == "nvidia" else "cpu"
+    device = CUDA if build is not None and build.vendor == "nvidia" else CPU
     try:
         done = run_probe(
             manager,

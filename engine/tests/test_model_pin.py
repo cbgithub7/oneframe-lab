@@ -59,7 +59,7 @@ def write_node(make_node: MakeNode, files: list[dict[str, Any]], node_id: str = 
             "id": node_id,
             "version": "1",
             "title": "Pinned by the tool",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
             "files": files,

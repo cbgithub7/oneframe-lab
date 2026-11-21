@@ -31,6 +31,7 @@ from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
 from oneframe.journal import prune_step_logs
 from oneframe.node import Emit, Stopped, failures
+from oneframe.node.devices import CPU
 from oneframe.node.job import Done, Job
 from oneframe.node.runner import run_job
 from oneframe.node.usage import PEAKS
@@ -257,7 +258,7 @@ class OneProcessPerRun:
     def executor(self, manifest: Manifest, device: str) -> Executor:
         if manifest.run.where == "engine":
             return self.engine
-        hidden = {"CUDA_VISIBLE_DEVICES": "-1"} if device == "cpu" else {}
+        hidden = {"CUDA_VISIBLE_DEVICES": "-1"} if device == CPU else {}
         return _in_runtime(self.runtimes, str(manifest.run.runtime), hidden, self.tmp_root, self.log_dir)
 
 
