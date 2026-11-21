@@ -1,0 +1,23 @@
+{
+  "id": "source.clicks",
+  "version": "1",
+  "title": "Clicks",
+  "category": "source",
+  "summary": "Brings in the points and boxes a person placed on an image, as a value another node takes: a segmenter's prompt, say. Each is in the pixels of the image named by its width and height.",
+  "inputs": {},
+  "outputs": {
+    "clicks": { "type": "Clicks", "doc": "The clicks, as the param holds them." }
+  },
+  "params": {
+    "clicks": {
+      "type": "json",
+      "of": "Clicks",
+      "label": "Clicks",
+      "doc": "Points (x, y, positive) and boxes (x0, y0, x1, y1) in the image's pixels, and that image's width and height.",
+      "default": { "width": 0, "height": 0, "points": [], "boxes": [] }
+    }
+  },
+  "run": { "where": "engine", "entry": "node.py:run" },
+  "devices": ["cpu"],
+  "licence": { "code": "MIT" }
+}

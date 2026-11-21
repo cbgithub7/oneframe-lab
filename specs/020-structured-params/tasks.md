@@ -14,7 +14,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 4. **What a node made, in its own module.** `oneframe/outputs.py` takes the scheduler's
   output check and holds a JSON output to its type's shape; the test node's `Camera` gains its
   size. AC3.
-- [ ] 5. **`source.clicks`.** An engine node that gives the clicks its param holds. AC6.
+- [x] 5. **`source.clicks`.** An engine node that gives the clicks its param holds. AC6.
 - [x] 6. **The page's `json` control.** A text area, read back as an object. AC7. Landed with task 3:
   019's test holds the page to a control for every param type in the contract.
 - [ ] 7. **Docs and the end.** nodes.md, architecture.md; the full checks; `/code-review`; the spec

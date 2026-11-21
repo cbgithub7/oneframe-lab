@@ -334,6 +334,33 @@ def test_audio_is_a_type_the_value_protocol_can_serve(
     assert contract["carriers"]["wav"] == {"mime": "audio/wav"}  # the media type the app serves it with
 
 
+def test_source_clicks_gives_the_clicks_it_was_given(tmp_path: Path, engine_process: StartEngine) -> None:
+    """Clicks reach a graph as a value on a port, through the shipped source.clicks (spec 020, AC6)."""
+    clicks = {"width": 8, "height": 6, "points": [{"x": 1, "y": 2, "positive": True}], "boxes": []}
+    client = engine_process(
+        [
+            sys.executable,
+            "-m",
+            "oneframe.server",
+            "--data",
+            str(tmp_path / "data"),
+            "--nodes",
+            str(BUILTIN_NODES_DIR),
+        ]
+    )
+    try:
+        client.event("engine.ready")
+        graph = {"nodes": {"c": {"node": "source.clicks", "params": {"clicks": clicks}}}}
+        run = client.call("graph.run", {"graph": graph})["result"]["run"]
+        ended = client.event("run.done", "run.failed", run=run)
+        assert ended["event"] == "run.done", ended
+        value = ended["outputs"]["c"]["clicks"]
+        assert value["type"] == "Clicks"
+        assert json.loads(Path(value["path"]).read_text(encoding="utf-8")) == clicks
+    finally:
+        client.close()
+
+
 HELD = "nodes.forget"  # a queued method, whose answer the contract declares (spec 018)
 
 
