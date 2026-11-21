@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from oneframe.environment import child_env
 from oneframe.errors import KINDS, Failure
 from oneframe.files import remove_tree
-from oneframe.journal import prune_step_logs
+from oneframe.journal import prune_step_logs, writing, written
 from oneframe.node import Emit, Stopped, failures
 from oneframe.node.devices import CPU
 from oneframe.node.job import Done, Job
@@ -118,9 +118,11 @@ class _Tail:
     def __init__(self, log: Path | None):
         self.lines: deque[str] = deque(maxlen=80)
         self._handle = None
+        self._log = log
         if log is not None:
             try:
                 self._handle = log.open("a", encoding="utf-8")
+                writing(log)
             except OSError as exc:
                 LOGGER.warning("could not open the step log %s: %s", log, exc)
 
@@ -134,6 +136,8 @@ class _Tail:
         if self._handle is not None:
             self._handle.close()
             self._handle = None
+        if self._log is not None:
+            written(self._log)
 
 
 def _remove(folder: Path) -> None:

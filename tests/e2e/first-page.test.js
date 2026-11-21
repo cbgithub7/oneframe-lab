@@ -184,3 +184,33 @@ test("Run to here runs up to a card", async () => {
     await close();
   }
 });
+
+test("a second run waits for the device and says so", async () => {
+  // Spec 023, AC8: while a first run's step holds the engine's slot, Run to here on another card
+  // shows that card queued behind the first, in words; when the first ends, the card ends done.
+  // The first step waits its 8 s (the fixture's own seconds): that is the evidence the second
+  // waited for it, so the deadlines below are longer than it.
+  const { page, close, data } = await start();
+  try {
+    await openWithPhoto(page, "Test: two steps for the engine");
+    const wait = page.locator('article[data-step="wait"]');
+    const quick = page.locator('article[data-step="quick"]');
+    await wait.getByRole("button", { name: "Run to here: Wait", exact: true }).click();
+    await expect(wait, "the first run's step holds the engine").toHaveAttribute("data-phase", "running", { timeout: 30_000 });
+    const here = quick.getByRole("button", { name: "Run to here: Quick", exact: true });
+    await expect(here, "Run to here stays enabled while a run goes").toBeEnabled();
+    await here.focus();
+    await page.keyboard.press("Enter");
+    await expect(quick, "the second run's step waits its turn").toHaveAttribute("data-phase", "queued", { timeout: 5_000 });
+    await expect(quick.locator(".phase"), "and says so, in words").toHaveText("Queued for the engine, behind Wait (another run)");
+    await expect(wait, "the first run's step went on").toHaveAttribute("data-phase", "running");
+    await expect(wait, "the first run's step ended done").toHaveAttribute("data-phase", "done", { timeout: 30_000 });
+    await expect(quick, "then the second's").toHaveAttribute("data-phase", "done", { timeout: 30_000 });
+    await expect(page.locator("#run-status"), "both runs ended").toHaveText("The run is done.", { timeout: 10_000 });
+  } catch (error) {
+    await report(page, data);
+    throw error;
+  } finally {
+    await close();
+  }
+});

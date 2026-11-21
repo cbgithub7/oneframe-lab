@@ -7,13 +7,18 @@ and modification time unchanged since. Otherwise the node fails with kind `files
 the bytes left to fetch and a checkpoint that is downloaded, if there is one, and no process starts.
 
 While a run's node reads files, its process lists them in its own folder under `cache/tmp/`
-(`reading.json`), so a remove or verify in any process can tell which files a run is using.
+(`reading.json`), so a remove or verify in any process can tell which files a run is using. One
+process may run several graphs at once (spec 023): its list is the union of what each reads,
+written again as each starts and ends.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import logging
+import threading
+from collections import Counter
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
@@ -25,11 +30,15 @@ from oneframe.manifest import Manifest
 from oneframe.memory.fit import Checkpoints
 from oneframe.models.store import Presence, Store
 
+LOGGER = logging.getLogger(__name__)
 READING = "reading.json"
 READING_FORMAT = 1
 # The reason a node gives when several of its files are missing for different reasons: the one a
 # person must act on first.
 ORDER = ("changed", "downloading", "incomplete", "not_downloaded")
+# What this process's runs read, by list: each file with how many runs read it, under one lock.
+_LISTED: dict[Path, Counter[str]] = {}
+_LISTING = threading.Lock()
 
 
 class FilesMissing(Failure):
@@ -166,17 +175,41 @@ def check_files(store: Store | None, manifest: Manifest, values: Mapping[str, An
 
 @contextlib.contextmanager
 def reading(folder: Path | None, shas: list[str]) -> Iterator[None]:
-    """List the files a run is reading in this process's own folder for as long as the block runs."""
+    """List the files a run is reading in this process's own folder for as long as the block runs,
+    beside those of the process's other runs: the list goes only when the last of them ends."""
     if folder is None or not shas:
         yield
         return
-    path = folder / READING
-    write_json(path, {"format": READING_FORMAT, "sha256": sorted(set(shas))})
+    path, read = folder / READING, set(shas)
+    with _LISTING:
+        listed = _LISTED.setdefault(path, Counter())
+        listed.update(read)
+        try:
+            write_json(path, {"format": READING_FORMAT, "sha256": sorted(listed)})
+        except BaseException:  # a run that cannot list what it reads does not start, nor stays listed
+            _unlisted(path, listed, read)
+            raise
     try:
         yield
     finally:
-        with contextlib.suppress(OSError):
-            path.unlink()
+        with _LISTING:
+            _unlisted(path, listed, read)
+
+
+def _unlisted(path: Path, listed: Counter[str], read: set[str]) -> None:
+    """One run's files taken off the process's list, under `_LISTING`: the list written again, or
+    gone with the last run. A list that cannot be written again is logged, never the run's failure."""
+    listed.subtract(read)
+    for sha in [sha for sha, runs in listed.items() if runs <= 0]:
+        del listed[sha]
+    try:
+        if listed:
+            write_json(path, {"format": READING_FORMAT, "sha256": sorted(listed)})
+            return
+        del _LISTED[path]
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        LOGGER.warning("could not write the list of files this process reads, %s: %s", path, exc)
 
 
 def in_use(layout: Layout) -> set[str]:

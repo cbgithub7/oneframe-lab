@@ -27,6 +27,15 @@
         "message": { "type": "string" }
       }
     },
+    "place": {
+      "doc": "A step's place in a run, which another step waits behind (spec 023): its run and step, and for an item of a step run for each, the item and how many there are.",
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true },
+        "of": { "type": "integer", "optional": true }
+      }
+    },
     "edge": {
       "doc": "An edge of a graph, by its ports (step.port).",
       "fields": {
@@ -299,6 +308,20 @@
         "where": { "type": "string" },
         "key": { "type": "string" },
         "attempt": { "type": "integer" }
+      }
+    },
+    "node.queued": {
+      "doc": "A step waits its turn (spec 023): for its device's slot, held or asked for first by `behind`, or, without a device, for the same work another run is making. It starts once that place has let go.",
+      "by": ["engine"],
+      "fields": {
+        "run": { "type": "string" },
+        "step": { "type": "string" },
+        "item": { "type": "integer", "optional": true, "doc": "for a step run for each: the item, from 0 (spec 021)" },
+        "of": { "type": "integer", "optional": true, "doc": "for a step run for each: how many items it has" },
+        "node": { "type": "string" },
+        "device": { "type": "string", "optional": true, "doc": "the slot it waits for: cuda, cpu, or engine (the engine's own process); absent for the same work" },
+        "card": { "type": "integer", "optional": true, "doc": "the card's index, for cuda" },
+        "behind": { "type": "place" }
       }
     },
     "stage": {
@@ -758,13 +781,13 @@
       }
     },
     "run.stop": {
-      "doc": "Stop the running graph (this one, when it names a run).",
+      "doc": "Stop the run it names, or, naming none, every run going and every run still queued (spec 023).",
       "by": "engine",
       "params": { "fields": { "run": { "type": "string", "optional": true } } },
       "answer": {
         "fields": {
           "stopping": { "type": "boolean" },
-          "run": { "type": "string", "optional": true }
+          "runs": { "type": "array", "of": "string", "optional": true, "doc": "the runs it stops, when it stops any" }
         }
       }
     },

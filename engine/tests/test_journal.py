@@ -301,3 +301,21 @@ def test_redaction_catches_urls_and_wsl_spellings() -> None:
         ("C:\\Users\\José (Work)", "file:///C:/Users/Jos%c3%a9%20%28Work%29/x"),  # all encoded, lower case
     ):
         assert diagnose.redact(url, [home]).startswith("file:///C:/Users/<user>/"), url
+
+
+def test_a_journal_still_open_is_never_pruned(tmp_path: Path) -> None:
+    """Spec 023: several runs go at once, so the journal a later run's prune finds oldest may be an
+    earlier run's, still open; it is kept until it closes, and pruned after."""
+    folder = tmp_path / "journals"
+    going = Journal(folder, "run-long")
+    try:
+        os.utime(going.path, (1, 1))  # the oldest of them
+        for n in range(3):
+            (folder / f"later-{n}.ndjson").write_text("{}\n", encoding="utf-8")
+        gone = prune(folder, 1, 10**9, "*.ndjson")
+        assert going.path not in gone and going.path.is_file(), "an open journal is never pruned"
+        assert len(gone) == 2, "the others past the bound go"
+    finally:
+        going.close()
+    os.utime(going.path, (1, 1))
+    assert going.path in prune(folder, 1, 10**9, "*.ndjson"), "once closed, it is pruned like any other"

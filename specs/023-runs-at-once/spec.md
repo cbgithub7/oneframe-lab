@@ -1,6 +1,6 @@
 # 023: Several runs at once, a slot per device
 
-Status: approved
+Status: done ([PR #79](https://github.com/cbgithub7/oneframe-lab/pull/79))
 Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The last of five specs for step 3c, graph model 2: [019](../019-contracts/spec.md) (the
@@ -148,6 +148,33 @@ ending done, with their peaks and the free system memory before each, in
 - Engine nodes take a slot of their own, one at a time: nothing in the engine's process was
   written to run beside itself, and they are short.
 - A bound of 8 runs: each is a thread, and a page that loops must not start a thousand.
+- A fit that chose another slot than the one held is made again only after waiting for that slot:
+  with nothing to wait for, nothing took memory there since the fit (and nvidia-smi is read once).
+- A step that waits for the same work another run is making says `node.queued` without a device,
+  behind that run's step, so its card says what it waits for.
+- `run.stop`'s answer lists `runs` only when it stops any, so `{"stopping": false}` is as before.
+- A runtime several runs use is refused naming each of them.
+- The page follows a run.start it did not expect only while a press waits for one, so a run this
+  page did not start is never followed; Run's answer marks its run as expected if it comes first.
+- A queued card's words: "Queued for the card (the processor, the engine), behind <step>", with
+  "(another run)" and an item where they apply; for the same work, "<step> is making the same
+  result".
+- The bar says how many runs are going when more than one is, and the newest run's ending once
+  none is.
+- The slot a step takes first is that of the first of its devices this machine has, in the
+  manifest's order, as the fit tries them (`/code-review`): a node listing the processor first
+  does not wait for the card.
+- A place whose wait ends, stopped or unable to say `node.queued`, leaves the slot's line, so a
+  slot never waits for a place that is gone (`/code-review`).
+- What a process reads is listed only once its list is written, and a list that cannot be written
+  again as a run ends is logged, never that run's failure (`/code-review`).
+- No prune deletes a journal or a step log this process still writes, since another run's may be
+  the oldest (`/code-review`); `test_a_journal_still_open_is_never_pruned` holds it.
+- Opening another graph clears the cards but follows the runs still going, so Stop still stops
+  them (`/code-review`).
+- Added beside the criteria's tests: `test_a_place_whose_wait_ends_leaves_the_line`,
+  `test_a_step_that_tries_the_processor_first_goes_beside_a_card_run` (`test_scheduler.py`) and
+  `test_a_journal_still_open_is_never_pruned` (`test_journal.py`), each for a review's fix.
 
 ## Out of scope
 

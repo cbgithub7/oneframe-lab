@@ -15,8 +15,11 @@ answer at once (`engine.hello`, `values.locate`) are answered by the loop that r
 slow request never holds them up; a stop first takes each request of its kind still waiting off the
 queue and answers it `{"stopped": true}`, so it is never begun. Replies carry their request's id.
 
-Only one graph runs at a time: they share one GPU, and a second run would only fight the first for
-memory. A run asked for while another is going is refused with the running one's id.
+Several graphs run at once (spec 023), up to MAX_RUNS: each attempt holds its device's slot
+(slots.py), so they never fight over one card's memory, and a run on the processor goes beside one
+on a card. `run.stop` stops the run it names, or, naming none, every run and every run still
+queued. What guards a run guards every run: a runtime any of them uses is neither installed over nor
+removed, a file any of them reads is not removed, and the engine's close stops them all.
 
 Graphs are kept as files (graphs.py): the shipped ones in the folders `--graphs` names, the
 person's under the data root. `graph.fits` answers what a port could connect to, by the rule
@@ -24,7 +27,7 @@ person's under the data root. `graph.fits` answers what a port could connect to,
 
 Runtimes (the environments heavy nodes run in) are listed, planned, installed and removed here too.
 An install answers at once and reports itself as runtime.* events; one runs at a time, and a
-runtime the running graph uses is neither installed over nor removed.
+runtime a running graph uses is neither installed over nor removed.
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ import traceback
 import uuid
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +83,17 @@ STOPS: dict[str, frozenset[str]] = {
     "runtimes.stop": frozenset({"runtimes.install"}),
     "models.stop": frozenset({"models.download", "models.verify"}),
 }
+# How many runs may go at once: each is a thread, and a page that loops must not start a thousand.
+MAX_RUNS = 8
+
+
+@dataclass
+class _Going:
+    """A run that is going: its stop, the runtimes its nodes run in, and its thread."""
+
+    stop: threading.Event
+    uses: set[str]
+    thread: threading.Thread
 
 
 def _bad_params(message: str) -> Failure:
@@ -162,9 +177,7 @@ class Engine:
             tmp_root=self.scratch.folder,
         )
         self._install: threading.Thread | None = None
-        # the running graph: its id, its stop flag, and the runtimes its nodes run in
-        self._run: tuple[str, threading.Event, set[str]] | None = None
-        self._run_thread: threading.Thread | None = None
+        self._runs: dict[str, _Going] = {}  # the runs going, by id
         self._lock = threading.Lock()
         self.methods: dict[str, Callable[[dict[str, Any]], Any]] = {
             "engine.hello": self.hello,
@@ -324,11 +337,10 @@ class Engine:
         stop = threading.Event()
 
         def release() -> None:
-            """The run slot, before the run's ending is sent, so a page that acts on hearing it is
-            not refused; only while it is still this run's, since a next run may have taken it."""
+            """The run's place among those going, before its ending is sent, so a page that acts on
+            hearing it is not refused."""
             with self._lock:
-                if self._run is not None and self._run[0] == run_id:
-                    self._run = None
+                self._runs.pop(run_id, None)
 
         def work() -> None:
             try:
@@ -340,21 +352,26 @@ class Engine:
 
         thread = threading.Thread(target=work, name=f"run-{run_id}", daemon=True)
         with self._lock:  # the run and its thread are recorded together, so shutdown sees both
-            if self._run is not None:
+            if len(self._runs) >= MAX_RUNS:
+                going = len(self._runs)
                 raise Failure(
-                    f"Run {self._run[0]} is still going; stop it first.", "busy", "Stop it, or wait.", "graph"
+                    f"{going} runs are going, as many as can at once; stop one first.",
+                    "busy",
+                    "Stop a run, or wait for one to end.",
+                    "graph",
                 )
-            self._run = (run_id, stop, used)
-            self._run_thread = thread
+            self._runs[run_id] = _Going(stop, used, thread)
         thread.start()
         return {"run": run_id}
 
     def run_stop(self, params: dict[str, Any]) -> dict[str, Any]:
+        """`{run?}`: stop that run, or, naming none, every run; the runs it stops."""
+        named = params.get("run")
         with self._lock:
-            if self._run is None or (params.get("run") and params["run"] != self._run[0]):
-                return {"stopping": False}
-            self._run[1].set()
-            return {"stopping": True, "run": self._run[0]}
+            stopping = [run for run in self._runs if not named or run == named]
+            for run in stopping:
+                self._runs[run].stop.set()
+        return {"stopping": True, "runs": stopping} if stopping else {"stopping": False}
 
     def runtimes_list(self, _params: dict[str, Any]) -> dict[str, Any]:
         return self.runtimes.list()
@@ -363,12 +380,15 @@ class Engine:
         return self.runtimes.plans(params.get("runtime"), refresh=bool(params.get("refresh")))
 
     def _refuse_if_running(self, runtime_id: str, doing: str) -> None:
+        """Refused `in_use` while any run uses the runtime, naming each such run."""
         with self._lock:
-            run = self._run
-        if run is not None and runtime_id in run[2]:
-            raise InstallRefused(
-                f"Run {run[0]} is using {runtime_id}; stop it before {doing} the runtime.", "in_use"
-            )
+            using = [run for run, going in self._runs.items() if runtime_id in going.uses]
+        if len(using) == 1:
+            message = f"Run {using[0]} is using {runtime_id}; stop it before {doing} the runtime."
+            raise InstallRefused(message, "in_use")
+        if using:
+            message = f"Runs {', '.join(using)} are using {runtime_id}; stop them before {doing} the runtime."
+            raise InstallRefused(message, "in_use")
 
     def runtimes_install(self, params: dict[str, Any]) -> dict[str, Any]:
         runtime_id = str(_required(params, "runtime"))
@@ -440,20 +460,19 @@ class Engine:
         )
 
     def shutdown(self, timeout: float = 30) -> None:
-        """Stop a run, an install and a model job that are still going, and wait for them, so that
-        no node process holding the card, no uv and no half-told download outlives the engine."""
+        """Stop every run, an install and a model job that are still going, and wait for them, so
+        that no node process holding the card, no uv and no half-told download outlives the engine."""
         with self._lock:
-            running = self._run
-            run_thread = self._run_thread
-        if running is not None:
-            running[1].set()  # the executor sees it within a poll and kills the node's process
+            going = list(self._runs.values())
+        for run in going:
+            run.stop.set()  # the executor sees it within a poll and kills the node's process
         installing = self.runtimes.installing()
         if installing is not None:
             self.runtimes.stop(installing)
         self.models.stop()
         deadline = time.monotonic() + timeout  # one budget for all, not one each
-        if run_thread is not None:
-            run_thread.join(max(deadline - time.monotonic(), 0))
+        for run in going:
+            run.thread.join(max(deadline - time.monotonic(), 0))
         if self._install is not None:
             self._install.join(max(deadline - time.monotonic(), 0))
         self.models.shutdown(max(deadline - time.monotonic(), 0))
@@ -496,14 +515,17 @@ class Requests:
         self._worker.start()
 
     def take(self, message: dict[str, Any]) -> None:
-        """One request: answered now if it is a stop or a read AT_ONCE, else queued."""
+        """One request: answered now if it is a stop or a read AT_ONCE, else queued. A stop that
+        names one run leaves the runs still queued alone; one that names none stops them too."""
         method = str(message.get("method"))
         if method not in AT_ONCE and method not in STOPS:
             with self._changed:
                 self._queue.append(message)
                 self._changed.notify_all()
             return
-        self._stop_queued(STOPS.get(method, frozenset()))
+        params = message.get("params")
+        one = method == "run.stop" and isinstance(params, dict) and bool(params.get("run"))
+        self._stop_queued(frozenset() if one else STOPS.get(method, frozenset()))
         reply = self.engine.handle(message)
         if reply is not None:
             self.say(reply)

@@ -8,10 +8,22 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import MASKS, PER_MASK, TAKE_MASKS, Events, HostRuntimes, MakeNode
+from conftest import (
+    HOLD_CODE,
+    MASKS,
+    PER_MASK,
+    TAKE_MASKS,
+    Events,
+    Gates,
+    HostRuntimes,
+    MakeNode,
+    hold_manifest,
+    wait_until,
+)
 from fixtures import fit_node, machines
 
 from oneframe.cache import Cache
+from oneframe.errors import Stopped
 from oneframe.executors import Executor, OneProcessPerRun
 from oneframe.graph import Graph, plan
 from oneframe.inputs import import_file
@@ -24,6 +36,7 @@ from oneframe.node import Emit
 from oneframe.node.job import Done, Job
 from oneframe.runtimes.manager import NoRuntimes
 from oneframe.scheduler import Scheduler, _meta
+from oneframe.slots import Place, Slot, Slots
 
 
 def _graph(nodes: Mapping[str, Mapping[str, object]], edges: list[tuple[str, str]]) -> Graph:
@@ -1258,3 +1271,212 @@ def test_an_empty_collection_runs_nothing_and_says_so(
     assert result.collections["p"]["mask"] == []
     assert json.loads(result.outputs["t"]["seen"].path.read_text(encoding="utf-8")) == []
     assert events.kinds()[-1] == "run.done"
+
+
+# -- spec 023: several runs at once, a slot per device -------------------------------------------
+
+
+def _runs_at_once(
+    scheduler: Scheduler, events: Events, stop: threading.Event
+) -> Callable[[str, Graph], threading.Thread]:
+    """Start runs of `scheduler` beside each other, each on its own thread, by the id given."""
+
+    def start(run_id: str, graph: Graph) -> threading.Thread:
+        args = (graph, events.append, stop, run_id)
+        thread = threading.Thread(target=scheduler.run, args=args, daemon=True)
+        thread.start()
+        return thread
+
+    return start
+
+
+def _said(events: Events, run: str, kind: str) -> list[dict[str, Any]]:
+    return [e for e in list(events) if e.get("run") == run and e["event"] == kind]
+
+
+def _at(events: Events, run: str, kind: str) -> int:
+    """Where a run's first event of a kind was said, among all the events."""
+    return next(i for i, e in enumerate(list(events)) if e.get("run") == run and e["event"] == kind)
+
+
+def test_a_step_waits_for_its_device_in_turn(
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    gates: Gates,
+    stop_after: Callable[[float], threading.Event],
+) -> None:
+    """Spec 023, AC2: of three runs with a step on the processor, the second and third say
+    node.queued, naming the run and step ahead, and start in the order they asked, each after the
+    one before it has ended."""
+    make_node(hold_manifest("test.hold", where="runtime"), HOLD_CODE)
+    start = _runs_at_once(scheduler_for(machine=_with(ROOMY)), events, stop_after(60))
+    threads = [start("a", _one_node("test.hold", gate=gates("a")))]
+    wait_until(lambda: _said(events, "a", "stage"), lambda: f"a's step to hold: {events.kinds()}", 30)
+    threads.append(start("b", _one_node("test.hold", gate=gates("b"))))
+    wait_until(lambda: _said(events, "b", "node.queued"), "b's step to queue")
+    threads.append(start("c", _one_node("test.hold", gate=gates("c"))))
+    wait_until(lambda: _said(events, "c", "node.queued"), "c's step to queue")
+    ((b,), (c,)) = _said(events, "b", "node.queued"), _said(events, "c", "node.queued")
+    assert (b["step"], b["node"], b["device"]) == ("n", "test.hold", "cpu")
+    assert b["behind"] == {"run": "a", "step": "n"}, "b waits behind the step that holds the processor"
+    assert c["behind"] == {"run": "b", "step": "n"}, "c waits behind the one that asked before it"
+    assert not _said(events, "b", "node.fit") and not _said(events, "c", "node.fit"), "neither is fitted yet"
+
+    for name, following in (("a", "b"), ("b", "c"), ("c", None)):
+        gates.open(name)
+        wait_until(lambda run=name: _said(events, run, "run.done"), f"run {name} to end")
+        if following is not None:
+            held = lambda run=following: _said(events, run, "stage")  # noqa: E731
+            wait_until(held, f"run {following} to hold the processor")
+            assert _at(events, name, "node.done") < _at(events, following, "node.start")
+    for thread in threads:
+        thread.join(30)
+    assert [e["run"] for e in events.of("node.start")] == ["a", "b", "c"]
+
+
+def test_a_step_is_fitted_only_once_it_holds_its_slot(
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    gates: Gates,
+    stop_after: Callable[[float], threading.Event],
+) -> None:
+    """Spec 023, AC3: while a first run's step holds the card, the machine reports the card full;
+    a second run's step for the card says node.queued and is not fitted until the first has ended,
+    then once, on the card at its own values, and ends done."""
+    make_node(
+        hold_manifest("test.hold_card", "runtime", ("cuda", "cpu"), fit_node.PARAMS, fit_node.model()),
+        HOLD_CODE,
+    )
+    held = threading.Event()  # the first step holds the card: from its node.start to its node.done
+
+    def listen(event: dict[str, Any]) -> None:
+        if event.get("run") == "first" and event["event"] == "node.start":
+            held.set()
+        if event.get("run") == "first" and event["event"] == "node.done":
+            held.clear()
+        events.append(event)
+
+    def machine(_cards: bool) -> dict[str, object]:
+        free = 500 if held.is_set() else 24500
+        return machines.machine([machines.card(0, "8.9", 25770, free)], 50000, 68719)
+
+    scheduler = scheduler_for(machine=machine, runtimes=HostRuntimes(target=Target(card=0, lock="l")))
+    stop = stop_after(60)
+    first = threading.Thread(
+        target=scheduler.run, args=(_one_node("test.hold_card", gate=gates("first")), listen, stop, "first")
+    )
+    first.start()
+    wait_until(
+        lambda: _said(events, "first", "stage"), lambda: f"the first step to hold: {events.kinds()}", 30
+    )
+    second = threading.Thread(
+        target=scheduler.run, args=(_one_node("test.hold_card", gate=gates("second")), listen, stop, "second")
+    )
+    second.start()
+    wait_until(lambda: _said(events, "second", "node.queued"), "the second step to queue for the card")
+    (queued,) = _said(events, "second", "node.queued")
+    assert (queued["device"], queued["card"], queued["behind"]) == ("cuda", 0, {"run": "first", "step": "n"})
+    assert not _said(events, "second", "node.fit"), "not fitted while the first holds the card"
+
+    gates.open("first")
+    wait_until(lambda: _said(events, "first", "run.done"), "the first run to end")
+    gates.open("second")
+    wait_until(
+        lambda: _said(events, "second", "run.done") or _said(events, "second", "run.failed"), "the second run"
+    )
+    first.join(30)
+    second.join(30)
+    assert _said(events, "second", "run.done"), _said(events, "second", "run.failed")
+    (fitted,) = _said(events, "second", "node.fit")
+    assert _at(events, "first", "node.done") < _at(events, "second", "node.fit")
+    assert (fitted["device"], fitted["outcome"], fitted["changes"]) == ("cuda", "fits", [])
+    (alone,) = _said(events, "first", "node.fit")  # the same step on a free card: its own values
+    assert {**fitted["values"], "gate": None} == {**alone["values"], "gate": None}
+    assert fitted["values"]["resolution"] == 1024
+
+
+def test_the_same_work_in_two_runs_is_done_once(
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    gates: Gates,
+    stop_after: Callable[[float], threading.Event],
+) -> None:
+    """Spec 023, AC5: two runs of one graph started together call the node's code once; the second
+    run's step waits for the first's, saying so, and is node.cached."""
+    make_node(hold_manifest("test.hold"), HOLD_CODE)
+    start = _runs_at_once(scheduler_for(), events, stop_after(60))
+    graph = _one_node("test.hold", gate=gates("once"))
+    threads = [start("a", graph)]
+    wait_until(lambda: _said(events, "a", "stage"), lambda: f"a's step to hold: {events.kinds()}")
+    threads.append(start("b", graph))
+    wait_until(lambda: _said(events, "b", "node.queued"), "b's step to wait for a's")
+    (queued,) = _said(events, "b", "node.queued")
+    assert queued["behind"] == {"run": "a", "step": "n"} and "device" not in queued
+    gates.open("once")
+    for thread in threads:
+        thread.join(30)
+    assert _said(events, "a", "run.done") and _said(events, "b", "run.done"), events.kinds()
+    assert gates.calls("once") == 1, "the node's code ran once"
+    (cached,) = _said(events, "b", "node.cached")
+    assert cached["key"] == _said(events, "a", "node.done")[0]["key"]
+    assert not _said(events, "b", "node.start")
+
+
+def test_a_place_whose_wait_ends_leaves_the_line() -> None:
+    """A place that stops while it waits, or whose node.queued cannot be said, leaves the slot's
+    line, so the slot goes to the next place and never to one that is gone (spec 023)."""
+    slots, slot = Slots(), Slot("cpu")
+    first, gone, broken, last = (Place(run, "n", {}) for run in ("first", "gone", "broken", "last"))
+    never = threading.Event()
+    assert slots.take(slot, first, never, lambda _ahead: None) is False
+
+    stopped = threading.Event()
+    stopped.set()
+    with pytest.raises(Stopped):
+        slots.take(slot, gone, stopped, lambda _ahead: None)
+
+    def cannot_say(_ahead: Place) -> None:
+        raise OSError("the app's pipe is gone")
+
+    with pytest.raises(OSError):
+        slots.take(slot, broken, never, cannot_say)
+    behind: list[Place] = []
+    taken = threading.Thread(target=slots.take, args=(slot, last, never, behind.append))
+    taken.start()
+    wait_until(lambda: behind, "the last place to say what it waits behind")
+    assert behind == [first], "neither the stopped place nor the broken one is in the line"
+    slots.give(slot, first)
+    taken.join(10)
+    assert not taken.is_alive(), "the slot went to the last place"
+    slots.give(slot, last)
+
+
+def test_a_step_that_tries_the_processor_first_goes_beside_a_card_run(
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    gates: Gates,
+    stop_after: Callable[[float], threading.Event],
+) -> None:
+    """A step whose node lists the processor before the card takes the processor's slot, as its fit
+    would choose it, so it does not wait for a run that holds the card (spec 023)."""
+    make_node(hold_manifest("test.card_first", "runtime", ("cuda", "cpu")), HOLD_CODE)
+    make_node(hold_manifest("test.cpu_first", "runtime", ("cpu", "cuda")), HOLD_CODE)
+    card = machines.machine([machines.CARD_24GB], 50000, 68719)
+    scheduler = scheduler_for(machine=_with(card), runtimes=HostRuntimes(target=Target(card=0, lock="l")))
+    start = _runs_at_once(scheduler, events, stop_after(60))
+    threads = [start("card", _one_node("test.card_first", gate=gates("card")))]
+    wait_until(lambda: _said(events, "card", "stage"), lambda: f"the card run to hold: {events.kinds()}", 30)
+    threads.append(start("cpu", _one_node("test.cpu_first", gate=gates("cpu"))))
+    wait_until(
+        lambda: _said(events, "cpu", "stage"), lambda: f"the processor run to hold: {events.kinds()}", 30
+    )
+    assert not events.of("node.queued")
+    assert _said(events, "cpu", "node.fit")[0]["device"] == "cpu"
+    gates.open("card")
+    gates.open("cpu")
+    for thread in threads:
+        thread.join(30)

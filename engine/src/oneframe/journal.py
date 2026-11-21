@@ -43,15 +43,33 @@ STEP_LOGS_KEEP = 200
 STEP_LOGS_MAX_BYTES = 128 * 2**20
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+# The journals and step logs this process is writing: several runs go at once (spec 023), and a
+# prune for one never deletes another's while it is open.
+_OPEN: set[Path] = set()
+_OPEN_LOCK = threading.Lock()
+
+
+def writing(path: Path) -> None:
+    """`path` is open for writing until `written`: no prune deletes it."""
+    with _OPEN_LOCK:
+        _OPEN.add(path)
+
+
+def written(path: Path) -> None:
+    with _OPEN_LOCK:
+        _OPEN.discard(path)
 
 
 def prune(folder: Path, keep: int, max_bytes: int, pattern: str = "*") -> list[Path]:
     """Delete the oldest files in `folder` (by modification time) until at most `keep` remain and
-    together they hold at most `max_bytes`. The newest file is always kept. Returns what went."""
+    together they hold at most `max_bytes`. The newest file is always kept, and so is every file
+    this process is writing. Returns what went."""
     try:
         files = [p for p in folder.glob(pattern) if p.is_file()]
     except OSError:
         return []
+    with _OPEN_LOCK:
+        open_now = set(_OPEN)
     rows = []
     for path in files:
         with contextlib.suppress(OSError):
@@ -62,7 +80,7 @@ def prune(folder: Path, keep: int, max_bytes: int, pattern: str = "*") -> list[P
     total = 0
     for index, (_mtime, _name, path, size) in enumerate(rows):
         total += size
-        if index == 0 or (index < keep and total <= max_bytes):
+        if index == 0 or (index < keep and total <= max_bytes) or path in open_now:
             continue
         try:
             path.unlink()
@@ -89,6 +107,7 @@ class Journal:
             folder.mkdir(parents=True, exist_ok=True)
             prune(folder, JOURNALS_KEEP - 1, JOURNALS_MAX_BYTES, "*.ndjson")
             self._handle = self.path.open("a", encoding="utf-8")
+            writing(self.path)
         except OSError as exc:
             LOGGER.warning("could not start the journal %s: %s", self.path, exc)
             return
@@ -118,6 +137,7 @@ class Journal:
     def close(self) -> None:
         with self._lock:
             handle, self._handle = self._handle, None
+        written(self.path)
         if handle is not None:
             with contextlib.suppress(OSError):
                 handle.close()

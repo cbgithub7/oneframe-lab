@@ -11,16 +11,30 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import MASKS, Events, MakeEngine, MakeNode, StartEngine, call, wait_until
+from conftest import (
+    HOLD_CODE,
+    MASKS,
+    Events,
+    Gates,
+    HostRuntimes,
+    MakeEngine,
+    MakeNode,
+    StartEngine,
+    call,
+    hold_manifest,
+    wait_until,
+)
+from fixtures import machines
 from PIL import Image
 
 from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR, REPO_ROOT
 from oneframe.cache import Cache
 from oneframe.graph import Graph
+from oneframe.memory.estimate import Target
 from oneframe.processes import wait_gone
 from oneframe.registry import discover
 from oneframe.scheduler import Scheduler
-from oneframe.server import Engine, Requests
+from oneframe.server import MAX_RUNS, Engine, Requests
 
 
 def test_importing_the_server_loads_no_numeric_or_model_library() -> None:
@@ -438,6 +452,8 @@ def test_a_stop_is_answered_while_a_request_works(tmp_path: Path, make_engine: M
 
 @pytest.mark.usefixtures("basic_nodes")
 def test_a_stop_cancels_a_queued_run(tmp_path: Path, node_root: Path, make_engine: MakeEngine) -> None:
+    """A Stop that names no run, as the page's Stop is (spec 023), takes the runs still queued off
+    the queue too, and they never start."""
     replies: list[dict[str, Any]] = []
     seen: list[dict[str, Any]] = []
     engine = make_engine(tmp_path / "data", [node_root], seen.append)
@@ -460,3 +476,130 @@ def test_a_stop_cancels_a_queued_run(tmp_path: Path, node_root: Path, make_engin
         requests.close()
     assert [r["id"] for r in replies] == [2, 4, 1, 3]
     assert not [e for e in seen if e.get("event", "").startswith(("run.", "node."))], "the run never started"
+
+
+# -- spec 023: several runs at once ---------------------------------------------------------------
+
+
+def _ran(events: Events, run: str, kind: str) -> list[dict[str, Any]]:
+    return [e for e in list(events) if e.get("run") == run and e["event"] == kind]
+
+
+def _hold(node: str, gate: str) -> dict[str, Any]:
+    return {"version": 1, "nodes": {"n": {"node": node, "params": {"gate": gate}}}, "edges": []}
+
+
+def test_two_runs_go_at_once_on_different_devices(
+    tmp_path: Path,
+    node_root: Path,
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    gates: Gates,
+    make_engine: MakeEngine,
+) -> None:
+    """Spec 023, AC1: a run whose step is on the processor and one whose step is on a card have
+    both said node.start before either is released."""
+    make_node(hold_manifest("test.hold_cpu", where="runtime"), HOLD_CODE)
+    make_node(hold_manifest("test.hold_card", where="runtime", devices=("cuda", "cpu")), HOLD_CODE)
+    engine = make_engine(tmp_path / "data", [node_root], events.append, runtime_roots=[])
+    card = machines.machine([machines.CARD_24GB], 50000, 68719)
+    engine.scheduler = scheduler_for(
+        machine=lambda _cards: machines.copy.deepcopy(card),
+        runtimes=HostRuntimes(target=Target(card=0, lock="l")),
+    )
+    cpu = call(engine, "graph.run", graph=_hold("test.hold_cpu", gates("cpu")))["result"]["run"]
+    gpu = call(engine, "graph.run", graph=_hold("test.hold_card", gates("card")))["result"]["run"]
+    wait_until(
+        lambda: _ran(events, cpu, "stage") and _ran(events, gpu, "stage"),
+        lambda: f"both steps to hold their device: {events.kinds()}",
+        30,
+    )
+    assert _ran(events, cpu, "node.start") and _ran(events, gpu, "node.start")
+    assert not events.of("node.queued"), "neither waited for the other"
+    assert (_ran(events, cpu, "node.fit")[0]["device"], _ran(events, gpu, "node.fit")[0]["device"]) == (
+        "cpu",
+        "cuda",
+    )
+    gates.open("cpu")
+    gates.open("card")
+    wait_until(
+        lambda: _ran(events, cpu, "run.done") and _ran(events, gpu, "run.done"), "both runs to end", 30
+    )
+
+
+def test_stop_ends_one_run_and_leaves_the_others(
+    tmp_path: Path,
+    node_root: Path,
+    make_node: MakeNode,
+    events: Events,
+    gates: Gates,
+    make_engine: MakeEngine,
+) -> None:
+    """Spec 023, AC4: stopping, by its id, a run whose step waits ends it run.stopped within the
+    test's deadline, while the run ahead of it goes on to run.done."""
+    make_node(hold_manifest("test.hold"), HOLD_CODE)
+    engine = make_engine(tmp_path / "data", [node_root], events.append)
+    ahead = call(engine, "graph.run", graph=_hold("test.hold", gates("ahead")))["result"]["run"]
+    wait_until(lambda: _ran(events, ahead, "stage"), lambda: f"the first run to hold: {events.kinds()}")
+    behind = call(engine, "graph.run", graph=_hold("test.hold", gates("behind")))["result"]["run"]
+    wait_until(lambda: _ran(events, behind, "node.queued"), "the second run's step to wait")
+    stopped = call(engine, "run.stop", run=behind)["result"]
+    assert stopped == {"stopping": True, "runs": [behind]}
+    wait_until(lambda: _ran(events, behind, "run.stopped"), "the waiting run to stop", 5)
+    assert not _ran(events, ahead, "run.stopped")
+    gates.open("ahead")
+    wait_until(lambda: _ran(events, ahead, "run.done"), "the run ahead to end done")
+    assert not _ran(events, behind, "node.start"), "the stopped step never started"
+
+
+def test_runs_beyond_the_bound_are_refused(
+    tmp_path: Path,
+    node_root: Path,
+    make_node: MakeNode,
+    events: Events,
+    gates: Gates,
+    make_engine: MakeEngine,
+) -> None:
+    """Spec 023, requirement 7: past MAX_RUNS a run is refused graph/busy; a Stop that names no run
+    stops them all."""
+    make_node(hold_manifest("test.hold"), HOLD_CODE)
+    engine = make_engine(tmp_path / "data", [node_root], events.append)
+    going = [
+        call(engine, "graph.run", graph=_hold("test.hold", gates(str(n))))["result"]["run"]
+        for n in range(MAX_RUNS)
+    ]
+    refused = call(engine, "graph.run", graph=_hold("test.hold", gates("over")))["error"]
+    assert (refused["kind"], refused["reason"], refused["retry"]) == ("graph", "busy", True)
+    assert f"{MAX_RUNS} runs are going" in refused["message"]
+    stopped = call(engine, "run.stop")["result"]
+    assert stopped["stopping"] and sorted(stopped["runs"]) == sorted(going)
+    wait_until(
+        lambda: len(events.of("run.stopped")) == MAX_RUNS, lambda: f"every run to stop: {events.kinds()}"
+    )
+    assert "result" in call(engine, "graph.run", graph=_hold("test.hold", gates("after")))
+
+
+@pytest.mark.usefixtures("basic_nodes")
+def test_a_stop_that_names_a_run_leaves_queued_runs(
+    tmp_path: Path, node_root: Path, make_engine: MakeEngine
+) -> None:
+    """Spec 023: a Stop for one run leaves the runs still queued alone, and they start."""
+    replies: list[dict[str, Any]] = []
+    seen = Events()
+    engine = make_engine(tmp_path / "data", [node_root], seen.append)
+    started, let_go = _held(engine)
+    requests = Requests(engine, replies.append)
+    try:
+        requests.take({"id": 1, "method": HELD})
+        assert started.wait(10), "the held request never began"
+        requests.take({"id": 2, "method": "graph.run", "params": {"graph": DEPTH_RUN}})
+        requests.take({"id": 3, "method": "run.stop", "params": {"run": "another"}})
+        assert replies == [{"id": 3, "result": {"stopping": False}}]
+        let_go.set()
+        wait_until(lambda: len(replies) == 3 or None, "the queued run's answer")
+        run = next(r["result"]["run"] for r in replies if r["id"] == 2)
+        wait_until(lambda: _ran(seen, run, "run.done"), "the queued run to end done")
+    finally:
+        let_go.set()
+        requests.close()
