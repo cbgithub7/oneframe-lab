@@ -36,8 +36,10 @@ counted 4); the fast tier leaves out one of them with the `real_uv` tests.
   other 615 take 71 s, about 0.12 s each.
 - **Two tests are about ten times slower here than in the cloud,** and lead the list:
   `test_ac4_the_store_keeps_its_bound` (3.77 s, 0.38 s in the cloud) and
-  `test_the_model_nodes_fit_a_range_of_machines` (3.33 s, under 0.34 s there). Both write what a
-  machine learns many times; why they are slow on Windows is not profiled.
+  `test_the_model_nodes_fit_a_range_of_machines` (3.33 s, under 0.34 s there). The first writes
+  `learned.json` once per entry, each a locked write and a move into place; the second writes
+  nothing and only fits every model node to every test machine, twice. Why either is this much
+  slower here is not profiled.
 
 ## The 30 slowest tests in the fast tier
 
