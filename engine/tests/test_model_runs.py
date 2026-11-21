@@ -9,11 +9,13 @@ import copy
 import json
 import os
 import sys
+import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import Events, HostRuntimes, MakeNode
+from conftest import HOLD_CODE, Events, Gates, HostRuntimes, MakeNode, hold_manifest, wait_until
 from fixtures import fit_node, machines
 from fixtures.store import put, sha, url_file
 
@@ -26,6 +28,7 @@ from oneframe.models.store import Store
 from oneframe.registry import discover
 from oneframe.runtimes.manager import Runtimes
 from oneframe.scheduler import Scheduler, for_root
+from oneframe.scratch import Scratch
 
 SMALL = b"small weights " * 4000
 LARGE = b"large weights " * 9000
@@ -322,3 +325,74 @@ def test_in_the_tiny_runtime_a_node_reads_its_files_through_ctx_file(
     assert result.status == "done", result.error
     seen = json.loads(result.outputs["n"]["text"].path.read_text(encoding="utf-8"))
     assert (seen["config"]["sha256"], seen["weights"]["sha256"]) == (sha(CONFIG), sha(SMALL))
+
+
+def test_a_file_any_run_reads_is_not_removed(
+    tmp_path: Path,
+    make_node: MakeNode,
+    node_root: Path,
+    events: Events,
+    gates: Gates,
+    stop_after: Callable[[float], threading.Event],
+) -> None:
+    """Spec 023, AC7: a file a first run reads is still listed as in use after a second run starts
+    and after that second run ends, and no longer once the first has ended. Each run holds, then
+    reaches a node that reads a file of its own (not downloaded, so that step fails files)."""
+    first, second = b"what the first run reads", b"what the second run reads"
+    make_node(hold_manifest("test.hold"), HOLD_CODE)  # the engine's slot
+    make_node(hold_manifest("test.hold_cpu", where="runtime"), HOLD_CODE)  # the processor's
+    for name, data in (("first", first), ("second", second)):
+        make_node(
+            {
+                "id": f"test.reads_{name}",
+                "version": "1",
+                "title": name,
+                "category": "evaluate",
+                "inputs": {"text": "Text"},
+                "outputs": {"text": "Text"},
+                "files": [url_file(name, data, format="other")],
+                "run": {"where": "runtime", "runtime": "test", "entry": "node.py:run"},
+                "devices": ["cpu"],
+            }
+        )
+    data = tmp_path / "data"
+    layout = Layout(data)
+    scratch = Scratch.claim(layout)  # this process's folder, its lock held, as the engine's is
+    try:
+        found = scheduler(data, node_root)
+        found.tmp_root = scratch.folder
+        stop = stop_after(60)
+
+        def started(run_id: str, hold: str) -> threading.Thread:
+            graph = Graph.from_json(
+                {
+                    "nodes": {
+                        "h": {"node": hold, "params": {"gate": gates(run_id)}},
+                        "r": {"node": f"test.reads_{run_id}"},
+                    },
+                    "edges": [{"from": "h.text", "to": "r.text"}],
+                }
+            )
+            thread = threading.Thread(target=found.run, args=(graph, events.append, stop, run_id))
+            thread.start()
+            wait_until(lambda: [e for e in events.of("stage") if e["run"] == run_id], f"run {run_id} to hold")
+            return thread
+
+        def ended(run_id: str) -> list[dict[str, Any]]:
+            return [e for e in events.of("run.failed") if e["run"] == run_id]
+
+        one = started("first", "test.hold")
+        assert in_use(layout) == {sha(first)}
+        two = started("second", "test.hold_cpu")
+        assert in_use(layout) == {sha(first), sha(second)}
+        gates.open("second")
+        wait_until(lambda: ended("second"), "the second run to end")
+        two.join(30)
+        assert in_use(layout) == {sha(first)}, "the first run still reads its file"
+        gates.open("first")
+        wait_until(lambda: ended("first"), "the first run to end")
+        one.join(30)
+        assert in_use(layout) == set()
+        assert [e["kind"] for e in events.of("node.failed")] == ["files", "files"]
+    finally:
+        scratch.release()

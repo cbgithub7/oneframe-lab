@@ -11,7 +11,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 2. **The same work once.** The scheduler keeps the key of each step being made across its
   runs; a step that finds its key there says `node.queued` behind it, waits, and takes the normal
   path. AC5.
-- [ ] 3. **What a process reads.** `models/runs.py`'s `reading()` lists the union of what this
+- [x] 3. **What a process reads.** `models/runs.py`'s `reading()` lists the union of what this
   process's runs read, written under a lock as each starts and ends. AC7.
 - [ ] 4. **The server.** The runs by id, each with its stop and the runtimes it uses; `MAX_RUNS`;
   `run.stop` stops one run or every run, and takes queued runs off only when it names none, its
