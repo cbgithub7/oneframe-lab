@@ -22,7 +22,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   every run this page started, each card from the newest run that named it; `node.queued` is the
   phase `queued`, in words, behind what; Stop stops every run. "a newer run's state is not
   overwritten by an older run's events" (`tests/app/page.test.js`).
-- [ ] 6. **The e2e test.** A fixture graph with two cards on the engine's slot, and "a second run
+- [x] 6. **The e2e test.** A fixture graph with two cards on the engine's slot, and "a second run
   waits for the device and says so". AC8.
 - [ ] 7. **Docs and the end.** architecture.md (Events: `node.queued`, several runs; the server;
   the failures table), the handoff, the local step under "Waiting on a local session"; the full

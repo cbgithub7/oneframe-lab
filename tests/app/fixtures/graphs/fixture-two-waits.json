@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "title": "Test: two steps for the engine",
+  "nodes": {
+    "photo": { "node": "source.image", "params": {}, "label": "Photo" },
+    "wait": { "node": "repair.fixture_wait", "params": { "seconds": 8 }, "label": "Wait" },
+    "quick": { "node": "repair.fixture_wait", "params": { "seconds": 0 }, "label": "Quick" }
+  },
+  "edges": [
+    { "from": "photo.image", "to": "wait.image" },
+    { "from": "photo.image", "to": "quick.image" }
+  ]
+}
