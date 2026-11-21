@@ -23,7 +23,7 @@ SMALL_NODE: dict[str, Any] = {
     "id": "test.bench",
     "version": "1",
     "title": "Bench",
-    "category": "test",
+    "category": "evaluate",
     "outputs": {"text": "Text"},
     "params": {
         "resolution": {"type": "int", "default": 400, "min": 10, "max": 4000},
@@ -169,7 +169,7 @@ PHOTO: dict[str, Any] = {
     "id": "test.photo",
     "version": "1",
     "title": "Photo",
-    "category": "test",
+    "category": "evaluate",
     "outputs": {"image": {"type": "Image[alpha=none]", "trust": "measured"}},
 }
 PHOTO_CODE = """

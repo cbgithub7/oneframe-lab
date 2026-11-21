@@ -30,7 +30,7 @@ def _node(tmp_path: Path, **fields: Any) -> dict[str, Any]:
         "id": "test.files",
         "version": "1",
         "title": "Reads files",
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"depth": "Depth[kind=metric,measure=z]"},
         "params": {
             "checkpoint": {"type": "choice", "choices": ["vitl", "vitg"], "default": "vitl"},

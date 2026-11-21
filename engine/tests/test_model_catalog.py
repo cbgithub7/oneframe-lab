@@ -30,7 +30,7 @@ def nodes(make_node: MakeNode) -> None:
     base: dict[str, Any] = {
         "version": "1",
         "title": "Reads files",
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"text": "Text"},
         "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
     }

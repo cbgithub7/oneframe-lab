@@ -14,7 +14,7 @@ import pytest
 from conftest import Events, MakeEngine, MakeNode, StartEngine, call, wait_until
 from PIL import Image
 
-from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR
+from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR, REPO_ROOT
 from oneframe.cache import Cache
 from oneframe.graph import Graph
 from oneframe.processes import wait_gone
@@ -165,7 +165,7 @@ def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
                 "id": "test.depth_and_camera",
                 "version": "1",
                 "title": "t",
-                "category": "test",
+                "category": "evaluate",
                 "outputs": {
                     "depth": "Depth[kind=metric, measure=z]",
                     "camera": "Camera[model=pinhole, source=given]",
@@ -179,7 +179,8 @@ def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
         "def run(ctx):\n"
         "    d = np.full((2, 4), 2.0, dtype=np.float32); d[0, 0] = 0\n"
         "    p = ctx.path('d.npz'); np.savez(p, depth=d); ctx.output('depth', p)\n"
-        "    c = ctx.path('c.json'); c.write_text(json.dumps({'fx': 2, 'fy': 2, 'cx': 2, 'cy': 1}))\n"
+        "    c = ctx.path('c.json')\n"
+        "    c.write_text(json.dumps({'fx': 2, 'fy': 2, 'cx': 2, 'cy': 1, 'width': 4, 'height': 2}))\n"
         "    ctx.output('camera', c)\n",
         encoding="utf-8",
     )
@@ -216,7 +217,7 @@ def test_shutdown_stops_a_running_graph_and_its_node_process(
             "id": "test.hang",
             "version": "1",
             "title": "hang",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "run": {"where": "runtime", "runtime": "test", "entry": "node.py:run"},
         },
@@ -301,6 +302,63 @@ def test_values_are_located_only_when_committed(
     ):
         refused = call(engine, "values.locate", **params)["error"]
         assert (refused["kind"], refused["reason"]) == ("request", "bad_params"), params
+
+
+def test_audio_is_a_type_the_value_protocol_can_serve(
+    tmp_path: Path, node_root: Path, make_node: MakeNode, make_engine: MakeEngine, events: Events
+) -> None:
+    """Sound has a type, carried as WAV, which the value protocol serves (spec 019, AC7)."""
+    make_node(
+        {
+            "id": "test.tone",
+            "version": "1",
+            "title": "Tone",
+            "category": "sound",
+            "outputs": {"sound": {"type": "Audio[channels=mono, loop=none]", "trust": "synthetic"}},
+        },
+        "import wave\n"
+        "def run(ctx):\n"
+        "    p = ctx.path('tone.wav')\n"
+        "    with wave.open(str(p), 'wb') as w:\n"
+        "        w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)\n"
+        "        w.writeframes(b'\\x00\\x00' * 800)\n"
+        "    ctx.output('sound', p)\n",
+    )
+    engine = make_engine(tmp_path / "data", [node_root], events.append)
+    result = engine.scheduler.run(Graph.from_json({"nodes": {"t": {"node": "test.tone"}}}), events.append)
+    assert result.status == "done", result.error
+    entry = result.outputs["t"]["sound"].key.partition(":")[0]
+    found = call(engine, "values.locate", key=entry, port="sound")["result"]
+    assert (found["type"], found["carrier"]) == ("Audio", "wav")
+    contract = json.loads((REPO_ROOT / "contracts" / "port-types.json").read_text(encoding="utf-8"))
+    assert contract["carriers"]["wav"] == {"mime": "audio/wav"}  # the media type the app serves it with
+
+
+def test_source_clicks_gives_the_clicks_it_was_given(tmp_path: Path, engine_process: StartEngine) -> None:
+    """Clicks reach a graph as a value on a port, through the shipped source.clicks (spec 020, AC6)."""
+    clicks = {"width": 8, "height": 6, "points": [{"x": 1, "y": 2, "positive": True}], "boxes": []}
+    client = engine_process(
+        [
+            sys.executable,
+            "-m",
+            "oneframe.server",
+            "--data",
+            str(tmp_path / "data"),
+            "--nodes",
+            str(BUILTIN_NODES_DIR),
+        ]
+    )
+    try:
+        client.event("engine.ready")
+        graph = {"nodes": {"c": {"node": "source.clicks", "params": {"clicks": clicks}}}}
+        run = client.call("graph.run", {"graph": graph})["result"]["run"]
+        ended = client.event("run.done", "run.failed", run=run)
+        assert ended["event"] == "run.done", ended
+        value = ended["outputs"]["c"]["clicks"]
+        assert value["type"] == "Clicks"
+        assert json.loads(Path(value["path"]).read_text(encoding="utf-8")) == clicks
+    finally:
+        client.close()
 
 
 HELD = "nodes.forget"  # a queued method, whose answer the contract declares (spec 018)

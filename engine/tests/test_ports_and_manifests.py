@@ -6,10 +6,11 @@ from pathlib import Path
 import pytest
 from conftest import write_runtime
 
-from oneframe import BUILTIN_NODES_DIR, ports
-from oneframe.manifest import ManifestError, load, parse
+from oneframe import BUILTIN_NODES_DIR, REPO_ROOT, ports
+from oneframe.manifest import ManifestError, Param, check_param, load, parse
 from oneframe.registry import discover
 from oneframe.runtimes.definition import discover as discover_runtimes
+from oneframe.vocabulary import vocabulary
 
 
 def test_every_port_type_parses_bare_and_its_facets_are_known() -> None:
@@ -18,6 +19,39 @@ def test_every_port_type_parses_bare_and_its_facets_are_known() -> None:
         for facet, values in ptype.facets.items():
             spec = ports.parse(f"{name}[{facet}={'|'.join(values)}]")
             assert spec.facets[facet] == values
+
+
+SCENE_FACETS = {
+    "Mesh": {"frame": ("object", "camera", "world"), "scale": ("metric", "up_to_scale")},
+    "GaussianSplat": {"frame": ("object", "camera", "world"), "scale": ("metric", "up_to_scale")},
+    "Pose": {"frame": ("camera", "world"), "scale": ("metric", "up_to_scale")},
+    "Scene": {"frame": ("camera", "world"), "scale": ("metric", "up_to_scale")},
+    "CameraPath": {"frame": ("camera", "world"), "scale": ("metric", "up_to_scale")},
+}
+
+
+def test_scene_types_say_frame_and_scale() -> None:
+    """A scene value says its frame and scale before any node makes one (spec 019, AC6)."""
+    known = ports.types()
+    for name, facets in SCENE_FACETS.items():
+        for facet, values in facets.items():
+            assert known[name].facets.get(facet) == values, (name, facet)
+        assert "pose" not in known[name].facets, name
+
+
+CAMERA = {"fx": 2.0, "fy": 2.0, "cx": 2.0, "cy": 1.0, "width": 4, "height": 2}
+CLICKS = {"width": 4, "height": 2, "points": [{"x": 1, "y": 1, "positive": True}], "boxes": []}
+
+
+def test_a_closed_shape_refuses_a_field_it_does_not_declare() -> None:
+    """Clicks' shape is closed and Camera's open, where nodes add fields of their own (spec 020,
+    AC4)."""
+    assert ports.check_shape("Clicks", CLICKS, "clicks") == []
+    assert ports.check_shape("Clicks", {**CLICKS, "labels": [1]}, "clicks") == [
+        "clicks: undeclared field labels"
+    ]
+    assert ports.check_shape("Camera", {**CAMERA, "distortion": [0.1]}, "camera") == []
+    assert ports.check_shape("Text", "anything", "text") == []  # a type with no shape holds anything
 
 
 def test_parse_reads_facets_and_alternatives() -> None:
@@ -104,6 +138,67 @@ def test_manifest_problems_are_reported_together(tmp_path: Path) -> None:
         "no choices",
     ):
         assert needle in text
+
+
+def test_manifests_are_checked_against_the_vocabulary_contract(tmp_path: Path) -> None:
+    """The categories a manifest may name are the contract's, not a list in the engine (spec 019,
+    AC1): one added to a copy of the contract is accepted, and the suite's own `test` is not one."""
+    (tmp_path / "node.py").write_text("def run(ctx): pass\n", encoding="utf-8")
+    shipped = json.loads((REPO_ROOT / "contracts" / "vocabulary.json").read_text(encoding="utf-8"))
+    grown = {**shipped, "categories": {**shipped["categories"], "weather": {"doc": "Adds rain."}}}
+    copy = tmp_path / "vocabulary.json"
+    copy.write_text(json.dumps(grown), encoding="utf-8")
+    assert parse(_manifest(category="weather"), tmp_path, words=vocabulary(copy)).category == "weather"
+    for category in ("weather", "test"):
+        with pytest.raises(ManifestError) as info:
+            parse(_manifest(category=category), tmp_path)
+        assert info.value.problems == [
+            f"category {category!r} is not one of {', '.join(shipped['categories'])}"
+        ]
+
+
+# A param of each type, and a value of the wrong kind for it. A type added to the contract with no
+# case here fails the test below until it has both.
+WRONG: dict[str, tuple[Param, object]] = {
+    "int": (Param("p", "int"), 1.5),
+    "float": (Param("p", "float"), "1.5"),
+    "bool": (Param("p", "bool"), 1),
+    "string": (Param("p", "string"), 7),
+    "choice": (Param("p", "choice", choices=("a", "b")), "c"),
+    "file": (Param("p", "file"), "C:/Users/someone/photo.jpg"),
+    "json": (Param("p", "json", of="Clicks"), {"width": "4", "height": 2, "points": [], "boxes": []}),
+}
+
+
+def test_every_param_type_in_the_contract_is_checked() -> None:
+    """Every param type the contract names has a check that refuses a wrong value (spec 019, AC2)."""
+    for kind in vocabulary().param_types:
+        assert kind in WRONG, f"no wrong value is known for the param type {kind}: add one, and its check"
+        param, wrong = WRONG[kind]
+        assert check_param("p", param, wrong), f"check_param takes {wrong!r} as a {kind}"
+
+
+def test_a_json_param_needs_a_type_with_a_shape(tmp_path: Path) -> None:
+    """A json param names a port type carried as JSON with a shape, and its default fits it (spec
+    020, AC2)."""
+    (tmp_path / "node.py").write_text("def run(ctx): pass\n", encoding="utf-8")
+    good = parse(_manifest(params={"c": {"type": "json", "of": "Clicks", "default": CLICKS}}), tmp_path)
+    assert (good.params["c"].type, good.params["c"].of) == ("json", "Clicks")
+    for row, problem in (
+        ({"type": "json", "of": "Text"}, "params.c.of 'Text' has no shape to hold a value to"),
+        ({"type": "json"}, "params.c is json and needs `of`, the port type its value is held to"),
+        ({"type": "json", "of": "Nope"}, "params.c.of 'Nope' is no port type"),
+        ({"type": "json", "of": "Depth"}, "params.c.of 'Depth' is not carried as JSON"),
+        ({"type": "json", "of": "Clicks", "default": {"width": 1}}, "params.c.default: no field height"),
+        (
+            {"type": "json", "of": "Clicks", "affects": "speed"},
+            "params.c is json, which always affects the output",
+        ),
+        ({"type": "int", "of": "Clicks"}, "params.c.of is only for a json param"),
+    ):
+        with pytest.raises(ManifestError) as info:
+            parse(_manifest(params={"c": row}), tmp_path)
+        assert problem in info.value.problems[0], (row, info.value.problems)
 
 
 def test_manifest_entry_must_exist_and_stay_inside_the_folder(tmp_path: Path) -> None:

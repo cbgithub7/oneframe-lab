@@ -35,7 +35,7 @@ ENGINE_NODE = {
     "id": "test.footprint_engine",
     "version": "1",
     "title": "Runs in the engine",
-    "category": "test",
+    "category": "evaluate",
     "outputs": {"text": "Text"},
     "run": {"where": "engine", "entry": "node.py:run"},
 }
@@ -43,7 +43,7 @@ RUNTIME_NODE = {
     "id": "test.footprint_runtime",
     "version": "1",
     "title": "Runs in the tiny runtime",
-    "category": "test",
+    "category": "evaluate",
     "outputs": {"text": "Text"},
     "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
 }

@@ -1,6 +1,6 @@
 // @ts-check
 // A node's settings form, as data: one control per param of its manifest, drawn by its type
-// (oneframe/manifest.py's PARAM_TYPES), with its bounds, choices and default, and whether the
+// (contracts/vocabulary.json's param types), with its bounds, choices and default, and whether the
 // person set it. The page draws the controls (main.js); a test reads them without a browser.
 
 import { isSet } from "./graph-model.js";
@@ -8,7 +8,7 @@ import { isSet } from "./graph-model.js";
 /** @typedef {import("../protocol.js").Page.Manifest} Manifest */
 /** @typedef {import("./graph-model.js").Graph} Graph */
 /**
- * @typedef {{ name: string, type: string, control: "number" | "checkbox" | "select" | "text" | "photo" | "unknown",
+ * @typedef {{ name: string, type: string, control: "number" | "checkbox" | "select" | "text" | "photo" | "json" | "unknown",
  *   label: string, doc: string, min: number | null, max: number | null, step: number | "any" | null,
  *   choices: string[], default: unknown, value: unknown, set: boolean }} Control
  */
@@ -21,6 +21,7 @@ const CONTROLS = /** @type {const} */ ({
   choice: "select",
   string: "text",
   file: "photo",
+  json: "json", // a text area holding JSON, the keyboard's way into any structured value (spec 020)
 });
 
 /** @param {unknown} value @returns {number | null} */
@@ -71,6 +72,18 @@ export function readControl(control, input) {
     if (control.min !== null && value < control.min) return { problem: `${control.label} is at least ${control.min}.` };
     if (control.max !== null && value > control.max) return { problem: `${control.label} is at most ${control.max}.` };
     return { value };
+  }
+  if (control.control === "json") {
+    let value;
+    try {
+      value = JSON.parse(text);
+    } catch (error) {
+      return { problem: `${control.label} is not JSON: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return { problem: `${control.label} should be a JSON object, in braces.` };
+    }
+    return { value }; // its shape is the engine's to check (oneframe/ports.py), on Run
   }
   if (control.control === "select" && !control.choices.includes(text)) {
     return { problem: `${control.label} is one of ${control.choices.join(", ")}.` };

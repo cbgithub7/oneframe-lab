@@ -19,28 +19,12 @@ from oneframe.memory.model import PRECISION_PARAM, MemoryModel
 from oneframe.memory.model import parse as parse_memory
 from oneframe.models.schema import FileSpec
 from oneframe.models.schema import parse as parse_files
+from oneframe.node.devices import CPU, DEVICES
 from oneframe.reading import ProblemsError, check_id, is_sha256, number, optional_text, read_object, text
+from oneframe.vocabulary import Vocabulary, vocabulary
 
-CATEGORIES = (
-    "source",  # brings something in: a photo, clicks, text
-    "depth",  # one image to depth, points, camera, normals
-    "segment",  # masks
-    "object",  # one image (or cut-out) to a mesh or splat of one object
-    "scene",  # composes or places assets
-    "views",  # synthesises new views
-    "reconstruct",  # views to cameras, points, splats or meshes
-    "render",  # an asset to images along a camera path
-    "repair",  # fixes, remeshes, simplifies
-    "texture",  # repaints an asset
-    "convert",  # changes a value's facets or form without a model
-    "evaluate",  # measures results
-    "export",  # writes a file for another program
-    "test",  # only in the test suite
-)
-
-PARAM_TYPES = ("int", "float", "bool", "string", "choice", "file")
 WHERE = ("engine", "runtime")
-DEVICES = ("cpu", "cuda")  # v1's: an NVIDIA card or the processor (spec 013)
+
 _PORT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -61,6 +45,7 @@ class Param:
     # "output" when changing it changes the result (part of the cache key); "speed" when it only
     # changes how the result is reached (batch size, offloading) and the output stays the same.
     affects: str = "output"
+    of: str | None = None  # a json param's port type, whose shape its value is held to (spec 020)
 
 
 @dataclass(frozen=True)
@@ -84,7 +69,7 @@ class Manifest:
     params: dict[str, Param]
     run: Run
     folder: Path
-    devices: tuple[str, ...] = ("cpu",)
+    devices: tuple[str, ...] = (CPU,)
     memory: MemoryModel | None = None
     licence: dict[str, Any] = field(default_factory=dict)
     links: dict[str, str] = field(default_factory=dict)
@@ -140,21 +125,29 @@ def check_param(key: str, param: Param, value: Any) -> str | None:
     if kind == "file" and isinstance(value, str) and not is_sha256(value):
         # Never looked up: a page could otherwise ask whether any path exists (spec 016).
         return f"{key} should name an imported file by its id, not a path"
+    if kind == "json":
+        if param.of is None:
+            return f"{key} names no port type to hold its value to"
+        return "; ".join(ports.check_shape(param.of, value, key)) or None
     return None
 
 
-def _param(name: str, row: Any, problems: list[str]) -> Param | None:
+def _param(name: str, row: Any, problems: list[str], words: Vocabulary | None = None) -> Param | None:
     where = f"params.{name}"
     if not isinstance(row, dict):
         problems.append(f"{where} should be an object")
         return None
     kind = row.get("type")
-    if kind not in PARAM_TYPES:
-        problems.append(f"{where}.type must be one of {', '.join(PARAM_TYPES)}")
+    types = (words or vocabulary()).param_types
+    if kind not in types:
+        problems.append(f"{where}.type must be one of {', '.join(types)}")
         return None
     affects = row.get("affects", "output")
     if affects not in ("output", "speed"):
         problems.append(f"{where}.affects must be output or speed")
+    of = _json_type(row, kind, where, problems)
+    if kind == "json" and affects == "speed":
+        problems.append(f"{where} is json, which always affects the output")
     listed = row.get("choices")
     if listed is not None and not isinstance(listed, list):
         problems.append(f"{where}.choices should be a list")
@@ -171,7 +164,7 @@ def _param(name: str, row: Any, problems: list[str]) -> Param | None:
             problems.append(f"{where}.default should be a number")
         elif (lo is not None and default < lo) or (hi is not None and default > hi):
             problems.append(f"{where}.default {default} is outside [{lo}, {hi}]")
-    return Param(
+    param = Param(
         name=name,
         type=kind,
         default=default,
@@ -181,7 +174,37 @@ def _param(name: str, row: Any, problems: list[str]) -> Param | None:
         maximum=hi,
         choices=choices,
         affects=affects,
+        of=of,
     )
+    if kind == "json" and of is not None and default is not None:
+        why = check_param(f"{where}.default", param, default)
+        if why:
+            problems.append(why)
+    return param
+
+
+def _json_type(row: dict[str, Any], kind: str, where: str, problems: list[str]) -> str | None:
+    """A json param's `of`: a port type carried as JSON, with a shape (spec 020); None, with the
+    problem, otherwise. Only a json param has one."""
+    of = row.get("of")
+    if kind != "json":
+        if of is not None:
+            problems.append(f"{where}.of is only for a json param")
+        return None
+    known = ports.types()
+    if not isinstance(of, str) or not of:
+        problems.append(f"{where} is json and needs `of`, the port type its value is held to")
+        return None
+    if of not in known:
+        problems.append(f"{where}.of {of!r} is no port type")
+        return None
+    if known[of].carrier != "json":
+        problems.append(f"{where}.of {of!r} is not carried as JSON")
+        return None
+    if known[of].shape is None:
+        problems.append(f"{where}.of {of!r} has no shape to hold a value to")
+        return None
+    return of
 
 
 def _bound(row: dict[str, Any], key: str, where: str, problems: list[str]) -> float | None:
@@ -213,14 +236,15 @@ class _Head(NamedTuple):
     summary: str
 
 
-def _head(data: dict[str, Any], problems: list[str]) -> _Head:
-    """`id`, `version`, `title`, `category` and `summary`, which may be blank."""
+def _head(data: dict[str, Any], problems: list[str], words: Vocabulary) -> _Head:
+    """`id`, `version`, `title`, `category` (one of the vocabulary contract's) and `summary`, which
+    may be blank."""
     node_id = check_id(text(data, "id", problems), problems)
     version = text(data, "version", problems)
     title = text(data, "title", problems)
     category = text(data, "category", problems)
-    if category and category not in CATEGORIES:
-        problems.append(f"category {category!r} is not one of {', '.join(CATEGORIES)}")
+    if category and category not in words.categories:
+        problems.append(f"category {category!r} is not one of {', '.join(words.categories)}")
     summary = optional_text(data, "summary", problems, default="") or ""
     return _Head(node_id, version, title, category, summary)
 
@@ -261,7 +285,9 @@ def _ports(
     return inputs, outputs
 
 
-def _params(data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: list[str]) -> dict[str, Param]:
+def _params(
+    data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: list[str], words: Vocabulary
+) -> dict[str, Param]:
     """`params`, none named as an input is, and none the engine adds."""
     params: dict[str, Param] = {}
     rows = data.get("params")
@@ -276,7 +302,7 @@ def _params(data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: l
         if name == PRECISION_PARAM:
             problems.append("params.precision is added by the engine from a memory model; remove it")
             continue
-        parsed = _param(name, row, problems)
+        parsed = _param(name, row, problems, words)
         if parsed:
             params[name] = parsed
     return params
@@ -317,7 +343,7 @@ def _devices(data: dict[str, Any], problems: list[str]) -> tuple[str, ...] | Non
     for device in rows:
         if device not in DEVICES:
             problems.append(f"devices: unknown device {device!r}")
-    return tuple(rows) or ("cpu",)
+    return tuple(rows) or (CPU,)
 
 
 def _object(data: dict[str, Any], key: str, problems: list[str]) -> dict[str, Any]:
@@ -338,13 +364,14 @@ def _memory_and_files(
     devices: tuple[str, ...],
     where: str,
     problems: list[str],
+    words: Vocabulary,
 ) -> tuple[MemoryModel | None, tuple[FileSpec, ...], str | None]:
     """`memory`, which adds its `precision` param to `params`, and `files` with the param that
     picks a checkpoint's."""
     model = None
     if data.get("memory") is not None:
         model = parse_memory(data["memory"], params, inputs, devices, problems, check_param)
-        precision = model and _param(PRECISION_PARAM, model.precision_param(), problems)
+        precision = model and _param(PRECISION_PARAM, model.precision_param(), problems, words)
         if precision:
             params[PRECISION_PARAM] = precision
     weights_by = data["memory"].get("weights_by") if isinstance(data.get("memory"), dict) else None
@@ -353,17 +380,23 @@ def _memory_and_files(
 
 
 def parse(
-    data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
+    data: dict[str, Any],
+    folder: Path,
+    source: str = "node.json",
+    read: bytes | None = None,
+    words: Vocabulary | None = None,
 ) -> Manifest:
     """A node's manifest, with every problem in it reported at once: each part adds its own, then
     one error names them all.
 
     `read`: the bytes `data` was read from, whose sha256 is the manifest's digest; without them
-    (a manifest made in code) the digest is of `data` written out in one canonical form."""
+    (a manifest made in code) the digest is of `data` written out in one canonical form.
+    `words`: the categories and param types it may name (default: contracts/vocabulary.json's)."""
     problems: list[str] = []
-    head = _head(data, problems)
+    words = words or vocabulary()
+    head = _head(data, problems, words)
     inputs, outputs = _ports(data, problems)
-    params = _params(data, inputs, problems)
+    params = _params(data, inputs, problems, words)
     run = _run(data, folder, problems)
     devices = _devices(data, problems)
     licence = _object(data, "licence", problems)
@@ -374,7 +407,7 @@ def parse(
     # The memory model and the files are checked against where and on what the node runs: when
     # either cannot be read, their problems would only mislead.
     if run is not None and devices is not None:
-        model, files, files_by = _memory_and_files(data, params, inputs, devices, run.where, problems)
+        model, files, files_by = _memory_and_files(data, params, inputs, devices, run.where, problems, words)
     if problems or run is None or devices is None:
         raise ManifestError(source, problems)
     return Manifest(

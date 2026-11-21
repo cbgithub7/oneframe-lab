@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from oneframe.node.devices import CPU, CUDA
 from oneframe.reading import at_least, number
 
 if TYPE_CHECKING:
@@ -184,7 +185,7 @@ class _Reader:
                 self.problem(f"{where}.bytes should be a positive number")
                 ok = False
             if ok:
-                runs = ("cuda" in self.devices) or (cpu and "cpu" in self.devices)
+                runs = (CUDA in self.devices) or (cpu and CPU in self.devices)
                 if not runs:
                     self.problem(f"{where} runs on none of the node's devices ({', '.join(self.devices)})")
                 self.precisions[name] = Precision(name, capability, cpu, float(size))
@@ -333,6 +334,10 @@ class _Reader:
                 continue
             if param.type == "file":
                 self.problem(f"{where} sets {name!r}, a file; the engine never changes a file")
+                ok = False
+                continue
+            if param.type == "json":
+                self.problem(f"{where} sets {name!r}, data a person authored; the engine never changes it")
                 ok = False
                 continue
             why = self.check(name, param, value)

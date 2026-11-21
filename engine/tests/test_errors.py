@@ -132,14 +132,14 @@ OPEN_MASK = {
     "id": "test.open_mask",
     "version": "1",
     "title": "A mask whose kind is known only when it runs",
-    "category": "test",
+    "category": "evaluate",
     "outputs": {"mask": {"type": "Mask", "trust": "predicted"}},
 }
 NEEDS_BINARY = {
     "id": "test.needs_binary",
     "version": "1",
     "title": "Needs a binary mask",
-    "category": "test",
+    "category": "evaluate",
     "inputs": {"mask": "Mask[kind=binary]"},
     "outputs": {"mask": {"type": "Mask[kind=binary]", "trust": "predicted"}},
 }

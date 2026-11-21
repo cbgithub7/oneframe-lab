@@ -46,8 +46,10 @@ the [README](README.md#commands).
   graph is a starting point saved as data. Nothing in the engine or the page depends on one, and
   tests build their own nodes and graphs. Held by review.
 - **Nothing hard-coded.** No code outside a node's folder names a node, a model, a runtime or a
-  pipeline; the engine learns them from `nodes/*/node.json`, and ports from
-  `contracts/port-types.json`. Held by `test_no_engine_module_names_a_runtime_a_node_or_the_tests`.
+  pipeline; the engine learns them from `nodes/*/node.json`, ports from
+  `contracts/port-types.json`, and categories and param types from `contracts/vocabulary.json`.
+  Devices are named once, in `oneframe/node/devices.py`. Held by
+  `test_no_engine_module_names_a_runtime_a_node_or_the_tests` and `test_devices_are_named_once`.
 - **One way to do each thing.** Find the helper that exists (processes, a child's environment, file
   writes, hashing, downloads, paths) before writing one; a second needs its reason in the spec.
   Held by review.

@@ -68,7 +68,7 @@ def test_plan_refuses_type_mismatch_and_cycles(
             "id": "test.loop",
             "version": "1",
             "title": "L",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"depth": "Depth"},
             "outputs": {"depth": "Depth[kind=metric, measure=z]"},
         }
@@ -92,7 +92,7 @@ def test_a_converter_is_inserted_between_facets_that_differ(
             "id": "test.relative",
             "version": "1",
             "title": "R",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"depth": "Depth[kind=affine_invariant_disparity, measure=z]"},
         }
     )
@@ -101,7 +101,7 @@ def test_a_converter_is_inserted_between_facets_that_differ(
             "id": "test.needs_metric",
             "version": "1",
             "title": "M",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"depth": "Depth[kind=metric]"},
             "outputs": {"points": "PointMap"},
         }
@@ -274,7 +274,7 @@ def _agrees(answer: dict[str, Any], planned: dict[str, Any], edge: str) -> None:
 
 def test_what_fits_agrees_with_plan(make_node: MakeNode, registry_for: Callable[[], Registry]) -> None:
     for row in FITS_NODES:
-        make_node({"version": "1", "title": row["id"], "category": "test", **row})
+        make_node({"version": "1", "title": row["id"], "category": "evaluate", **row})
     registry = registry_for()
     graph = Graph.from_json(FITS_GRAPH)
     seen: set[str] = set()
@@ -310,6 +310,36 @@ def test_what_fits_agrees_with_plan(make_node: MakeNode, registry_for: Callable[
         fits(graph, "s.nope", registry)
 
 
+CLICKS = {"width": 8, "height": 6, "points": [{"x": 1, "y": 2, "positive": True}], "boxes": []}
+
+
+def test_a_json_param_is_held_to_its_types_shape(
+    make_node: MakeNode, registry_for: Callable[[], Registry]
+) -> None:
+    """A json param's value is held to its port type's shape when the graph is planned, and a wrong
+    one is a problem of its node and param that names the place (spec 020, AC1)."""
+    make_node(
+        {
+            "id": "test.clicked",
+            "version": "1",
+            "title": "Clicked",
+            "category": "segment",
+            "outputs": {"text": "Text"},
+            "params": {"clicks": {"type": "json", "of": "Clicks"}},
+        }
+    )
+    registry = registry_for()
+    assert plan(
+        _graph({"c": {"node": "test.clicked", "params": {"clicks": CLICKS}}}, []), registry
+    ).order == ["c"]
+    wrong = {**CLICKS, "points": [*CLICKS["points"], {"x": 3, "y": "four", "positive": False}]}
+    with pytest.raises(GraphError) as info:
+        plan(_graph({"c": {"node": "test.clicked", "params": {"clicks": wrong}}}, []), registry)
+    assert info.value.problems == [
+        {"node": "c", "port": "", "message": "clicks: points[1].y should be number, not string"}
+    ]
+
+
 def test_a_file_param_names_an_import(
     make_node: MakeNode,
     registry_for: Callable[[], Registry],
@@ -324,7 +354,7 @@ def test_a_file_param_names_an_import(
             "id": "test.reads",
             "version": "1",
             "title": "R",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": {"path": {"type": "file"}},
         },

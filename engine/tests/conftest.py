@@ -49,7 +49,7 @@ CONST_DEPTH = {
         "id": "test.const_depth",
         "version": "1",
         "title": "Constant depth",
-        "category": "test",
+        "category": "evaluate",
         "inputs": {"image": "Image"},
         "outputs": {
             "depth": {"type": "Depth[kind=metric, measure=z]", "trust": "predicted"},
@@ -84,7 +84,7 @@ FAKE_IMAGE = {
         "id": "test.image",
         "version": "1",
         "title": "Fake image",
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"image": {"type": "Image[alpha=none]", "trust": "measured"}},
         "params": {"seed": {"type": "int", "default": 0}},
     },

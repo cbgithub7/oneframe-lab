@@ -25,6 +25,7 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | port, type, facet | A node's input or output; its data kind (`Depth`); and the facets that say what the values mean (`kind=metric`). Two ports connect when the output's facets fit the input's |
 | converter | A `convert` node of one input and one output that the plan inserts between two ports that differ only in facets |
 | trust | What a value rests on: `measured` (seen in the photo), `predicted` (a model's guess) or `synthetic` (made from generated views) |
+| sources | The values a value descends from that no step made from another (a photo, clicks), named by their keys in its `meta.sources`, which the engine writes and no node can set |
 | graph, recipe | Which nodes, with which params, connected how: JSON a person builds and saves |
 | plan | A graph checked and put in order, converters inserted |
 | runtime, build | A model family's own Python environment (`runtimes/<id>/`), and one way to install it: `cu130`, `cu126` or `cpu` |
@@ -43,13 +44,16 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 
 | Part | File | Job |
 | --- | --- | --- |
-| Port types | `contracts/port-types.json`, `oneframe/ports.py` | The data kinds, their facets, and the rule for connecting them |
+| Port types | `contracts/port-types.json`, `oneframe/ports.py` | The data kinds, their facets, and the rule for connecting them; a JSON type's shape, which a value is held to (`ports.check_shape`); what the contract says of a type, for a cache key (`ports.contract`) |
+| Records | `oneframe/records.py` | One grammar for a record of typed fields, read and checked: the protocol's events and answers, and a JSON type's shape ([spec 020](../specs/020-structured-params/spec.md)) |
+| Vocabulary | `contracts/vocabulary.json`, `oneframe/vocabulary.py`, `oneframe/node/devices.py` | The categories and param types a manifest may name, read from the contract; the devices, named once in code, since the engine branches on them ([spec 019](../specs/019-contracts/spec.md)) |
 | Manifests | `oneframe/manifest.py`, `oneframe/reading.py` | Read and check `node.json` part by part; every problem reported at once, a field of the wrong type among them, never a crash. `reading.py`, standard library only, is the one way a definition is read: a manifest, its memory model and a runtime's (the text field, the id rule, the version compare, a JSON object from a file, `ProblemsError`, `discover`) |
 | Registry | `oneframe/registry.py` | Find nodes by looking in folders, through the `discover` runtimes use too; a broken node never hides the others, and is listed as a problem |
 | Graph | `oneframe/graph.py` | Recipes (graphs as JSON, with the page's own `page` fields kept as they are); `plan()` checks them, inserts converters, orders them; `fits()` answers what a port could connect to; both follow one rule for an edge, `connect()` |
 | Graphs | `oneframe/graphs.py`, `graphs/` | Graphs kept as files, `<name>.json`: the shipped ones in the folders `--graphs` names (the repo's `graphs/`), the person's in the data root's `graphs/`, which shadow a shipped one of their name; found by looking, a broken file listed as a problem |
-| Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params, input keys, the node's code and its runtime's build; atomic writes |
-| Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; asks the `Executors` it is given where each attempt runs; checks every value at every port; carries trust; one retry after `oom` |
+| Cache | `oneframe/cache.py` | Outputs stored by a hash of node, version, params, input keys, the port contract of the types its ports name, the node's code and its runtime's build; atomic writes |
+| Scheduler | `oneframe/scheduler.py` | Runs a plan; fits each step to memory; asks the `Executors` it is given where each attempt runs; checks every value at every port (`outputs.py` what a node made); one retry after `oom` |
+| Outputs | `oneframe/outputs.py` | What a node made, held to its manifest and the port contract before it is kept: every output there, every facet stated and allowed, a JSON value fitting its shape; trust inherited as the weakest input |
 | Memory | `oneframe/memory/` | A node's memory model, which a manifest reads alone of the five (`model.py`); the person's settings and the margins (`settings.py`); the estimate (`estimate.py`); the fit, pure (`fit.py`); what each machine learns (`learned.py`) |
 | Errors | `oneframe/errors.py` | Every kind and reason of failure, declared once, and whose fault each is ([Failures](#failures)) |
 | Executors | `oneframe/executors.py`, `oneframe/child.py`, `oneframe/node/` | In-process or child-process runs behind one `Executor` Protocol; `OneProcessPerRun`, the engine's `Executors`, starts a child per attempt and hides the cards from a processor run; `run_probe` runs a runtime's own code for the benches; one node API and one runner either way, and the child a bootstrap that makes only `oneframe.node` importable |

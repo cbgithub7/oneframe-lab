@@ -42,7 +42,9 @@ Values are checked where they cross a port: a node's declared outputs against it
 what the consumer accepts, because an output that leaves a facet open is only known at run time
 (kind `edge`).
 Trust flows with the value: an output that does not state its trust inherits the weakest trust of
-its inputs, so a mesh built from synthetic views never comes out labelled measured.
+its inputs, so a mesh built from synthetic views never comes out labelled measured. So do its
+sources: every output's `meta.sources` names the values it descends from that no step made from
+another (a photo), by their keys, so two values from different photos can be told apart.
 """
 
 from __future__ import annotations
@@ -71,12 +73,13 @@ from oneframe.memory.settings import Settings
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
 from oneframe.node import Emit, Value
+from oneframe.node.devices import CUDA
 from oneframe.node.job import Done, Job
+from oneframe.outputs import check as outputs_check
 from oneframe.registry import Registry
 from oneframe.runtimes.manager import NoRuntimes, RuntimeMissing, RuntimeSide
 
 LOGGER = logging.getLogger(__name__)
-TRUST_ORDER = {"measured": 0, "predicted": 1, "synthetic": 2}
 
 
 def no_machine(_cards: bool) -> dict[str, Any]:
@@ -148,11 +151,6 @@ class RunResult:
     error: dict[str, Any] | None = None  # the first failure, as node.failed (or run.failed) said it
     failed: list[str] = field(default_factory=list)  # the steps that failed, in order
     skipped: list[str] = field(default_factory=list)  # the steps that did not run because of one
-
-
-def _weakest(trusts: list[str | None]) -> str | None:
-    known = [t for t in trusts if t in TRUST_ORDER]
-    return max(known, key=lambda t: TRUST_ORDER[t]) if known else None
 
 
 class Scheduler:
@@ -356,7 +354,7 @@ class Scheduler:
         target = self.runtimes.device_target(str(runtime)) if runtime else Target()
         model_hash = manifest.memory.hash if manifest.memory else ""
         key = StoreKey(manifest.id, manifest.version, model_hash, target.lock or "")
-        cards = runtime is not None and "cuda" in manifest.devices and target.card is not None
+        cards = runtime is not None and CUDA in manifest.devices and target.card is not None
         return _Context(meta, target, key, cards)
 
     def preview(self, step: Step, meta: Inputs) -> tuple[Fit, Settings]:
@@ -510,7 +508,7 @@ class Scheduler:
             # (the card already more than full): the child then caps at the free memory alone.
             precision, budget = values.get(PRECISION_PARAM), found.budget
             uncapped = found.outcome in ("tried_anyway", "off") or budget is None or budget <= 0
-            cap = budget if device == "cuda" and not uncapped else None
+            cap = budget if device == CUDA and not uncapped else None
         return Job(
             node=manifest.id,
             folder=manifest.folder,
@@ -556,7 +554,7 @@ class Scheduler:
         """Check what the node made, say how it was made, and commit it to the cache with its record."""
         step = state.step
         manifest = step.manifest
-        outputs = self._check_outputs(step, state.inputs, finished.outputs, key)
+        outputs = outputs_check(step.manifest, state.inputs, finished.outputs, key)
         made_with = {
             "device": job.device,
             "precision": job.params.get(PRECISION_PARAM),
@@ -565,8 +563,11 @@ class Scheduler:
             "reduced": bool(found is not None and found.reduced),
         }
         reduced_input = any(_reduced(v) for v in state.inputs.values())
+        inherited = _sources(state.inputs)
         for value in outputs.values():
             value.meta["made_with"] = made_with  # a node cannot claim a fit it did not get
+            # nor its sources: a step fed nothing starts one, every other carries its inputs'
+            value.meta["sources"] = inherited if state.inputs else [{"id": value.key, "type": value.type}]
             if reduced_input:
                 value.meta["reduced_input"] = True
         record = {
@@ -625,7 +626,7 @@ class Scheduler:
         if manifest.run.where != "runtime" or found is None or context is None or found.kind is None:
             return
         model = manifest.memory
-        if found.device == "cuda":
+        if found.device == CUDA:
             reserved = peaks.get("peak_reserved_mb")
             need = None if reserved is None else float(reserved) + outside
             weights = (
@@ -643,47 +644,12 @@ class Scheduler:
                 need_mb=need,
                 working_mb=found.need.working if found.need is not None else None,
                 weights_mb=weights,
-                outside_mb=outside if found.device == "cuda" else 0.0,  # the processor has no outside
+                outside_mb=outside if found.device == CUDA else 0.0,  # the processor has no outside
                 seconds=seconds,
             )
         except OSError:
             # Learning is a help, never a reason for a run to fail.
             LOGGER.warning("could not record what %s taught this machine", manifest.id, exc_info=True)
-
-    def _check_outputs(
-        self, step: Step, inputs: dict[str, Value], declared: dict[str, Any], key: str
-    ) -> dict[str, Value]:
-        manifest = step.manifest
-        known = ports.types()
-        inherited = _weakest([v.trust for v in inputs.values()])
-        values: dict[str, Value] = {}
-        for port, spec in manifest.outputs.items():
-            row = declared.get(port)
-            if row is None:
-                raise NodeError("contract", f"{manifest.id} finished without its output {port!r}.")
-            path = Path(row["path"])
-            if not path.exists():
-                raise NodeError(
-                    "contract", f"{manifest.id} declared {port!r} at {path}, which does not exist."
-                )
-            facets = {k: v[0] for k, v in spec.facets.items() if len(v) == 1}
-            for k, v in (row.get("facets") or {}).items():
-                fixed = spec.facets.get(k)
-                if fixed is not None and v not in fixed:
-                    raise NodeError("contract", f"{manifest.id}.{port}: {k}={v} contradicts its manifest.")
-                facets[k] = v
-            ptype = known[spec.type]
-            for k, allowed in ptype.facets.items():
-                if k not in facets:
-                    raise NodeError("contract", f"{manifest.id}.{port} did not say its {k}.")
-                if facets[k] not in allowed:
-                    raise NodeError(
-                        "contract", f"{manifest.id}.{port}: {k}={facets[k]} is not a {spec.type} value."
-                    )
-            values[port] = Value(
-                spec.type, path, facets, row.get("meta"), spec.trust or inherited, key=f"{key}:{port}"
-            )
-        return values
 
 
 def _meta(step: Step, inputs: dict[str, Value]) -> Inputs:
@@ -691,6 +657,17 @@ def _meta(step: Step, inputs: dict[str, Value]) -> Inputs:
     meta: dict[str, dict[str, Any] | None] = {port: None for port in step.manifest.inputs}
     meta.update({port: value.meta for port, value in inputs.items()})
     return meta
+
+
+def _sources(inputs: dict[str, Value]) -> list[dict[str, str]]:
+    """The values these inputs descend from that no step made from another (a photo, clicks), each
+    once, by its key: the same in every graph that shares its entry (spec 019)."""
+    found: dict[str, dict[str, str]] = {}
+    for value in inputs.values():
+        for row in value.meta.get("sources") or ():
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                found[row["id"]] = {"id": row["id"], "type": str(row.get("type", ""))}
+    return [found[ident] for ident in sorted(found)]
 
 
 def _reduced(value: Value) -> bool:
@@ -703,7 +680,7 @@ def _described(found: Fit, peaks: dict[str, Any]) -> str:
     """Where an attempt ran and what it used, for the message of a second oom."""
     changes = ", ".join(why.split(";")[0] for _i, why in sorted(found.reasons.items()))
     at = f" with {changes}" if changes else " at its values"
-    peak = peaks.get("peak_reserved_mb") if found.device == "cuda" else peaks.get("peak_ram_mb")
+    peak = peaks.get("peak_reserved_mb") if found.device == CUDA else peaks.get("peak_ram_mb")
     used = f" (peak {round(peak)} MB)" if isinstance(peak, int | float) else ""
     return f"on {found.kind or found.device}{at}{used}"
 

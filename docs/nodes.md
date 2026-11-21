@@ -50,6 +50,16 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
 - **A `file` param** holds an import's id, the sha256 of a file the person picked, which the app
   copied into the data root's `inputs/`; never a path. The node is given that file's path in
   `ctx.params`, so it reads a file, and it is keyed by the file's content.
+- **A `json` param** holds data a person authors, such as clicks: `{"type": "json", "of":
+  "Clicks"}` names a port type carried as JSON whose contract gives it a `shape`, and its value,
+  its default included, is held to that shape when a graph is planned. The node reads it parsed, in
+  `ctx.params`. It always affects the output, and a memory model neither reads nor sets one.
+  `source.clicks` gives such a value on a port, for a node that takes clicks as an input.
+- **Shapes.** A JSON type's `shape` in `contracts/port-types.json` is a record in
+  `contracts/protocol.json`'s grammar (`oneframe/records.py`), and may name the records under that
+  file's `shapes`. A value a node writes on a port of such a type is held to it too: one that does
+  not fit is the node's `contract` failure, naming the field. `Clicks` and `Camera` have shapes;
+  `Camera`'s is open, so a node may add fields of its own.
 - **run.where** is `engine` for light nodes that ship with the app, and `runtime` for anything
   that imports a model library; `runtime` names the environment it runs in, a folder in
   `runtimes/` ([runtimes.md](runtimes.md)). Until that runtime is installed on this machine, the
@@ -59,9 +69,11 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
   **run.load**, optional and in the same form, names one called once before it, to load the model
   (below).
 - **devices** lists where the node runs, in the order it prefers: `cuda` (an NVIDIA card) and
-  `cpu`, the only devices of v1's platforms; the processor alone when left out.
-- **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
-  repair, texture, convert, evaluate, export.
+  `cpu`, the only devices of v1's platforms (`oneframe/node/devices.py`, which node code may import
+  too); the processor alone when left out.
+- **category** is one of those `contracts/vocabulary.json` names, each with what it is for; the
+  param types are that file's too. `convert` is the one category the engine reads: a convert node
+  of one input and one output is a converter the plan may insert.
 
 ## Files: weights and other downloads
 
@@ -311,11 +323,14 @@ does not change this setting for you: it has no documented interface.
 | Image | `.png` | sRGB |
 | Depth | `.npz` | `depth`: float32 H x W; optional `valid` |
 | PointMap | `.npz` | `points`: float32 H x W x 3; `valid` |
-| Camera | `.json` | `fx`, `fy`, `cx`, `cy`, `width`, `height` (pixels); optional `pose` 4x4 world_from_camera |
+| Camera | `.json` | its shape: `fx`, `fy`, `cx`, `cy` and `width`, `height` (whole pixels); optional `pose` 4x4 world_from_camera |
+| Clicks | `.json` | its shape: `width`, `height` of the image; `points` of `{x, y, positive}`, `boxes` of `{x0, y0, x1, y1}`, in its pixels |
 | Normals, Confidence | `.npz` | `normals` / `confidence` |
 | Mask | `.png` | 0/255, or 8-bit soft |
-| Mesh | `.glb` | |
-| GaussianSplat | `.ply` | Inria layout, raw (log scale, logit opacity, wxyz rotation) |
+| Mesh | `.glb` | glTF's axes; `frame` (object, camera, world) and `scale` (metric, up_to_scale) on the port |
+| GaussianSplat | `.ply` | Inria layout, raw (log scale, logit opacity, wxyz rotation), OpenCV's axes; `frame` and `scale` as a Mesh's |
+| Pose, Scene, CameraPath | `.json` | OpenCV's axes; `frame` (camera, world) and `scale` on the port |
+| Audio | `.wav` | PCM; `channels` (mono, stereo) and `loop` (seamless, none) on the port |
 | ViewSet | folder | `views.json` plus images |
 
 ## Folders of your own

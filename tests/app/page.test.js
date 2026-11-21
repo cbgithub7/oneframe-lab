@@ -77,6 +77,33 @@ test("a settings form is drawn from a manifest", () => {
   assert.equal(formModel(EVERY_PARAM, graph, "step")[0].set, false);
 });
 
+test("a json param is edited as text and read back as an object", () => {
+  const manifest = { ...EVERY_PARAM, params: { clicks: { type: "json", of: "Clicks", label: "Clicks" } } };
+  let graph = openGraph({ nodes: { step: { node: manifest.id } }, edges: [] });
+  const [control] = formModel(manifest, graph, "step");
+  assert.equal(control.control, "json");
+  assert.match(String(/** @type {{ problem: string }} */ (readControl(control, "{ width: 8 }")).problem), /^Clicks is not JSON/);
+  assert.deepEqual(readControl(control, "[1, 2]"), { problem: "Clicks should be a JSON object, in braces." });
+  const clicks = { width: 8, height: 6, points: [{ x: 1, y: 2, positive: true }], boxes: [] };
+  const read = readControl(control, JSON.stringify(clicks, null, 2));
+  assert.deepEqual(read, { value: clicks });
+  graph = setParam(graph, "step", "clicks", /** @type {{ value: unknown }} */ (read).value);
+  assert.deepEqual(graph.nodes.step.params, { clicks });
+  assert.deepEqual(formModel(manifest, graph, "step")[0].value, clicks);
+});
+
+test("the form has a control for every param type in the contract", () => {
+  const vocabulary = JSON.parse(readFileSync(path.join(REPO_ROOT, "contracts", "vocabulary.json"), "utf8"));
+  const types = Object.keys(vocabulary.param_types);
+  assert.ok(types.length > 0, "the contract names param types");
+  for (const type of types) {
+    const manifest = { ...EVERY_PARAM, params: { only: { type, choices: ["a"], default: null } } };
+    const graph = openGraph({ nodes: { step: { node: manifest.id } }, edges: [] });
+    const [control] = formModel(manifest, graph, "step");
+    assert.notEqual(control.control, "unknown", `the page has no control for the param type ${type}`);
+  }
+});
+
 test("the npz reader reads what numpy writes", async () => {
   // The arrays tests/app/fixtures/npz/README.md says numpy was given.
   const points = Float32Array.from({ length: 36 }, (_, i) => i / 4 - 2);

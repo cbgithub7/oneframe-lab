@@ -21,7 +21,7 @@ NODE = {
     "id": "test.kept",
     "version": "1",
     "title": "Kept",
-    "category": "test",
+    "category": "evaluate",
     "outputs": {"text": "Text"},
     "params": {"path": {"type": "file"}, "n": {"type": "int", "default": 1}},
 }
@@ -91,7 +91,7 @@ def _partial(tmp_path: Path) -> str:
 
 RECORDED: dict[str, tuple[Callable[[Path], object], object]] = {
     "code": (_code, "1430899a639e119ffa2bf557dca0c698622b49b29d6e320d7de3e5bf68a9edc4"),
-    "cache_key": (_cache_key, "d502843ff2295d6026ec65900ca7c69d5e1e6d9e2c34cbda760b641c77ebaca6"),
+    "cache_key": (_cache_key, "46caac37cdcb3270ec9d0316655f4e2d15672574bcb1e091adae84a7bde48d72"),
     "runtime": (
         _runtime,
         {
