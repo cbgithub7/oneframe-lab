@@ -53,7 +53,7 @@ from oneframe import (
     ports,
     protocol,
 )
-from oneframe.cache import Cache
+from oneframe.cache import Cache, Held
 from oneframe.errors import Failure, failure
 from oneframe.graph import Graph, Step, fits, plan, step_params
 from oneframe.journal import engine_crash
@@ -63,7 +63,7 @@ from oneframe.memory.settings import read_settings
 from oneframe.models.catalog import listing, remove_node, remove_unpinned
 from oneframe.models.jobs import Jobs
 from oneframe.models.runs import in_use
-from oneframe.node import Emit
+from oneframe.node import Emit, Value
 from oneframe.reading import is_sha256
 from oneframe.registry import Registry, discover
 from oneframe.runtimes.manager import InstallRefused, Runtimes, find_uv
@@ -83,6 +83,17 @@ STOPS: dict[str, frozenset[str]] = {
 
 def _bad_params(message: str) -> Failure:
     return Failure(message, "bad_params", kind="request")
+
+
+def _located(outputs: dict[str, Held], port: str) -> Value | None:
+    """The value `port` names in an entry: a single port's, or an item of a collection by
+    `<port>:<index>`; None for anything else, a whole collection included."""
+    held = outputs.get(port)
+    if isinstance(held, Value):
+        return held
+    name, _, index = port.rpartition(":")
+    items = outputs.get(name) if index.isdigit() else None
+    return items[int(index)] if isinstance(items, list) and int(index) < len(items) else None
 
 
 def _required(params: dict[str, Any], name: str) -> Any:
@@ -279,11 +290,12 @@ class Engine:
 
     def values_locate(self, params: dict[str, Any]) -> dict[str, Any]:
         """`{key, port}`: the file of a value a run committed to the cache, its type and carrier,
-        for the app's value protocol; anything no committed entry has is refused. Only the main
-        process calls it: it answers a path, so it is not on the page's list."""
+                for the app's value protocol; anything no committed entry has is refused. A port that names an
+        item (`masks:0`) answers that item of the collection (spec 021). Only the main
+                process calls it: it answers a path, so it is not on the page's list."""
         key, port = _required(params, "key"), _required(params, "port")
         outputs = self.cache.get(key) if is_sha256(key) else None
-        value = outputs.get(port) if outputs is not None and isinstance(port, str) else None
+        value = _located(outputs, port) if outputs is not None and isinstance(port, str) else None
         if value is None:
             raise _bad_params(f"No value {port!r} was committed under the key {key!r}.")
         found = ports.types().get(value.type)

@@ -31,6 +31,7 @@ class Job:
     run: str = ""
     step: str = ""
     inputs: dict[str, Value] = field(default_factory=dict)
+    items: dict[str, list[Value]] = field(default_factory=dict)  # each collection input, in order
     params: dict[str, Any] = field(default_factory=dict)
     device: str = CPU
     files: dict[str, str] = field(default_factory=dict)  # by name in the manifest: the store's path
@@ -44,6 +45,7 @@ class Job:
         """The job as the child reads it. A param that is not plain JSON is written as its `str`."""
         row = {f.name: getattr(self, f.name) for f in fields(self)}
         row["inputs"] = {port: value.to_json() for port, value in self.inputs.items()}
+        row["items"] = {port: [value.to_json() for value in held] for port, held in self.items.items()}
         return json.dumps(row, default=str)
 
     @classmethod
@@ -53,17 +55,19 @@ class Job:
             folder=Path(row["folder"]),
             out_dir=Path(row["out_dir"]),
             inputs={port: Value.from_json(value) for port, value in row["inputs"].items()},
+            items={port: [Value.from_json(value) for value in held] for port, held in row["items"].items()},
         )
         return cls(**row)
 
 
 @dataclass(frozen=True)
 class Done:
-    """What a run gave: each output the node declared (`path`, `facets`, `meta`), how long it
+    """What a run gave: each output the node declared (`path`, `facets`, `meta`; a list of them for
+    a collection), how long it
     took, its peaks (`peak_vram_mb`, `peak_reserved_mb`, `peak_ram_mb`, each None where unknown),
     the way each ctx.fallbacks step finished with, and the stats its function returned."""
 
-    outputs: dict[str, dict[str, Any]]
+    outputs: dict[str, Any]  # by port: a declared value, or a list of them for a collection
     seconds: float
     peaks: dict[str, float | None]
     ways: dict[str, str] = field(default_factory=dict)

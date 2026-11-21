@@ -49,6 +49,12 @@ export declare namespace Wire {
     key: string;
   }
 
+  /** A collection a run made (spec 021): its items' type, and the items in order, each a value read by its own key. */
+  export interface Collection {
+    type: string;
+    items: Array<Value>;
+  }
+
   /** Where a node runs, at which values, and why (oneframe/memory/fit.py). */
   export interface Fit {
     outcome: string;
@@ -219,7 +225,7 @@ export declare namespace Wire {
   export interface RunDoneEvent {
     event: "run.done";
     run: string;
-    outputs: { [key: string]: { [key: string]: Value } };
+    outputs: { [key: string]: { [key: string]: Value | Collection } };
   }
 
   /** A run ended with a failure: the first one, its step or edge, and the steps that failed and were skipped; or an engine bug. Sent by the engine. */
@@ -247,7 +253,7 @@ export declare namespace Wire {
     node: string;
     key: string;
     fit?: Fit;
-    outputs: { [key: string]: Value };
+    outputs: { [key: string]: Value | Collection };
   }
 
   /** A step was fitted to the memory this machine has free, before an attempt. Sent by the engine. */
@@ -332,7 +338,7 @@ export declare namespace Wire {
     peak_ram_mb: number | null;
     made_with: { [key: string]: unknown };
     fit?: Fit;
-    outputs: { [key: string]: Value };
+    outputs: { [key: string]: Value | Collection };
   }
 
   /** An attempt ran out of memory: before the one retry, or the failure. Sent by the engine. */
@@ -858,6 +864,12 @@ export declare namespace Page {
     key: string;
   }
 
+  /** A collection a run made (spec 021): its items' type, and the items in order, each a value read by its own key. */
+  export interface Collection {
+    type: string;
+    items: Array<Value>;
+  }
+
   /** Where a node runs, at which values, and why (oneframe/memory/fit.py). */
   export interface Fit {
     outcome: string;
@@ -1024,7 +1036,7 @@ export declare namespace Page {
   export interface RunDoneEvent {
     event: "run.done";
     run: string;
-    outputs: { [key: string]: { [key: string]: Value } };
+    outputs: { [key: string]: { [key: string]: Value | Collection } };
   }
 
   /** A run ended with a failure: the first one, its step or edge, and the steps that failed and were skipped; or an engine bug. Sent by the engine. */
@@ -1052,7 +1064,7 @@ export declare namespace Page {
     node: string;
     key: string;
     fit?: Fit;
-    outputs: { [key: string]: Value };
+    outputs: { [key: string]: Value | Collection };
   }
 
   /** A step was fitted to the memory this machine has free, before an attempt. Sent by the engine. */
@@ -1137,7 +1149,7 @@ export declare namespace Page {
     peak_ram_mb: number | null;
     made_with: { [key: string]: unknown };
     fit?: Fit;
-    outputs: { [key: string]: Value };
+    outputs: { [key: string]: Value | Collection };
   }
 
   /** An attempt ran out of memory: before the one retry, or the failure. Sent by the engine. */

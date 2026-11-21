@@ -133,6 +133,9 @@ and one redraw a frame are the bound, and a node's own `progress` is already thr
   `test_an_item_is_located_by_its_key` (`test_server_and_nodes.py`); "a card counts the items of a
   for each" (`tests/app/page.test.js`).
 - Changed: "nothing the page receives holds a path" (`tests/app/door.test.js`) gains a collection.
+- Changed: `test_an_undeclared_event_is_a_problem` (`test_protocol.py`): its nested-shape case
+  sends a value but its key, since a step's output is now a value or a collection, and the bare
+  `{"type": "Text"}` it sent is closer to a collection.
 - Removed: none
 - Renamed: none
 
@@ -153,6 +156,13 @@ No hardware step: the first real for each is step 4's, with its own report.
 - A step run for each has no cache entry of its own: its items' entries are the work.
 - One event stream with `item` and `of`, no new events: the page's card logic gains a count.
 - `ViewSet` stays a type: its views share one subject and one record of how they were made.
+- `*` is refused on a type carried as a folder, not on `ViewSet` by name: no engine code names a
+  type, and a folder is what cannot be taken apart.
+- An item a node made counts, in the key of what it feeds, by its file's content, type, facets,
+  trust and meta but its sources, not by its own key: a producer run again (a fourth mask) gives
+  its first items new keys, and only so does R5 hold (AC3). A single value is keyed as before.
+- `RunResult` keeps a step's single values in `outputs` and its collections in `collections`,
+  so the code and tests that read a single value keep their types.
 
 ## Out of scope
 

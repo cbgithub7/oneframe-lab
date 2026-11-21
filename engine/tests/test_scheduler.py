@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import Events, HostRuntimes, MakeNode
+from conftest import MASKS, TAKE_MASKS, Events, HostRuntimes, MakeNode
 from fixtures import fit_node, machines
 
 from oneframe.cache import Cache
@@ -1032,3 +1032,104 @@ def test_an_engine_bug_is_not_blamed_on_the_node(
     with pytest.raises(ValueError, match="a bug in the engine"):
         scheduler_for().run(_graph({"f": {"node": "test.fine"}}, []), events.append)
     assert not events.of("node.failed")
+
+
+def test_a_node_gives_and_takes_a_collection(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """A node declares three items; a node whose input is a collection receives them in order,
+    each with its own facets and a key of its own (spec 021, AC1)."""
+    make_node(MASKS["manifest"], MASKS["code"])
+    make_node(TAKE_MASKS["manifest"], TAKE_MASKS["code"])
+    graph = _graph({"m": {"node": "test.masks"}, "t": {"node": "test.take_masks"}}, [("m.masks", "t.masks")])
+    result = scheduler_for().run(graph, events.append)
+    assert result.status == "done", result.error
+    masks = result.collections["m"]["masks"]
+    entry = next(e["key"] for e in events.of("node.done") if e["step"] == "m")
+    assert [v.key for v in masks] == [f"{entry}:masks:{i}" for i in range(3)]
+    assert [v.facets for v in masks] == [{"kind": "binary", "marks": m} for m in ("object", "valid", "sky")]
+    assert [v.trust for v in masks] == ["predicted"] * 3
+    seen = json.loads(result.outputs["t"]["seen"].path.read_text(encoding="utf-8"))
+    assert [(row["key"], row["facets"], row["bytes"]) for row in seen] == [
+        (v.key, v.facets, i) for i, v in enumerate(masks)
+    ]
+    done = next(e for e in events.of("node.done") if e["step"] == "m")
+    assert done["outputs"]["masks"]["type"] == "Mask"
+    assert [item["key"] for item in done["outputs"]["masks"]["items"]] == [v.key for v in masks]
+    assert events.of("run.done")[0]["outputs"]["m"]["masks"]["items"][2]["facets"]["marks"] == "sky"
+    events.clear()  # from the cache, the collection is the same, in the same order
+    again = scheduler_for().run(graph, events.append)
+    assert events.kinds() == ["run.start", "node.cached", "node.cached", "run.done"]
+    assert [v.key for v in again.collections["m"]["masks"]] == [v.key for v in masks]
+
+
+def _contract_failure(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], code: str, **ports: str
+) -> str:
+    """The message a node with these outputs fails with, by its code."""
+    make_node(
+        {"id": "test.bad", "version": "1", "title": "Bad", "category": "evaluate", "outputs": ports},
+        code,
+    )
+    events = Events()
+    result = scheduler_for().run(_graph({"b": {"node": "test.bad"}}, []), events.append)
+    [failed] = events.of("node.failed")
+    assert (result.status, failed["kind"]) == ("failed", "contract"), failed
+    return str(failed["message"])
+
+
+ITEM = """
+def run(ctx):
+    for i, facets in enumerate(FACETS):
+        p = ctx.path(f"m{i}.png")
+        p.write_bytes(b"x")
+        ctx.output_item("masks", p, facets=facets)
+"""
+
+
+def test_an_item_is_checked_as_a_single_value_is(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler]
+) -> None:
+    """Each item is held to the manifest and the type, as a value is, and named by its index; a
+    collection port is given item by item, a single one not (spec 021)."""
+    unsaid = "FACETS = [{'kind': 'binary', 'marks': 'sky'}, {'kind': 'binary'}]\n" + ITEM
+    message = _contract_failure(make_node, scheduler_for, unsaid, masks="Mask*")
+    assert "test.bad.masks[1] did not say its marks" in message, message
+    contradicts = "FACETS = [{'kind': 'soft', 'marks': 'sky'}]\n" + ITEM
+    message = _contract_failure(make_node, scheduler_for, contradicts, masks="Mask[kind=binary]*")
+    assert "masks[0]: kind=soft contradicts its manifest" in message, message
+    whole = "def run(ctx):\n    p = ctx.path('m.png')\n    p.write_bytes(b'x')\n    ctx.output('masks', p)\n"
+    message = _contract_failure(make_node, scheduler_for, whole, masks="Mask[kind=binary, marks=sky]*")
+    assert "given with ctx.output" in message, message
+    single = "FACETS = [{}]\n" + ITEM
+    message = _contract_failure(make_node, scheduler_for, single, masks="Mask[kind=binary, marks=sky]")
+    assert "is a single Mask, given with ctx.output_item" in message, message
+
+
+def test_collections_of_one_step_have_one_length(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """The collections one node gives line up item for item; a port with no item is empty."""
+    code = (
+        "def run(ctx):\n"
+        "    for port, n in (('masks', 3), ('boxes', 2)):\n"
+        "        for i in range(n):\n"
+        "            p = ctx.path(f'{port}{i}.png')\n"
+        "            p.write_bytes(b'x')\n"
+        "            ctx.output_item(port, p)\n"
+    )
+    spec = "Mask[kind=binary, marks=object]*"
+    message = _contract_failure(make_node, scheduler_for, code, masks=spec, boxes=spec)
+    assert "collections of different lengths: masks 3, boxes 2" in message, message
+    make_node(
+        {
+            "id": "test.none",
+            "version": "1",
+            "title": "None",
+            "category": "evaluate",
+            "outputs": {"masks": spec},
+        }
+    )
+    result = scheduler_for().run(_graph({"n": {"node": "test.none"}}, []), events.append)
+    assert result.status == "done", result.error
+    assert result.collections["n"]["masks"] == []

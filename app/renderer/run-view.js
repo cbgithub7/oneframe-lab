@@ -8,13 +8,14 @@
 /** @typedef {import("../protocol.js").Page.Failure} Failure */
 /** @typedef {import("../protocol.js").Page.Fit} Fit */
 /** @typedef {import("../protocol.js").Page.Value} Value */
+/** @typedef {import("../protocol.js").Page.Collection} Collection */
 /**
  * @typedef {"install" | "download" | "wait" | "retry"} Action
  * @typedef {{ action: Action, for?: "runtime" | "files" }} Offer
  * @typedef {"waiting" | "fitting" | "running" | "cached" | "done" | "failed" | "skipped" | "stopped"} Phase
  * @typedef {{ phase: Phase, fit?: Fit, stage?: string, progress?: { done: number | null, total: number | null, what: string },
  *   seconds?: number, peak_vram_mb?: number | null, failure?: Failure, offer?: Offer | null, note?: string,
- *   outputs?: Record<string, Value> }} Card
+ *   outputs?: Record<string, Value | Collection> }} Card
  * @typedef {{ run: string | null, pending: boolean, cards: Record<string, Card>,
  *   ended: "done" | "failed" | "stopped" | null, failure?: Failure }} RunState
  */

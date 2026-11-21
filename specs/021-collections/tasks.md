@@ -9,7 +9,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   gives each collection its origin, refuses what does not line up, and says so in its notes;
   `fits()` answers `each` by the same rule; `connection` gains `each` (`contracts/protocol.json`,
   `app/protocol.d.ts`). AC4, AC7.
-- [ ] 3. **A collection as values.** `ctx.output_item` and `ctx.items`, a job's collection inputs;
+- [x] 3. **A collection as values.** `ctx.output_item` and `ctx.items`, a job's collection inputs;
   `outputs.py` checks each item as a single value and holds a step's collections to one length;
   the cache writes and reads a collection port's rows as a list, and a key takes a collection as its
   items' keys; `values.locate` answers an item (`masks:0`); the protocol's `collection` shape, and a

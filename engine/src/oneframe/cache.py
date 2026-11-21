@@ -12,6 +12,12 @@ inputs, settings, code and runtime therefore has the same key on any run, from a
 changing one node re-runs only what comes after it, two recipes that start the same way share the
 start, and a changed node or runtime is never served a result from before the change.
 
+A collection (spec 021) is a list of values, kept as a list of rows in its entry's
+`outputs.json`. An item a node made is keyed `<entry>:<port>:<index>`, so it is read by its own
+key; in the key of what it feeds it counts by what it is (its file's content, type, facets, trust
+and meta but its sources), so a node run again that gives the same items and one more leaves the
+work on the first ones in the cache.
+
 Writes are atomic: a run writes into a private folder and renames it into place, so a crash or a
 Stop never leaves half an output that a later run would trust. The entries live in the layout's
 `cache/objects/`; the private folders in the process's own folder under `cache/tmp/` (scratch.py),
@@ -24,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -40,6 +47,8 @@ from oneframe.node import Value
 # digest to the manifest's own field, which changes every key without a new version.
 # 3: the port contract of the types a node's ports name joined the key (spec 019).
 KEY_VERSION = 3
+Held = Value | list[Value]  # what a port carries: a value, or a collection of them (spec 021)
+_ITEM = re.compile(r":\d+$")  # an item's key ends in its index; a port's name starts with a letter
 BYTECODE = (".pyc", ".pyo")
 MANIFEST = "node.json"  # in the key as it was loaded (Manifest.digest), not as it is on disk
 
@@ -97,11 +106,27 @@ class Cache:
             self._digests[memo] = sha256_file(path)
         return self._digests[memo]
 
+    def _input(self, held: Held) -> Any:
+        """A value as the key of what it feeds takes it: by its own key, or, for an item a node
+        made, by what it is; a collection as the list of its items'."""
+        if isinstance(held, list):
+            return [self._input(item) for item in held]
+        if not _ITEM.search(held.key):
+            return held.key
+        meta = {k: v for k, v in held.meta.items() if k != "sources"}
+        return {
+            "sha256": self._file_key(str(held.path)),
+            "type": held.type,
+            "facets": held.facets,
+            "trust": held.trust,
+            "meta": meta,
+        }
+
     def key(
         self,
         manifest: Manifest,
         params: dict[str, Any],
-        inputs: dict[str, Value],
+        inputs: dict[str, Held],
         runtime: dict[str, str] | None = None,
         code: str | None = None,
     ) -> str:
@@ -118,7 +143,7 @@ class Cache:
             "node": manifest.id,
             "version": manifest.version,
             "params": affecting,
-            "inputs": {port: value.key for port, value in sorted(inputs.items())},
+            "inputs": {port: self._input(held) for port, held in sorted(inputs.items())},
             "ports": ports.contract(
                 [spec.type for spec in (*manifest.inputs.values(), *manifest.outputs.values())],
                 self.port_types,
@@ -133,7 +158,7 @@ class Cache:
     def folder(self, key: str) -> Path:
         return self.objects / key[:2] / key
 
-    def get(self, key: str) -> dict[str, Value] | None:
+    def get(self, key: str) -> dict[str, Held] | None:
         folder = self.folder(key)
         record = folder / "outputs.json"
         if not record.is_file():
@@ -142,12 +167,12 @@ class Cache:
             rows = json.loads(record.read_text(encoding="utf-8"))
         except OSError, json.JSONDecodeError:
             return None
-        out: dict[str, Value] = {}
+        out: dict[str, Held] = {}
         for port, row in rows["outputs"].items():
-            value = Value.from_json(dict(row, path=str(folder / row["path"])))
-            if not value.path.exists():
+            held = [_read(folder, item) for item in row] if isinstance(row, list) else _read(folder, row)
+            if not all(value.path.exists() for value in (held if isinstance(held, list) else [held])):
                 return None  # something was removed by hand: treat as absent, never as present
-            out[port] = value
+            out[port] = held
         return out
 
     def begin(self, key: str) -> Path:
@@ -156,16 +181,20 @@ class Cache:
         return work
 
     def commit(
-        self, key: str, work: Path, outputs: dict[str, Value], record: dict[str, Any]
-    ) -> dict[str, Value]:
+        self, key: str, work: Path, outputs: dict[str, Held], record: dict[str, Any]
+    ) -> dict[str, Held]:
         """Move a finished run's folder into place and return its values with their final paths."""
-        rows = {}
-        for port, value in outputs.items():
+
+        def row(port: str, value: Value) -> dict[str, Any]:
             try:
                 relative = value.path.resolve().relative_to(work.resolve())
             except ValueError as exc:
                 raise ContractError(f"output {port} is outside the run folder: {value.path}") from exc
-            rows[port] = dict(value.to_json(), path=relative.as_posix())
+            return dict(value.to_json(), path=relative.as_posix())
+
+        rows: dict[str, Any] = {}
+        for port, held in outputs.items():
+            rows[port] = [row(port, item) for item in held] if isinstance(held, list) else row(port, held)
         (work / "outputs.json").write_text(
             json.dumps({"key": key, "outputs": rows, "record": record}, indent=2, default=str),
             encoding="utf-8",
@@ -189,3 +218,8 @@ class Cache:
 
     def abandon(self, work: Path) -> None:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def _read(folder: Path, row: dict[str, Any]) -> Value:
+    """A value as its entry's outputs.json holds it, its path made whole."""
+    return Value.from_json(dict(row, path=str(folder / row["path"])))

@@ -572,7 +572,8 @@ function renderPanes() {
     const id = `${pane.step}.${pane.port}`;
     const manifest = manifestOf(pane.step);
     const port = manifest ? portsOf(manifest, "outputs").find((p) => p.name === pane.port) : undefined;
-    const value = state.run.cards[pane.step]?.outputs?.[pane.port];
+    const held = state.run.cards[pane.step]?.outputs?.[pane.port];
+    const value = held && "items" in held ? held.items[0] : held;
     let element = /** @type {HTMLElement | undefined} */ (existing.get(id));
     if (!element) {
       const body = h("div", { className: "body" });

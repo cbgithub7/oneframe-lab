@@ -45,6 +45,13 @@
         "key": { "type": "string" }
       }
     },
+    "collection": {
+      "doc": "A collection a run made (spec 021): its items' type, and the items in order, each a value read by its own key.",
+      "fields": {
+        "type": { "type": "string" },
+        "items": { "type": "array", "of": "value" }
+      }
+    },
     "fit": {
       "doc": "Where a node runs, at which values, and why (oneframe/memory/fit.py).",
       "fields": {
@@ -229,7 +236,7 @@
       "by": ["engine"],
       "fields": {
         "run": { "type": "string" },
-        "outputs": { "type": "object", "of": { "type": "object", "of": "value" } }
+        "outputs": { "type": "object", "of": { "type": "object", "of": { "type": ["value", "collection"] } } }
       }
     },
     "run.failed": {
@@ -261,7 +268,7 @@
         "node": { "type": "string" },
         "key": { "type": "string" },
         "fit": { "type": "fit", "optional": true },
-        "outputs": { "type": "object", "of": "value" }
+        "outputs": { "type": "object", "of": { "type": ["value", "collection"] } }
       }
     },
     "node.fit": {
@@ -354,7 +361,7 @@
         "peak_ram_mb": { "type": "number", "null": true },
         "made_with": { "type": "object" },
         "fit": { "type": "fit", "optional": true },
-        "outputs": { "type": "object", "of": "value" }
+        "outputs": { "type": "object", "of": { "type": ["value", "collection"] } }
       }
     },
     "node.oom": {

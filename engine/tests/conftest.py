@@ -97,6 +97,51 @@ FAKE_IMAGE = {
 }
 
 
+# A source that gives `n` masks as a collection (spec 021), each its own bytes and `marks`, so the
+# first items are the same whatever `n` is.
+MASKS = {
+    "manifest": {
+        "id": "test.masks",
+        "version": "1",
+        "title": "Masks",
+        "category": "evaluate",
+        "outputs": {"masks": {"type": "Mask[kind=binary]*", "trust": "predicted"}},
+        "params": {"n": {"type": "int", "default": 3, "min": 0}},
+    },
+    "code": """
+        MARKS = ["object", "valid", "sky", "any"]
+
+        def run(ctx):
+            for i in range(ctx.params["n"]):
+                p = ctx.path(f"mask-{i}.png")
+                p.write_bytes(bytes([i]) * 16)
+                ctx.output_item("masks", p, facets={"marks": MARKS[i % 4]}, meta={"index": i})
+    """,
+}
+
+# A node that takes a whole collection of masks and says, as text, what it was given.
+TAKE_MASKS = {
+    "manifest": {
+        "id": "test.take_masks",
+        "version": "1",
+        "title": "Take masks",
+        "category": "evaluate",
+        "inputs": {"masks": "Mask*"},
+        "outputs": {"seen": "Text"},
+    },
+    "code": """
+        import json
+
+        def run(ctx):
+            items = ctx.items("masks")
+            seen = [{"key": v.key, "facets": v.facets, "bytes": v.path.read_bytes()[0]} for v in items]
+            p = ctx.path("seen.json")
+            p.write_text(json.dumps(seen), encoding="utf-8")
+            ctx.output("seen", p)
+    """,
+}
+
+
 def _write(root: Path, manifest: dict[str, Any], code: str) -> Path:
     folder = root / manifest["id"]
     folder.mkdir(parents=True, exist_ok=True)
