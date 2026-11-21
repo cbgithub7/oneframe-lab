@@ -1,6 +1,6 @@
 # 019: The contracts, grown before nodes depend on them
 
-Status: approved
+Status: done ([PR #74](https://github.com/cbgithub7/oneframe-lab/pull/74))
 Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The first of five specs for step 3c, graph model 2, which is too large for one: this one,
