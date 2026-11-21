@@ -165,6 +165,80 @@ TAKE_MASKS = {
 }
 
 
+# A node that holds until its gate is open (spec 023): each call adds a line to `<gate>.calls`, it says
+# the stage `held`, then waits, watching Stop, until the file `gate` exists, and gives a text.
+HOLD_CODE = """
+import time
+from pathlib import Path
+
+def run(ctx):
+    gate = Path(ctx.params["gate"])
+    with open(str(gate) + ".calls", "a", encoding="utf-8") as calls:
+        calls.write("called\\n")
+    ctx.stage("held", gate.name)
+    while not gate.exists():
+        ctx.check_stop()
+        time.sleep(0.02)
+    path = ctx.path("text.txt")
+    path.write_text(gate.name, encoding="utf-8")
+    ctx.output("text", path)
+"""
+
+
+def hold_manifest(
+    node_id: str,
+    where: str = "engine",
+    devices: tuple[str, ...] = ("cpu",),
+    params: dict[str, Any] | None = None,
+    memory: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A holding node's manifest: in the engine, or in the runtime `test` (HostRuntimes' Python),
+    on these devices, with more params and a memory model if given."""
+    run = {"where": where, "entry": "node.py:run", **({"runtime": "test"} if where == "runtime" else {})}
+    return {
+        "id": node_id,
+        "version": "1",
+        "title": node_id,
+        "category": "evaluate",
+        "outputs": {"text": "Text"},
+        "params": {"gate": {"type": "string", "default": ""}, **(params or {})},
+        "devices": list(devices),
+        "run": run,
+        **({"memory": memory} if memory is not None else {}),
+    }
+
+
+class Gates:
+    """The gates of a test's holding nodes, by name, under one folder: each a path a graph's
+    `gate` param holds, opened by writing it. Every gate is opened when the test ends, so no node
+    is left holding."""
+
+    def __init__(self, folder: Path) -> None:
+        self.folder = folder
+        folder.mkdir(parents=True, exist_ok=True)
+
+    def __call__(self, name: str) -> str:
+        return str(self.folder / name)
+
+    def open(self, name: str) -> None:
+        (self.folder / name).write_text("open", encoding="utf-8")
+
+    def calls(self, name: str) -> int:
+        path = self.folder / f"{name}.calls"
+        return len(path.read_text(encoding="utf-8").splitlines()) if path.is_file() else 0
+
+    def open_all(self) -> None:
+        for calls in self.folder.glob("*.calls"):
+            self.open(calls.name.removesuffix(".calls"))
+
+
+@pytest.fixture
+def gates(tmp_path: Path) -> Iterator[Gates]:
+    found = Gates(tmp_path / "gates")
+    yield found
+    found.open_all()
+
+
 def _write(root: Path, manifest: dict[str, Any], code: str) -> Path:
     folder = root / manifest["id"]
     folder.mkdir(parents=True, exist_ok=True)

@@ -167,3 +167,7 @@ ending done, with their peaks and the free system memory before each, in
 2. **Stop, with several runs.** Recommended: the page's one Stop stops every run it started, and
    a card shows the newest run that holds its step. A Stop for each run needs a list of runs in
    the page, which is the editor's (step 7).
+- A fit that chose another slot than the one held is made again only after waiting for that slot:
+  with nothing to wait for, nothing took memory there since the fit (and nvidia-smi is read once).
+- A step that waits for the same work another run is making says `node.queued` without a device,
+  behind that run's step, so its card says what it waits for.

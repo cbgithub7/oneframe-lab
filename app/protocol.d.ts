@@ -32,6 +32,14 @@ export declare namespace Wire {
     message: string;
   }
 
+  /** A step's place in a run, which another step waits behind (spec 023): its run and step, and for an item of a step run for each, the item and how many there are. */
+  export interface Place {
+    run: string;
+    step: string;
+    item?: number;
+    of?: number;
+  }
+
   /** An edge of a graph, by its ports (step.port). */
   export interface Edge {
     from: string;
@@ -287,6 +295,23 @@ export declare namespace Wire {
     where: string;
     key: string;
     attempt: number;
+  }
+
+  /** A step waits its turn (spec 023): for its device's slot, held or asked for first by `behind`, or, without a device, for the same work another run is making. It starts once that place has let go. Sent by the engine. */
+  export interface NodeQueuedEvent {
+    event: "node.queued";
+    run: string;
+    step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
+    node: string;
+    /** the slot it waits for: cuda, cpu, or engine (the engine's own process); absent for the same work */
+    device?: string;
+    /** the card's index, for cuda */
+    card?: number;
+    behind: Place;
   }
 
   /** A node said what it is doing (ctx.stage), passed on by the scheduler with its step. Sent by the engine. */
@@ -557,6 +582,7 @@ export declare namespace Wire {
     | NodeCachedEvent
     | NodeFitEvent
     | NodeStartEvent
+    | NodeQueuedEvent
     | StageEvent
     | ProgressEvent
     | CeilingEvent
@@ -897,6 +923,14 @@ export declare namespace Page {
     message: string;
   }
 
+  /** A step's place in a run, which another step waits behind (spec 023): its run and step, and for an item of a step run for each, the item and how many there are. */
+  export interface Place {
+    run: string;
+    step: string;
+    item?: number;
+    of?: number;
+  }
+
   /** An edge of a graph, by its ports (step.port). */
   export interface Edge {
     from: string;
@@ -1146,6 +1180,23 @@ export declare namespace Page {
     where: string;
     key: string;
     attempt: number;
+  }
+
+  /** A step waits its turn (spec 023): for its device's slot, held or asked for first by `behind`, or, without a device, for the same work another run is making. It starts once that place has let go. Sent by the engine. */
+  export interface NodeQueuedEvent {
+    event: "node.queued";
+    run: string;
+    step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
+    node: string;
+    /** the slot it waits for: cuda, cpu, or engine (the engine's own process); absent for the same work */
+    device?: string;
+    /** the card's index, for cuda */
+    card?: number;
+    behind: Place;
   }
 
   /** A node said what it is doing (ctx.stage), passed on by the scheduler with its step. Sent by the engine. */
@@ -1416,6 +1467,7 @@ export declare namespace Page {
     | NodeCachedEvent
     | NodeFitEvent
     | NodeStartEvent
+    | NodeQueuedEvent
     | StageEvent
     | ProgressEvent
     | CeilingEvent

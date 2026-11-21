@@ -49,10 +49,11 @@ another (a photo), by their keys, so two values from different photos can be tol
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -73,12 +74,13 @@ from oneframe.memory.settings import Settings
 from oneframe.models.runs import FilesMissing, check_files, checkpoints_for, reading
 from oneframe.models.store import Store
 from oneframe.node import Emit, Value
-from oneframe.node.devices import CUDA
+from oneframe.node.devices import CPU, CUDA
 from oneframe.node.job import Done, Job
 from oneframe.outputs import check as outputs_check
 from oneframe.outputs import flat
 from oneframe.registry import Registry
 from oneframe.runtimes.manager import NoRuntimes, RuntimeMissing, RuntimeSide
+from oneframe.slots import ENGINE, Place, Slot, Slots
 
 LOGGER = logging.getLogger(__name__)
 
@@ -144,6 +146,11 @@ class _StepState:
     fits: list[Fit] = field(default_factory=list)
     peaks: list[dict[str, Any]] = field(default_factory=list)
     item: dict[str, int] = field(default_factory=dict)  # for a step run for each: `item`, `of`
+    # The slot it holds (spec 023), its place in that slot's line, and, once a fit moved it to the
+    # slot it chose, the one device its fits are held to from then on.
+    slot: Slot | None = None
+    place: Place | None = None
+    devices: tuple[str, ...] | None = None
 
 
 @dataclass
@@ -173,6 +180,7 @@ class Scheduler:
         tmp_root: Path | None = None,
         journal_dir: Path | None = None,
         imports: Path | None = None,
+        slots: Slots | None = None,
     ):
         self.registry = registry
         self.cache = cache
@@ -191,6 +199,9 @@ class Scheduler:
         self.tmp_root = tmp_root  # where the files a run reads are listed
         self.journal_dir = journal_dir  # where each run's events are kept (journal.py)
         self.imports = imports  # where a file param's import is found (the layout's inputs)
+        # One attempt at a time on each card, the processor and the engine's process, across every
+        # run this scheduler runs (spec 023).
+        self.slots = slots if slots is not None else Slots()
 
     def _key(
         self, run: _RunState, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Held]
@@ -351,7 +362,7 @@ class Scheduler:
             if run.stop.is_set():
                 raise Stopped()  # between two items: the next one never starts
             state.item = {"item": index, "of": count}
-            state.context, state.fits, state.peaks = None, [], []
+            state.context, state.fits, state.peaks, state.devices = None, [], [], None
             made, record = self._step(replace(run, tag=state.item), state, done, index)
             for port, value in made.items():
                 held = outputs[port]
@@ -386,11 +397,20 @@ class Scheduler:
             return cached, {"cached": True, "key": key}
 
         # An engine node without a memory model runs as it always has: on its first device, with
-        # no fit and no cap (spec 002, plan decision 12).
+        # no fit and no cap (spec 002, plan decision 12), holding the engine's slot.
         if manifest.memory is None and manifest.run.where == "engine":
-            return self._attempt(run, state, None, 1)
+            with self._holding(run, state, Slot(ENGINE)):
+                return self._attempt(run, state, None, 1)
 
         state.context = self._context(step, _meta(step, state.inputs))
+        # The slot first, then the fit, so the fit reads the memory the attempt will have.
+        with self._holding(run, state, _slot_for(manifest, state.context)):
+            return self._tries(run, state)
+
+    def _tries(self, run: _RunState, state: _StepState) -> tuple[dict[str, Held], dict[str, Any]]:
+        """A fitted step's attempts, holding its slot: the first, and one retry after running out
+        of memory, with a fit strictly smaller."""
+        step = state.step
         found = self._fit(run, state, 1, None)
         served = self._cached_down(run, state, found)
         if served is not None:
@@ -419,6 +439,49 @@ class Scheduler:
                 )
                 raise NodeError("oom", message, second.detail, second.peaks) from second
 
+    @contextlib.contextmanager
+    def _holding(self, run: _RunState, state: _StepState, slot: Slot) -> Iterator[None]:
+        """`slot`, held by the step for the block: waited for in turn, saying `node.queued`."""
+        state.place = Place(run.id, state.step.id, dict(run.tag))
+        self._take(run, state, slot)
+        try:
+            yield
+        finally:
+            if state.slot is not None:
+                self.slots.give(state.slot, state.place)
+                state.slot = None
+
+    def _take(self, run: _RunState, state: _StepState, slot: Slot) -> bool:
+        """Take `slot` for the step; whether it had to wait for it."""
+
+        def queued(ahead: Place) -> None:
+            fields = {"step": state.step.id, "node": state.step.manifest.id, **slot.to_json()}
+            run.event("node.queued", {**fields, "behind": ahead.to_json()})
+
+        assert state.place is not None
+        waited = self.slots.take(slot, state.place, run.stop, queued)
+        state.slot = slot
+        return waited
+
+    def _moved(self, run: _RunState, state: _StepState, found: Fit) -> bool:
+        """Where the fit chose another slot than the one held, it is let go, the chosen one taken,
+        and the step's fits held to that device from then on: once a step, so a fit that chooses
+        again cannot move it back and forth. Whether to fit again: only after waiting for the
+        chosen slot, since with none to wait for, nothing took memory there since the fit."""
+        held = state.slot
+        if state.devices is not None or held is None or held.device == ENGINE or found.outcome == "memory":
+            return False
+        if found.device not in (CPU, CUDA):
+            return False
+        chosen = Slot(CUDA, found.card) if found.device == CUDA else Slot(CPU)
+        if chosen == held:
+            return False
+        assert state.place is not None
+        self.slots.give(held, state.place)
+        state.slot = None
+        state.devices = (found.device,)
+        return self._take(run, state, chosen)
+
     def _context(self, step: Step, meta: Inputs) -> _Context:
         manifest = step.manifest
         runtime = manifest.run.runtime if manifest.run.where == "runtime" else None
@@ -432,7 +495,9 @@ class Scheduler:
         """The fit a step would get on this machine now, without running it (`nodes.fit`)."""
         return self._fit_now(step, self._context(step, meta), None)
 
-    def _fit_now(self, step: Step, context: _Context, after: Fit | None) -> tuple[Fit, Settings]:
+    def _fit_now(
+        self, step: Step, context: _Context, after: Fit | None, devices: tuple[str, ...] | None = None
+    ) -> tuple[Fit, Settings]:
         manifest = step.manifest
         settings = self.settings()
         learned = self.learned.view(context.key) if manifest.run.where == "runtime" else Learned()
@@ -445,7 +510,7 @@ class Scheduler:
             context.target,
             learned,
             settings,
-            manifest.devices,
+            devices or manifest.devices,
             after,
             checkpoints_for(self.store, manifest),
         )
@@ -455,7 +520,9 @@ class Scheduler:
         """Fit with a fresh look at the machine, and say so; a fit that finds no room fails here."""
         step = state.step
         assert state.context is not None
-        found, settings = self._fit_now(step, state.context, after)
+        found, settings = self._fit_now(step, state.context, after, state.devices)
+        if self._moved(run, state, found):  # fitted again, holding the slot it chose
+            found, settings = self._fit_now(step, state.context, after, state.devices)
         state.fits.append(found)
         run.event(
             "node.fit",
@@ -723,6 +790,16 @@ class Scheduler:
         except OSError:
             # Learning is a help, never a reason for a run to fail.
             LOGGER.warning("could not record what %s taught this machine", manifest.id, exc_info=True)
+
+
+def _slot_for(manifest: Manifest, context: _Context) -> Slot:
+    """The slot a step takes before its fit: the engine's for a node that runs there, else its
+    card's when it can use a card on this machine, else the processor's."""
+    if manifest.run.where == "engine":
+        return Slot(ENGINE)
+    if context.cards and context.target.card is not None:
+        return Slot(CUDA, context.target.card)
+    return Slot(CPU)
 
 
 def as_json(manifest: Manifest, outputs: dict[str, Held]) -> dict[str, Any]:

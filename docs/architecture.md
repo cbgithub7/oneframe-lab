@@ -258,8 +258,8 @@ lock.
 
 **Every event,** with its fields in `contracts/protocol.json`: `engine.ready`, `engine.failed`,
 `engine.warning`, `engine.exit`, `run.start`, `run.done`, `run.failed`, `run.stopped`,
-`node.cached`, `node.fit`, `node.start`, `stage`, `progress`, `ceiling`, `node.step_oom`,
-`node.done`, `node.oom`, `node.failed`, `node.skipped`, `runtime.start`, `runtime.step`,
+`node.queued`, `node.cached`, `node.fit`, `node.start`, `stage`, `progress`, `ceiling`,
+`node.step_oom`, `node.done`, `node.oom`, `node.failed`, `node.skipped`, `runtime.start`, `runtime.step`,
 `runtime.log`, `runtime.progress`, `runtime.done`, `runtime.failed`, `runtime.stopped`,
 `model.start`, `model.file`, `model.progress`, `model.done`, `model.failed`, `model.stopped`.
 
