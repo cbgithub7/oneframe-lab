@@ -91,7 +91,7 @@ def _partial(tmp_path: Path) -> str:
 
 RECORDED: dict[str, tuple[Callable[[Path], object], object]] = {
     "code": (_code, "1430899a639e119ffa2bf557dca0c698622b49b29d6e320d7de3e5bf68a9edc4"),
-    "cache_key": (_cache_key, "e4070338763839913c830da338e79206b138720c274d39963096c8effc361b84"),
+    "cache_key": (_cache_key, "46caac37cdcb3270ec9d0316655f4e2d15672574bcb1e091adae84a7bde48d72"),
     "runtime": (
         _runtime,
         {

@@ -13,8 +13,10 @@ before the consumer runs, so the rule still holds.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -58,9 +60,15 @@ _SPEC = re.compile(r"^\s*(?P<type>[A-Za-z][A-Za-z0-9]*)\s*(?:\[(?P<facets>[^\]]*
 
 
 @cache
-def types(path: Path | None = None) -> dict[str, PortType]:
+def _contract(path: Path | None = None) -> dict[str, Any]:
+    """`contracts/port-types.json` (or a test's copy), read once."""
     source = path or CONTRACTS_DIR / "port-types.json"
-    data = json.loads(source.read_text(encoding="utf-8"))
+    return json.loads(source.read_text(encoding="utf-8"))
+
+
+@cache
+def types(path: Path | None = None) -> dict[str, PortType]:
+    data = _contract(path)
     out: dict[str, PortType] = {}
     for name, row in data["types"].items():
         out[name] = PortType(
@@ -70,6 +78,18 @@ def types(path: Path | None = None) -> dict[str, PortType]:
             facets={k: tuple(v) for k, v in (row.get("facets") or {}).items()},
         )
     return out
+
+
+def contract(names: Iterable[str], path: Path | None = None) -> dict[str, dict[str, Any]]:
+    """What the contract says of each type named, but its doc, by name: the part of a node's cache
+    key that makes a change to a type it names run it again (spec 019). A name the contract does
+    not have is left out; a manifest that names one is refused before any key is made."""
+    rows = _contract(path)["types"]
+    return {
+        name: {k: copy.deepcopy(v) for k, v in rows[name].items() if k != "doc"}
+        for name in sorted(set(names))
+        if name in rows
+    }
 
 
 def parse(spec: str | dict[str, Any], known: dict[str, PortType] | None = None) -> PortSpec:

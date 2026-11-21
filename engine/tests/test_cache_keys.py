@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from conftest import AMPERE, NO_GPU, Events, HostRuntimes, MakeNode
 
+from oneframe import REPO_ROOT
 from oneframe import cache as caching
 from oneframe.cache import KEY_VERSION, Cache
 from oneframe.files import temporary_for
@@ -56,6 +57,27 @@ def test_a_record_made_under_another_key_version_is_never_served(
     monkeypatch.setattr(caching, "KEY_VERSION", KEY_VERSION + 1)
     new = cache.key(manifest, {"n": 1}, {})
     assert new != old and cache.get(new) is None
+
+
+def test_a_types_contract_is_in_the_key_of_the_nodes_that_use_it(tmp_path: Path) -> None:
+    """A change to a port type re-runs the nodes whose ports name it, and no other (spec 019, AC5)."""
+    shipped = json.loads((REPO_ROOT / "contracts" / "port-types.json").read_text(encoding="utf-8"))
+    grown = json.loads(json.dumps(shipped))
+    grown["types"]["Text"]["facets"] = {"language": ["any", "en"]}
+    copy = tmp_path / "port-types.json"
+    copy.write_text(json.dumps(grown), encoding="utf-8")
+    uses = _node(tmp_path)  # its output is a Text
+    other_row: dict[str, Any] = {**NODE, "id": "test.points", "outputs": {"points": "PointMap"}}
+    other_folder = tmp_path / "other"
+    other_folder.mkdir()
+    (other_folder / "node.py").write_text("def run(ctx):\n    pass\n", encoding="utf-8")
+    other = parse(other_row, other_folder)
+
+    def key(manifest: Manifest, port_types: Path | None) -> str:
+        return Cache(tmp_path / "objects", tmp_path / "tmp", port_types).key(manifest, {"n": 1}, {})
+
+    assert key(uses, copy) != key(uses, None)
+    assert key(other, copy) == key(other, None)
 
 
 def test_changing_any_file_in_the_nodes_folder_changes_its_key(tmp_path: Path) -> None:

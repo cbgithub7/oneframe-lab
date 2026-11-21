@@ -8,7 +8,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 2. **Devices named once.** `oneframe/node/devices.py`; every other module imports its names;
   `manifest.py` loses `DEVICES`; `test_devices_are_named_once`, with the two places where the
   letters mean something else. AC4.
-- [ ] 3. **The port contract in the key.** `ports.contract(names)`; `Cache.key` holds the rows of
+- [x] 3. **The port contract in the key.** `ports.contract(names)`; `Cache.key` holds the rows of
   the types a manifest's ports name; `KEY_VERSION` 3; the recorded cache key's new value. AC5.
 - [ ] 4. **Scene facets and `Audio`.** `contracts/port-types.json` as the spec's table, `Audio` with
   the `wav` carrier; nodes.md's file table. AC6, AC7.
