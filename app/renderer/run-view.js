@@ -19,7 +19,8 @@
  * @typedef {"waiting" | "fitting" | "running" | "cached" | "done" | "failed" | "skipped" | "stopped"} Phase
  * @typedef {{ phase: Phase, fit?: Fit, stage?: string, progress?: { done: number | null, total: number | null, what: string },
  *   seconds?: number, peak_vram_mb?: number | null, failure?: Failure, offer?: Offer | null, note?: string,
- *   outputs?: Record<string, Value | Collection>, items?: Items }} Card
+ *   outputs?: Record<string, Value | Collection>, items?: Items, earlier?: boolean }} Card a card's state;
+ *   `earlier`: from an earlier run, which a run up to other cards left as it was (spec 022)
  * @typedef {{ run: string | null, pending: boolean, cards: Record<string, Card>,
  *   ended: "done" | "failed" | "stopped" | null, failure?: Failure }} RunState
  */
@@ -65,9 +66,13 @@ export function idle() {
   return { run: null, pending: false, cards: {}, ended: null };
 }
 
-/** Run was pressed: the next run.start is this page's, whatever its id. @returns {RunState} */
-export function starting() {
-  return { ...idle(), pending: true };
+/**
+ * Run or Run to here was pressed: the next run.start is this page's, whatever its id. The cards
+ * are kept until it says which it resets.
+ * @param {RunState} [state] @returns {RunState}
+ */
+export function starting(state = idle()) {
+  return { ...idle(), cards: state.cards, pending: true };
 }
 
 /**
@@ -109,8 +114,10 @@ export function runView(state, event) {
   if (!("run" in event)) return state;
   if (event.event === "run.start") {
     if (!(state.pending || state.run === event.run)) return state;
+    // Only the cards the run holds start again (spec 022); the others keep what they showed.
     /** @type {Record<string, Card>} */
     const cards = {};
+    for (const [step, card] of Object.entries(state.cards)) cards[step] = { ...card, earlier: true };
     for (const step of event.order) cards[step] = { phase: "waiting" };
     return { run: event.run, pending: false, cards, ended: null };
   }
@@ -193,6 +200,7 @@ export function runView(state, event) {
     }
     case "run.stopped":
       for (const [step, row] of Object.entries(cards)) {
+        if (row.earlier) continue;
         if (step === event.step || row.phase === "running" || row.phase === "fitting") card(step, { phase: "stopped" });
         else if (row.phase === "waiting") card(step, { phase: "skipped", note: "Not run: the run was stopped." });
       }

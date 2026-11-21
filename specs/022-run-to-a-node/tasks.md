@@ -12,7 +12,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
 - [x] 3. **The scheduler, the server and the protocol.** `Scheduler.run(..., upto=)`; `graph.run`
   and `graph.validate` take an optional `upto`, a list of step names (`contracts/protocol.json`,
   `app/protocol.d.ts`); `bench:fit --graph` runs what the step depends on by `upto`. AC1, AC3.
-- [ ] 4. **The page.** "Run to here: <title>" on every card, asking `graph.run` with that step;
+- [x] 4. **The page.** "Run to here: <title>" on every card, asking `graph.run` with that step;
   `run.start` resets only the cards it names, and a card kept from an earlier run says so.
   "a run to a card resets only its cards" (`tests/app/page.test.js`).
 - [ ] 5. **The e2e test.** A fixture graph of three steps in a line, and "Run to here runs up to a
