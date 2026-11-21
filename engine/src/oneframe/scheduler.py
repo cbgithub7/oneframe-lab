@@ -501,7 +501,7 @@ class Scheduler:
         try:
             yield
         finally:
-            if state.slot is not None:
+            if state.slot is not None and state.place is not None:
                 self.slots.give(state.slot, state.place)
                 state.slot = None
 
