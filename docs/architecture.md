@@ -181,7 +181,14 @@ declaration and this section its reading; the list that ends it names every even
 the two equal. A field marked `"page": false` (a value's `path`, a manifest's `folder`, the hello's
 `data`) never reaches the page.
 
-A run answers `graph.run` at once with a run id; everything after is pushed:
+A run answers `graph.run` at once with a run id; everything after is pushed. With `upto`, a list
+of step names ([spec 022](../specs/022-run-to-a-node/spec.md)), only those steps and what they
+depend on are planned and run, so a problem elsewhere in the graph does not refuse it, and a name the
+graph has no step for does (kind `graph`); `run.start`'s order, `run.done`'s outputs and the
+runtimes the run holds are then the part's. `graph.validate` takes `upto` too. The graph is walked
+once, by `reaches` and `Graph.part` in `graph.py`, which `graph.fits`, `upto` and
+`bench:fit --graph` use. On the page, each card's Run to here runs up to it, and the cards its run
+does not hold keep what they showed, saying they are from an earlier run.
 
 `run.start` → per node: `node.cached` (the result at its own values), or `node.fit` (the device,
 precision, changes, needs, budgets and any warning: `slow`, `tried_anyway`, `unknown`) then

@@ -312,7 +312,8 @@ A node that needs an input is measured inside a graph that gives it one:
 npm run bench:fit -- --graph <graph.json> <step> --set precision=fp32 --set precision=fp16
 ```
 
-`<step>` is then the key of the node in the graph. What it depends on runs once; the step runs at
+`<step>` is then the key of the node in the graph. What it depends on runs once, a run up to those
+steps (`upto`, as the page's Run to here), so the rest of the graph need not be complete; the step runs at
 every group, over the graph's own params, and never from the cache. The report names the graph and
 the size of each input.
 

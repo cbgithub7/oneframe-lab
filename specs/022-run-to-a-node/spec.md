@@ -104,6 +104,17 @@ No hardware step.
 - `upto` is a list, though the page sends one step: a caller that wants two results asks once.
 - No "from here on": the cache already skips what is made, so a run of the whole graph after a run
   to a node repeats nothing.
+- An empty `upto` is refused (kind `graph`), not read as the whole graph: a run for no step is a
+  caller's mistake, and the whole graph is asked for by leaving `upto` out.
+- `upto` that is not a list of names is the request's fault (`request`, `bad_params`), as a missing
+  `graph` is; a name the graph lacks is the graph's (`graph`), as AC3 asks.
+- `Graph.part` keeps an edge whose end the graph has no node for when the walk reached it, so the
+  plan still names a broken edge into a step the run needs.
+- The bench reads the sizes of the measured step's inputs from its plan, past an inserted
+  converter, rather than from the graph's edges (AC4).
+- A refused Run or Run to here leaves the page's cards as they were, rather than clearing them.
+- Run again after a Run to here runs up to the same step again: it repeats the run that failed.
+- A card kept from an earlier run says "From an earlier run.", which the spec's risks ask for.
 
 ## Out of scope
 
