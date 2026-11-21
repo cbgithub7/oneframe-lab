@@ -25,7 +25,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   a collection shows one item, with Previous and Next, its index in the graph's `page` fields.
   "a card counts the items of a for each", "nothing the page receives holds a path" with a
   collection.
-- [ ] 6. **The e2e test.** A fixture node that makes three images, a graph that shows them, and
+- [x] 6. **The e2e test.** A fixture node that makes three images, a graph that shows them, and
   "a pane shows a collection one item at a time". AC8.
 - [ ] 7. **Docs and the end.** architecture.md (collection, for each; Events), nodes.md, the
   handoff; the full checks; `/code-review`; the spec marked done in the PR.
