@@ -95,3 +95,5 @@ canvas.points { position: absolute; inset: 0; width: 100%; height: 100%; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 12px; font-size: 12px; align-self: start; justify-self: stretch; }
 .facts dt { color: var(--quiet); }
 .facts dd { margin: 0; font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+.pane > nav.items { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+.pane > nav.items[hidden] { display: none; }

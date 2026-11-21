@@ -8,7 +8,7 @@
 import { formModel, readControl } from "./form.js";
 import {
   addNode, connect, emptyGraph, feeds, forEngine, isShown, nameFile, openGraph, portsOf, removeEdge,
-  removeNode, resetParam, setParam, showPane, splitRef, typeName,
+  removeNode, resetParam, setParam, showItem, showPane, splitRef, typeName,
 } from "./graph-model.js";
 import { idle, jobView, runView, starting } from "./run-view.js";
 import { showValue, valueUrl } from "./viewer.js";
@@ -454,6 +454,20 @@ function fitText(card) {
     fit.message && fit.outcome !== "fits" ? h("div", {}, fit.message) : null);
 }
 
+/**
+ * What a card says of its items (spec 021): how far a for each has gone, or how many items its
+ * collections hold.
+ * @param {Card} card
+ */
+function itemsText(card) {
+  const items = card.items;
+  if (items && items.done < items.of) return `${items.done} of ${items.of} items done`;
+  const counts = Object.values(card.outputs ?? {}).flatMap((held) => ("items" in held ? [held.items.length] : []));
+  if (counts.length === 0) return null;
+  const n = Math.max(...counts);
+  return `${n} ${n === 1 ? "item" : "items"}`;
+}
+
 /** A step's run state, its offer and its job. @param {string} step */
 function renderStatus(step) {
   const card = state.run.cards[step];
@@ -465,6 +479,8 @@ function renderStatus(step) {
     if (card.phase === "done" && card.seconds !== undefined) line += ` in ${card.seconds.toFixed(1)} s`;
     if (card.phase === "done" && card.peak_vram_mb) line += `, ${Math.round(card.peak_vram_mb)} MB on the card at most`;
     children.push(h("div", { className: "phase" }, line));
+    const count = itemsText(card);
+    if (count) children.push(h("div", { className: "items" }, count));
     children.push(fitText(card));
     if (card.phase === "running" && (card.stage || card.progress)) {
       const p = card.progress;
@@ -573,7 +589,9 @@ function renderPanes() {
     const manifest = manifestOf(pane.step);
     const port = manifest ? portsOf(manifest, "outputs").find((p) => p.name === pane.port) : undefined;
     const held = state.run.cards[pane.step]?.outputs?.[pane.port];
-    const value = held && "items" in held ? held.items[0] : held;
+    const items = held && "items" in held ? held.items : null;
+    const index = items ? Math.min(Math.max(pane.item ?? 0, 0), Math.max(items.length - 1, 0)) : 0;
+    const value = /** @type {import("../protocol.js").Page.Value | undefined} */ (items ? items[index] : held);
     let element = /** @type {HTMLElement | undefined} */ (existing.get(id));
     if (!element) {
       const body = h("div", { className: "body" });
@@ -584,8 +602,10 @@ function renderPanes() {
           h("span", { className: "type" }, port ? typeName(port.type) : ""),
           h("button", { type: "button", "aria-label": `Hide ${labelOf(pane.step)}: ${pane.port}`,
             onclick: () => { if (state.graph) edit(showPane(state.graph, pane.step, pane.port, false)); } }, "Hide")),
+        h("nav", { className: "items", "aria-label": `${labelOf(pane.step)}: ${pane.port}, items` }),
         body, caption);
     }
+    renderItems(/** @type {HTMLElement} */ (element.querySelector("nav.items")), pane, index, items ? items.length : null);
     const body = /** @type {HTMLElement} */ (element.querySelector(".body"));
     const caption = /** @type {HTMLElement} */ (element.querySelector(".caption"));
     const shown = drawn.get(id);
@@ -619,6 +639,28 @@ function renderPanes() {
   // turned from the keyboard while its run's events arrive.
   const now = [...ui.panes.children];
   if (now.length !== elements.length || now.some((child, i) => child !== elements[i])) ui.panes.replaceChildren(...elements);
+}
+
+/**
+ * A pane's Previous and Next on a collection, naming the item shown ("Item 2 of 3"); drawn again
+ * only when that changes, so a button pressed from the keyboard keeps its focus.
+ * @param {HTMLElement} nav @param {import("./graph-model.js").Pane} pane @param {number} index @param {number | null} count
+ */
+function renderItems(nav, pane, index, count) {
+  const sig = count === null ? "" : `${index}/${count}`;
+  if (nav.dataset.sig === sig) return;
+  nav.dataset.sig = sig;
+  nav.hidden = count === null;
+  if (count === null) return nav.replaceChildren();
+  const name = `${labelOf(pane.step)}: ${pane.port}`;
+  const go = (/** @type {number} */ to) => () => { if (state.graph) edit(showItem(state.graph, pane.step, pane.port, to)); };
+  const base = `pane-${pane.step}-${pane.port}`;
+  const focused = document.activeElement?.id;
+  nav.replaceChildren(
+    h("button", { type: "button", id: `${base}-previous`, "aria-label": `Previous item of ${name}`, disabled: index <= 0, onclick: go(index - 1) }, "Previous"),
+    h("span", { className: "item", role: "status" }, count === 0 ? "No items" : `Item ${index + 1} of ${count}`),
+    h("button", { type: "button", id: `${base}-next`, "aria-label": `Next item of ${name}`, disabled: index >= count - 1, onclick: go(index + 1) }, "Next"));
+  if (focused && focused.startsWith(base)) document.getElementById(focused)?.focus();
 }
 
 function renderBar() {
@@ -696,8 +738,19 @@ function onEvent(event) {
   if (jobs === state.jobs && runState === state.run) return;
   state.jobs = jobs;
   state.run = runState;
-  renderRun();
+  // However many events arrive (a for each over 200 items says several each), the page is drawn
+  // at most once a frame.
+  if (!redrawing) {
+    redrawing = true;
+    requestAnimationFrame(() => {
+      redrawing = false;
+      renderRun();
+    });
+  }
 }
+
+/** A redraw for the run's events is asked for, for the next frame. */
+let redrawing = false;
 
 ui.bar.addEventListener("submit", (event) => {
   event.preventDefault();

@@ -11,7 +11,7 @@
 /** @typedef {import("../protocol.js").Page.Manifest} Manifest */
 /** @typedef {import("../protocol.js").Page.Edge} Edge */
 /** @typedef {{ node: string, params: Record<string, unknown>, label?: string, [key: string]: unknown }} Step */
-/** @typedef {{ step: string, port: string }} Pane */
+/** @typedef {{ step: string, port: string, item?: number }} Pane `item`: the one shown of a collection (spec 021) */
 /**
  * @typedef {{ panes: Pane[], files: Record<string, string>, [key: string]: unknown }} PageFields
  * @typedef {{ version?: number, title?: string, nodes: Record<string, Step>, edges: Edge[],
@@ -178,6 +178,16 @@ export function showPane(graph, step, port, shown) {
   const out = clone(graph);
   out.page.panes = out.page.panes.filter((p) => !(p.step === step && p.port === port));
   if (shown) out.page.panes.push({ step, port });
+  return out;
+}
+
+/**
+ * The graph with a pane on a collection showing its item `item` (from 0).
+ * @param {Graph} graph @param {string} step @param {string} port @param {number} item
+ */
+export function showItem(graph, step, port, item) {
+  const out = clone(graph);
+  for (const pane of out.page.panes) if (pane.step === step && pane.port === port) pane.item = item;
   return out;
 }
 

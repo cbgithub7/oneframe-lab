@@ -219,11 +219,28 @@ export function problems(message, { method, page = false, contract = CONTRACT } 
   return c.out;
 }
 
+/**
+ * The shape among `kind`'s that `value` is: the first it fits, or else the first named. A step's
+ * output is a value or a collection (spec 021), and each is stripped by its own declaration.
+ * @param {Contract} contract @param {Kind} kind @param {{ [key: string]: unknown }} value
+ * @returns {Declared | undefined}
+ */
+function shapeOf(contract, kind, value) {
+  const shapes = kind.names.map((name) => contract.shapes.get(name)).filter((shape) => shape !== undefined);
+  if (shapes.length < 2) return shapes[0];
+  return shapes.find((shape) => {
+    /** @type {Checking} */
+    const c = { contract, name: "", page: false, out: [] };
+    checkFields(c, shape, value, "");
+    return c.out.length === 0;
+  }) ?? shapes[0];
+}
+
 /** @param {Contract} contract @param {Kind} kind @param {unknown} value @returns {unknown} */
 function stripValue(contract, kind, value) {
   if (Array.isArray(value)) return value.map((item) => (kind.of ? stripValue(contract, kind.of, item) : loose(item)));
   if (!isObject(value)) return value;
-  const shape = kind.names.map((name) => contract.shapes.get(name)).find(Boolean);
+  const shape = shapeOf(contract, kind, value);
   if (shape) return stripFields(contract, shape, value);
   if (!kind.of) return loose(value);
   const of = kind.of;

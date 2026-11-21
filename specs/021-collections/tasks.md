@@ -20,7 +20,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   step's (the cache, the fit, the files check, the retry, the events, with `item` and `of`); a
   failed item fails its step; an empty collection runs nothing and says `node.done` with `of` 0;
   `bench:fit --graph` refuses a step run for each. AC2, AC3, AC5, AC6.
-- [ ] 5. **The door and the page.** The door strips a collection's items of their paths; a card
+- [x] 5. **The door and the page.** The door strips a collection's items of their paths; a card
   counts a step's items and keeps one state a step; the page redraws at most once a frame; a pane on
   a collection shows one item, with Previous and Next, its index in the graph's `page` fields.
   "a card counts the items of a for each", "nothing the page receives holds a path" with a

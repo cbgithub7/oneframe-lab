@@ -172,6 +172,35 @@ test("a failure offers what it needs", () => {
   assert.deepEqual([jobs["files:j"].done, jobs["files:j"].total, jobs["files:j"].node], [220, 300, "x.y"]);
 });
 
+test("a card counts the items of a for each", () => {
+  // Spec 021: one state a step, never one an item; done only at the last item; the items' values
+  // put in order, whatever order they end in; and a for each over nothing is done at once.
+  /** @param {string} key @returns {import("../../app/protocol.js").Page.Value} */
+  const value = (key) => ({ type: "Mask", facets: {}, meta: {}, trust: null, key });
+  const done = (/** @type {number} */ item, /** @type {number} */ of) => ({
+    event: /** @type {const} */ ("node.done"), run: "r1", step: "p", node: "x.y", item, of, key: `e${item}`, attempt: 1,
+    seconds: 1, peak_vram_mb: null, peak_reserved_mb: null, peak_ram_mb: null, made_with: {},
+    outputs: { mask: value(`e${item}:mask`) },
+  });
+  let state = runView(starting(), { event: "run.start", run: "r1", order: ["p", "q"], notes: [] });
+  state = runView(state, { event: "node.cached", run: "r1", step: "p", node: "x.y", item: 0, of: 3, key: "e0", outputs: { mask: value("e0:mask") } });
+  assert.deepEqual([state.cards.p.phase, state.cards.p.items], ["running", { done: 1, of: 3, ran: false }]);
+  state = runView(state, { event: "node.start", run: "r1", step: "p", node: "x.y", where: "engine", key: "e2", attempt: 1, item: 2, of: 3 });
+  state = runView(state, done(2, 3));
+  assert.equal(state.cards.p.phase, "running", "not done before its last item");
+  state = runView(state, done(1, 3));
+  assert.deepEqual([state.cards.p.phase, state.cards.p.items, state.cards.p.seconds], ["done", { done: 3, of: 3, ran: true }, 2]);
+  const mask = state.cards.p.outputs?.mask;
+  assert.ok(mask && "items" in mask);
+  assert.deepEqual(mask.items.map((v) => v.key), ["e0:mask", "e1:mask", "e2:mask"]);
+  assert.deepEqual(Object.keys(state.cards), ["p", "q"], "one card a step");
+
+  state = runView(state, { event: "run.start", run: "r1", order: ["p"], notes: [] });
+  state = runView(state, { event: "node.done", run: "r1", step: "p", node: "x.y", of: 0, seconds: 0, peak_vram_mb: null,
+    peak_reserved_mb: null, peak_ram_mb: null, outputs: { mask: { type: "Mask", items: [] } } });
+  assert.deepEqual([state.cards.p.phase, state.cards.p.outputs], ["done", { mask: { type: "Mask", items: [] } }]);
+});
+
 test("every viewer is for a port type that exists", () => {
   const types = Object.keys(JSON.parse(readFileSync(path.join(REPO_ROOT, "contracts", "port-types.json"), "utf8")).types);
   const folder = path.join(REPO_ROOT, "app", "renderer", "viewers");

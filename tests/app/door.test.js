@@ -199,6 +199,10 @@ function testEngine() {
     outputs: { text: "Text" } },
   "import time\n\ndef run(ctx):\n    ctx.stage('waiting', 'until it is stopped')\n    while True:\n" +
     "        ctx.check_stop()\n        time.sleep(0.05)\n");
+  writeNode(path.join(nodes, "test.items"), { id: "test.items", version: "1", title: "I", category: "evaluate",
+    outputs: { texts: "Text*" } },
+  "def run(ctx):\n    for i in range(2):\n        p = ctx.path(f't{i}.json')\n        p.write_text(str(i))\n" +
+    "        ctx.output_item('texts', p)\n");
   mkdirSync(path.join(nodes, "broken"));
   writeFileSync(path.join(nodes, "broken", "node.json"), "{ not json");
   const places = { data, repo: REPO_ROOT, home: homedir() };
@@ -241,6 +245,13 @@ test("nothing the page receives holds a path", { skip: !synced && "uv not found"
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     assert.ok(events.some((e) => e.event === "node.failed"), "the run's node failed, with its trace");
+    // A collection's items reach the page as a value does, without their paths (spec 021).
+    const many = await answer(client, PAGE, PAGE, "graph.run", { graph: { version: 1, nodes: { c: { node: "test.items" } }, edges: [] } }, null, { places });
+    assert.ok(many.ok, JSON.stringify(many));
+    await until(() => events.some((e) => e.event === "run.done"), "the collection's run");
+    const ran = forPage(events.find((e) => e.event === "run.done"), places);
+    assert.deepEqual(/** @type {any} */ (ran).outputs.c.texts.items.map((/** @type {any} */ v) => Object.keys(v).sort()),
+      [["facets", "key", "meta", "trust", "type"], ["facets", "key", "meta", "trust", "type"]], "each item, without its path");
     seen.push(...events.map((event) => forPage(event, places)));
   } finally {
     await end();
