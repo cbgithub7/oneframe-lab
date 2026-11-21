@@ -99,14 +99,12 @@ to take up on the owner's PC, in this order; the owner picks which. Each item gi
 its commands (run from the repo's root), what passing looks like and where its report goes, and
 leaves this list in the PR that commits its report.
 
-1. **The check times on the owner's PC**, on `main` once the fast tier is merged: `npm run check`,
-   `npm run engine:check`, `npm run engine:check:fast` and `node scripts/test-guard.js`, each timed,
-   and `uv run --project engine --frozen pytest engine -m "not real_uv" --durations=30`. There is
-   no pass or fail: the report gives the four times and the 30 slowest tests left in the fast
-   tier, so the next change to it rests on numbers (the review of 2026-11-07 measured 32, 396 and
-   12 s before the tier). Report: `specs/006-foundations/reports/<date>-check-times-local.md`.
+Nothing is waiting.
 
-The last item passed on 2026-11-11 on the GTX 1070: spec 017's AC8, first light from the page.
+The last item, the checks' times, was received on 2026-11-21: the engine's fast tier took
+128.5 s against 276.5 s in full, so a turn's checks take about 3 minutes, not 5 and a half
+([report](../specs/006-foundations/reports/2026-11-21-check-times-local.md)). Before it, on
+2026-11-11 on the GTX 1070, spec 017's AC8 passed: first light from the page.
 From a new data root outside Claude desktop's package, both runtimes were installed and both
 models' files downloaded from the cards' offers. Depth Pro ran in 114.6 s at fp32 on the processor
 and 13.2 s at fp16 on the card, and MoGe-3 in 22.7 s on the card, the two point clouds side by side
