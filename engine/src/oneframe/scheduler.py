@@ -80,7 +80,7 @@ from oneframe.outputs import check as outputs_check
 from oneframe.outputs import flat
 from oneframe.registry import Registry
 from oneframe.runtimes.manager import NoRuntimes, RuntimeMissing, RuntimeSide
-from oneframe.slots import ENGINE, Place, Slot, Slots
+from oneframe.slots import ENGINE, POLL_S, Place, Slot, Slots
 
 LOGGER = logging.getLogger(__name__)
 
@@ -153,6 +153,44 @@ class _StepState:
     devices: tuple[str, ...] | None = None
 
 
+@dataclass(eq=False)
+class _Maker:
+    """A step making a result, by its key: its place, and whether it has ended."""
+
+    place: Place
+    ended: threading.Event = field(default_factory=threading.Event)
+
+    def wait(self, stop: threading.Event) -> None:
+        """Until it has ended; Stopped if `stop` is set first."""
+        while not self.ended.wait(POLL_S):
+            if stop.is_set():
+                raise Stopped()
+
+
+class _Making:
+    """The steps being made across a scheduler's runs, by their key at the step's own values."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_key: dict[str, _Maker] = {}
+
+    def claim(self, key: str, place: Place) -> _Maker | None:
+        """None when `place` is now the step making `key`; else the step that is."""
+        with self._lock:
+            found = self._by_key.get(key)
+            if found is None:
+                self._by_key[key] = _Maker(place)
+            return found
+
+    def done(self, key: str, place: Place) -> None:
+        """`place` has ended making `key`: a step waiting for it goes on."""
+        with self._lock:
+            found = self._by_key.get(key)
+            if found is not None and found.place is place:
+                del self._by_key[key]
+                found.ended.set()
+
+
 @dataclass
 class RunResult:
     run: str
@@ -202,6 +240,7 @@ class Scheduler:
         # One attempt at a time on each card, the processor and the engine's process, across every
         # run this scheduler runs (spec 023).
         self.slots = slots if slots is not None else Slots()
+        self._making = _Making()  # the key of each step being made, across every run
 
     def _key(
         self, run: _RunState, manifest: Manifest, values: dict[str, Any], inputs: dict[str, Held]
@@ -383,19 +422,35 @@ class Scheduler:
         manifest = step.manifest
         state.inputs = self._gather(step, done, item)
         key = self._key(run, manifest, step.params, state.inputs)
-        cached = self.cache.get(key)
-        if cached is not None:
-            run.event(
-                "node.cached",
-                {
-                    "step": step.id,
-                    "node": manifest.id,
-                    "key": key,
-                    "outputs": as_json(manifest, cached),
-                },
-            )
-            return cached, {"cached": True, "key": key}
+        state.place = Place(run.id, step.id, dict(run.tag))
+        # The same work asked for twice is done once (spec 023): a step another run is making is
+        # waited for, then taken the normal way, from the cache or by its own attempt.
+        while (ahead := self._making.claim(key, state.place)) is not None:
+            cached = self.cache.get(key)
+            if cached is not None:
+                return self._said_cached(run, step, key, cached)
+            run.event("node.queued", {"step": step.id, "node": manifest.id, "behind": ahead.place.to_json()})
+            ahead.wait(run.stop)
+        try:
+            cached = self.cache.get(key)
+            if cached is not None:
+                return self._said_cached(run, step, key, cached)
+            return self._made(run, state)
+        finally:
+            self._making.done(key, state.place)
 
+    def _said_cached(
+        self, run: _RunState, step: Step, key: str, cached: dict[str, Held]
+    ) -> tuple[dict[str, Held], dict[str, Any]]:
+        """The result at the step's own values, from the cache."""
+        fields = {"step": step.id, "node": step.manifest.id, "key": key}
+        run.event("node.cached", {**fields, "outputs": as_json(step.manifest, cached)})
+        return cached, {"cached": True, "key": key}
+
+    def _made(self, run: _RunState, state: _StepState) -> tuple[dict[str, Held], dict[str, Any]]:
+        """A step the cache does not hold, made here: holding its slot, fitted, then tried."""
+        step = state.step
+        manifest = step.manifest
         # An engine node without a memory model runs as it always has: on its first device, with
         # no fit and no cap (spec 002, plan decision 12), holding the engine's slot.
         if manifest.memory is None and manifest.run.where == "engine":
@@ -442,7 +497,6 @@ class Scheduler:
     @contextlib.contextmanager
     def _holding(self, run: _RunState, state: _StepState, slot: Slot) -> Iterator[None]:
         """`slot`, held by the step for the block: waited for in turn, saying `node.queued`."""
-        state.place = Place(run.id, state.step.id, dict(run.tag))
         self._take(run, state, slot)
         try:
             yield

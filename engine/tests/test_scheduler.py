@@ -1393,3 +1393,31 @@ def test_a_step_is_fitted_only_once_it_holds_its_slot(
     (alone,) = _said(events, "first", "node.fit")  # the same step on a free card: its own values
     assert {**fitted["values"], "gate": None} == {**alone["values"], "gate": None}
     assert fitted["values"]["resolution"] == 1024
+
+
+def test_the_same_work_in_two_runs_is_done_once(
+    make_node: MakeNode,
+    scheduler_for: Callable[..., Scheduler],
+    events: Events,
+    gates: Gates,
+    stop_after: Callable[[float], threading.Event],
+) -> None:
+    """Spec 023, AC5: two runs of one graph started together call the node's code once; the second
+    run's step waits for the first's, saying so, and is node.cached."""
+    make_node(hold_manifest("test.hold"), HOLD_CODE)
+    start = _runs_at_once(scheduler_for(), events, stop_after(60))
+    graph = _one_node("test.hold", gate=gates("once"))
+    threads = [start("a", graph)]
+    wait_until(lambda: _said(events, "a", "stage"), lambda: f"a's step to hold: {events.kinds()}")
+    threads.append(start("b", graph))
+    wait_until(lambda: _said(events, "b", "node.queued"), "b's step to wait for a's")
+    (queued,) = _said(events, "b", "node.queued")
+    assert queued["behind"] == {"run": "a", "step": "n"} and "device" not in queued
+    gates.open("once")
+    for thread in threads:
+        thread.join(30)
+    assert _said(events, "a", "run.done") and _said(events, "b", "run.done"), events.kinds()
+    assert gates.calls("once") == 1, "the node's code ran once"
+    (cached,) = _said(events, "b", "node.cached")
+    assert cached["key"] == _said(events, "a", "node.done")[0]["key"]
+    assert not _said(events, "b", "node.start")

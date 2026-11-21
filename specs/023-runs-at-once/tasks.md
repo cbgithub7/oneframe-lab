@@ -8,7 +8,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   to the slot its fit chose, and holds it to the attempt's end. `node.queued` in
   `contracts/protocol.json` (`app/protocol.d.ts`). A test node that holds until released, in
   `conftest.py`. AC2, AC3.
-- [ ] 2. **The same work once.** The scheduler keeps the key of each step being made across its
+- [x] 2. **The same work once.** The scheduler keeps the key of each step being made across its
   runs; a step that finds its key there says `node.queued` behind it, waits, and takes the normal
   path. AC5.
 - [ ] 3. **What a process reads.** `models/runs.py`'s `reading()` lists the union of what this
