@@ -70,7 +70,8 @@ Engine (Python 3.15, uv): registry · graph planner · scheduler · cache
 | Scratch | `oneframe/scratch.py` | Each process's locked folder under `cache/tmp/`; a start removes only dead processes' folders |
 | Journal | `oneframe/journal.py` | Every event of a run, an install or a model job, kept in a journal; journals and step logs pruned when one opens; one helper ends each after its place is free |
 | Diagnose | `oneframe/diagnose.py` | `npm run diagnose`: one file to hand over, with the user's name out of every path |
-| Server | `oneframe/server.py` | The engine's NDJSON protocol: one worker answers requests in order, and the loop that reads them answers the stops and the quick reads at once; requests and events go on copies of stdin and stdout, so fd 0 reads nothing and fd 1 is stderr, and nothing a node runs in the engine's process can touch them, or wait on the loop's read as numpy's start did on Windows |
+| Slots | `oneframe/slots.py` | One attempt at a time on each card, the processor and the engine's process, first come first served, across every run (spec 023) |
+| Server | `oneframe/server.py` | The engine's NDJSON protocol, with several runs at once: one worker answers requests in order, and the loop that reads them answers the stops and the quick reads at once; requests and events go on copies of stdin and stdout, so fd 0 reads nothing and fd 1 is stderr, and nothing a node runs in the engine's process can touch them, or wait on the loop's read as numpy's start did on Windows |
 | Protocol | `contracts/protocol.json`, `oneframe/protocol.py`, `app/main/protocol.js`, `app/protocol.d.ts` | Every method and every event, declared once ([spec 018](../specs/018-protocol/spec.md)): the engine builds each event and checks each answer against it, a problem logged and kept, never refused; the door strips by it what never reaches the page; the page's types are generated from it (`scripts/protocol-types.js`) |
 | Imports | `oneframe/inputs.py` | The files a graph reads, copied into the data root's `inputs/` by their sha256, which is their id: a `file` param holds the id, never a path |
 | Benches | `oneframe/bench_runtime.py`, `oneframe/bench_fit.py`, `engine/tests/fit_check.py` | The reports a hardware claim needs: a runtime's install, a node's memory on a card, and spec 002's check on a card, which lives with its test node |
@@ -171,7 +172,8 @@ command-line tool given a path imports it first (`bench:fit --graph`, CI's model
 methods were written to run. The loop that reads them answers `engine.hello`, `values.locate` and
 the three stops (`run.stop`, `runtimes.stop`, `models.stop`) itself, so a slow request never holds
 a stop up; a stop first takes each queued request of its kind off the queue and answers it
-`{"stopped": true}`, never begun.
+`{"stopped": true}`, never begun. A `run.stop` that names a run stops only it, and leaves the
+queued runs be.
 
 ## Events
 
@@ -189,6 +191,21 @@ runtimes the run holds are then the part's. `graph.validate` takes `upto` too. T
 once, by `reaches` and `Graph.part` in `graph.py`, which `graph.fits`, `upto` and
 `bench:fit --graph` use. On the page, each card's Run to here runs up to it, and the cards its run
 does not hold keep what they showed, saying they are from an earlier run.
+
+**Several runs go at once** ([spec 023](../specs/023-runs-at-once/spec.md)), up to eight
+(`MAX_RUNS`; past it `graph`/`busy`). Each attempt holds a slot (`oneframe/slots.py`): one attempt
+at a time on each card, one on the processor and one in the engine's own process, taken first come
+first served, so a run on the processor and one on a card go side by side. A step takes its slot
+after the cache and before its fit, so the fit reads the memory it will have; a fit that chooses
+another device lets the slot go and takes that one, once. A step that must wait says `node.queued`:
+its `device` (`cuda` with its `card`, `cpu`, or `engine`) and `behind`, the run and step just ahead
+of it (with their `item` and `of`); a step another run is making at the same key says it without a
+device, and is answered from the cache. A wait watches its run's stop. `run.stop {run}` stops that
+run; without `run`, every run and every run still queued, and its answer lists the `runs` it
+stops. A runtime any run uses is neither installed over nor removed, the files any run reads stay
+listed, and the engine's close stops them all. On the page, Run and Run to here stay enabled while
+a run goes; each card shows the newest run that named its step, so an older run's late events do
+not overwrite it; a queued card says what it waits for and behind what; Stop stops every run.
 
 `run.start` → per node: `node.cached` (the result at its own values), or `node.fit` (the device,
 precision, changes, needs, budgets and any warning: `slow`, `tried_anyway`, `unknown`) then
@@ -248,7 +265,7 @@ registry has problems, a folder of nodes is missing, a job runs, or a running gr
 file. The page may ask `models.download` and `models.stop`; the rest are not on its list yet.
 
 **An ending is sent after its place is free** (`journal.end_when_free`, spec 010). A run lets go of
-its list of the files it reads and of the engine's run slot, an install of its slot and its
+its list of the files it reads and of its place among the runs going, an install of its slot and its
 runtime's lock, and a job of the store's lock, each after its ending is in the journal and before it
 is sent, an engine crash's ending too. So a page that acts on hearing one (a next run, the same
 install again, removing the run's runtime or a file it read) is answered, not refused `busy` or

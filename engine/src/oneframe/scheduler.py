@@ -5,6 +5,7 @@ protocol.py checks each as it is sent, a node's own as they are passed on):
 
     run.start      order, notes
     node.cached    step, outputs                  (the result at the step's own values)
+    node.queued    step, node, device, behind     (waiting its turn for a slot; spec 023)
     node.fit       step, attempt, and the fit     (spec 002; not for an engine node without a model)
     node.cached    step, outputs, fit             (a reduced result the fit allows)
     node.start     step, node, where, attempt
@@ -31,11 +32,15 @@ downloaded. Out of memory is answered once, with a fit strictly smaller than the
 Each attempt runs where the scheduler's `Executors` say (executors.py): by default, a new process
 for each attempt of a runtime node.
 
-A cached result needs nothing more. Otherwise, before node.start and in this order: the fit, the
-runtime check, then the files check (spec 003): every file the node reads at its fitted values must
-be present in the model store, or it fails with kind `files` and no process starts. The node reaches
-them through `ctx.file(name)`. For as long as a run lasts, this process lists every file its nodes
-could read, so a remove in any process leaves them alone.
+Several runs go at once, each attempt holding its device's slot (slots.py), taken after the cache
+and before the fit; a step another run is making at the same key waits for it, saying node.queued
+with no device, and is answered from the cache.
+
+A cached result needs nothing more. Otherwise, before node.start and in this order: the slot, the
+fit, the runtime check, then the files check (spec 003): every file the node reads at its fitted
+values must be present in the model store, or it fails with kind `files` and no process starts.
+The node reaches them through `ctx.file(name)`. For as long as a run lasts, this process lists
+every file its nodes could read, so a remove in any process leaves them alone.
 
 Values are checked where they cross a port: a node's declared outputs against its manifest
 (every output present, every facet stated, each from the allowed values), and each input against
