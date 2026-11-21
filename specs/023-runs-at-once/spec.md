@@ -1,6 +1,6 @@
 # 023: Several runs at once, a slot per device
 
-Status: approved
+Status: done ([PR #79](https://github.com/cbgithub7/oneframe-lab/pull/79))
 Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The last of five specs for step 3c, graph model 2: [019](../019-contracts/spec.md) (the

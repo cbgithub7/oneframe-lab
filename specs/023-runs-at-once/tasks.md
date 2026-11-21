@@ -24,6 +24,6 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   overwritten by an older run's events" (`tests/app/page.test.js`).
 - [x] 6. **The e2e test.** A fixture graph with two cards on the engine's slot, and "a second run
   waits for the device and says so". AC8.
-- [ ] 7. **Docs and the end.** architecture.md (Events: `node.queued`, several runs; the server;
+- [x] 7. **Docs and the end.** architecture.md (Events: `node.queued`, several runs; the server;
   the failures table), the handoff, the local step under "Waiting on a local session"; the full
   checks; `/code-review`; the spec marked done in the PR.
