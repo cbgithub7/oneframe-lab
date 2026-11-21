@@ -1,10 +1,11 @@
 // @ts-check
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
+import { STOP_CHECKS } from "../../.claude/hooks/checks.js";
 import { envWithPinnedTools, pinnedToolDirs } from "../../.claude/hooks/pinned-tools.js";
 import { run, treeFingerprint } from "../../.claude/hooks/tree.js";
 
@@ -81,4 +82,15 @@ test("the stop hook's fingerprint changes when an untracked file's contents chan
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the stop hook runs the engine's fast tier, which is the full check without the real-uv tests", () => {
+  const repo = path.resolve(import.meta.dirname, "..", "..");
+  const scripts = JSON.parse(readFileSync(path.join(repo, "package.json"), "utf8")).scripts;
+  // The fast tier can leave out nothing but those tests: it is the full command, and one filter.
+  assert.equal(scripts["engine:check:fast"], `${scripts["engine:check"]} -m "not real_uv"`);
+  const npm = STOP_CHECKS.filter(([, command]) => command === "npm").map(([, , args]) => args.at(-1));
+  assert.deepEqual(npm, ["check", "engine:check:fast"]);
+  for (const name of npm) assert.ok(scripts[String(name)], `package.json has no script ${name}`);
+  assert.ok(STOP_CHECKS.some(([, command, args]) => command === "node" && args[0] === "scripts/test-guard.js"));
 });

@@ -31,6 +31,9 @@ module-name = "oneframe"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Set by conftest.py on every test that starts the real uv; the stop hook's fast tier leaves them
+# out (`npm run engine:check:fast`), and `npm run engine:check` and CI run them all.
+markers = ["real_uv: installs a real environment with the real uv (seconds on Linux, far longer on Windows)"]
 # Two cases of one ID are refused, not numbered (spec 007).
 strict_parametrization_ids = true
 # A test still running after this many seconds prints every thread's stack, so a hang names itself
