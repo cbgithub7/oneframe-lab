@@ -32,7 +32,8 @@ counted 4); the fast tier leaves out one of them with the `real_uv` tests.
 - **Outside pytest,** ruff, pyright, `runtime:check` and the starts of npm and uv take about 22 s
   in the fast tier and 37 s in the full one. Neither tier changes them.
 - **The fast tier is twice the cloud's,** 106 s of pytest against 47 s there (2026-11-12) for the
-  same 645 tests. It is spread across the tests, not in a few: the 30 slowest take 35.3 s, and the
+  same 645 tests. The owner's note: the PC is about ten years old, and so is its Windows install,
+  against a fresh system on new hardware in the cloud. It is spread across the tests, not in a few: the 30 slowest take 35.3 s, and the
   other 615 take 71 s, about 0.12 s each.
 - **Two tests are about ten times slower here than in the cloud,** and lead the list:
   `test_ac4_the_store_keeps_its_bound` (3.77 s, 0.38 s in the cloud) and
