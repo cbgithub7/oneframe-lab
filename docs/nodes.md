@@ -59,9 +59,11 @@ with that runtime's interpreter where it is installed ([runtimes.md](runtimes.md
   **run.load**, optional and in the same form, names one called once before it, to load the model
   (below).
 - **devices** lists where the node runs, in the order it prefers: `cuda` (an NVIDIA card) and
-  `cpu`, the only devices of v1's platforms; the processor alone when left out.
-- **category** is one of: source, depth, segment, object, scene, views, reconstruct, render,
-  repair, texture, convert, evaluate, export.
+  `cpu`, the only devices of v1's platforms (`oneframe/node/devices.py`, which node code may import
+  too); the processor alone when left out.
+- **category** is one of those `contracts/vocabulary.json` names, each with what it is for; the
+  param types are that file's too. `convert` is the one category the engine reads: a convert node
+  of one input and one output is a converter the plan may insert.
 
 ## Files: weights and other downloads
 

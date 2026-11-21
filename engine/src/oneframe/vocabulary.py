@@ -2,7 +2,9 @@
 
 Read once from `contracts/vocabulary.json`, as `ports.types()` reads the port types, so the engine
 keeps no list of its own and a category added there needs no engine edit. A test passes its own
-copy by path. Standard library only, with `reading`, so a manifest is read without loading more.
+copy by path. Read once a process, as the port types are: an edit is seen when the engine starts
+again, not on `nodes.reload`. Standard library only, with `reading`, so a manifest is read
+without loading more.
 """
 
 from __future__ import annotations

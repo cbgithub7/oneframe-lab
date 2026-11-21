@@ -326,13 +326,14 @@ def _memory_and_files(
     devices: tuple[str, ...],
     where: str,
     problems: list[str],
+    words: Vocabulary,
 ) -> tuple[MemoryModel | None, tuple[FileSpec, ...], str | None]:
     """`memory`, which adds its `precision` param to `params`, and `files` with the param that
     picks a checkpoint's."""
     model = None
     if data.get("memory") is not None:
         model = parse_memory(data["memory"], params, inputs, devices, problems, check_param)
-        precision = model and _param(PRECISION_PARAM, model.precision_param(), problems)
+        precision = model and _param(PRECISION_PARAM, model.precision_param(), problems, words)
         if precision:
             params[PRECISION_PARAM] = precision
     weights_by = data["memory"].get("weights_by") if isinstance(data.get("memory"), dict) else None
@@ -368,7 +369,7 @@ def parse(
     # The memory model and the files are checked against where and on what the node runs: when
     # either cannot be read, their problems would only mislead.
     if run is not None and devices is not None:
-        model, files, files_by = _memory_and_files(data, params, inputs, devices, run.where, problems)
+        model, files, files_by = _memory_and_files(data, params, inputs, devices, run.where, problems, words)
     if problems or run is None or devices is None:
         raise ManifestError(source, problems)
     return Manifest(

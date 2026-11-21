@@ -14,6 +14,6 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   the `wav` carrier; nodes.md's file table. AC6, AC7.
 - [x] 5. **A value names its sources.** `meta.sources` written in `_keep`; the port contract's
   comment says so. AC8.
-- [ ] 6. **Docs and the end.** architecture.md, nodes.md, AGENTS.md's "Nothing hard-coded" (open
+- [x] 6. **Docs and the end.** architecture.md, nodes.md, AGENTS.md's "Nothing hard-coded" (open
   question 4), the roadmap, the handoff; the full checks; `/code-review`; the spec marked done in
   the PR.
