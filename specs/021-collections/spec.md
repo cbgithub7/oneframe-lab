@@ -130,7 +130,8 @@ and one redraw a frame are the bound, and a node's own `progress` is already thr
 - Added: the tests the criteria name; `test_a_collection_port_is_read_and_written`
   (`test_ports_and_manifests.py`); `test_an_item_is_checked_as_a_single_value_is` and
   `test_collections_of_one_step_have_one_length` (`test_scheduler.py`);
-  `test_an_item_is_located_by_its_key` (`test_server_and_nodes.py`); "a card counts the items of a
+  `test_an_item_is_located_by_its_key` (`test_server_and_nodes.py`);
+  `test_bench_fit_refuses_a_step_run_for_each` (`test_bench_fit.py`); "a card counts the items of a
   for each" (`tests/app/page.test.js`).
 - Changed: "nothing the page receives holds a path" (`tests/app/door.test.js`) gains a collection.
 - Changed: `test_an_undeclared_event_is_a_problem` (`test_protocol.py`): its nested-shape case

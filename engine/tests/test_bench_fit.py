@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import AMPERE, NO_GPU, HostRuntimes, MakeNode
+from conftest import AMPERE, MASKS, NO_GPU, PER_MASK, HostRuntimes, MakeNode
 
 from oneframe import bench_fit
 from oneframe.graph import Graph
@@ -242,3 +242,19 @@ def test_bench_fit_measures_a_node_in_a_graph(tmp_path: Path, make_node: MakeNod
         bad = tmp_path / "bad.json"
         bad.write_text(text, encoding="utf-8")
         assert bench_fit.main(["measured", "--graph", str(bad), "--data", str(tmp_path / "data")]) == 2, text
+
+
+def test_bench_fit_refuses_a_step_run_for_each(tmp_path: Path, make_node: MakeNode, node_root: Path) -> None:
+    """A step run once an item gives no one measure for a group: the bench says so (spec 021)."""
+    make_node(MASKS["manifest"], MASKS["code"])
+    make_node(PER_MASK["manifest"], PER_MASK["code"])
+    scheduler = bench_fit.make_scheduler(None, discover([node_root]), HostRuntimes(), tmp_path / "cache")
+    graph = Graph.from_json(
+        {
+            "version": 1,
+            "nodes": {"m": {"node": "test.masks"}, "p": {"node": "test.per_mask"}},
+            "edges": [{"from": "m.masks", "to": "p.mask"}],
+        }
+    )
+    with pytest.raises(bench_fit.BenchGraphError, match="'p' runs for each item"):
+        bench_fit.bench_in_graph(scheduler, graph, "p", [{}], "each.json")

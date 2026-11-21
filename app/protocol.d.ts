@@ -250,6 +250,10 @@ export declare namespace Wire {
     event: "node.cached";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     key: string;
     fit?: Fit;
@@ -261,6 +265,10 @@ export declare namespace Wire {
     event: "node.fit";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     attempt: number;
     settings: Settings;
@@ -271,6 +279,10 @@ export declare namespace Wire {
     event: "node.start";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     where: string;
     key: string;
@@ -282,6 +294,10 @@ export declare namespace Wire {
     event: "stage";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     stage: string;
     message: string;
   }
@@ -291,6 +307,10 @@ export declare namespace Wire {
     event: "progress";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     stage: string;
     done: number | null;
     total: number | null;
@@ -302,6 +322,10 @@ export declare namespace Wire {
     event: "ceiling";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     applied: boolean;
     budget_mb: number | null;
     why?: string;
@@ -317,6 +341,10 @@ export declare namespace Wire {
     event: "node.step_oom";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     stage: string;
     way: string;
     next: string;
@@ -324,19 +352,23 @@ export declare namespace Wire {
     message: string;
   }
 
-  /** An attempt finished: its time, its peaks, how it was made, its fit and its values. Sent by the engine. */
+  /** An attempt finished: its time, its peaks, how it was made, its fit and its values. A step run for each over no items says so once, with `of` 0, no `key`, `attempt` or `made_with`, and its empty collections (spec 021). Sent by the engine. */
   export interface NodeDoneEvent {
     event: "node.done";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
-    key: string;
-    attempt: number;
+    key?: string;
+    attempt?: number;
     seconds: number;
     peak_vram_mb: number | null;
     peak_reserved_mb: number | null;
     peak_ram_mb: number | null;
-    made_with: { [key: string]: unknown };
+    made_with?: { [key: string]: unknown };
     fit?: Fit;
     outputs: { [key: string]: Value | Collection };
   }
@@ -346,6 +378,10 @@ export declare namespace Wire {
     event: "node.oom";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     attempt: number;
     peak_reserved_mb: number | null;
     peak_ram_mb: number | null;
@@ -357,6 +393,10 @@ export declare namespace Wire {
     event: "node.failed";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     fits?: Array<Fit>;
     peaks?: Array<{ [key: string]: unknown }>;
@@ -367,6 +407,10 @@ export declare namespace Wire {
     event: "node.skipped";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     waited_on?: string;
     edge?: Edge;
@@ -1061,6 +1105,10 @@ export declare namespace Page {
     event: "node.cached";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     key: string;
     fit?: Fit;
@@ -1072,6 +1120,10 @@ export declare namespace Page {
     event: "node.fit";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     attempt: number;
     settings: Settings;
@@ -1082,6 +1134,10 @@ export declare namespace Page {
     event: "node.start";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     where: string;
     key: string;
@@ -1093,6 +1149,10 @@ export declare namespace Page {
     event: "stage";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     stage: string;
     message: string;
   }
@@ -1102,6 +1162,10 @@ export declare namespace Page {
     event: "progress";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     stage: string;
     done: number | null;
     total: number | null;
@@ -1113,6 +1177,10 @@ export declare namespace Page {
     event: "ceiling";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     applied: boolean;
     budget_mb: number | null;
     why?: string;
@@ -1128,6 +1196,10 @@ export declare namespace Page {
     event: "node.step_oom";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     stage: string;
     way: string;
     next: string;
@@ -1135,19 +1207,23 @@ export declare namespace Page {
     message: string;
   }
 
-  /** An attempt finished: its time, its peaks, how it was made, its fit and its values. Sent by the engine. */
+  /** An attempt finished: its time, its peaks, how it was made, its fit and its values. A step run for each over no items says so once, with `of` 0, no `key`, `attempt` or `made_with`, and its empty collections (spec 021). Sent by the engine. */
   export interface NodeDoneEvent {
     event: "node.done";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
-    key: string;
-    attempt: number;
+    key?: string;
+    attempt?: number;
     seconds: number;
     peak_vram_mb: number | null;
     peak_reserved_mb: number | null;
     peak_ram_mb: number | null;
-    made_with: { [key: string]: unknown };
+    made_with?: { [key: string]: unknown };
     fit?: Fit;
     outputs: { [key: string]: Value | Collection };
   }
@@ -1157,6 +1233,10 @@ export declare namespace Page {
     event: "node.oom";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     attempt: number;
     peak_reserved_mb: number | null;
     peak_ram_mb: number | null;
@@ -1168,6 +1248,10 @@ export declare namespace Page {
     event: "node.failed";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     fits?: Array<Fit>;
     peaks?: Array<{ [key: string]: unknown }>;
@@ -1178,6 +1262,10 @@ export declare namespace Page {
     event: "node.skipped";
     run: string;
     step: string;
+    /** for a step run for each: the item, from 0 (spec 021) */
+    item?: number;
+    /** for a step run for each: how many items it has */
+    of?: number;
     node: string;
     waited_on?: string;
     edge?: Edge;

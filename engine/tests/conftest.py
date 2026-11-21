@@ -119,6 +119,29 @@ MASKS = {
     """,
 }
 
+# A node with single inputs, which a collection of masks runs for each (spec 021): each mask's bytes,
+# then the image's, as a mask with the same marks and index; it fails on the index `fail_at`.
+PER_MASK = {
+    "manifest": {
+        "id": "test.per_mask",
+        "version": "1",
+        "title": "Per mask",
+        "category": "evaluate",
+        "inputs": {"mask": "Mask", "image": {"type": "Image", "optional": True}},
+        "outputs": {"mask": "Mask[kind=binary]"},
+        "params": {"fail_at": {"type": "int", "default": -1}},
+    },
+    "code": """
+        def run(ctx):
+            mask, image = ctx.inputs["mask"], ctx.inputs.get("image")
+            if mask.meta["index"] == ctx.params["fail_at"]:
+                ctx.fail(f"mask {mask.meta['index']} fails")
+            p = ctx.path("mask.png")
+            p.write_bytes(mask.path.read_bytes() + (image.path.read_bytes() if image else b""))
+            ctx.output("mask", p, facets={"marks": mask.facets["marks"]}, meta={"index": mask.meta["index"]})
+    """,
+}
+
 # A node that takes a whole collection of masks and says, as text, what it was given.
 TAKE_MASKS = {
     "manifest": {

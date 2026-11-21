@@ -16,7 +16,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   run's outputs as a value or a collection; a collection input gives the fit `<input>.count`. AC1,
   `test_an_item_is_checked_as_a_single_value_is`, `test_collections_of_one_step_have_one_length`,
   `test_an_item_is_located_by_its_key`.
-- [ ] 4. **For each in the scheduler.** A step run for each runs once an item, each run a single
+- [x] 4. **For each in the scheduler.** A step run for each runs once an item, each run a single
   step's (the cache, the fit, the files check, the retry, the events, with `item` and `of`); a
   failed item fails its step; an empty collection runs nothing and says `node.done` with `of` 0;
   `bench:fit --graph` refuses a step run for each. AC2, AC3, AC5, AC6.

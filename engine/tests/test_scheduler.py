@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import MASKS, TAKE_MASKS, Events, HostRuntimes, MakeNode
+from conftest import MASKS, PER_MASK, TAKE_MASKS, Events, HostRuntimes, MakeNode
 from fixtures import fit_node, machines
 
 from oneframe.cache import Cache
@@ -1133,3 +1133,107 @@ def test_collections_of_one_step_have_one_length(
     result = scheduler_for().run(_graph({"n": {"node": "test.none"}}, []), events.append)
     assert result.status == "done", result.error
     assert result.collections["n"]["masks"] == []
+
+
+def _for_each(n: int = 3, fail_at: int = -1) -> Graph:
+    """`n` masks, each run through test.per_mask with one image, and the results taken whole."""
+    return _graph(
+        {
+            "i": {"node": "test.image"},
+            "m": {"node": "test.masks", "params": {"n": n}},
+            "p": {"node": "test.per_mask", "params": {"fail_at": fail_at}},
+            "t": {"node": "test.take_masks"},
+        },
+        [("m.masks", "p.mask"), ("i.image", "p.image"), ("p.mask", "t.masks")],
+    )
+
+
+@pytest.fixture
+def each_nodes(make_node: MakeNode, basic_nodes: None) -> None:
+    for node in (MASKS, PER_MASK, TAKE_MASKS):
+        make_node(node["manifest"], node["code"])
+
+
+def _of(events: Events, kind: str, step: str = "p") -> list[tuple[int | None, int | None]]:
+    """The `item` and `of` of each `kind` event of `step`, in order."""
+    return [(e.get("item"), e.get("of")) for e in events.of(kind) if e["step"] == step]
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_a_single_input_fed_a_collection_runs_for_each(
+    scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Three items and one single value: three runs, each with one item and the value, each run's
+    events carrying `item` and `of`; a node that takes the whole receives the three results in the
+    items' order (spec 021, AC2)."""
+    result = scheduler_for().run(_for_each(), events.append)
+    assert result.status == "done", result.error
+    assert _of(events, "node.start") == [(0, 3), (1, 3), (2, 3)]
+    assert _of(events, "node.done") == [(0, 3), (1, 3), (2, 3)]
+    image = result.outputs["i"]["image"].path.read_bytes()
+    made = result.collections["p"]["mask"]
+    assert [v.path.read_bytes() for v in made] == [bytes([i]) * 16 + image for i in range(3)]
+    assert [v.facets["marks"] for v in made] == ["object", "valid", "sky"]
+    keys = [e["key"] for e in events.of("node.done") if e["step"] == "p"]
+    assert [v.key for v in made] == [f"{key}:mask" for key in keys]  # each its own run's entry
+    seen = json.loads(result.outputs["t"]["seen"].path.read_text(encoding="utf-8"))
+    assert [row["key"] for row in seen] == [v.key for v in made]
+    assert events.of("run.done")[0]["outputs"]["p"]["mask"]["items"][1]["key"] == made[1].key
+    assert all(e.get("item") is None for e in events if e.get("step") in ("i", "m", "t"))
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_for_each_reruns_only_the_items_that_changed(
+    scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """After a run over three items, a run over those three and a fourth starts the step once, for
+    the fourth, and answers the other three from the cache (spec 021, AC3)."""
+    sched = scheduler_for()
+    first = sched.run(_for_each(3), events.append)
+    assert first.status == "done", first.error
+    events.clear()
+    second = sched.run(_for_each(4), events.append)
+    assert second.status == "done", second.error
+    assert _of(events, "node.start", "m") == [(None, None)]  # the source ran again, for its fourth
+    assert _of(events, "node.start") == [(3, 4)]
+    assert _of(events, "node.cached") == [(0, 4), (1, 4), (2, 4)]
+    assert [v.key for v in second.collections["p"]["mask"][:3]] == [
+        v.key for v in first.collections["p"]["mask"]
+    ]
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_a_failed_item_fails_its_step(scheduler_for: Callable[..., Scheduler], events: Events) -> None:
+    """The second of three items fails: the step ends node.failed naming item 1, the third never
+    starts, a dependent step is skipped, and a second run answers the first item from the cache
+    (spec 021, AC5)."""
+    sched = scheduler_for()
+    result = sched.run(_for_each(3, fail_at=1), events.append)
+    assert (result.status, result.failed, result.skipped) == ("failed", ["p"], ["t"])
+    [failed] = events.of("node.failed")
+    assert (failed["step"], failed["item"], failed["of"], failed["kind"]) == ("p", 1, 3, "node")
+    assert failed["message"] == "mask 1 fails"
+    assert _of(events, "node.start") == [(0, 3), (1, 3)]
+    assert [e["waited_on"] for e in events.of("node.skipped")] == ["p"]
+    assert events.of("run.failed")[0]["step"] == "p"
+    events.clear()
+    sched.run(_for_each(3, fail_at=1), events.append)
+    assert _of(events, "node.cached") == [(0, 3)]
+    assert _of(events, "node.start") == [(1, 3)]
+
+
+@pytest.mark.usefixtures("each_nodes")
+def test_an_empty_collection_runs_nothing_and_says_so(
+    scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """A for each over no items starts nothing, says node.done with `of` 0, hands a node that takes
+    the whole an empty list, and the run ends done (spec 021, AC6)."""
+    result = scheduler_for().run(_for_each(0), events.append)
+    assert result.status == "done", result.error
+    assert _of(events, "node.start") == []
+    [done] = [e for e in events.of("node.done") if e["step"] == "p"]
+    assert (done["of"], done["outputs"]) == (0, {"mask": {"type": "Mask", "items": []}})
+    assert "item" not in done and "key" not in done
+    assert result.collections["p"]["mask"] == []
+    assert json.loads(result.outputs["t"]["seen"].path.read_text(encoding="utf-8")) == []
+    assert events.kinds()[-1] == "run.done"
