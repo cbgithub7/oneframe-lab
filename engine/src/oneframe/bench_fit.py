@@ -29,7 +29,7 @@ from typing import Any
 
 from oneframe import BUILTIN_NODES_DIR, __version__, hardware
 from oneframe.cache import Cache, Held
-from oneframe.graph import Graph, GraphError, GraphNode, plan
+from oneframe.graph import Graph, GraphError, GraphNode, Plan, plan, reaches
 from oneframe.inputs import import_paths
 from oneframe.layout import Layout, RootRefused, open_root
 from oneframe.manifest import Manifest, Param, check_param
@@ -227,28 +227,6 @@ class _Serving(Cache):
         return self.other.get(key) if key in self.served else super().get(key)
 
 
-def upstream_of(graph: Graph, key: str) -> set[str]:
-    """The steps `key` depends on, through the graph's edges."""
-    found: set[str] = set()
-    todo = [key]
-    while todo:
-        here = todo.pop()
-        for edge in graph.edges:
-            if edge.dst == here and edge.src not in found:
-                found.add(edge.src)
-                todo.append(edge.src)
-    return found
-
-
-def part_of(graph: Graph, keys: set[str]) -> Graph:
-    """The graph's steps in `keys`, and the edges between them."""
-    return Graph(
-        nodes={k: n for k, n in graph.nodes.items() if k in keys},
-        edges=[e for e in graph.edges if e.src in keys and e.dst in keys],
-        title=graph.title,
-    )
-
-
 def size_of(value: Held) -> str:
     """How big a value is, for the report: an image's pixels, or else its file's bytes; a
     collection's, how many items it has."""
@@ -270,39 +248,47 @@ def bench_in_graph(
     once, and the step itself, at every group, never from the cache."""
     if key not in graph.nodes:
         raise BenchGraphError(name or "the graph", [f"no step called {key!r}"])
-    planned = plan(part_of(graph, upstream_of(graph, key) | {key}), scheduler.registry, scheduler.imports)
+    upstream = reaches(graph, key, backwards=True)
+    before = upstream - {key}  # what the step depends on, without the step
+    planned = plan(graph, scheduler.registry, scheduler.imports, upto=[key])
     if any(step.id == key and step.each for step in planned.steps):
         # One measure a group: a step run once an item would give as many, at different sizes.
         raise BenchGraphError(
             name or "the graph", [f"{key!r} runs for each item, which the bench cannot measure"]
         )
-    before = upstream_of(graph, key)
     node = graph.nodes[key].node
     served: set[str] = set()
     inputs: dict[str, str] = {}
     if before:
-        first = scheduler.run(part_of(graph, before), lambda event: None)
+        first = scheduler.run(graph, lambda event: None, upto=sorted(before))
         if first.status != "done":
             message = (first.error or {}).get("message") or first.status
             raise BenchGraphError(name or "the graph", [f"what {key!r} depends on did not run: {message}"])
         records = [one for record in first.records.values() for one in record.get("items", [record])]
         served = {str(record["key"]) for record in records if record.get("key")}
-        inputs = {
-            edge.dst_port: size_of(
-                {**first.outputs.get(edge.src, {}), **first.collections.get(edge.src, {})}[edge.src_port]
-            )
-            for edge in graph.edges
-            if edge.dst == key
-        }
+        made = {sid: {**first.outputs.get(sid, {}), **first.collections.get(sid, {})} for sid in before}
+        inputs = {port: size_of(made[src][src_port]) for port, (src, src_port) in _fed(planned, key).items()}
     rows = []
     for i, params in enumerate(groups or [{}]):
-        measured = part_of(graph, before | {key})
+        measured = graph.part(upstream)
         own = graph.nodes[key]
         measured.nodes[key] = GraphNode(own.node, {**own.params, **params}, own.label)
         label = ", ".join(f"{k}={v}" for k, v in params.items()) or "the graph's settings"
         with fresh_cache(scheduler, i, frozenset(served)):
             rows.append(measure(scheduler, node, params, label, graph=measured, step=key))
     return {"mode": "graph", "node": node, "graph": name, "step": key, "inputs": inputs, "runs": rows}
+
+
+def _fed(planned: Plan, key: str) -> dict[str, tuple[str, str]]:
+    """Each input of the step `key` and the graph's step and port that feeds it, past a converter
+    the plan inserted on its edge."""
+    by_id = {step.id: step for step in planned.steps}
+    fed: dict[str, tuple[str, str]] = {}
+    for port, (src, src_port) in by_id[key].inputs.items():
+        while (before := by_id.get(src)) is not None and before.inserted:
+            src, src_port = next(iter(before.inputs.values()))
+        fed[port] = (src, src_port)
+    return fed
 
 
 @contextlib.contextmanager

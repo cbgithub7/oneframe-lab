@@ -49,7 +49,8 @@ const ui = {
  * @type {{ ready: boolean, manifests: Map<string, Manifest>, graphs: GraphSummary[], name: string,
  *   graph: Graph | null, run: import("./run-view.js").RunState, jobs: Record<string, Job>,
  *   waits: Record<string, string>, connecting: { ref: string, side: string, graph: Connection[], add: Connection[] } | null,
- *   problems: Record<string, string[]> }}
+ *   problems: Record<string, string[]>, upto: string[] | undefined }}
+ * `upto`: the steps the last run was for, which Run again asks for again; none for the whole graph.
  */
 const state = {
   ready: false,
@@ -63,6 +64,7 @@ const state = {
   waits: {},
   connecting: null,
   problems: {},
+  upto: undefined,
 };
 
 /**
@@ -121,6 +123,16 @@ const labelOf = (step) => {
 
 // ---- The graph: open, new, save --------------------------------------------------------------
 
+/** A step taken out of the graph, and what the page showed of it. @param {string} step */
+function remove(step) {
+  if (!state.graph) return;
+  const { [step]: _card, ...cards } = state.run.cards;
+  state.run = { ...state.run, cards };
+  delete state.waits[step];
+  delete state.problems[step];
+  edit(removeNode(state.graph, step));
+}
+
 /** @param {Graph} graph */
 function edit(graph) {
   state.graph = graph;
@@ -150,6 +162,7 @@ async function openNamed(name) {
   state.name = got.name;
   ui.name.value = got.name;
   state.run = idle();
+  state.upto = undefined;
   state.waits = {};
   state.problems = {};
   clearPanes();
@@ -162,6 +175,7 @@ function newGraph() {
   state.name = "untitled";
   ui.name.value = state.name;
   state.run = idle();
+  state.upto = undefined;
   state.waits = {};
   state.problems = {};
   clearPanes();
@@ -189,17 +203,32 @@ async function save() {
 
 // ---- Running ---------------------------------------------------------------------------------
 
-async function run() {
-  if (!state.graph) return;
-  state.run = starting();
-  state.waits = {};
+/**
+ * Run the graph, or only the steps `upto` names and what they depend on (Run to here, spec 022).
+ * @param {string[]} [upto]
+ */
+async function run(upto) {
+  const graph = state.graph;
+  if (!graph) return;
+  const before = state.run;
+  const was = state.upto;
+  // Only the graph's own steps' cards are kept (a removed step's key may be reused), and only the
+  // waits on a job still going, which a card outside this run goes on following.
+  const cards = Object.fromEntries(Object.entries(before.cards).filter(([step]) => step in graph.nodes));
+  state.run = starting({ ...before, cards });
+  state.upto = upto;
+  state.waits = Object.fromEntries(Object.entries(state.waits).filter(([, job]) => state.jobs[job]?.state === "running"));
   state.problems = {};
+  const refused = () => {
+    state.run = before;
+    state.upto = was;
+  };
   say(ui.runStatus, "running", "Starting the run…");
   render();
   try {
-    const started = await ask("graph.run", { graph: forEngine(state.graph) });
+    const started = await ask("graph.run", { graph: forEngine(graph), ...(upto ? { upto } : {}) });
     if (!started) {
-      state.run = idle();
+      refused();
       say(ui.runStatus, "", "The run was not started.");
     } else if (state.run.pending) {
       // The answer came before run.start: this is the run to follow.
@@ -207,10 +236,19 @@ async function run() {
     }
   } catch (error) {
     const failure = /** @type {Failure} */ (error);
-    state.run = idle();
+    refused();
     for (const problem of failure.problems ?? []) (state.problems[problem.node] ??= []).push(`${problem.port ? `${problem.port}: ` : ""}${problem.message}`);
   }
   render();
+}
+
+/**
+ * Run again, from a card: the last run once more, or, for a card that run did not hold, a run up
+ * to that card.
+ * @param {string} step
+ */
+function again(step) {
+  return state.run.cards[step]?.earlier ? run([step]) : run(state.upto);
 }
 
 async function stop() {
@@ -226,7 +264,7 @@ async function stop() {
  */
 async function act(step, offer) {
   const manifest = manifestOf(step);
-  if (offer.action === "retry") return run();
+  if (offer.action === "retry") return again(step);
   if (!manifest) return;
   if (offer.action === "install") {
     const runtime = String(manifest.run?.runtime ?? "");
@@ -488,6 +526,7 @@ function renderStatus(step) {
       if (p && p.total) children.push(h("progress", { max: p.total, value: p.done ?? 0, "aria-label": `${labelOf(step)}: progress` }));
     }
     if (card.note) children.push(h("div", { className: "hint" }, card.note));
+    if (card.earlier) children.push(h("div", { className: "hint earlier" }, "From an earlier run."));
     if (card.failure) children.push(h("div", { className: "problem" }, failureText(card.failure)));
   }
   for (const problem of problems) children.push(h("div", { className: "problem" }, problem));
@@ -521,7 +560,7 @@ function offerNow(step, card, job) {
   const running = state.run.pending || (state.run.run !== null && state.run.ended === null);
   if (running) return null;
   if (job && job.state === "running") return null;
-  if (job && job.state === "done") return h("button", { type: "button", className: "primary", onclick: () => run() }, "Run again");
+  if (job && job.state === "done") return h("button", { type: "button", className: "primary", onclick: () => again(step) }, "Run again");
   const offer = card?.offer;
   if (!offer) return null;
   if (offer.action === "wait") {
@@ -550,7 +589,9 @@ function renderCards() {
     h("header", {},
       h("h3", { id: headingId }, labelOf(step)),
       h("span", { className: "id" }, row.node),
-      h("button", { type: "button", "aria-label": `Remove ${labelOf(step)}`, onclick: () => edit(removeNode(graph, step)) }, "Remove")),
+      h("button", { type: "button", className: "run-to", "aria-label": `Run to here: ${labelOf(step)}`,
+        disabled: !canRun(), onclick: () => run([step]) }, "Run to here"),
+      h("button", { type: "button", "aria-label": `Remove ${labelOf(step)}`, onclick: () => remove(step) }, "Remove")),
     manifest ? renderPorts(step, manifest) : h("p", { className: "problem" }, `No node ${row.node} is installed.`),
     manifest ? renderForm(step, manifest) : null,
     h("div", { className: "run", role: "status", "aria-live": "polite" }, ...renderStatus(step)));
@@ -663,10 +704,17 @@ function renderItems(nav, pane, index, count) {
   if (focused && focused.startsWith(base)) document.getElementById(focused)?.focus();
 }
 
+/** Whether Run, or a card's Run to here, may be pressed now: the engine is ready and no run goes. */
+function canRun() {
+  const running = state.run.pending || (state.run.run !== null && state.run.ended === null);
+  return state.ready && Boolean(state.graph) && !running;
+}
+
 function renderBar() {
   const running = state.run.pending || (state.run.run !== null && state.run.ended === null);
   for (const control of [ui.pick, ui.fresh, ui.name, ui.save]) control.disabled = !state.ready;
-  ui.run.disabled = !state.ready || !state.graph || running;
+  ui.run.disabled = !canRun();
+  for (const button of ui.cards.querySelectorAll("button.run-to")) /** @type {HTMLButtonElement} */ (button).disabled = !canRun();
   ui.stop.disabled = !running || state.run.pending;
   ui.save.disabled = !state.ready || !state.graph;
   if (state.run.ended === "done") say(ui.runStatus, "ready", "The run is done.");

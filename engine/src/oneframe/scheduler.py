@@ -212,24 +212,26 @@ class Scheduler:
         stop: threading.Event | None = None,
         run_id: str | None = None,
         release: Callable[[], None] = lambda: None,
+        upto: list[str] | None = None,
     ) -> RunResult:
         """Run a graph, its events journalled. Its ending (run.done, run.stopped or run.failed, or an
         engine bug's run.failed before the bug goes on up) is sent once the files it reads are no
-        longer listed and `release` has let go of what the caller holds for it: the engine's run slot."""
+        longer listed and `release` has let go of what the caller holds for it: the engine's run slot.
+        `upto`: the steps the run is for, and only they and what they depend on run (spec 022)."""
         run_id = run_id or uuid.uuid4().hex[:12]
         stop = stop if stop is not None else threading.Event()
 
         def crashed(exc: BaseException) -> dict[str, Any]:
             return protocol.event("run.failed", **engine_crash(exc, run=run_id))
 
-        work = lambda kept: self._run(graph, kept, stop, run_id)  # noqa: E731
+        work = lambda kept: self._run(graph, kept, stop, run_id, upto)  # noqa: E731
         return end_when_free(emit, self.journal_dir, f"run-{run_id}", work, release, crashed)
 
     def _run(
-        self, graph: Graph, emit: Emit, stop: threading.Event, run_id: str
+        self, graph: Graph, emit: Emit, stop: threading.Event, run_id: str, upto: list[str] | None = None
     ) -> tuple[RunResult, dict[str, Any]]:
         run = _RunState(run_id, emit, stop)
-        the_plan: Plan = plan(graph, self.registry, self.imports)
+        the_plan: Plan = plan(graph, self.registry, self.imports, upto)
         run.event("run.start", {"order": the_plan.order, "notes": the_plan.notes})
         # Every file the graph's nodes could read, at any checkpoint, is listed for the whole run,
         # so a remove in any process leaves them alone until it ends.

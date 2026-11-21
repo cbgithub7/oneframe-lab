@@ -201,6 +201,31 @@ test("a card counts the items of a for each", () => {
   assert.deepEqual([state.cards.p.phase, state.cards.p.outputs], ["done", { mask: { type: "Mask", items: [] } }]);
 });
 
+test("a run to a card resets only its cards", () => {
+  // Spec 022: a run up to a step starts again only the cards its run.start names; the others keep
+  // their state and their outputs, say they are from an earlier run, and a stop leaves them be.
+  /** @type {import("../../app/protocol.js").Page.Value} */
+  const depth = { type: "Depth", facets: {}, meta: {}, trust: null, key: "k:depth" };
+  const done = (/** @type {string} */ run, /** @type {string} */ step) => ({
+    event: /** @type {const} */ ("node.done"), run, step, node: "x.y", key: "k", attempt: 1, seconds: 1,
+    peak_vram_mb: null, peak_reserved_mb: null, peak_ram_mb: null, made_with: {}, outputs: { depth },
+  });
+  let state = runView(starting(), { event: "run.start", run: "r1", order: ["a", "b", "c"], notes: [] });
+  for (const step of ["a", "b", "c"]) state = runView(state, done("r1", step));
+  state = runView(state, { event: "run.done", run: "r1", outputs: {} });
+
+  state = starting(state);
+  assert.deepEqual([state.cards.c.phase, state.cards.a.earlier], ["done", true],
+    "the cards are kept, as from an earlier run, until run.start says which start again");
+  state = runView(state, { event: "run.start", run: "r2", order: ["a", "b"], notes: [] });
+  assert.deepEqual([state.cards.a.phase, state.cards.b.phase], ["waiting", "waiting"]);
+  assert.deepEqual([state.cards.c.phase, state.cards.c.outputs, state.cards.c.earlier], ["done", { depth }, true]);
+  assert.equal(state.cards.a.earlier, undefined);
+  state = runView(state, done("r2", "a"));
+  state = runView(state, { event: "run.stopped", run: "r2", step: "b" });
+  assert.deepEqual([state.cards.a.phase, state.cards.b.phase, state.cards.c.phase], ["done", "stopped", "done"]);
+});
+
 test("every viewer is for a port type that exists", () => {
   const types = Object.keys(JSON.parse(readFileSync(path.join(REPO_ROOT, "contracts", "port-types.json"), "utf8")).types);
   const folder = path.join(REPO_ROOT, "app", "renderer", "viewers");

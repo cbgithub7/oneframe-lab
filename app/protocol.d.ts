@@ -637,6 +637,8 @@ export declare namespace Wire {
     "graph.validate": {
       params: {
         graph: { [key: string]: unknown };
+        /** The steps the run is for: only they and what they depend on are planned (spec 022). Without it, the whole graph. */
+        upto?: Array<string>;
       };
       answer: {
         order: Array<string>;
@@ -660,6 +662,8 @@ export declare namespace Wire {
     "graph.run": {
       params: {
         graph: { [key: string]: unknown };
+        /** The steps the run is for: only they and what they depend on are planned (spec 022). Without it, the whole graph. */
+        upto?: Array<string>;
       };
       answer: {
         run: string;
@@ -1492,6 +1496,8 @@ export declare namespace Page {
     "graph.validate": {
       params: {
         graph: { [key: string]: unknown };
+        /** The steps the run is for: only they and what they depend on are planned (spec 022). Without it, the whole graph. */
+        upto?: Array<string>;
       };
       answer: {
         order: Array<string>;
@@ -1515,6 +1521,8 @@ export declare namespace Page {
     "graph.run": {
       params: {
         graph: { [key: string]: unknown };
+        /** The steps the run is for: only they and what they depend on are planned (spec 022). Without it, the whole graph. */
+        upto?: Array<string>;
       };
       answer: {
         run: string;

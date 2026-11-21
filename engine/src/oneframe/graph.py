@@ -160,6 +160,16 @@ class Graph:
             raise GraphError(problems)
         return cls(nodes=nodes, edges=edges, title=str(title), page=page)
 
+    def part(self, keys: set[str]) -> Graph:
+        """The graph's nodes in `keys`, and the edges between them: what a run up to some steps
+        plans (`keys`: what they reach backwards, by `reaches`)."""
+        return Graph(
+            nodes={k: n for k, n in self.nodes.items() if k in keys},
+            edges=[e for e in self.edges if e.src in keys and e.dst in keys],
+            title=self.title,
+            page=self.page,
+        )
+
     def to_json(self) -> dict[str, Any]:
         data: dict[str, Any] = {
             "version": RECIPE_VERSION,
@@ -304,9 +314,15 @@ def step_params(
     return params, problems
 
 
-def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
+def plan(
+    graph: Graph, registry: Registry, imports: Path | None = None, upto: list[str] | None = None
+) -> Plan:
     """The order to run `graph` in, its converters inserted; every problem at once as GraphError.
-    `imports`: the folder a `file` param's import is found in (the layout's `inputs`)."""
+    `imports`: the folder a `file` param's import is found in (the layout's `inputs`). `upto`: the
+    steps a run is for (spec 022), each a node of the graph; only they and what they depend on are
+    planned, so a problem in the rest of the graph does not refuse them."""
+    if upto is not None:
+        graph = graph.part(_upto(graph, upto))
     problems: list[dict[str, str]] = []
     notes: list[str] = []
 
@@ -399,6 +415,21 @@ def plan(graph: Graph, registry: Registry, imports: Path | None = None) -> Plan:
     return Plan(steps=[steps[sid] for sid in order], notes=notes, depends=depends)
 
 
+def _upto(graph: Graph, upto: list[str]) -> set[str]:
+    """What the steps `upto` reach backwards, themselves included; a name the graph has no node
+    for (a converter the plan inserts among them) refuses the plan, by name."""
+    problems = [
+        {"node": str(name), "port": "", "message": f"the graph has no step called {name!r} to run up to"}
+        for name in upto
+        if not isinstance(name, str) or name not in graph.nodes
+    ]
+    if not upto:
+        problems.append({"node": "", "port": "", "message": "a run up to steps names at least one"})
+    if problems:
+        raise GraphError(problems)
+    return set().union(*(reaches(graph, name, backwards=True) for name in upto))
+
+
 def _quiet(*_args: Any) -> None:
     """A problem nobody is told of: `fits()` reads the graph's edges as they are."""
 
@@ -466,9 +497,11 @@ def _line_up(order: list[Step], problem: Callable[..., None], notes: list[str]) 
                 )
 
 
-def _reaches(graph: Graph, start: str, backwards: bool = False) -> set[str]:
+def reaches(graph: Graph, start: str, backwards: bool = False) -> set[str]:
     """Every node a path of edges leads to from `start` (`backwards`: leads from to `start`),
-    `start` included."""
+    `start` included. The one walk of a graph: `fits`, a run up to steps and the bench use it. An
+    edge's end the graph has no node for is reached too, so `part` keeps the edge for the plan to
+    name."""
     after: dict[str, set[str]] = {}
     for edge in graph.edges:
         src, dst = (edge.dst, edge.src) if backwards else (edge.src, edge.dst)
@@ -497,8 +530,8 @@ def fits(graph: Graph, port: str, registry: Registry) -> dict[str, Any]:
     installed = {k: m for k, g in graph.nodes.items() if (m := registry.nodes.get(g.node)) is not None}
     collections = _Collections(_wires(graph, installed))
     fed = {(e.dst, e.dst_port): f"{e.src}.{e.src_port}" for e in graph.edges}
-    downstream = _reaches(graph, key)  # an edge into `key` from any of these closes a cycle
-    upstream = _reaches(graph, key, backwards=True)  # and one out of `key` into any of these
+    downstream = reaches(graph, key)  # an edge into `key` from any of these closes a cycle
+    upstream = reaches(graph, key, backwards=True)  # and one out of `key` into any of these
     found: dict[str, list[dict[str, Any]]] = {"graph": [], "add": []}
 
     def answer(node: Manifest, other: str, side: str, step: str | None) -> dict[str, Any]:

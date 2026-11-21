@@ -51,6 +51,24 @@ def test_a_run_produces_checked_values_with_trust(
 
 
 @pytest.mark.usefixtures("basic_nodes")
+def test_a_run_up_to_a_step_runs_only_what_it_needs(
+    scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Spec 022, AC1: in a graph of two branches from one source, a run up to one branch's last step
+    says that branch's steps as its order, ends done with their outputs, and never names the other."""
+    graph = _graph(
+        {"i": {"node": "test.image"}, "a": {"node": "test.const_depth"}, "b": {"node": "test.const_depth"}},
+        [("i.image", "a.image"), ("i.image", "b.image")],
+    )
+    result = scheduler_for().run(graph, events.append, upto=["a"])
+    assert result.status == "done", result.error
+    assert events.of("run.start")[0]["order"] == ["i", "a"]
+    assert set(result.outputs) == {"i", "a"}
+    assert set(events.of("run.done")[0]["outputs"]) == {"i", "a"}
+    assert all(event.get("step") != "b" for event in events), "the other branch is never named"
+
+
+@pytest.mark.usefixtures("basic_nodes")
 def test_the_second_run_comes_from_the_cache(scheduler_for: Callable[..., Scheduler], events: Events) -> None:
     sched = scheduler_for()
     first = sched.run(_graph(*DEPTH_GRAPH), events.append)

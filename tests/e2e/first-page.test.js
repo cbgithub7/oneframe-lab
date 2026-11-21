@@ -160,3 +160,27 @@ test("a pane shows a collection one item at a time", async () => {
     await close();
   }
 });
+
+test("Run to here runs up to a card", async () => {
+  // Spec 022, AC5: Run to here, pressed from the keyboard on the card in the middle of a line of
+  // three, ends with that card done and the card after it never started.
+  const { page, close, data } = await start();
+  try {
+    await openWithPhoto(page, "Test: three steps in a line");
+    const middle = page.locator('article[data-step="hand"]');
+    const after = page.locator('article[data-step="relief"]');
+    const here = middle.getByRole("button", { name: "Run to here: Hand on", exact: true });
+    await here.focus();
+    await page.keyboard.press("Enter");
+    await expect(middle, "the middle card ended done").toHaveAttribute("data-phase", "done", { timeout: 60_000 });
+    await expect(page.locator("#run-status"), "the run ended").toHaveText("The run is done.", { timeout: 30_000 });
+    await expect(page.locator('article[data-step="photo"]'), "what it depends on ran").toHaveAttribute("data-phase", "done");
+    await expect(after, "the card after it never started").toHaveAttribute("data-phase", "idle");
+    await expect(after.locator(".run"), "and says nothing of a run").toHaveText("");
+  } catch (error) {
+    await report(page, data);
+    throw error;
+  } finally {
+    await close();
+  }
+});

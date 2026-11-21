@@ -1,6 +1,6 @@
 # 022: A run up to a node
 
-Status: approved
+Status: done ([PR #78](https://github.com/cbgithub7/oneframe-lab/pull/78))
 Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The fourth of five specs for step 3c, graph model 2: [019](../019-contracts/spec.md) (the
@@ -104,6 +104,20 @@ No hardware step.
 - `upto` is a list, though the page sends one step: a caller that wants two results asks once.
 - No "from here on": the cache already skips what is made, so a run of the whole graph after a run
   to a node repeats nothing.
+- An empty `upto` is refused (kind `graph`), not read as the whole graph: a run for no step is a
+  caller's mistake, and the whole graph is asked for by leaving `upto` out.
+- `upto` that is not a list of names is the request's fault (`request`, `bad_params`), as a missing
+  `graph` is; a name the graph lacks is the graph's (`graph`), as AC3 asks.
+- `Graph.part` keeps an edge whose end the graph has no node for when the walk reached it, so the
+  plan still names a broken edge into a step the run needs.
+- The bench reads the sizes of the measured step's inputs from its plan, past an inserted
+  converter, rather than from the graph's edges (AC4).
+- A refused Run or Run to here leaves the page's cards as they were, rather than clearing them.
+- Run again after a Run to here runs up to the same step again: it repeats the run that failed; on
+  a card kept from an earlier run, it runs up to that card, which the last run did not hold.
+- A removed step's card goes with it, so a new node given its key never shows it; a run keeps the
+  waits on an install or download still going, for the cards it does not reset.
+- A card kept from an earlier run says "From an earlier run.", which the spec's risks ask for.
 
 ## Out of scope
 

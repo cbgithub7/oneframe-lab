@@ -640,7 +640,12 @@
       "doc": "A graph's plan: its steps in order, the converters inserted, and the edges checked only once their value arrives.",
       "by": "engine",
       "queued": true,
-      "params": { "fields": { "graph": { "type": "object" } } },
+      "params": {
+        "fields": {
+          "graph": { "type": "object" },
+          "upto": { "type": "array", "of": "string", "optional": true, "doc": "The steps the run is for: only they and what they depend on are planned (spec 022). Without it, the whole graph." }
+        }
+      },
       "answer": {
         "fields": {
           "order": { "type": "array", "of": "string" },
@@ -671,7 +676,12 @@
       "doc": "Run a graph; its id at once, and its progress as run and node events.",
       "by": "engine",
       "queued": true,
-      "params": { "fields": { "graph": { "type": "object" } } },
+      "params": {
+        "fields": {
+          "graph": { "type": "object" },
+          "upto": { "type": "array", "of": "string", "optional": true, "doc": "The steps the run is for: only they and what they depend on are planned (spec 022). Without it, the whole graph." }
+        }
+      },
       "answer": { "fields": { "run": { "type": "string" } } }
     },
     "graphs.list": {
