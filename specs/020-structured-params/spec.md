@@ -1,7 +1,7 @@
 # 020: Data a person authors: structured params
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The second of five specs for step 3c, graph model 2: [019](../019-contracts/spec.md) (the
 contracts), this one, [021](../021-collections/spec.md) (collections and "for each"),

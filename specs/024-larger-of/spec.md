@@ -1,7 +1,7 @@
 # 024: The memory model's larger-of
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 A small spec beside step 3c's five, from the [review of 2026-11-07](../../docs/reviews/2026-11-07.md),
 section 1 ("the open findings") and decision 4, which the owner took on 2026-11-12: the memory

@@ -1,7 +1,7 @@
 # 023: Several runs at once, a slot per device
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The last of five specs for step 3c, graph model 2: [019](../019-contracts/spec.md) (the
 contracts), [020](../020-structured-params/spec.md) (data a person authors),

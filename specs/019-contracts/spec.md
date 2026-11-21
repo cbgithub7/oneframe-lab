@@ -1,7 +1,7 @@
 # 019: The contracts, grown before nodes depend on them
 
-Status: draft
-Owner approval: (date, once approved)
+Status: approved
+Owner approval: 2026-11-21, with 019 to 024 as one decision; every open question answered as recommended (2026-11-12)
 
 The first of five specs for step 3c, graph model 2, which is too large for one: this one,
 [020](../020-structured-params/spec.md) (data a person authors), [021](../021-collections/spec.md)
