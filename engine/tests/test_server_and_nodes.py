@@ -14,7 +14,7 @@ import pytest
 from conftest import Events, MakeEngine, MakeNode, StartEngine, call, wait_until
 from PIL import Image
 
-from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR
+from oneframe import BUILTIN_NODES_DIR, ENGINE_DIR, REPO_ROOT
 from oneframe.cache import Cache
 from oneframe.graph import Graph
 from oneframe.processes import wait_gone
@@ -301,6 +301,36 @@ def test_values_are_located_only_when_committed(
     ):
         refused = call(engine, "values.locate", **params)["error"]
         assert (refused["kind"], refused["reason"]) == ("request", "bad_params"), params
+
+
+def test_audio_is_a_type_the_value_protocol_can_serve(
+    tmp_path: Path, node_root: Path, make_node: MakeNode, make_engine: MakeEngine, events: Events
+) -> None:
+    """Sound has a type, carried as WAV, which the value protocol serves (spec 019, AC7)."""
+    make_node(
+        {
+            "id": "test.tone",
+            "version": "1",
+            "title": "Tone",
+            "category": "sound",
+            "outputs": {"sound": {"type": "Audio[channels=mono, loop=none]", "trust": "synthetic"}},
+        },
+        "import wave\n"
+        "def run(ctx):\n"
+        "    p = ctx.path('tone.wav')\n"
+        "    with wave.open(str(p), 'wb') as w:\n"
+        "        w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)\n"
+        "        w.writeframes(b'\\x00\\x00' * 800)\n"
+        "    ctx.output('sound', p)\n",
+    )
+    engine = make_engine(tmp_path / "data", [node_root], events.append)
+    result = engine.scheduler.run(Graph.from_json({"nodes": {"t": {"node": "test.tone"}}}), events.append)
+    assert result.status == "done", result.error
+    entry = result.outputs["t"]["sound"].key.partition(":")[0]
+    found = call(engine, "values.locate", key=entry, port="sound")["result"]
+    assert (found["type"], found["carrier"]) == ("Audio", "wav")
+    contract = json.loads((REPO_ROOT / "contracts" / "port-types.json").read_text(encoding="utf-8"))
+    assert contract["carriers"]["wav"] == {"mime": "audio/wav"}  # the media type the app serves it with
 
 
 HELD = "nodes.forget"  # a queued method, whose answer the contract declares (spec 018)

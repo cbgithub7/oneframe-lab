@@ -10,7 +10,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   letters mean something else. AC4.
 - [x] 3. **The port contract in the key.** `ports.contract(names)`; `Cache.key` holds the rows of
   the types a manifest's ports name; `KEY_VERSION` 3; the recorded cache key's new value. AC5.
-- [ ] 4. **Scene facets and `Audio`.** `contracts/port-types.json` as the spec's table, `Audio` with
+- [x] 4. **Scene facets and `Audio`.** `contracts/port-types.json` as the spec's table, `Audio` with
   the `wav` carrier; nodes.md's file table. AC6, AC7.
 - [ ] 5. **A value names its sources.** `meta.sources` written in `_keep`; the port contract's
   comment says so. AC8.

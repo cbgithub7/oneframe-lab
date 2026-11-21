@@ -314,8 +314,10 @@ does not change this setting for you: it has no documented interface.
 | Camera | `.json` | `fx`, `fy`, `cx`, `cy`, `width`, `height` (pixels); optional `pose` 4x4 world_from_camera |
 | Normals, Confidence | `.npz` | `normals` / `confidence` |
 | Mask | `.png` | 0/255, or 8-bit soft |
-| Mesh | `.glb` | |
-| GaussianSplat | `.ply` | Inria layout, raw (log scale, logit opacity, wxyz rotation) |
+| Mesh | `.glb` | glTF's axes; `frame` (object, camera, world) and `scale` (metric, up_to_scale) on the port |
+| GaussianSplat | `.ply` | Inria layout, raw (log scale, logit opacity, wxyz rotation), OpenCV's axes; `frame` and `scale` as a Mesh's |
+| Pose, Scene, CameraPath | `.json` | OpenCV's axes; `frame` (camera, world) and `scale` on the port |
+| Audio | `.wav` | PCM; `channels` (mono, stereo) and `loop` (seamless, none) on the port |
 | ViewSet | folder | `views.json` plus images |
 
 ## Folders of your own

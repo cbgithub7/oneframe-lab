@@ -21,6 +21,24 @@ def test_every_port_type_parses_bare_and_its_facets_are_known() -> None:
             assert spec.facets[facet] == values
 
 
+SCENE_FACETS = {
+    "Mesh": {"frame": ("object", "camera", "world"), "scale": ("metric", "up_to_scale")},
+    "GaussianSplat": {"frame": ("object", "camera", "world"), "scale": ("metric", "up_to_scale")},
+    "Pose": {"frame": ("camera", "world"), "scale": ("metric", "up_to_scale")},
+    "Scene": {"frame": ("camera", "world"), "scale": ("metric", "up_to_scale")},
+    "CameraPath": {"frame": ("camera", "world"), "scale": ("metric", "up_to_scale")},
+}
+
+
+def test_scene_types_say_frame_and_scale() -> None:
+    """A scene value says its frame and scale before any node makes one (spec 019, AC6)."""
+    known = ports.types()
+    for name, facets in SCENE_FACETS.items():
+        for facet, values in facets.items():
+            assert known[name].facets.get(facet) == values, (name, facet)
+        assert "pose" not in known[name].facets, name
+
+
 def test_parse_reads_facets_and_alternatives() -> None:
     spec = ports.parse("Depth[kind=metric|scale_invariant, measure=z]")
     assert spec.type == "Depth"
