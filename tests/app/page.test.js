@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { formModel, readControl } from "../../app/renderer/form.js";
 import { feeds, isSet, openGraph, resetParam, setParam } from "../../app/renderer/graph-model.js";
 import { readNpz } from "../../app/renderer/npz.js";
-import { KINDS, jobView, offerFor, runView, starting } from "../../app/renderer/run-view.js";
+import { KINDS, going, held, jobView, offerFor, refused, runView, started, starting } from "../../app/renderer/run-view.js";
 import { REPO_ROOT } from "../../app/main/paths.js";
 
 /** @typedef {import("../../app/protocol.js").Page.Manifest} Manifest */
@@ -224,6 +224,60 @@ test("a run to a card resets only its cards", () => {
   state = runView(state, done("r2", "a"));
   state = runView(state, { event: "run.stopped", run: "r2", step: "b" });
   assert.deepEqual([state.cards.a.phase, state.cards.b.phase, state.cards.c.phase], ["done", "stopped", "done"]);
+});
+
+test("a newer run's state is not overwritten by an older run's events", () => {
+  // Spec 023: two runs at once. Each card shows the newest run that named its step; an older run's
+  // late events change only the cards it still holds; a card waiting its turn is queued, behind
+  // what; the bar follows the newest run, and the page is going until every run has ended.
+  /** @type {import("../../app/protocol.js").Page.Value} */
+  const depth = { type: "Depth", facets: {}, meta: {}, trust: null, key: "k:depth" };
+  const start = (/** @type {string} */ run, /** @type {string} */ step) => ({
+    event: /** @type {const} */ ("node.start"), run, step, node: "x.y", where: "engine", key: "k", attempt: 1,
+  });
+  const done = (/** @type {string} */ run, /** @type {string} */ step) => ({
+    event: /** @type {const} */ ("node.done"), run, step, node: "x.y", key: "k", attempt: 1, seconds: 1,
+    peak_vram_mb: null, peak_reserved_mb: null, peak_ram_mb: null, made_with: {}, outputs: { depth },
+  });
+  let state = starting();
+  state = started(state, "old"); // the answer came before its run.start
+  state = runView(state, { event: "run.start", run: "old", order: ["photo", "wait"], notes: [] });
+  state = runView(state, done("old", "photo"));
+  state = runView(state, start("old", "wait"));
+  assert.ok(going(state) && held(state, "wait"));
+
+  state = starting(state); // Run to here on another card, while the first run goes
+  assert.equal(state.cards.wait.earlier, undefined, "a card a run still holds is not from an earlier run");
+  state = runView(state, { event: "run.start", run: "new", order: ["photo", "quick"], notes: [] });
+  state = started(state, "new"); // the answer came after: nothing more to expect
+  assert.deepEqual([state.pending, state.expected], [0, []]);
+  state = runView(state, { event: "node.cached", run: "new", step: "photo", node: "x.y", key: "k", outputs: { depth } });
+  state = runView(state, { event: "node.queued", run: "new", step: "quick", node: "x.y", device: "engine",
+    behind: { run: "old", step: "wait" } });
+  assert.deepEqual([state.cards.quick.phase, state.cards.quick.queued],
+    ["queued", { device: "engine", behind: { run: "old", step: "wait" } }]);
+
+  // The old run's late events: its photo card is the new run's now, and stays as it says.
+  state = runView(state, { event: "node.failed", run: "old", step: "photo", node: "x.y", kind: "node", message: "late", retry: false });
+  assert.equal(state.cards.photo.phase, "cached", "the newer run's state stands");
+  state = runView(state, done("old", "wait"));
+  state = runView(state, { event: "run.done", run: "old", outputs: { photo: { depth }, wait: { depth } } });
+  assert.deepEqual([state.cards.wait.phase, state.cards.photo.phase], ["done", "cached"]);
+  assert.equal(state.ended, null, "the bar follows the newest run, still going");
+  assert.ok(going(state) && !held(state, "wait"));
+
+  state = runView(state, start("new", "quick"));
+  assert.equal(state.cards.quick.queued, undefined, "a card that starts is no longer queued");
+  state = runView(state, { event: "run.stopped", run: "new", step: "quick" });
+  assert.deepEqual([state.cards.quick.phase, state.cards.wait.phase, state.ended], ["stopped", "done", "stopped"]);
+  assert.ok(!going(state));
+
+  // A press the engine refuses starts nothing, and the cards show again what they showed.
+  const before = state;
+  state = refused(starting(state), before);
+  assert.deepEqual([state.pending, state.cards.wait], [0, before.cards.wait]);
+  state = runView(state, { event: "run.start", run: "stranger", order: ["wait"], notes: [] });
+  assert.equal(state.cards.wait.phase, "done", "a run this page did not start is not followed");
 });
 
 test("every viewer is for a port type that exists", () => {

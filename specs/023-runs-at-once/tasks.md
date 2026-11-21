@@ -18,7 +18,7 @@ Each task leaves `npm run check` and `npm run engine:check` green. Tick as they 
   answer listing the runs it stopped; the guards and `shutdown` read every run; `graph`/`busy`
   reads "too many runs are going". AC1, AC4, AC6, `test_runs_beyond_the_bound_are_refused`,
   `test_a_stop_that_names_a_run_leaves_queued_runs`, `test_a_stop_cancels_a_queued_run` changed.
-- [ ] 5. **The page.** Run and Run to here stay enabled while a run goes; the run view follows
+- [x] 5. **The page.** Run and Run to here stay enabled while a run goes; the run view follows
   every run this page started, each card from the newest run that named it; `node.queued` is the
   phase `queued`, in words, behind what; Stop stops every run. "a newer run's state is not
   overwritten by an older run's events" (`tests/app/page.test.js`).

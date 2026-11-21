@@ -173,3 +173,10 @@ ending done, with their peaks and the free system memory before each, in
   behind that run's step, so its card says what it waits for.
 - `run.stop`'s answer lists `runs` only when it stops any, so `{"stopping": false}` is as before.
 - A runtime several runs use is refused naming each of them.
+- The page follows a run.start it did not expect only while a press waits for one, so a run this
+  page did not start is never followed; Run's answer marks its run as expected if it comes first.
+- A queued card's words: "Queued for the card (the processor, the engine), behind <step>", with
+  "(another run)" and an item where they apply; for the same work, "<step> is making the same
+  result".
+- The bar says how many runs are going when more than one is, and the newest run's ending once
+  none is.

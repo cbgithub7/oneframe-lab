@@ -10,7 +10,7 @@ import {
   addNode, connect, emptyGraph, feeds, forEngine, isShown, nameFile, openGraph, portsOf, removeEdge,
   removeNode, resetParam, setParam, showItem, showPane, splitRef, typeName,
 } from "./graph-model.js";
-import { idle, jobView, runView, starting } from "./run-view.js";
+import { going, held, idle, jobView, refused, runView, started, starting } from "./run-view.js";
 import { showValue, valueUrl } from "./viewer.js";
 
 /** @typedef {import("../protocol.js").Page.Manifest} Manifest */
@@ -219,24 +219,24 @@ async function run(upto) {
   state.upto = upto;
   state.waits = Object.fromEntries(Object.entries(state.waits).filter(([, job]) => state.jobs[job]?.state === "running"));
   state.problems = {};
-  const refused = () => {
-    state.run = before;
+  const notStarted = () => {
+    state.run = refused(state.run, before);
     state.upto = was;
   };
   say(ui.runStatus, "running", "Starting the run…");
   render();
   try {
-    const started = await ask("graph.run", { graph: forEngine(graph), ...(upto ? { upto } : {}) });
-    if (!started) {
-      refused();
+    const answer = await ask("graph.run", { graph: forEngine(graph), ...(upto ? { upto } : {}) });
+    if (!answer) {
+      notStarted();
       say(ui.runStatus, "", "The run was not started.");
-    } else if (state.run.pending) {
-      // The answer came before run.start: this is the run to follow.
-      state.run = { ...state.run, run: started.run };
+    } else {
+      // The answer may come before its run.start: that run is this page's to follow.
+      state.run = started(state.run, answer.run);
     }
   } catch (error) {
     const failure = /** @type {Failure} */ (error);
-    refused();
+    notStarted();
     for (const problem of failure.problems ?? []) (state.problems[problem.node] ??= []).push(`${problem.port ? `${problem.port}: ` : ""}${problem.message}`);
   }
   render();
@@ -251,11 +251,11 @@ function again(step) {
   return state.run.cards[step]?.earlier ? run([step]) : run(state.upto);
 }
 
+/** Stop every run this page started, and every one still queued (spec 023). */
 async function stop() {
-  const runId = state.run.run;
   ui.stop.disabled = true;
   say(ui.runStatus, "running", "Stopping…");
-  await ask("run.stop", runId ? { run: runId } : {}).catch(() => {});
+  await ask("run.stop", {}).catch(() => {});
 }
 
 /**
@@ -474,7 +474,7 @@ function renderPorts(step, manifest) {
 
 /** What a phase says on a card, in words. */
 const PHASES = /** @type {Record<string, string>} */ ({
-  waiting: "Waiting", fitting: "Fitted", running: "Running", cached: "From the cache", done: "Done",
+  waiting: "Waiting", queued: "Queued", fitting: "Fitted", running: "Running", cached: "From the cache", done: "Done",
   failed: "Failed", skipped: "Skipped", stopped: "Stopped",
 });
 
@@ -506,6 +506,28 @@ function itemsText(card) {
   return `${n} ${n === 1 ? "item" : "items"}`;
 }
 
+/** What a device's slot is called, in words. @param {import("./run-view.js").Queued} queued */
+function slotText(queued) {
+  if (queued.device === "cuda") return queued.card ? `card ${queued.card + 1}` : "the card";
+  if (queued.device === "cpu") return "the processor";
+  if (queued.device === "engine") return "the engine";
+  return String(queued.device);
+}
+
+/**
+ * What a queued card waits for and behind what, in words (spec 023): "Queued for the card, behind
+ * Depth (another run)".
+ * @param {string} step @param {import("./run-view.js").Queued} queued
+ */
+function queuedText(step, queued) {
+  const { behind } = queued;
+  const item = behind.item === undefined ? "" : `, item ${behind.item + 1} of ${behind.of}`;
+  const other = behind.run !== state.run.owner[step] ? " (another run)" : "";
+  const ahead = `${labelOf(behind.step)}${item}${other}`;
+  if (queued.device === undefined) return `Queued: ${ahead} is making the same result`;
+  return `Queued for ${slotText(queued)}, behind ${ahead}`;
+}
+
 /** A step's run state, its offer and its job. @param {string} step */
 function renderStatus(step) {
   const card = state.run.cards[step];
@@ -513,7 +535,7 @@ function renderStatus(step) {
   const job = jobFor(step, card);
   const children = [];
   if (card) {
-    let line = PHASES[card.phase] ?? card.phase;
+    let line = card.phase === "queued" && card.queued ? queuedText(step, card.queued) : (PHASES[card.phase] ?? card.phase);
     if (card.phase === "done" && card.seconds !== undefined) line += ` in ${card.seconds.toFixed(1)} s`;
     if (card.phase === "done" && card.peak_vram_mb) line += `, ${Math.round(card.peak_vram_mb)} MB on the card at most`;
     children.push(h("div", { className: "phase" }, line));
@@ -557,8 +579,8 @@ function jobFor(step, card) {
 
 /** The button a card offers now, if any. @param {string} step @param {Card | undefined} card @param {Job | undefined} job */
 function offerNow(step, card, job) {
-  const running = state.run.pending || (state.run.run !== null && state.run.ended === null);
-  if (running) return null;
+  // Nothing to press while the card's run goes, or while a press may yet start one.
+  if (held(state.run, step) || state.run.pending > 0) return null;
   if (job && job.state === "running") return null;
   if (job && job.state === "done") return h("button", { type: "button", className: "primary", onclick: () => again(step) }, "Run again");
   const offer = card?.offer;
@@ -704,23 +726,27 @@ function renderItems(nav, pane, index, count) {
   if (focused && focused.startsWith(base)) document.getElementById(focused)?.focus();
 }
 
-/** Whether Run, or a card's Run to here, may be pressed now: the engine is ready and no run goes. */
+/**
+ * Whether Run, or a card's Run to here, may be pressed now: the engine is ready and a graph is
+ * open. A run may be going: the new one's steps wait their turn for their devices (spec 023).
+ */
 function canRun() {
-  const running = state.run.pending || (state.run.run !== null && state.run.ended === null);
-  return state.ready && Boolean(state.graph) && !running;
+  return state.ready && Boolean(state.graph);
 }
 
 function renderBar() {
-  const running = state.run.pending || (state.run.run !== null && state.run.ended === null);
+  const running = going(state.run);
   for (const control of [ui.pick, ui.fresh, ui.name, ui.save]) control.disabled = !state.ready;
   ui.run.disabled = !canRun();
   for (const button of ui.cards.querySelectorAll("button.run-to")) /** @type {HTMLButtonElement} */ (button).disabled = !canRun();
-  ui.stop.disabled = !running || state.run.pending;
+  ui.stop.disabled = !running;
   ui.save.disabled = !state.ready || !state.graph;
-  if (state.run.ended === "done") say(ui.runStatus, "ready", "The run is done.");
+  const runs = Object.values(state.run.runs).filter((r) => r.ended === null).length;
+  if (runs > 1) say(ui.runStatus, "running", `${runs} runs are going…`);
+  else if (running) say(ui.runStatus, "running", "Running…");
+  else if (state.run.ended === "done") say(ui.runStatus, "ready", "The run is done.");
   else if (state.run.ended === "stopped") say(ui.runStatus, "", "The run was stopped.");
   else if (state.run.ended === "failed") say(ui.runStatus, "failed", `The run ended with a failure: ${failureText(state.run.failure)}`);
-  else if (state.run.run && !state.run.ended) say(ui.runStatus, "running", "Running…");
 }
 
 /** Focus an element by id once the page is drawn again, so the keyboard keeps its place. @param {string} id */

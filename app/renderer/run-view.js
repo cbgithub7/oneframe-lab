@@ -16,13 +16,21 @@
 /**
  * @typedef {"install" | "download" | "wait" | "retry"} Action
  * @typedef {{ action: Action, for?: "runtime" | "files" }} Offer
- * @typedef {"waiting" | "fitting" | "running" | "cached" | "done" | "failed" | "skipped" | "stopped"} Phase
+ * `waiting`: not reached yet; `queued`: reached, and waiting its turn for a device (spec 023).
+ * @typedef {"waiting" | "queued" | "fitting" | "running" | "cached" | "done" | "failed" | "skipped" | "stopped"} Phase
+ * @typedef {{ device?: string, card?: number, behind: import("../protocol.js").Page.Place }} Queued
  * @typedef {{ phase: Phase, fit?: Fit, stage?: string, progress?: { done: number | null, total: number | null, what: string },
  *   seconds?: number, peak_vram_mb?: number | null, failure?: Failure, offer?: Offer | null, note?: string,
- *   outputs?: Record<string, Value | Collection>, items?: Items, earlier?: boolean }} Card a card's state;
- *   `earlier`: from an earlier run, which a run up to other cards left as it was (spec 022)
- * @typedef {{ run: string | null, pending: boolean, cards: Record<string, Card>,
- *   ended: "done" | "failed" | "stopped" | null, failure?: Failure }} RunState
+ *   outputs?: Record<string, Value | Collection>, items?: Items, earlier?: boolean, queued?: Queued }} Card a card's state;
+ *   `earlier`: from an earlier run, which a run up to other cards left as it was (spec 022); `queued`:
+ *   what its step waits for, and behind which run's step
+ * @typedef {"done" | "failed" | "stopped" | null} Ended
+ * @typedef {{ ended: Ended, failure?: Failure }} RunEnd
+ * @typedef {{ run: string | null, pending: number, expected: string[], runs: Record<string, RunEnd>,
+ *   owner: Record<string, string>, cards: Record<string, Card>, ended: Ended, failure?: Failure }} RunState
+ *   Every run this page started (spec 023): `run` the newest, whose ending `ended` and `failure`
+ *   say; `pending` the presses whose run has not started; `expected` the runs the engine answered
+ *   whose run.start has not come; `owner` the run each card shows, the newest that named its step.
  */
 
 /**
@@ -63,19 +71,70 @@ export function offerFor(failure) {
 
 /** No run yet. @returns {RunState} */
 export function idle() {
-  return { run: null, pending: false, cards: {}, ended: null };
+  return { run: null, pending: 0, expected: [], runs: {}, owner: {}, cards: {}, ended: null };
 }
 
 /**
- * Run or Run to here was pressed: the next run.start is this page's, whatever its id. The cards
- * are kept, as from an earlier run, until it says which it resets.
+ * Whether the card's step is held by a run still going.
+ * @param {RunState} state @param {string} step
+ */
+export function held(state, step) {
+  const run = state.owner[step];
+  return run !== undefined && state.runs[run]?.ended === null;
+}
+
+/** Whether any run this page started goes, or is about to. @param {RunState} state */
+export function going(state) {
+  return state.pending > 0 || state.expected.length > 0 || Object.values(state.runs).some((r) => r.ended === null);
+}
+
+/**
+ * The cards no run still going holds, kept as from an earlier run.
+ * @param {RunState} state @returns {Record<string, Card>}
+ */
+function keptEarlier(state) {
+  /** @type {Record<string, Card>} */
+  const cards = {};
+  for (const [step, card] of Object.entries(state.cards)) cards[step] = held(state, step) ? card : { ...card, earlier: true };
+  return cards;
+}
+
+/**
+ * Run or Run to here was pressed: the next run.start this page did not expect is this one's,
+ * whatever its id. The cards no run still going holds are kept, as from an earlier run, until it
+ * says which it resets; another run's cards go on as they are.
  * @param {RunState} [state] @returns {RunState}
  */
 export function starting(state = idle()) {
-  /** @type {Record<string, Card>} */
-  const cards = {};
-  for (const [step, card] of Object.entries(state.cards)) cards[step] = { ...card, earlier: true };
-  return { ...idle(), cards, pending: true };
+  return { ...state, cards: keptEarlier(state), pending: state.pending + 1 };
+}
+
+/**
+ * The engine answered a press with its run's id: its run.start is this page's, should it come
+ * after the answer.
+ * @param {RunState} state @param {string} run @returns {RunState}
+ */
+export function started(state, run) {
+  if (run in state.runs || state.pending === 0) return state; // its run.start came first
+  return { ...state, pending: state.pending - 1, expected: [...state.expected, run] };
+}
+
+/**
+ * A press the engine refused: no run comes of it, and the cards it marked as from an earlier run
+ * show again what they showed, unless another press or run has marked them since.
+ * @param {RunState} state @param {RunState} before the state the press began from
+ * @returns {RunState}
+ */
+export function refused(state, before) {
+  const pending = Math.max(state.pending - 1, 0);
+  const cards = { ...state.cards };
+  if (pending === 0) {
+    for (const [step, card] of Object.entries(cards)) {
+      const was = before.cards[step];
+      if (card.earlier && was && !was.earlier && card.phase === was.phase && !held(state, step)) cards[step] = was;
+    }
+  }
+  return { ...state, pending, cards };
 }
 
 /**
@@ -108,28 +167,42 @@ const failureOf = (failure) => ({
   ...(failure.problems === undefined ? {} : { problems: failure.problems }),
 });
 
+/** A card no longer waiting its turn. @type {Partial<Card>} */
+const UNQUEUED = { queued: undefined };
+
 /**
- * The run's state after one event. Events of another run are ignored.
+ * The runs' state after one event. A run's events change only the cards it holds, so an older
+ * run's late events never overwrite a newer one's (spec 023); events of a run this page did not
+ * start are ignored.
  * @param {RunState} state @param {Event} event
  * @returns {RunState}
  */
 export function runView(state, event) {
   if (!("run" in event)) return state;
   if (event.event === "run.start") {
-    if (!(state.pending || state.run === event.run)) return state;
-    // Only the cards the run holds start again (spec 022); the others keep what they showed.
-    /** @type {Record<string, Card>} */
-    const cards = {};
-    for (const [step, card] of Object.entries(state.cards)) cards[step] = { ...card, earlier: true };
+    const expected = state.expected.includes(event.run);
+    if (!(expected || event.run in state.runs || state.pending > 0)) return state;
+    const pending = expected || event.run in state.runs ? state.pending : state.pending - 1;
+    const runs = { ...state.runs, [event.run]: { ended: /** @type {Ended} */ (null) } };
+    const owner = { ...state.owner };
+    for (const step of event.order) owner[step] = event.run;
+    // Only the cards the run holds start again (spec 022); the others keep what they showed, as
+    // from an earlier run unless a run still going holds them.
+    const cards = keptEarlier({ ...state, runs, owner });
     for (const step of event.order) cards[step] = { phase: "waiting" };
-    return { run: event.run, pending: false, cards, ended: null };
+    const left = state.expected.filter((run) => run !== event.run);
+    return { ...state, run: event.run, pending, expected: left, runs, owner, cards, ended: null, failure: undefined };
   }
-  if (state.run !== event.run) return state;
+  if (!(event.run in state.runs)) return state;
   const cards = { ...state.cards };
+  /** Whether this run holds the step's card. @param {string} step */
+  const holds = (step) => state.owner[step] === event.run;
   /** @param {string} step @param {Partial<Card>} change */
   const card = (step, change) => {
-    cards[step] = { ...(cards[step] ?? { phase: "waiting" }), ...change };
+    cards[step] = { ...(cards[step] ?? { phase: "waiting" }), ...UNQUEUED, ...change };
   };
+  // A step's own event, of a card a newer run now holds: that run's state stands.
+  if (!event.event.startsWith("run.") && "step" in event && !holds(String(event.step))) return state;
   // One item of a step run for each: the card counts it, and is done only at the last.
   /** @param {{ step: string, item?: number, of?: number, outputs: Record<string, Value | Collection> }} ev @param {boolean} ran @param {Partial<Card>} change */
   const itemDone = (ev, ran, change) => {
@@ -140,7 +213,19 @@ export function runView(state, event) {
     const last = items.done >= of;
     card(ev.step, { ...change, items, outputs, phase: last ? (items.ran ? "done" : "cached") : "running" });
   };
+  /** The run ended: its own state, and the bar's when it is the newest. @param {Ended} ended @param {Failure} [failure] */
+  const end = (ended, failure) => {
+    const runs = { ...state.runs, [event.run]: { ended, ...(failure ? { failure } : {}) } };
+    const newest = event.run === state.run ? { ended, failure } : {};
+    return { ...state, runs, cards, ...newest };
+  };
   switch (event.event) {
+    case "node.queued": {
+      const queued = { ...(event.device === undefined ? {} : { device: event.device }),
+        ...(event.card === undefined ? {} : { card: event.card }), behind: event.behind };
+      card(event.step, { phase: "queued", queued });
+      break;
+    }
     case "node.fit":
       card(event.step, { phase: "fitting", fit: event });
       break;
@@ -190,24 +275,24 @@ export function runView(state, event) {
     }
     case "run.done":
       for (const [step, outputs] of Object.entries(event.outputs)) {
-        if (cards[step] && !cards[step].outputs) card(step, { outputs });
+        if (holds(step) && cards[step] && !cards[step].outputs) card(step, { outputs });
       }
-      return { ...state, cards, ended: "done" };
+      return end("done");
     case "run.failed": {
       const failure = failureOf(event);
       // A failure no node.failed told: an edge's, or the engine's own. A step's card shows it.
-      if (event.step && cards[event.step]?.phase !== "failed") {
+      if (event.step && holds(event.step) && cards[event.step]?.phase !== "failed") {
         card(event.step, { phase: "failed", failure, offer: offerFor(failure) });
       }
-      return { ...state, cards, ended: "failed", failure };
+      return end("failed", failure);
     }
     case "run.stopped":
       for (const [step, row] of Object.entries(cards)) {
-        if (row.earlier) continue;
-        if (step === event.step || row.phase === "running" || row.phase === "fitting") card(step, { phase: "stopped" });
+        if (row.earlier || !holds(step)) continue;
+        if (step === event.step || ["running", "fitting", "queued"].includes(row.phase)) card(step, { phase: "stopped" });
         else if (row.phase === "waiting") card(step, { phase: "skipped", note: "Not run: the run was stopped." });
       }
-      return { ...state, cards, ended: "stopped" };
+      return end("stopped");
     default:
       return state;
   }
