@@ -1,9 +1,10 @@
 """Port types and the rule for connecting them.
 
-A port is written `Type[facet=value, facet=a|b]`. On an output, each facet named has one value:
-what the node always produces. On an input, a facet lists what the node accepts; a facet an
-input does not name is accepted with any value. An edge is legal when the output's type matches
-and every facet the input names is satisfied.
+A port is written `Type[facet=value, facet=a|b]`, and a trailing `*` makes it a collection of that
+type (spec 021): `Mask[kind=binary]*`, an ordered list of values, each with its own facets. On an
+output, each facet named has one value: what the node always produces. On an input, a facet lists
+what the node accepts; a facet an input does not name is accepted with any value. An edge is legal
+when the output's type matches and every facet the input names is satisfied.
 
 An output that leaves a facet out is saying "it depends": the node sets it on the value when it
 runs (a depth model with a metric and a relative mode, chosen by a parameter). Such an edge is
@@ -50,17 +51,19 @@ class PortSpec:
     optional: bool = False
     doc: str = ""
     trust: str | None = None
+    many: bool = False  # a collection of the type, written with a trailing `*` (spec 021)
 
     def text(self) -> str:
+        star = "*" if self.many else ""
         if not self.facets:
-            return self.type
+            return self.type + star
         inner = ", ".join(f"{k}={'|'.join(v)}" for k, v in sorted(self.facets.items()))
-        return f"{self.type}[{inner}]"
+        return f"{self.type}[{inner}]{star}"
 
 
 TRUST = ("measured", "predicted", "synthetic")
 
-_SPEC = re.compile(r"^\s*(?P<type>[A-Za-z][A-Za-z0-9]*)\s*(?:\[(?P<facets>[^\]]*)\])?\s*$")
+_SPEC = re.compile(r"^\s*(?P<type>[A-Za-z][A-Za-z0-9]*)\s*(?:\[(?P<facets>[^\]]*)\])?\s*(?P<many>\*)?\s*$")
 
 
 @cache
@@ -180,7 +183,7 @@ def parse(spec: str | dict[str, Any], known: dict[str, PortType] | None = None) 
         raise PortError(f"A port should be a type, such as Image, or an object with one: {spec!r}")
     match = _SPEC.match(text)
     if not match:
-        raise PortError(f"Cannot read port spec {text!r}; expected Type[facet=value, ...].")
+        raise PortError(f"Cannot read port spec {text!r}; expected Type[facet=value, ...], or that and *.")
     name = match.group("type")
     if name not in known:
         raise PortError(f"Unknown port type {name!r}. Known: {', '.join(sorted(known))}.")
@@ -211,11 +214,14 @@ def parse(spec: str | dict[str, Any], known: dict[str, PortType] | None = None) 
         optional=bool(extra.get("optional", False)),
         doc=str(extra.get("doc", "")),
         trust=trust,
+        many=match.group("many") is not None,
     )
 
 
 def mismatch(output: PortSpec, accepts: PortSpec) -> str | None:
-    """Why an output cannot feed an input, or None when it can (possibly after its value is known)."""
+    """Why an output's values cannot feed an input's, or None when they can (possibly after the value
+    is known). It compares the item types: whether a collection meets a single input is the
+    graph's rule (`graph.connect`)."""
     if output.type != accepts.type:
         return f"{output.type} cannot connect to {accepts.type}"
     for key, allowed in accepts.facets.items():

@@ -267,6 +267,10 @@ def _port_map(
             out[name] = ports.parse(spec, known)
         except ports.PortError as exc:
             problems.append(f"{key}.{name}: {exc}")
+            continue
+        if out[name].many and known[out[name].type].carrier == "folder":
+            # A folder of values (a ViewSet) is a type of its own, never taken apart (spec 021).
+            problems.append(f"{key}.{name}: a {out[name].type} is a folder, which cannot be a collection")
     return out
 
 

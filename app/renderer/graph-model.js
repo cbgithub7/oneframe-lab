@@ -76,9 +76,14 @@ export function portsOf(manifest, side) {
   return Object.entries(manifest[side] ?? {}).map(([name, spec]) => portOf(name, spec));
 }
 
-/** A type's name without its facets: `Depth[kind=metric]` is `Depth`. @param {string} type */
+/**
+ * A type's name without its facets, and a collection's `*` kept: `Depth[kind=metric]` is `Depth`,
+ * `Mask[kind=binary]*` is `Mask*` (spec 021).
+ * @param {string} type
+ */
 export function typeName(type) {
-  return type.split("[")[0].trim();
+  const many = type.trim().endsWith("*") ? "*" : "";
+  return type.replace(/\*\s*$/, "").split("[")[0].trim() + many;
 }
 
 /** @param {string} ref `step.port` @returns {[string, string]} */
