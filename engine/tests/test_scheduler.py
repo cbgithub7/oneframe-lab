@@ -325,6 +325,49 @@ def test_trust_is_inherited_as_the_weakest_input(
     assert result.outputs["j"]["text"].trust == "synthetic"
 
 
+def test_a_value_names_the_sources_it_descends_from(
+    make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
+) -> None:
+    """Every output names the values no step made from another that it comes from (spec 019, AC8);
+    a node cannot set them."""
+    writes = (
+        "def run(ctx):\n    p = ctx.path('t.json'); p.write_text('1')\n"
+        "    ctx.output('text', p, meta={'sources': []})\n"
+    )
+    for name, inputs in (
+        ("test.photo", {}),
+        ("test.prompt", {}),  # another node, so another entry: two sources, not one served twice
+        ("test.one", {"a": "Text"}),
+        ("test.two", {"a": "Text", "b": "Text"}),
+    ):
+        make_node(
+            {
+                "id": name,
+                "version": "1",
+                "title": name,
+                "category": "evaluate",
+                "inputs": inputs,
+                "outputs": {"text": "Text"},
+            },
+            writes,
+        )
+    nodes = {
+        "r": {"node": "test.photo"},
+        "s": {"node": "test.prompt"},
+        "one": {"node": "test.one"},
+        "both": {"node": "test.two"},
+    }
+    result = scheduler_for().run(
+        _graph(nodes, [("r.text", "one.a"), ("one.text", "both.a"), ("s.text", "both.b")]), events.append
+    )
+    assert result.status == "done", result.error
+    r, s = result.outputs["r"]["text"], result.outputs["s"]["text"]
+    assert r.meta["sources"] == [{"id": r.key, "type": "Text"}]  # a source names itself
+    assert result.outputs["one"]["text"].meta["sources"] == [{"id": r.key, "type": "Text"}]
+    both = sorted([{"id": r.key, "type": "Text"}, {"id": s.key, "type": "Text"}], key=lambda row: row["id"])
+    assert result.outputs["both"]["text"].meta["sources"] == both
+
+
 def test_stop_ends_the_run_between_and_inside_nodes(
     make_node: MakeNode, scheduler_for: Callable[..., Scheduler], events: Events
 ) -> None:

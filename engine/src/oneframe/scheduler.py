@@ -42,7 +42,9 @@ Values are checked where they cross a port: a node's declared outputs against it
 what the consumer accepts, because an output that leaves a facet open is only known at run time
 (kind `edge`).
 Trust flows with the value: an output that does not state its trust inherits the weakest trust of
-its inputs, so a mesh built from synthetic views never comes out labelled measured.
+its inputs, so a mesh built from synthetic views never comes out labelled measured. So do its
+sources: every output's `meta.sources` names the values it descends from that no step made from
+another (a photo), by their keys, so two values from different photos can be told apart.
 """
 
 from __future__ import annotations
@@ -566,8 +568,11 @@ class Scheduler:
             "reduced": bool(found is not None and found.reduced),
         }
         reduced_input = any(_reduced(v) for v in state.inputs.values())
+        inherited = _sources(state.inputs)
         for value in outputs.values():
             value.meta["made_with"] = made_with  # a node cannot claim a fit it did not get
+            # nor its sources: a step fed nothing starts one, every other carries its inputs'
+            value.meta["sources"] = inherited if state.inputs else [{"id": value.key, "type": value.type}]
             if reduced_input:
                 value.meta["reduced_input"] = True
         record = {
@@ -692,6 +697,17 @@ def _meta(step: Step, inputs: dict[str, Value]) -> Inputs:
     meta: dict[str, dict[str, Any] | None] = {port: None for port in step.manifest.inputs}
     meta.update({port: value.meta for port, value in inputs.items()})
     return meta
+
+
+def _sources(inputs: dict[str, Value]) -> list[dict[str, str]]:
+    """The values these inputs descend from that no step made from another (a photo, clicks), each
+    once, by its key: the same in every graph that shares its entry (spec 019)."""
+    found: dict[str, dict[str, str]] = {}
+    for value in inputs.values():
+        for row in value.meta.get("sources") or ():
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                found[row["id"]] = {"id": row["id"], "type": str(row.get("type", ""))}
+    return [found[ident] for ident in sorted(found)]
 
 
 def _reduced(value: Value) -> bool:
