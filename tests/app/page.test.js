@@ -77,6 +77,18 @@ test("a settings form is drawn from a manifest", () => {
   assert.equal(formModel(EVERY_PARAM, graph, "step")[0].set, false);
 });
 
+test("the form has a control for every param type in the contract", () => {
+  const vocabulary = JSON.parse(readFileSync(path.join(REPO_ROOT, "contracts", "vocabulary.json"), "utf8"));
+  const types = Object.keys(vocabulary.param_types);
+  assert.ok(types.length > 0, "the contract names param types");
+  for (const type of types) {
+    const manifest = { ...EVERY_PARAM, params: { only: { type, choices: ["a"], default: null } } };
+    const graph = openGraph({ nodes: { step: { node: manifest.id } }, edges: [] });
+    const [control] = formModel(manifest, graph, "step");
+    assert.notEqual(control.control, "unknown", `the page has no control for the param type ${type}`);
+  }
+});
+
 test("the npz reader reads what numpy writes", async () => {
   // The arrays tests/app/fixtures/npz/README.md says numpy was given.
   const points = Float32Array.from({ length: 36 }, (_, i) => i / 4 - 2);

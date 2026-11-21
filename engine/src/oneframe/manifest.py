@@ -20,25 +20,8 @@ from oneframe.memory.model import parse as parse_memory
 from oneframe.models.schema import FileSpec
 from oneframe.models.schema import parse as parse_files
 from oneframe.reading import ProblemsError, check_id, is_sha256, number, optional_text, read_object, text
+from oneframe.vocabulary import Vocabulary, vocabulary
 
-CATEGORIES = (
-    "source",  # brings something in: a photo, clicks, text
-    "depth",  # one image to depth, points, camera, normals
-    "segment",  # masks
-    "object",  # one image (or cut-out) to a mesh or splat of one object
-    "scene",  # composes or places assets
-    "views",  # synthesises new views
-    "reconstruct",  # views to cameras, points, splats or meshes
-    "render",  # an asset to images along a camera path
-    "repair",  # fixes, remeshes, simplifies
-    "texture",  # repaints an asset
-    "convert",  # changes a value's facets or form without a model
-    "evaluate",  # measures results
-    "export",  # writes a file for another program
-    "test",  # only in the test suite
-)
-
-PARAM_TYPES = ("int", "float", "bool", "string", "choice", "file")
 WHERE = ("engine", "runtime")
 DEVICES = ("cpu", "cuda")  # v1's: an NVIDIA card or the processor (spec 013)
 _PORT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -143,14 +126,15 @@ def check_param(key: str, param: Param, value: Any) -> str | None:
     return None
 
 
-def _param(name: str, row: Any, problems: list[str]) -> Param | None:
+def _param(name: str, row: Any, problems: list[str], words: Vocabulary | None = None) -> Param | None:
     where = f"params.{name}"
     if not isinstance(row, dict):
         problems.append(f"{where} should be an object")
         return None
     kind = row.get("type")
-    if kind not in PARAM_TYPES:
-        problems.append(f"{where}.type must be one of {', '.join(PARAM_TYPES)}")
+    types = (words or vocabulary()).param_types
+    if kind not in types:
+        problems.append(f"{where}.type must be one of {', '.join(types)}")
         return None
     affects = row.get("affects", "output")
     if affects not in ("output", "speed"):
@@ -213,14 +197,15 @@ class _Head(NamedTuple):
     summary: str
 
 
-def _head(data: dict[str, Any], problems: list[str]) -> _Head:
-    """`id`, `version`, `title`, `category` and `summary`, which may be blank."""
+def _head(data: dict[str, Any], problems: list[str], words: Vocabulary) -> _Head:
+    """`id`, `version`, `title`, `category` (one of the vocabulary contract's) and `summary`, which
+    may be blank."""
     node_id = check_id(text(data, "id", problems), problems)
     version = text(data, "version", problems)
     title = text(data, "title", problems)
     category = text(data, "category", problems)
-    if category and category not in CATEGORIES:
-        problems.append(f"category {category!r} is not one of {', '.join(CATEGORIES)}")
+    if category and category not in words.categories:
+        problems.append(f"category {category!r} is not one of {', '.join(words.categories)}")
     summary = optional_text(data, "summary", problems, default="") or ""
     return _Head(node_id, version, title, category, summary)
 
@@ -261,7 +246,9 @@ def _ports(
     return inputs, outputs
 
 
-def _params(data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: list[str]) -> dict[str, Param]:
+def _params(
+    data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: list[str], words: Vocabulary
+) -> dict[str, Param]:
     """`params`, none named as an input is, and none the engine adds."""
     params: dict[str, Param] = {}
     rows = data.get("params")
@@ -276,7 +263,7 @@ def _params(data: dict[str, Any], inputs: dict[str, ports.PortSpec], problems: l
         if name == PRECISION_PARAM:
             problems.append("params.precision is added by the engine from a memory model; remove it")
             continue
-        parsed = _param(name, row, problems)
+        parsed = _param(name, row, problems, words)
         if parsed:
             params[name] = parsed
     return params
@@ -353,17 +340,23 @@ def _memory_and_files(
 
 
 def parse(
-    data: dict[str, Any], folder: Path, source: str = "node.json", read: bytes | None = None
+    data: dict[str, Any],
+    folder: Path,
+    source: str = "node.json",
+    read: bytes | None = None,
+    words: Vocabulary | None = None,
 ) -> Manifest:
     """A node's manifest, with every problem in it reported at once: each part adds its own, then
     one error names them all.
 
     `read`: the bytes `data` was read from, whose sha256 is the manifest's digest; without them
-    (a manifest made in code) the digest is of `data` written out in one canonical form."""
+    (a manifest made in code) the digest is of `data` written out in one canonical form.
+    `words`: the categories and param types it may name (default: contracts/vocabulary.json's)."""
     problems: list[str] = []
-    head = _head(data, problems)
+    words = words or vocabulary()
+    head = _head(data, problems, words)
     inputs, outputs = _ports(data, problems)
-    params = _params(data, inputs, problems)
+    params = _params(data, inputs, problems, words)
     run = _run(data, folder, problems)
     devices = _devices(data, problems)
     licence = _object(data, "licence", problems)

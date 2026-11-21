@@ -39,7 +39,7 @@ TEST_NODE: dict[str, Any] = {
     "id": "test.memory",
     "version": "1",
     "title": "Memory test node",
-    "category": "test",
+    "category": "evaluate",
     "inputs": {"image": {"type": "Image", "optional": True}},
     "outputs": {"depth": "Depth[kind=metric,measure=z]"},
     "params": {

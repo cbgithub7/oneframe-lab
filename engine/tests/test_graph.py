@@ -68,7 +68,7 @@ def test_plan_refuses_type_mismatch_and_cycles(
             "id": "test.loop",
             "version": "1",
             "title": "L",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"depth": "Depth"},
             "outputs": {"depth": "Depth[kind=metric, measure=z]"},
         }
@@ -92,7 +92,7 @@ def test_a_converter_is_inserted_between_facets_that_differ(
             "id": "test.relative",
             "version": "1",
             "title": "R",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"depth": "Depth[kind=affine_invariant_disparity, measure=z]"},
         }
     )
@@ -101,7 +101,7 @@ def test_a_converter_is_inserted_between_facets_that_differ(
             "id": "test.needs_metric",
             "version": "1",
             "title": "M",
-            "category": "test",
+            "category": "evaluate",
             "inputs": {"depth": "Depth[kind=metric]"},
             "outputs": {"points": "PointMap"},
         }
@@ -274,7 +274,7 @@ def _agrees(answer: dict[str, Any], planned: dict[str, Any], edge: str) -> None:
 
 def test_what_fits_agrees_with_plan(make_node: MakeNode, registry_for: Callable[[], Registry]) -> None:
     for row in FITS_NODES:
-        make_node({"version": "1", "title": row["id"], "category": "test", **row})
+        make_node({"version": "1", "title": row["id"], "category": "evaluate", **row})
     registry = registry_for()
     graph = Graph.from_json(FITS_GRAPH)
     seen: set[str] = set()
@@ -324,7 +324,7 @@ def test_a_file_param_names_an_import(
             "id": "test.reads",
             "version": "1",
             "title": "R",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": {"path": {"type": "file"}},
         },

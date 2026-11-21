@@ -220,7 +220,7 @@ def test_a_runtime_a_run_is_using_is_neither_installed_over_nor_removed(
             "id": "test.waits_in_tiny",
             "version": "1",
             "title": "Waits",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
         },
@@ -285,7 +285,7 @@ def test_an_ending_is_sent_after_its_place_is_free(
             "id": "test.reads_in_tiny",
             "version": "1",
             "title": "Reads",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": {
                 "end": {"type": "choice", "choices": ["done", "stopped", "failed"], "default": "done"}
@@ -309,7 +309,13 @@ def test_an_ending_is_sent_after_its_place_is_free(
         + WRITES,
     )
     make_node(
-        {"id": "test.next", "version": "1", "title": "Next", "category": "test", "outputs": {"text": "Text"}},
+        {
+            "id": "test.next",
+            "version": "1",
+            "title": "Next",
+            "category": "evaluate",
+            "outputs": {"text": "Text"},
+        },
         "def run(ctx):\n" + WRITES,
     )
     events = Events()
@@ -433,7 +439,7 @@ def _tiny_node(
         "id": node_id,
         "version": "1",
         "title": node_id,
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"text": "Text"},
         "params": fit_node.PARAMS,
         "devices": list(devices),
@@ -619,7 +625,7 @@ def test_ac7_nodes_fit_and_forget_load_no_model_library(
             "id": "test.fit_engine",
             "version": "1",
             "title": "Fit",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": fit_node.PARAMS,
             "devices": ["cuda", "cpu"],
@@ -650,7 +656,7 @@ def test_nodes_fit_refuses_what_a_graph_would_refuse(
             "id": "test.needs_value",
             "version": "1",
             "title": "Needs a value",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "params": {**fit_node.PARAMS, "prompt": {"type": "string"}},
             "devices": ["cuda", "cpu"],

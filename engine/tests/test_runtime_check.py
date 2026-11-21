@@ -30,7 +30,7 @@ def a_node(node_id: str, runtime: str | None) -> dict[str, Any]:
         "id": node_id,
         "version": "1",
         "title": node_id,
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"text": "Text"},
         **({"run": run} if run else {}),
     }

@@ -1,0 +1,28 @@
+{
+  "_comment": "What a node's manifest may name besides ports (spec 019): its category and the types of its params. The engine checks every manifest against this file (oneframe/vocabulary.py) and keeps no list of its own, so a category added here needs no engine edit; a param type also needs its check (oneframe/manifest.py's check_param) and its control in the page (app/renderer/form.js), which tests hold. Devices are not here: the engine branches on them, so they are named once in code (oneframe/node/devices.py).",
+  "format": 1,
+  "categories": {
+    "source": { "doc": "Brings something in: a photo, clicks, text." },
+    "depth": { "doc": "One image to depth, points, camera, normals." },
+    "segment": { "doc": "Masks." },
+    "object": { "doc": "One image, or a cut-out, to a mesh or splat of one object." },
+    "scene": { "doc": "Composes or places assets." },
+    "views": { "doc": "Synthesises new views." },
+    "reconstruct": { "doc": "Views to cameras, points, splats or meshes." },
+    "render": { "doc": "An asset to images along a camera path." },
+    "repair": { "doc": "Fixes, remeshes, simplifies." },
+    "texture": { "doc": "Repaints an asset." },
+    "sound": { "doc": "Makes or changes sound: an ambient loop, an object's own sounds." },
+    "convert": { "doc": "Changes a value's facets or form without a model. The one category the engine reads: a convert node with one input and one output is a converter the plan may insert (oneframe/registry.py)." },
+    "evaluate": { "doc": "Measures results." },
+    "export": { "doc": "Writes a file for another program." }
+  },
+  "param_types": {
+    "int": { "doc": "A whole number, with an optional min and max." },
+    "float": { "doc": "A number, with an optional min and max." },
+    "bool": { "doc": "True or false." },
+    "string": { "doc": "Text." },
+    "choice": { "doc": "One of its choices." },
+    "file": { "doc": "A file the person picked, by its import's id (the sha256 of its content), never a path." }
+  }
+}

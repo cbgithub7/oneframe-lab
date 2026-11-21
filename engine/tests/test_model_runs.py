@@ -59,7 +59,7 @@ def reader_node(make_node: MakeNode, memory: dict[str, Any] | None = None, defau
         "id": "test.reader",
         "version": "1",
         "title": "Reads its files",
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"text": "Text"},
         "params": {"checkpoint": {"type": "choice", "choices": ["small", "large"], "default": default}},
         "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},

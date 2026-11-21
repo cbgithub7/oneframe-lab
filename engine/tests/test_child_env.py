@@ -139,7 +139,7 @@ def test_an_engine_gives_each_runtime_node_its_runtimes_cache_folder(
         "id": "test.rt",
         "version": "1",
         "title": "t",
-        "category": "test",
+        "category": "evaluate",
         "outputs": {"image": {"type": "Image", "trust": "synthetic"}},
         "run": {"where": "runtime", "runtime": "tiny", "entry": "node.py:run"},
     }

@@ -27,7 +27,7 @@ NODE = {
     "id": "test.keyed",
     "version": "1",
     "title": "Keyed",
-    "category": "test",
+    "category": "evaluate",
     "outputs": {"text": "Text"},
     "params": {"n": {"type": "int", "default": 1}},
 }

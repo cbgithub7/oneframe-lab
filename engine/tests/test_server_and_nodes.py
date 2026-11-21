@@ -165,7 +165,7 @@ def test_depth_to_points_unprojects_through_the_pinhole(tmp_path: Path) -> None:
                 "id": "test.depth_and_camera",
                 "version": "1",
                 "title": "t",
-                "category": "test",
+                "category": "evaluate",
                 "outputs": {
                     "depth": "Depth[kind=metric, measure=z]",
                     "camera": "Camera[model=pinhole, source=given]",
@@ -216,7 +216,7 @@ def test_shutdown_stops_a_running_graph_and_its_node_process(
             "id": "test.hang",
             "version": "1",
             "title": "hang",
-            "category": "test",
+            "category": "evaluate",
             "outputs": {"text": "Text"},
             "run": {"where": "runtime", "runtime": "test", "entry": "node.py:run"},
         },
