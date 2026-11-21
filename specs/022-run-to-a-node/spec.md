@@ -113,7 +113,10 @@ No hardware step.
 - The bench reads the sizes of the measured step's inputs from its plan, past an inserted
   converter, rather than from the graph's edges (AC4).
 - A refused Run or Run to here leaves the page's cards as they were, rather than clearing them.
-- Run again after a Run to here runs up to the same step again: it repeats the run that failed.
+- Run again after a Run to here runs up to the same step again: it repeats the run that failed; on
+  a card kept from an earlier run, it runs up to that card, which the last run did not hold.
+- A removed step's card goes with it, so a new node given its key never shows it; a run keeps the
+  waits on an install or download still going, for the cards it does not reset.
 - A card kept from an earlier run says "From an earlier run.", which the spec's risks ask for.
 
 ## Out of scope

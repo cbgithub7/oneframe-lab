@@ -123,6 +123,16 @@ const labelOf = (step) => {
 
 // ---- The graph: open, new, save --------------------------------------------------------------
 
+/** A step taken out of the graph, and what the page showed of it. @param {string} step */
+function remove(step) {
+  if (!state.graph) return;
+  const { [step]: _card, ...cards } = state.run.cards;
+  state.run = { ...state.run, cards };
+  delete state.waits[step];
+  delete state.problems[step];
+  edit(removeNode(state.graph, step));
+}
+
 /** @param {Graph} graph */
 function edit(graph) {
   state.graph = graph;
@@ -198,18 +208,27 @@ async function save() {
  * @param {string[]} [upto]
  */
 async function run(upto) {
-  if (!state.graph) return;
+  const graph = state.graph;
+  if (!graph) return;
   const before = state.run;
-  state.run = starting(before);
+  const was = state.upto;
+  // Only the graph's own steps' cards are kept (a removed step's key may be reused), and only the
+  // waits on a job still going, which a card outside this run goes on following.
+  const cards = Object.fromEntries(Object.entries(before.cards).filter(([step]) => step in graph.nodes));
+  state.run = starting({ ...before, cards });
   state.upto = upto;
-  state.waits = {};
+  state.waits = Object.fromEntries(Object.entries(state.waits).filter(([, job]) => state.jobs[job]?.state === "running"));
   state.problems = {};
+  const refused = () => {
+    state.run = before;
+    state.upto = was;
+  };
   say(ui.runStatus, "running", "Starting the run…");
   render();
   try {
-    const started = await ask("graph.run", { graph: forEngine(state.graph), ...(upto ? { upto } : {}) });
+    const started = await ask("graph.run", { graph: forEngine(graph), ...(upto ? { upto } : {}) });
     if (!started) {
-      state.run = before;
+      refused();
       say(ui.runStatus, "", "The run was not started.");
     } else if (state.run.pending) {
       // The answer came before run.start: this is the run to follow.
@@ -217,10 +236,19 @@ async function run(upto) {
     }
   } catch (error) {
     const failure = /** @type {Failure} */ (error);
-    state.run = before;
+    refused();
     for (const problem of failure.problems ?? []) (state.problems[problem.node] ??= []).push(`${problem.port ? `${problem.port}: ` : ""}${problem.message}`);
   }
   render();
+}
+
+/**
+ * Run again, from a card: the last run once more, or, for a card that run did not hold, a run up
+ * to that card.
+ * @param {string} step
+ */
+function again(step) {
+  return state.run.cards[step]?.earlier ? run([step]) : run(state.upto);
 }
 
 async function stop() {
@@ -236,7 +264,7 @@ async function stop() {
  */
 async function act(step, offer) {
   const manifest = manifestOf(step);
-  if (offer.action === "retry") return run(state.upto);
+  if (offer.action === "retry") return again(step);
   if (!manifest) return;
   if (offer.action === "install") {
     const runtime = String(manifest.run?.runtime ?? "");
@@ -532,7 +560,7 @@ function offerNow(step, card, job) {
   const running = state.run.pending || (state.run.run !== null && state.run.ended === null);
   if (running) return null;
   if (job && job.state === "running") return null;
-  if (job && job.state === "done") return h("button", { type: "button", className: "primary", onclick: () => run(state.upto) }, "Run again");
+  if (job && job.state === "done") return h("button", { type: "button", className: "primary", onclick: () => again(step) }, "Run again");
   const offer = card?.offer;
   if (!offer) return null;
   if (offer.action === "wait") {
@@ -563,7 +591,7 @@ function renderCards() {
       h("span", { className: "id" }, row.node),
       h("button", { type: "button", className: "run-to", "aria-label": `Run to here: ${labelOf(step)}`,
         disabled: !canRun(), onclick: () => run([step]) }, "Run to here"),
-      h("button", { type: "button", "aria-label": `Remove ${labelOf(step)}`, onclick: () => edit(removeNode(graph, step)) }, "Remove")),
+      h("button", { type: "button", "aria-label": `Remove ${labelOf(step)}`, onclick: () => remove(step) }, "Remove")),
     manifest ? renderPorts(step, manifest) : h("p", { className: "problem" }, `No node ${row.node} is installed.`),
     manifest ? renderForm(step, manifest) : null,
     h("div", { className: "run", role: "status", "aria-live": "polite" }, ...renderStatus(step)));

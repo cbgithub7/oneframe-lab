@@ -215,7 +215,8 @@ test("a run to a card resets only its cards", () => {
   state = runView(state, { event: "run.done", run: "r1", outputs: {} });
 
   state = starting(state);
-  assert.equal(state.cards.c.phase, "done", "the cards are kept until run.start says which start again");
+  assert.deepEqual([state.cards.c.phase, state.cards.a.earlier], ["done", true],
+    "the cards are kept, as from an earlier run, until run.start says which start again");
   state = runView(state, { event: "run.start", run: "r2", order: ["a", "b"], notes: [] });
   assert.deepEqual([state.cards.a.phase, state.cards.b.phase], ["waiting", "waiting"]);
   assert.deepEqual([state.cards.c.phase, state.cards.c.outputs, state.cards.c.earlier], ["done", { depth }, true]);

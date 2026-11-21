@@ -68,11 +68,14 @@ export function idle() {
 
 /**
  * Run or Run to here was pressed: the next run.start is this page's, whatever its id. The cards
- * are kept until it says which it resets.
+ * are kept, as from an earlier run, until it says which it resets.
  * @param {RunState} [state] @returns {RunState}
  */
 export function starting(state = idle()) {
-  return { ...idle(), cards: state.cards, pending: true };
+  /** @type {Record<string, Card>} */
+  const cards = {};
+  for (const [step, card] of Object.entries(state.cards)) cards[step] = { ...card, earlier: true };
+  return { ...idle(), cards, pending: true };
 }
 
 /**
